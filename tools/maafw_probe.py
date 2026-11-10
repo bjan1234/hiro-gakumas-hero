@@ -29,6 +29,10 @@ def main():
     ap.add_argument("--input", default="SendMessageWithWindowPos")
     ap.add_argument("--screencap", default="FramePool", help="点击测试时用的截图方式")
     ap.add_argument("--harness", action="store_true", help="点测试窗口量落点精度，不碰游戏")
+    ap.add_argument("--targets", default="grid", choices=("grid", "edges"),
+                    help="grid：窗口中部 15 个点；edges：贴四边 / 四角的点（离边 2–20 像素）")
+    ap.add_argument("--cursor-at", default="",
+                    help="每点一下前先把真实光标放到屏幕的这些位置轮流试（x,y;x,y…，屏幕物理像素），看挪窗口对准光标时窗口会不会被系统限位")
     a = ap.parse_args()
     if a.harness:
         return harness(a)
@@ -157,8 +161,18 @@ def harness(a):
                                     wintypes.HINSTANCE, wintypes.LPVOID]
     hwnd = u32.CreateWindowExW(0x00000008, "HiroMaafwHarness", "hiro-maafw-harness", style, 200, 40,  # WS_EX_TOPMOST
                                rc.right - rc.left, rc.bottom - rc.top, None, None, hinst, None)
-    targets = [(x, y) for y in (60, 300, 480, 700, 900) for x in (40, 270, 500)]
-    rep = {"input": a.input, "hwnd": int(hwnd or 0), "targets": targets, "hits": []}
+    if a.targets == "edges":
+        targets = [(d, d) for d in (2, 6, 12, 20)] + [(W - 1 - d, d) for d in (2, 12)] + [(d, H - 1 - d) for d in (2, 12)] \
+            + [(W - 1 - d, H - 1 - d) for d in (2, 12)] + [(W // 2, 3), (W // 2, H - 4), (3, H // 2), (W - 4, H // 2)]
+    else:
+        targets = [(x, y) for y in (60, 300, 480, 700, 900) for x in (40, 270, 500)]
+    cursors = [tuple(int(v) for v in c.split(",")) for c in a.cursor_at.split(";") if c.strip()] or [None]
+    rep = {"input": a.input, "hwnd": int(hwnd or 0), "targets": targets, "cursors": cursors, "hits": []}
+
+    def window_rect():
+        r = wintypes.RECT()
+        u32.GetWindowRect(hwnd, ctypes.byref(r))
+        return [r.left, r.top, r.right, r.bottom]
 
     def run():
         try:
@@ -168,13 +182,18 @@ def harness(a):
                                 mouse_method=input_method(a.input, I), keyboard_method=input_method(a.input, I))
             c.set_screenshot_use_raw_size(True)
             rep["connected"] = bool(c.post_connection().wait().succeeded)
-            for x, y in targets:
-                n = len(hits)
-                ok = c.post_click(x, y).wait().succeeded
-                t0 = time.time()
-                while len(hits) == n and time.time() - t0 < 1.0:
-                    time.sleep(0.02)
-                rep["hits"].append({"target": [x, y], "ok": bool(ok), "got": hits[n] if len(hits) > n else None})
+            for cur in cursors:
+                for x, y in targets:
+                    if cur is not None:
+                        u32.SetCursorPos(*cur)
+                        time.sleep(0.15)
+                    n = len(hits)
+                    ok = c.post_click(x, y).wait().succeeded
+                    t0 = time.time()
+                    while len(hits) == n and time.time() - t0 < 1.0:
+                        time.sleep(0.02)
+                    rep["hits"].append({"target": [x, y], "cursor_at": list(cur) if cur else None, "ok": bool(ok),
+                                        "got": hits[n] if len(hits) > n else None, "window": window_rect()})
         except Exception as e:  # noqa: BLE001
             rep["error"] = f"{type(e).__name__}: {e}"
         finally:
@@ -191,7 +210,9 @@ def harness(a):
             for k in errs:
                 gx, gy = h["got"][k]
                 errs[k].append(max(abs(gx - h["target"][0]), abs(gy - h["target"][1])))
-    rep["summary"] = {"received": sum(1 for h in rep["hits"] if h["got"]), "of": len(targets),
+    rep["worst"] = sorted(([h["target"], h["cursor_at"], h["got"]] for h in rep["hits"] if h["got"]),
+                          key=lambda t: -max(abs(t[2]["cursor"][0] - t[0][0]), abs(t[2]["cursor"][1] - t[0][1])))[:5]
+    rep["summary"] = {"received": sum(1 for h in rep["hits"] if h["got"]), "of": len(rep["hits"]),
                       **{f"{k}_err_max": (max(v) if v else None) for k, v in errs.items()},
                       **{f"{k}_err_mean": (round(sum(v) / len(v), 2) if v else None) for k, v in errs.items()},
                       **({"error": rep["error"]} if rep.get("error") else {})}
