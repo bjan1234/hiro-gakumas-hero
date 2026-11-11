@@ -128,11 +128,20 @@ def read_consult(img: MatLike) -> dict:
     unread = [e["index"] for e in shelf if not e["purchased"] and (e["price"] is None or not (e.get("card_id") or e.get("drink_id")))]
     if len(unread) >= SHELF_UNREAD_MAX:
         complete = False
-    return {"shelf": shelf, "services": services, "rerolls_left": int(m.group(1)) if m else None, "complete": complete}
+    rerolls = int(m.group(1)) if m else None
+    if rerolls is None and complete and not _refresh_button(img):
+        rerolls = 0  # 次数用完时「あと N回」和「リフレッシュ」按钮整块消失（DMM 第 12 天相談实拍），不是没读到
+    return {"shelf": shelf, "services": services, "rerolls_left": rerolls, "complete": complete}
 
 
 SHELF_UNREAD_MAX = 2
+REFRESH_BOX = (0, 1020, 260, 1110)  # 左下「あと N回」+「リフレッシュ」按钮（x1, y1, x2, y2）
 
+
+def _refresh_button(img: MatLike) -> bool:
+    """左下有没有「リフレッシュ」按钮。RapidOCR 把小写ュ读成ユ，只认前缀。"""
+    x1, y1, x2, y2 = REFRESH_BOX
+    return any("リフレッ" in t.replace(" ", "") or "あと" in t for t, _, _ in ocr_boxes(img[y1:y2, x1:x2], scale=2))
 
 
 # ---------------------------------------------------------------- 本战轮间（HIF_ROUND_INTERVAL）货架
@@ -267,8 +276,6 @@ def _sale_split(nums: list[int]) -> list[int]:
     return [v for v in out if v >= PRICE_MIN]
 
 
-# 相談货架非 SALE 价（按种类 / 稀有度 / 强化）：实机读数统计（win1–22、gkms、DMM、Mac 第 33 局约 550 格，少数 15 / 17 / 5 是读丢首位）。
-# 主数据里没有相談价格（ShopItem 是ジュエル商店）。SALE 价 = 这个价 × SALE_RATE 取整。没见过的组合不核对。
 # 相談货架价格（主数据没有商店价格表，下面取自 83 个实机 trace 的 CONSULT 货架读数，Vision 为主）：
 # 饮料只看稀有度（id 里 pdrink_XX-稀有度-NNN）：50 / 75 / 100，SALE 七折取整 35 / 52 / 70，没有例外。
 # 卡不规整：原价 70 / 77 / 105（随稀有度和强化），SALE 有 24 / 40 / 49 / 53 等几种折扣，所以卡只设下限、不给预期价。

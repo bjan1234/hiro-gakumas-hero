@@ -322,7 +322,11 @@ def _reroll(r: Run, scope: str, info: dict | None) -> ExecutionResult:
     p0 = read_p(before, r.ocr)
     r.snap(before, "reroll-open")
     if not reroll_dialog(boxes0):  # 确认框已经挂着（上一次点的晚弹出来）：不再点按钮，直接按确认框处理
-        r.tap(find_text(boxes0, ("リフレッシュ",), region=REROLL_REGION) or REROLL_TAP[scope])
+        btn = find_text(boxes0, ("リフレッ",), region=REROLL_REGION)  # RapidOCR 常把ュ读成ユ
+        if scope == "consult" and btn is None and find_text(boxes0, ("あと",), region=REROLL_REGION) is None:
+            # 相談次数用完时按钮整块消失：盲点 REROLL_TAP 会点到空地（DMM 第 12 天相談把 rerolls_left 当成还有）
+            return r.result(False, "画面上没有「リフレッシュ」按钮（相談刷新次数已用完）")
+        r.tap(btn or REROLL_TAP[scope])
     state = {"jewel": False, "changed": 0, "confirmed": False}
     last = [r.clock() - SKIP_EVERY]
 
