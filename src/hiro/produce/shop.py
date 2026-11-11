@@ -218,23 +218,48 @@ def _service(r: Run, name: str, services: dict, card_id: str | None = None, choo
     return r.result(True, page_after=PAGE if back else None)
 
 
+SHOP_MARKS = ("選んでください", "交換するもの", "強化や削除", "交換する")  # 相談 / 轮间商店页自己的文字：提示条、说明行、「交換する」按钮
+END_IDLE_WAIT = 6.0  # 点「終了」前等提示条（「〜を削除しました」）/ 强化演出 / 支援卡横幅退掉的上限
+END_LEFT_FRAMES = 2  # 连续这么多帧看不到商店页文字（也没有确认框）才算离开
+END_RETAPS = 2
+
+
+def shop_shown(boxes) -> bool:
+    """画面上还有商店页（相談 / 轮间）自己的文字。提示条、横幅、强化演出都盖不全这几处；相談结束后的角色场景、loading、考试画面都没有。"""
+    return any(k in t.replace(" ", "") for t, _, _ in boxes for k in SHOP_MARKS)
+
+
 def _end(r: Run) -> ExecutionResult:
-    """点「終了」。还有没换的东西时会弹「相談終了確認」（第四局 17:12），点「決定」。"""
+    """点「終了」。还有没换的东西时会弹「相談終了確認」（第四局 17:12），点「決定」。
+    成功要正面确认：连续 END_LEFT_FRAMES 帧既没有商店页文字、也没有确认框。以前「不是空闲相談页、没有取消框」就算离开：
+    删卡 / 强化后底部弹「〜を削除しました」提示条时第一帧就满足（Mac 第 33 局选拔 0.062s / 0.035s，DMM 0.047s），
+    实际还在相談，决策器从「第 1 步」重开相談；画面真的走了以后 state 又停在 CONSULT，在 loading / 考试画面上接着点（DMM 实机）。"""
+    r.until(consult_idle, END_IDLE_WAIT)  # 先等提示条 / 演出退掉，盖着的时候点「終了」可能不生效
     r.snap(r.shoot(), "end-open")
-    r.tap(END_TAP)
-    last = [r.clock() - SKIP_EVERY]
+    for attempt in range(1 + END_RETAPS):
+        r.tap(END_TAP)
+        last = [r.clock() - SKIP_EVERY]
+        streak = [0]
 
-    def confirm(im):
-        if cancel_visible(im) and r.clock() - last[0] >= SKIP_EVERY:
-            r.snap(im, "end-confirm")
-            r.tap(find_text(r.ocr(im), END_CONFIRM_TEXTS, region=(360, 1080, 720, 1240)) or CONFIRM_TAP)
-            last[0] = r.clock()
+        def confirm(im):
+            if cancel_visible(im) and r.clock() - last[0] >= SKIP_EVERY:
+                r.snap(im, "end-confirm")
+                r.tap(find_text(r.ocr(im), END_CONFIRM_TEXTS, region=(360, 1080, 720, 1240)) or CONFIRM_TAP)
+                last[0] = r.clock()
 
-    ok, img = r.until(lambda im: not consult_idle(im) and not cancel_visible(im), END_TIMEOUT, tick=confirm)
-    r.snap(img, "end")
-    if not ok:
-        return r.result(False, f"点「終了」后 {END_TIMEOUT:.0f}s 内没离开相談")
-    return r.result(True, page_after=None)
+        def left(im):
+            gone = not cancel_visible(im) and not shop_shown(r.ocr(im))
+            streak[0] = streak[0] + 1 if gone else 0
+            return streak[0] >= END_LEFT_FRAMES
+
+        ok, img = r.until(left, END_TIMEOUT, tick=confirm)
+        r.snap(img, "end")
+        if ok:
+            return r.result(True, page_after=None)
+        if not consult_idle(img):
+            break  # 不在空闲相談页（演出 / 弹窗没退）：不盲点第二下
+        logger.info("点「終了」后 %.0fs 画面还在相談（第 %d 次），再点一次", END_TIMEOUT, attempt + 1)
+    return r.result(False, f"点「終了」后没离开相談（{1 + END_RETAPS} 次内，商店页文字一直在）")
 
 
 # ---------------------------------------------------------------- 刷新货架（リフレッシュ）
