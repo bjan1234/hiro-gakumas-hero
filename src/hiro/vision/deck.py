@@ -19,6 +19,7 @@
 """
 
 import os
+import re
 from functools import cache
 from pathlib import Path
 
@@ -793,6 +794,7 @@ GRID_ART_INSET = 0.2  # 四边各去掉 20%：避开左上费用、右上「+」
 GRID_SURE_VOTES = 4  # KAA 票数达到这个数（且不并列）直接采信：票数多时卡图相关反而常错（act-1_071 16 票正确，相关第一是别的卡）
 GRID_ART_MIN = 0.55  # 票数临界时：相关第一达到这个数、比次佳卡高 GRID_ART_MARGIN 以上才认
 GRID_ART_MARGIN = 0.13
+GRID_AGREE_MIN = 0.40  # 卡图第一与并列最高票一致时，卡图分的下限
 # 票数临界、相关没有明显胜出时：KAA 并列第一（≥3 票）的卡里取相关分最高的，至少这么多才采信，否则给 None。
 # 样例里 KAA 选对的卡相关分最低 0.22（票数多的也一样），选错的（被弹窗 / 横幅挡住的格、Mac 3:2 认成 アイドル魂）都 ≤ 0.09
 GRID_KAA_ART_MIN = 0.15
@@ -808,17 +810,26 @@ def _grid_norm(img) -> np.ndarray:
     return (g / (np.linalg.norm(g) + 1e-6)).ravel()
 
 
+_CHAR_SUFFIX = re.compile(r"-[a-z]{4}$")
+
+
+def base_asset(asset_id: str) -> str:
+    """去掉角色专属后缀（-ssmk / -hmsz …）得到 base asset_id。KAA 的 strip_character_suffix 只认它 CharacterId 里的角色，
+    新角色（秦谷美鈴 -hmsz）的变体会被当成另一张卡：DMM 的游戏数据里有这些变体，同一张卡的 KAA 票数被拆开（men-3_003 16 + 2 票），
+    卡图相关第一、第二是同一张卡（0.809 / 0.808），领先差为 0，相談货架 2 格认不出、整个货架判不完整。"""
+    return _CHAR_SUFFIX.sub("", asset_id)
+
+
 @cache
 def _grid_art_index() -> tuple[list[str], np.ndarray]:
     """KAA 卡格缩略图库（游戏数据 skill_cards/*.png，正方形图标）→ (base asset_id 列表, 归一化矩阵)。角色专属变体各占一行、同一个 base。"""
     from kaa.game_data.paths import sprites_path
-    from kaa.game_ui.skill_card_select import strip_character_suffix
 
     folder = str(sprites_path("skill_cards"))
     if not os.path.isdir(folder):
         return [], np.zeros((0, GRID_ART_SIZE * GRID_ART_SIZE), np.float32)
     names = sorted(n for n in os.listdir(folder) if n.endswith(".png"))
-    stamp = f"{len(names)}-{int(os.path.getmtime(folder))}-{GRID_ART_SIZE}-{GRID_ART_INSET}"
+    stamp = f"{len(names)}-{int(os.path.getmtime(folder))}-{GRID_ART_SIZE}-{GRID_ART_INSET}-base2"  # base2：按 base_asset 归并
     if os.path.exists(GRID_ART_CACHE):
         data = np.load(GRID_ART_CACHE, allow_pickle=False)
         if str(data["stamp"]) == stamp:
@@ -828,7 +839,7 @@ def _grid_art_index() -> tuple[list[str], np.ndarray]:
         img = cv2.imread(os.path.join(folder, n))
         if img is None:
             continue
-        keys.append(strip_character_suffix(n.removesuffix(".png")))
+        keys.append(base_asset(n.removesuffix(".png")))
         rows.append(_grid_norm(img))
     matrix = np.stack(rows).astype(np.float32)
     os.makedirs(os.path.dirname(GRID_ART_CACHE), exist_ok=True)
@@ -861,7 +872,7 @@ def match_grid_card(crop):
     votes: dict[str, int] = {}
     dist: dict[str, float] = {}
     for r in results or []:
-        a = scs.strip_character_suffix(r.key.removesuffix(".png"))
+        a = base_asset(r.key.removesuffix(".png"))
         votes[a] = votes.get(a, 0) + r.votes
         dist[a] = min(dist.get(a, float("inf")), r.distance)
     if not votes:
@@ -874,11 +885,15 @@ def match_grid_card(crop):
     art = grid_art_scores(crop)
     if len(art) >= 2 and art[0][1] >= GRID_ART_MIN and art[0][1] - art[1][1] >= GRID_ART_MARGIN:
         return SkillCard.from_asset_id(art[0][0])
+    tied = [b for b in ranked if votes[b] == top]
+    if top >= 2 and len(art) >= 2 and art[0][0] in tied and art[0][1] >= GRID_AGREE_MIN and art[0][1] - art[1][1] >= GRID_ART_MARGIN:
+        # 票数不够、但卡图第一正是并列最高票里的一张且明显领先：两路独立证据一致（DMM 本战相談 アイドル宣言+：
+        # Windows 2:2 平票，卡图 0.472 领先 0.144；Mac 同一帧 3 票直接认对）
+        return SkillCard.from_asset_id(art[0][0])
     if top < scs.MIN_VOTES:
         return None
     if not art:  # 没有卡图素材：按 KAA 原规则（并列时按特征距离排第一的）
         return SkillCard.from_asset_id(ranked[0])
     corr = dict(art)
-    tied = [b for b in ranked if votes[b] == top]
     best = max(tied, key=lambda b: corr.get(b, -1.0))
     return SkillCard.from_asset_id(best) if corr.get(best, -1.0) >= GRID_KAA_ART_MIN else None
