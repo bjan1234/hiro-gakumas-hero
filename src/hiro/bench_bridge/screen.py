@@ -6,7 +6,8 @@ ScreenTracker 每场考试一个，每个决策点 observe() 一次：
   画面看不到的移动（检索、保留、生成卡）会让牌区和实机有出入，算法只把它当参考。
 - 每回合属性：见过的回合照记；最后三回合按偶像流向（流3 → 流2 → 流1）；其余未知回合按 流1 填。
 - 状态栏：ProduceExamEffectType_* → UIObs 状态种类；やる気 / 好印象 用 BattleState 的读数。
-附魔（ench）画面上只有名字，这里不填。
+- 持续效果（ench）：画面上只有来源卡名。开考时放进偶像自带 P 道具的附魔；自己打出的卡挂的附魔按主数据记上（enchants.Enchants），
+  有回合数的每回合减 1；触发次数画面上看不到，按初始值。没给主数据查询时不记。
 """
 
 from __future__ import annotations
@@ -90,7 +91,14 @@ class ScreenTracker:
     抽牌按卡 ID 找（强化次数先找相同的，再找最接近的较低 / 较高值），离开手牌按原始强化次数放进弃牌 / 除外。
     """
 
-    def __init__(self, deck: list | None, trend: tuple | None = None):
+    def __init__(self, deck: list | None, trend: tuple | None = None, enchants=None, items: list | None = None):
+        self.enchants = enchants  # enchants.Enchants（主数据查询）；None 时不记持续效果
+        self.ench: list[list] = []  # [附魔 id, 次数, 剩余回合]
+        self._once: set = set()
+        if enchants is not None:
+            for it in items or ():
+                for eid, n, t in enchants.item(it):
+                    self.ench.append([eid, n, t])
         self.all = Counter(_key(c[0], c[1]) for c in deck or () if c and c[0])
         self.deck: Counter = Counter(self.all)
         self.grave: Counter = Counter()
@@ -148,6 +156,10 @@ class ScreenTracker:
             for h in rest:
                 self._leave(h[1], False)
             self.hand, self.played, self.last_play = [], [], None
+            for e in self.ench:  # 有回合数的持续效果每回合减 1
+                if e[2] > 0:
+                    e[2] -= 1
+            self.ench = [e for e in self.ench if e[2] != 0]
         # 先按看到的 key 配对，再按卡 ID 配对（手里被强化 / 弱化过）
         prev = list(self.hand)
         new: list = [None] * len(shown)
@@ -181,6 +193,15 @@ class ScreenTracker:
         self.last_play = k
         self.last_play_once = bool(getattr(getattr(card, "tags", None), "once", False))
         self.played.append({"id": k[0], "u": k[1]})
+        if self.enchants is not None:
+            try:
+                for eid, n, t, once in self.enchants.card(k[0], k[1]):
+                    if once and (k[0], eid) in self._once:
+                        continue
+                    self._once.add((k[0], eid))
+                    self.ench.append([eid, n, t])
+            except Exception:  # noqa: BLE001  主数据查不到：不记
+                pass
 
     def types(self, turn: int, limit: int) -> list[int]:
         out = []
@@ -229,10 +250,10 @@ def from_screen(state: Any, memory: Any, legal: list, tracker: ScreenTracker, ex
                  "types": tracker.types(turn, limit), "permil": permil, "crit": list(exam.get("crit") or [0, 0, 0])},
         "num": {"score": int(getattr(state, "score", 0) or 0), "stamina": int(getattr(state, "hp", 0) or 0),
                 "max_stamina": int(getattr(state, "max_hp", 0) or 0), "block": int(getattr(state, "genki", 0) or 0),
-                "playable": int(getattr(state, "actions_left", None) or 1), "plays": len(tracker.played)},
+                "playable": max(1, int(getattr(state, "actions_left", None) or 1)), "plays": len(tracker.played)},
         "stance": [None, 0],
         "status": _status_rows(state),
-        "ench": [],
+        "ench": [list(e) for e in tracker.ench],
         "hand": hand,
         "deck": _cards(tracker.deck), "grave": _cards(tracker.grave), "hold": [], "lost": _cards(tracker.lost),
         "played": list(tracker.played),

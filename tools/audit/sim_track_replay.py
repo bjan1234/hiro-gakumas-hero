@@ -42,6 +42,9 @@ def replay(paths: list[Path], *, only: str | None = None, limit: int | None = No
     for path in paths:
         src, memory, label = None, None, None
         for lab, s in _exam_steps(path):
+            q = str(((s.get("state") or {}).get("exam_session") or {}).get("label") or "")
+            if q.startswith("qualify"):
+                lab = q + "#" + lab.split("#", 1)[-1]  # 选拔考试：_exam_steps 只认本战轮次，按 trace 记的考试标签区分
             if only and not lab.startswith(only):
                 continue
             if limit is not None and len(rows) >= limit:

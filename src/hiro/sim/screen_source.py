@@ -43,6 +43,17 @@ def _round_label(exam: str | None) -> str | None:
     return base if base in FINALS_LABELS else None
 
 
+def _track_all() -> bool:
+    """出牌交给 bench 算法（hiro.bench_bridge，默认开）时，本战 R1 / R2 都跟踪，给出牌插件提供引擎局面（预演仍按 HIRO_EXAM_SIM_ROUNDS）。
+    R1 以前不跟踪是因为 LLM 跟着 R1 预演过早兑现（Windows 第二十局）；bench 出牌不看预演，这个理由不成立了。"""
+    try:
+        from hiro.bench_bridge.advisor import enabled
+
+        return enabled() and os.environ.get("HIRO_EXAM_SIM_TRACK_ALL", "1") != "0"
+    except Exception:  # noqa: BLE001
+        return False
+
+
 class SimScreenExamStateSource(ScreenExamStateSource):
     """画面读局面（同默认实现）+ 模拟器跟踪出预演。"""
 
@@ -55,14 +66,20 @@ class SimScreenExamStateSource(ScreenExamStateSource):
         self.lost: str | None = None
         self.stats = {"tracked": 0, "rebuilt": 0, "lost": 0}
         self.screen_drinks: list = []  # 画面饮料栏（槽位 → drink_id），模拟器的饮料顺序可能不同
+        self.template: str | None = None  # 合成开局用的模板（r1 / r2 / selection）
+        self.preview_on = True
 
     # ---------------------------------------------------------------- 生命周期
     def begin(self, context: dict[str, Any]) -> None:
         super().begin(context)
         ctx = context or {}
         self.label = _round_label(ctx.get("exam"))
-        if self.label is not None and self.label not in ROUNDS:
-            self.label = None  # 这一轮不给预演（HIRO_EXAM_SIM_ROUNDS）
+        self.template = self.label
+        self.preview_on = self.label in ROUNDS
+        # 选拔考试不跟踪：没有自己的合成模板，借本战模板会带进本战的 P 道具 / 附魔，画面上又常有合成牌组里没有的卡
+        # （2026-11-12 qualifydmmw1 离线重放 81 步丢 51 步），出牌插件走画面读数路径
+        if self.label is not None and not self.preview_on and not _track_all():
+            self.label = None  # 这一轮不跟踪、不给预演（HIRO_EXAM_SIM_ROUNDS）
         self.tracker = self.game = self.meta = None
         self.setup = None
         self._added = 0  # 「一场最多加 6 张」按场算：以前不清零，同一局里 R1、R2 和几次再挑戦累计到 6 张后，后面的考试都加不进、整场给不出预演
@@ -143,7 +160,7 @@ class SimScreenExamStateSource(ScreenExamStateSource):
         drinks = [d.drink_id for d in state.drinks if getattr(d, "drink_id", None)]
         max_hp = state.max_hp or (self.profile.max_hp if self.profile is not None else None) or 33
         permil = {k: v for k, v in (getattr(memory, "attr_permil", None) or {}).items() if v} or dict(CONTEXT.get("permil") or {})
-        setup, notes = rv.setup_for(self.label, deck=deck, drinks=drinks, hp=state.hp or max_hp, max_hp=max_hp, permil=permil)
+        setup, notes = rv.setup_for(self.template or self.label, deck=deck, drinks=drinks, hp=state.hp or max_hp, max_hp=max_hp, permil=permil)
         game = self._new_game(setup, copy.deepcopy(memory))
         self.setup = setup
         self.tracker = SimTracker(game, 0, self.meta)
@@ -249,8 +266,11 @@ class SimScreenExamStateSource(ScreenExamStateSource):
             return None
         try:
             state.sim_game = self.game  # 对齐过画面的引擎局面：给出招插件（hiro.bench_bridge）转 UIObs 用
+            state.sim_exact_exam = self.template in FINALS_LABELS  # 合成模板的回合数 / 属性表是这场考试的（选拔考试借的模板不是）
         except AttributeError:
             pass
+        if not getattr(self, "preview_on", True):
+            return None  # 只跟踪不预演（这一轮不在 HIRO_EXAM_SIM_ROUNDS）
         from hiro.contracts import Preview
         from hiro.sim.preview import preview_actions, slot_previews
 

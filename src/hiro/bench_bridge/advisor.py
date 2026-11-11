@@ -284,7 +284,16 @@ class BenchAdvisor:
         except Exception:  # noqa: BLE001
             trend = None
         self.exam = exam_fields(self.label, idol=idol, plan=_plan_number(idol))
-        self.tracker = ScreenTracker(self.deck, trend)
+        ench = items = None
+        if self.algo is not None:
+            try:
+                from hiro.bench_bridge.enchants import Enchants
+
+                ench = self._ench = getattr(self, "_ench", None) or Enchants()
+                items = ench.idol_items(idol)
+            except Exception as e:  # noqa: BLE001  没有主数据：持续效果不记
+                logger.info("持续效果记账不可用：%s: %s", type(e).__name__, e)
+        self.tracker = ScreenTracker(self.deck, trend, enchants=ench, items=items)
         self.began = False
         self.rng = random.Random(hash((self.label, round_no)) & 0xFFFFFFFF)
         self.stats = {"bench": 0, "rules": 0}
@@ -316,6 +325,10 @@ class BenchAdvisor:
                     obs["hand"] = [dict(c, p=h.get("p", 0)) for c, h in zip(obs["hand"], screen_obs["hand"])] \
                         if len(obs["hand"]) == len(screen_obs["hand"]) else screen_obs["hand"]
                     obs["drinks"], obs["legal"] = screen_obs["drinks"], screen_obs["legal"]
+                    if not getattr(state, "sim_exact_exam", True):
+                        # 选拔考试借的合成模板：回合数 / 属性表 / 倍率不是这场的，用画面的
+                        for k in ("turn", "limit", "types", "permil"):
+                            obs["exam"][k] = screen_obs["exam"][k]
                     return obs, slot_of, "engine"
             except Exception as e:  # noqa: BLE001
                 logger.info("引擎局面转 UIObs 失败，改用画面读数：%s: %s", type(e).__name__, e)
