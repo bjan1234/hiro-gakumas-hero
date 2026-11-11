@@ -1774,23 +1774,33 @@ class ProduceDeciders:
         # 增益常为负）当抽牌类目标先买了）；用不了时弱饮料（3–4 档）仍不按方案买，其余照方案买
         step_ready = (self.INTERVAL_DRINK_STEP and self.INTERVAL_REROLL and (items.get("refresh") or {}).get("available") is not False
                       and self._gains_setup(ps, self._interval_held(state, ps), res) is not None)  # fmt: skip
-        for idx in ([] if cache.get("rerolling") else res["buy"]):  # 刷新过：方案里按格子编号记的东西已经换了，不再按编号买
-            it = shelf.get(idx)
-            if it is None or it.get("purchased"):
-                continue
-            if it.get("drink_id") and self.INTERVAL_DRINK_STEP and (step_ready or _drink_tier(it["drink_id"]) >= 3):
-                continue
-            tried = cache["tried"].get(idx)
-            if tried is not None and p < tried:
-                continue  # 点过、P 点已经减少：买到了（货架的 purchased 还没刷新）
-            if not _affordable(it, p):
-                continue
-            cache["tried"][idx] = p
-            ledger["pending"] = {"kind": "drink" if it.get("drink_id") else "card", "id": it.get("drink_id") or (it.get("card_id"), it.get("upgrade") or 0), "p": p}
-            return done(Action(ActionKind.INTERVAL_BUY, {"index": idx}), f"买 {it.get('name')}（{it.get('price')}P）")
+        def plan_buy(step: bool, note: str = "") -> Decision | None:
+            for idx in ([] if cache.get("rerolling") else res["buy"]):  # 刷新过：方案里按格子编号记的东西已经换了，不再按编号买
+                it = shelf.get(idx)
+                if it is None or it.get("purchased"):
+                    continue
+                if it.get("drink_id") and self.INTERVAL_DRINK_STEP and (step or _drink_tier(it["drink_id"]) >= 3):
+                    continue
+                tried = cache["tried"].get(idx)
+                if tried is not None and p < tried:
+                    continue  # 点过、P 点已经减少：买到了（货架的 purchased 还没刷新）
+                if not _affordable(it, p):
+                    continue
+                cache["tried"][idx] = p
+                ledger["pending"] = {"kind": "drink" if it.get("drink_id") else "card", "id": it.get("drink_id") or (it.get("card_id"), it.get("upgrade") or 0), "p": p}
+                return done(Action(ActionKind.INTERVAL_BUY, {"index": idx}), f"买 {it.get('name')}（{it.get('price')}P）{note}")
+            return None
+
+        if (d := plan_buy(step_ready)) is not None:
+            return d
         d = self._interval_reroll(state, ps, items, cache, res, done)
         if d is not None:
             return d
+        if step_ready and cache.get("reroll_failed") and "gains" not in cache:
+            # 逐瓶 / 刷新估值失败：方案里的饮料按方案买，不因为估值失败就一瓶不买（DMM 本战轮间：估值 KeyError，
+            # 方案「回体力 + 买 おしゃれハーブティー、ルイボスティー」只回了体力，剩 516P、R2 四次都是零饮料开局）
+            if (d := plan_buy(False, "（刷新估值失败，按方案买）")) is not None:
+                return d
         up = res.get("upgrade")
         upgrade = items.get("upgrade") or {}
         if up and up not in ledger["upgraded"] and "upgrade" not in cache["tried"] and upgrade.get("available", True) \
@@ -1937,7 +1947,7 @@ class ProduceDeciders:
                 cache["gains"] = iv.take_gains(setup) or iv.drink_gains(setup)
                 iv.save_interval_cache({"plan": cache, "ledger": self._interval_ledger})
             except Exception as e:
-                logger.warning("轮间刷新估值失败，不刷：%s", e)
+                logger.warning("轮间刷新估值失败，不刷：%r", e, exc_info=True)
                 cache["reroll_failed"] = True
                 return None
         gains = cache["gains"]

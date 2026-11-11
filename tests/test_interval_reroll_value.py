@@ -150,3 +150,19 @@ def test_keep_last_slot_math():
     assert P._keep_last_slot(dict(g, **{"pdrink_02-1-006": (7815, 2777)}), weak, 300, 10)
     assert not P._keep_last_slot(g, strong, 300, 10)  # 特製（+3 万）：买
     assert not P._keep_last_slot(dict(g, **{"pdrink_02-1-006": (7815, 2777)}), weak, 80, 10)  # 刷完买不起：买现在这瓶
+
+
+def test_gains_failure_still_buys_plan_drinks(monkeypatch):
+    """逐瓶 / 刷新估值抛异常（DMM 本战轮间 KeyError）：方案里的饮料照方案买，不直接结束轮间。"""
+
+    def boom(*a, **k):
+        raise KeyError("p_card-02-men-2_100@3")
+
+    monkeypatch.setattr(iv, "plan_tiered", _plan)
+    monkeypatch.setattr(iv, "drink_gains", boom)
+    monkeypatch.setattr(iv, "take_gains", lambda setup: None)
+    monkeypatch.setattr(iv, "CONTEXT", {"deck": FIX["finals_context"]["deck"], "permil": FIX["finals_context"]["permil"], "drinks": []})
+    shelf = copy.deepcopy(FIX["page_fields"]["interval"])
+    dec = ProduceDeciders(CAMPUS_HIRO, None)
+    d = dec.decide("HIF_ROUND_INTERVAL", _state(shelf, 24, 580))
+    assert d.action.kind is ActionKind.INTERVAL_BUY and d.action.args == {"index": 7}, d.reason
