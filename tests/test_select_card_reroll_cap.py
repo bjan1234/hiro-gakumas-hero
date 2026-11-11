@@ -32,6 +32,33 @@ def test_reroll_blocked_redecides(monkeypatch):
     h._rerolls_this_page = hif.HiroHifStrategy.MAX_REROLLS_PER_PAGE  # 本页已到上限
     h._act = lambda commit, action, **k: acted.append(action) or NS(ok=True)
     monkeypatch.setattr(hif, "device", NS(screenshot=lambda: None))
-    monkeypatch.setattr("hiro.vision.extract.extract", lambda page, img: ({"candidates": cands}, 0.0))
+    monkeypatch.setattr("hiro.vision.extract.extract", lambda page, img: ({"options": cands}, 0.0))
     h.on_select_card(ctx)
     assert seen == [1, 0] and acted == [Action.activate_effect(2)]
+
+
+def test_select_card_rereads_until_recognized(monkeypatch):
+    """extract 返回的是 options：全认出就不再等；有没认出的就重读，取认出最多的那次。"""
+    pytest.importorskip("kaa")
+    import hiro.produce.hif as hif
+
+    reads = iter([[None, None, None], ["a", None, "c"], ["a", "b", "c"], ["a", "b", "c"]])
+    calls, slept, observed = [], [], []
+
+    def extract(page, img):
+        calls.append(page)
+        return {"options": [{"slot": i, "card_id": c} for i, c in enumerate(next(reads))]}, 0.0
+
+    opts = [NS(rect=NS(center=NS(x=150 + 200 * i, y=700)), card=None) for i in range(3)]
+    h = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
+    h.s = NS(state=GameState(page_fields={"candidates": [{"card_id": "a"}]}), observe=lambda **k: observed.append(k["fields"]) or NS(fields={}),
+             record=lambda *a, **k: None)  # fmt: skip
+    h.deciders = NS(decide=lambda *a, **k: Decision(Action.activate_effect(0), "拿", "rule", 0.9))
+    h.rec, h._note_fallback, h._rerolls_this_page = NS(log=lambda *a, **k: None), lambda *a: None, 0
+    h._act = lambda commit, action, **k: NS(ok=True)
+    monkeypatch.setattr(hif, "device", NS(screenshot=lambda: None))
+    monkeypatch.setattr(hif, "sleep", slept.append)
+    monkeypatch.setattr("hiro.vision.extract.extract", extract)
+    h.on_select_card(NS(fetch_cards=lambda: opts, fetch_recommend_card=lambda: None))
+    assert len(calls) == 3 and len(slept) == 2  # 第 3 次全认出就停
+    assert [o["card_id"] for o in observed[0]["options"]] == ["a", "b", "c"]

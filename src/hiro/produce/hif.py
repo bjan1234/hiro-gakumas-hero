@@ -439,13 +439,23 @@ class HiroHifStrategy(HifGrindStrategy):
         recommend = ctx.fetch_recommend_card()
         rec_index = next((i for i, o in enumerate(options) if recommend and o.rect == recommend.rect), None)
         raw, _ = extract("SELECT_CARD", img)
-        for _ in range(self.SELECT_RETRIES):  # 识别层候选为空（淡入帧）：等一下重读，同 on_select_drink
-            if (raw or {}).get("candidates"):
+
+        def known(r) -> int:  # extract 给的是 options（candidates 是换算后的观测字段，以前查错了键，每次都白等 4 轮）
+            opts = (r or {}).get("options") or []
+            return sum(1 for o in opts if o.get("card_id")) if opts else -1
+
+        best = (known(raw), raw, img)
+        for _ in range(self.SELECT_RETRIES):
+            # 淡入帧候选为空，或有候选没认出（DMM 选拔第 7 天三张都没认出，跟了游戏推荐）：等一下重读，取认出最多的那次
+            if best[0] >= len(best[1].get("options") or []) > 0:
                 break
             sleep(self.SELECT_RETRY_WAIT)
-            img = device.screenshot()
+            frame = device.screenshot()
             options = ctx.fetch_cards() or options
-            raw, _ = extract("SELECT_CARD", img)
+            again, _ = extract("SELECT_CARD", frame)
+            if known(again) > best[0]:
+                best = (known(again), again, frame)
+        _, raw, img = best
         raw = dict(raw or {})
         raw["recommended"] = rec_index
         obs = self.s.observe(scene="SELECT_CARD", img=img, fields=raw)
