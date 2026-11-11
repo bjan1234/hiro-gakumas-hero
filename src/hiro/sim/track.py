@@ -177,7 +177,7 @@ class SimTracker:
 
     def _advance(self, base, actions: list[dict], screen_hand: list, notes: list[str]):
         """按画面推进一步：先原样推；手牌不同时把画面上新出现的牌放到山札顶重放；回合开始「随机强化 1 张」之类的随机效果
-        再换几个随机种子重放，取手牌与强化次数都和画面一致的那次。都不完全一致时取卡 ID 一致的第一次，强化次数按画面改。"""
+        再换几个随机种子重放，取手牌与强化次数都和画面一致的那次。都不完全一致时取卡 ID 一致的第一次（强化次数不一致只记一笔）。"""
         from gakumas_exam.rng import NativeRandom
 
         want = [cid for cid, _ in screen_hand]
@@ -277,13 +277,9 @@ def _order_hand(env, screen_hand, notes: list[str]) -> None:
         exact = [i for i in cands if up is None or def_upgrade(env.cards[i]) == up]
         inst = (exact or cands)[0]
         if not exact:
-            # 随机强化重放也没对上：按画面改这张的强化次数（定义库里有这个版本时）
-            keys = [k for k in env.definitions if def_card_id(k) == cid and def_upgrade(k) == up]
-            if keys:
-                notes.append(f"强化次数按画面改：{env.cards[inst]} → {keys[0]}")
-                env.cards[inst] = keys[0]
-            else:
-                notes.append(f"强化次数：模拟器 {env.cards[inst]} ≠ 画面 +{up}（定义库里没有这个版本，未改）")
+            # 随机强化重放也没对上：只记一笔。画面的「+」数和引擎的 upgrade 同口径（基础 + 考试中 + 支援强化），不能按画面改基础强化；
+            # 以前这里写 env.cards[inst] = …，但 env.cards 每次现算，赋值从来没生效（dmmw1 日志「强化次数按画面改」其实没改）
+            notes.append(f"强化次数：模拟器 {env.cards[inst]} ≠ 画面 +{up}（未改）")
         ordered.append(inst)
         left.remove(inst)
     env.zones["hand"] = ordered + left
