@@ -110,8 +110,11 @@ def read_consult(img: MatLike) -> dict:
             sale = len(nums) >= 2 or any("SALE" in t.upper().replace(" ", "") for t in texts_in(xr, SALE_BAND[top]))
             purchased = any("交換済" in t.replace(" ", "") for t in texts_in(xr, (top, top + CELL)))
             price = nums[-1] if nums else None
+            expect, floor = expected_price(item, sale), price_floor(item.get("kind"), sale)
             if ocr_engine() != "vision" and not purchased:
-                price = _vote_price(img, x, PRICE_BAND[top], nums, sale=sale, expect=expected_price(item, sale), floor=price_floor(item.get("kind"), sale))
+                price = _vote_price(img, x, PRICE_BAND[top], nums, sale=sale, expect=expect, floor=floor)
+            elif not purchased and price is not None and floor is not None and price < floor:
+                price = expect  # Vision 也会丢首位（SALE ホットコーヒー 35 读成 5）：饮料取预期价，卡给 None
             shelf.append({"index": row * 4 + col, **item, "price": price, "sale": sale, "purchased": purchased,
                           "center": [x + CELL // 2, top + CELL // 2]})  # fmt: skip
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
