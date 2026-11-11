@@ -229,6 +229,26 @@ def shop_shown(boxes) -> bool:
     return any(k in t.replace(" ", "") for t, _, _ in boxes for k in SHOP_MARKS)
 
 
+def tap_end(r: Run) -> ExecutionResult:
+    """点「終了」、过确认框，画面不再是空闲商店页就返回成功。轮间用这个（离开与否由它自己等左上「インターバル」标题消失来判）：
+    轮间画面有「〜選んでください」，相談的严格判定（_end）在轮间永远不成立，会在「本戦へ」淡出时重点「終了」。"""
+    r.snap(r.shoot(), "end-open")
+    r.tap(END_TAP)
+    last = [r.clock() - SKIP_EVERY]
+
+    def confirm(im):
+        if cancel_visible(im) and r.clock() - last[0] >= SKIP_EVERY:
+            r.snap(im, "end-confirm")
+            r.tap(find_text(r.ocr(im), END_CONFIRM_TEXTS, region=(360, 1080, 720, 1240)) or CONFIRM_TAP)
+            last[0] = r.clock()
+
+    ok, img = r.until(lambda im: not consult_idle(im) and not cancel_visible(im), END_TIMEOUT, tick=confirm)
+    r.snap(img, "end")
+    if not ok:
+        return r.result(False, f"点「終了」后 {END_TIMEOUT:.0f}s 内画面没变")
+    return r.result(True, page_after=None)
+
+
 def _end(r: Run) -> ExecutionResult:
     """点「終了」。还有没换的东西时会弹「相談終了確認」（第四局 17:12），点「決定」。
     成功要正面确认：连续 END_LEFT_FRAMES 帧既没有商店页文字、也没有确认框。以前「不是空闲相談页、没有取消框」就算离开：

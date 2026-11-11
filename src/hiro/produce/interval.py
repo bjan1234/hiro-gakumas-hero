@@ -103,7 +103,7 @@ def _end(r: Run) -> ExecutionResult:
     """終了 →「本戦へ」，再等左上「インターバル」标题消失才算离开。
     第五局 21:26：「本戦へ」后画面淡出期间（calib 212647/04-end）标题还在，原来这时就返回成功，KAA 仍认得轮间标题，
     主循环又进来发了一次 IntervalEnd。"""
-    res = shop._end(r)
+    res = shop.tap_end(r)
     if not res.ok:
         return res
     left, img = r.until(lambda im: not on_interval(im, r.ocr), LEAVE_TIMEOUT)
