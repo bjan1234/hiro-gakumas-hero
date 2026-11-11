@@ -1151,29 +1151,45 @@ class ProduceDeciders:
 
     # ---- 选拔相談：P 点预算 + 选项表（用户 2026-11-02 第十六局复盘）
     def _consult_visit(self, state: GameState, ps: ProduceState, shelf: list, services: dict) -> dict:
-        """同一次相談的记账（P 读数在相談页不刷新：第十六局第 12 天一直读 440P，实际花到 165P）。
-        上一步买的货架格变成已购 / 消失、或强化 / 删除的价格上涨（同一计数 100 → 125 → 150 [wiki]）就算成交，从入场 P 里扣。"""
+        """同一次相談的记账。「本次已花」= 入场 P − 现在的 P（头部 P 读数，识屏 140621f 起相談页也读）；上一步做没做成也看 P：
+        P 减少了才算成交、按实际减少的数记（DMM 第 12 天：饮料 75P 误读成 15P 记了 15；删卡实扣 100P 没记上；
+        在过期货架上买失败的ホットコーヒー 反倒记了 50P）。P 读不到时退回老办法：上一步买的格子变成已购 / 消失、
+        或强化 / 删除的价格上涨（同一计数 100 → 125 → 150 [wiki]）就算成交，按标价从入场 P 里扣。"""
         key = (ps.mode, ps.step)
         v = getattr(self, "_consult_state", None)
         if v is None or v["key"] != key:
             v = self._consult_state = {"key": key, "entry_p": ps.produce_point, "spent": 0, "last": None, "log": [], "no_target": set(),
-                                       "svc_price": {}}  # fmt: skip
+                                       "svc_price": {}, "p_seen": ps.produce_point}  # fmt: skip
+        if v["entry_p"] is None:
+            v["entry_p"] = v["p_seen"] = ps.produce_point
+        p_now, p_prev = ps.produce_point, v.get("p_seen")
         last = v.pop("last", None)
         v["last"] = None
         if last is not None:
-            ok = False
-            if last.get("index") is not None:
-                it = next((x for x in shelf if x.get("index") == last["index"]), None)
-                ok = it is None or bool(it.get("purchased")) or not (it.get("card_id") or it.get("drink_id"))
-            elif last.get("service"):
-                price = (services.get(last["service"]) or {}).get("price")
-                ok = price is not None and last.get("price_before") is not None and price > last["price_before"]
-                if not ok:
-                    v["no_target"].add(last["service"])  # 对话框里没选（没有该做的卡）或没做成：本次不再开
+            if p_now is not None and p_prev is not None:
+                ok, cost = p_now < p_prev, p_prev - p_now
+            else:
+                ok, cost = False, last["cost"]
+                if last.get("index") is not None:
+                    it = next((x for x in shelf if x.get("index") == last["index"]), None)
+                    ok = (it is None and bool(shelf)) or (it is not None and (bool(it.get("purchased")) or not (it.get("card_id") or it.get("drink_id"))))
+                elif last.get("service"):
+                    price = (services.get(last["service"]) or {}).get("price")
+                    ok = price is not None and last.get("price_before") is not None and price > last["price_before"]
+            if not ok and last.get("service"):
+                v["no_target"].add(last["service"])  # 对话框里没选（没有该做的卡）或没做成：本次不再开
             if ok:
-                v["spent"] += last["cost"]
-                v["log"].append(f"{last['label']}（{last['cost']}P）")
-        v["p"] = min(ps.produce_point, v["entry_p"] - v["spent"])
+                v["log"].append(f"{last['label']}（{cost}P）")
+                if p_now is None or v["entry_p"] is None:
+                    v["spent"] += cost
+        if p_now is not None and v["entry_p"] is not None:
+            v["spent"] = max(0, v["entry_p"] - p_now)  # 以 P 差为准：没做成的不算，标价读错也不影响
+        if p_now is not None:
+            v["p_seen"] = p_now
+        if p_now is None:
+            v["p"] = None if v["entry_p"] is None else v["entry_p"] - v["spent"]
+        else:
+            v["p"] = p_now if v["entry_p"] is None else min(p_now, v["entry_p"] - v["spent"])
         return v
 
     def _consult_free_slots(self, state: GameState, ps: ProduceState) -> int:
