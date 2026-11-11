@@ -83,6 +83,10 @@ _NEXT["HIF_EXAM_RESULT"].add("PRODUCE_END")
 # 识屏 ce615b6 快速判页新页面 GIFT（差し入れ礼物箱）→ 打开后进三选一（第十八局本战：GIFT → SELECT_DRINK 不在图里，防抖 3 帧，候选没进 state 就停机）
 _NEXT["GIFT"] = {"ACTION_SELECT", "ACQUIRE"} | SELECTS | DRINK_FULL
 _NEXT.setdefault("ACTION_SELECT", set()).add("GIFT")
+# 礼物箱里有几个袋子时，选完一个袋子的三选一会回到礼物箱再开下一个：GIFT → SELECT_DRINK → GIFT → SELECT_CARD
+#（DMM 实机三次都是这个顺序，SELECT_DRINK → GIFT 不在图里，每次记一次 page_misjudged）
+for _p in SELECTS:
+    _NEXT.setdefault(_p, set()).add("GIFT")
 for _p in CARD_OPS:
     _NEXT[_p] = {"CONSULT", "ACTION_SELECT", "HIF_ROUND_INTERVAL", "STUDY", "OUTING"} | SELECTS | CARD_OPS
 for _p in DRINK_FULL:
