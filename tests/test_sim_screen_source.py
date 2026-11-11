@@ -72,3 +72,16 @@ def test_rounds_switch(monkeypatch):
     assert src.label is None  # R1 不给预演
     src.begin({"exam": "r2", "profile": CAMPUS_HIRO})
     assert src.label == "r2"
+
+
+def test_basic_card_budget_resets_per_exam():
+    """「一场最多加 6 张」基础类卡按场算：每次 begin（新一场考试、再挑戦）清零，不跨场累计（DMM 实机：R2 第 3 次再挑戦时
+    画面上的 距離感の基本 加不进合成牌组，「重建失败…在模拟器里找不到」，这一场后面都给不出预演）。"""
+    from hiro.sim.screen_source import SimScreenExamStateSource
+
+    src = SimScreenExamStateSource()
+    src.begin({"exam": "r2"})
+    src._added = 6
+    src.setup = object()
+    src.begin({"exam": "r2"})
+    assert src._added == 0 and src.setup is None

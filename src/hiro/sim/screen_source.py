@@ -64,6 +64,8 @@ class SimScreenExamStateSource(ScreenExamStateSource):
         if self.label is not None and self.label not in ROUNDS:
             self.label = None  # 这一轮不给预演（HIRO_EXAM_SIM_ROUNDS）
         self.tracker = self.game = self.meta = None
+        self.setup = None
+        self._added = 0  # 「一场最多加 6 张」按场算：以前不清零，同一局里 R1、R2 和几次再挑戦累计到 6 张后，后面的考试都加不进、整场给不出预演
         self.lost = None
         self.stats = {"tracked": 0, "rebuilt": 0, "lost": 0}
 
