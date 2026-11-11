@@ -4,7 +4,7 @@
 检查「メニュー → 設定 → プロデュース」里的 5 项是否 ON：
   未読コミュでも早送りする、サポートイベントのコミュスキップ、各プロデュース開始時の説明コミュスキップ、
   定期公演『初』の「気になる様子」コミュスキップ、親愛度コミュ内の映像スキップ。
-只读：从首页打开菜单 → 設定 → プロデュース 页签，读开关，存截图，回首页。不点任何开关。
+只读：从首页打开菜单 → 設定 → プロデュース 页签，读开关，存截图，回首页。不点任何开关；不在首页就跳过（什么都不点）。
 
     python tools/check_settings.py    # 打印每项状态；有 OFF / 读不到时退出码 1
 """
@@ -54,6 +54,17 @@ def _find(boxes, text: str, *, y_min: int = 0, y_max: int = 1280):
     return None
 
 
+NAV_LABELS = ("ホーム", "コミ", "アイドル", "コンテスト", "シャ")  # 首页底栏；RapidOCR「コミユ」、Vision「カシャ」也算
+
+
+def is_home(boxes) -> bool:
+    """首页：底栏页签（ホーム / コミュ / アイドル / コンテスト / ガシャ）认出 ≥3 个，加上中间的「プロデュース」大按钮。
+    本战开始确认页、菜单、设置页都不算（开始确认页左下角 (63,1213) 是「ホーム」按钮，盲点会弹「ホーム移動確認」）。"""
+    nav = {n for t, _, b in boxes if (b[1] + b[3]) // 2 >= 1080 for n in NAV_LABELS if n in t.replace(" ", "")}
+    produce = _find(boxes, "プロデュース", y_min=940, y_max=1060) is not None
+    return len(nav) >= 3 and produce
+
+
 def is_menu(boxes) -> tuple[int, int] | None:
     """菜单页：下半部宫格里的「設定」（另有「データ連携」等）。返回「設定」的位置。"""
     if not any("データ連携" in t or "キャッシュ" in t for t, _, _ in boxes):
@@ -80,8 +91,10 @@ def _wait(d, ocr, pred, timeout: float, poll: float = 1.0):
 
 def verdict(found: dict[str, str | None]) -> str:
     """一句话结论：全 ON / 被重置（有 OFF，开局会弹首次设置框）/ 没打开设置页（全读不到）/ 部分读不到。"""
-    off = [k for k, v in found.items() if v == "OFF"]
-    missing = [k for k, v in found.items() if v is None]
+    off = [k for k, v in found.items() if k in WANT and v == "OFF"]
+    missing = [k for k, v in found.items() if k in WANT and v is None]
+    if found.get("_skipped"):
+        return f"跳过：{found['_skipped']}，没点任何东西"
     if not off and not missing:
         return "ok：5 项都 ON"
     if off:
@@ -109,12 +122,16 @@ def check(save_dir: Path | None = None) -> dict[str, str | None]:
             save_dir.mkdir(parents=True, exist_ok=True)
             cv2.imwrite(str(save_dir / f"{name}.png"), img)
 
+    img = d.screenshot()
+    if img is None or not is_home(ocr_boxes(img)):
+        # 不在首页（本战开始确认页、培育中、弹窗……）：不点。-MainOnly 从本战开始确认页起时，以前在这里点 MENU 没反应后
+        # 又盲点 HOME (63,1213)，正好是开始确认页的「ホーム」，弹出 ホーム移動確認，接着读回忆数值被挡住、本战停下（DMM 实机）
+        save(img, "check-not-home")
+        return {**found, "_skipped": "不在首页"}
     d.click(*MENU)
     pos = _wait(d, ocr_boxes, is_menu, 8.0)
     if pos is None:
-        save(d.screenshot(), "check-menu-missing")
-        d.click(*HOME)
-        time.sleep(3.0)
+        save(d.screenshot(), "check-menu-missing")  # 菜单没打开：画面多半没变，不盲点 HOME
         return found
     for _ in range(3):  # 菜单展开动画里点可能不生效：没进设置页就再点一次
         d.click(*pos)

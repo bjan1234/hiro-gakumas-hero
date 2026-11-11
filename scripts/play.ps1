@@ -18,6 +18,7 @@
 #   -Relaunch    游戏被杀 / 闪退时自己拉起、回首页续跑（HIRO_RELAUNCH_GAME=1；缺省关，关着时讲清原因停下）
 #   -NoSim       关掉模拟器（轮间 / 饮料 / 相談按模拟、考试预演），只按社区规则；内存紧时用
 #   -Wait        前台等跑完再返回（缺省后台起进程，立刻返回 PID）
+#   -NoSettingsCheck  跳过开局前的设置检查（tools/check_settings.py；它只在首页做，不在首页会自己跳过）
 #   -AllowDiscard  开局时其他端末有进行中的培育就破弃它（run_hif --allow-discard；不可撤回，只在确认不要那局时加）
 #   -RunHifArgs  原样交给 run_hif 的其他参数，一个字符串，如 -RunHifArgs "--no-llm"
 #
@@ -41,6 +42,7 @@ param(
     [switch]$Relaunch,
     [switch]$NoSim,
     [switch]$Wait,
+    [switch]$NoSettingsCheck,
     [switch]$AllowDiscard,
     [string]$RunHifArgs = ""
 )
@@ -88,6 +90,7 @@ $argv = @("tools\play_game.py", "--idol", $Idol, "--main-attr", $MainAttr)
 if ($MainOnly) { $argv += "--main-only" }
 if ($Memory) { $argv += @("--memory", $Memory) }
 if ($Tag) { $argv += @("--tag", $Tag) }
+if ($NoSettingsCheck) { $argv += "--no-settings-check" }
 $extra = @()
 if ($AllowDiscard) { $extra += "--allow-discard" }
 if ($RunHifArgs) { $extra += ($RunHifArgs -split "\s+" | Where-Object { $_ }) }

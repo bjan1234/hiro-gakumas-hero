@@ -31,3 +31,9 @@ def test_exam_policy_passes_through():
 
 def test_logs_effective_source():
     assert re.search(r"Write-Host .*HIRO_EXAM_STATE_SOURCE=", PLAY)
+
+
+def test_no_settings_check_passthrough():
+    """-NoSettingsCheck 透传成 play_game 的 --no-settings-check（从本战开始确认页续本战时跳过设置检查）。"""
+    assert re.search(r"\[switch\]\$NoSettingsCheck", PLAY)
+    assert re.search(r'if \(\$NoSettingsCheck\) \{ \$argv \+= "--no-settings-check" \}', PLAY)
