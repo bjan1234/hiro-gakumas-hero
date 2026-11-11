@@ -55,7 +55,7 @@
   |---|---|---|
   | `asset_source` | 素材和主数据从哪来 | KAA 公开数据 + 随仓库素材包 `assets/pack/` + 使用者自建素材 |
   | `exam_state_source` | 考试局面从哪来 | 画面识别 + 状态机记账；要预演时换成 `hiro.sim.screen_source:SimScreenExamStateSource`（`play.ps1` 缺省就用它） |
-  | `exam_advisor` | 考试每一步怎么打 | 社区规则链 + LLM 兜底 |
+  | `exam_advisor` | 考试每一步怎么打 | [gakumas-bench](https://github.com/matto49/gakumas-bench) 的开源算法（缺省 [UINet](https://github.com/yuzeis/GKMSUINet)，`hiro.bench_bridge`），出错时这一步退回社区规则；`HIRO_BENCH_ADVISOR=0` 时是社区规则链 + LLM 兜底 |
 
   换实现有两种办法：设环境变量 `HIRO_ASSET_SOURCE` / `HIRO_EXAM_STATE_SOURCE` / `HIRO_EXAM_ADVISOR`（`包.模块:类名`），
   或者在另一个包的 `pyproject.toml` 里声明入口点 `[project.entry-points."hiro_gakumas.plugins"]`，装进同一个环境就自动登记。

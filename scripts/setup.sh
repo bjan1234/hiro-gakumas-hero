@@ -98,6 +98,14 @@ else
     || echo "  考试引擎用 Python 版（结果相同，慢一些）；装了 Rust（https://rustup.rs）后重跑本脚本可本地编译"
 fi
 
+# 考试出牌：gakumas-bench 的开源算法（缺省 UINet，默认开；HIRO_BENCH_ADVISOR=0 关）。装不上不影响开局：考试出牌退回社区规则
+echo "  考试出牌算法（gakumas-bench + UINet 模型 + 主数据导出）…"
+if uv pip install --python "$PY" -q -e ".[bench]"; then
+  "$PY" -m hiro.bench_bridge setup || echo "  ⚠ UINet 模型 / 主数据没准备好（网络？）：考试出牌会退回社区规则；可稍后重跑本脚本"
+else
+  echo "  ⚠ gakumas-bench / UINet 没装上：考试出牌会退回社区规则"
+fi
+
 step "7/7 自检"
 "$PY" - <<'PY'
 import sys

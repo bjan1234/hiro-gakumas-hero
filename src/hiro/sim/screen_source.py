@@ -247,6 +247,10 @@ class SimScreenExamStateSource(ScreenExamStateSource):
     def previews(self, state: Any) -> list | None:
         if self.game is None:
             return None
+        try:
+            state.sim_game = self.game  # 对齐过画面的引擎局面：给出招插件（hiro.bench_bridge）转 UIObs 用
+        except AttributeError:
+            pass
         from hiro.contracts import Preview
         from hiro.sim.preview import preview_actions, slot_previews
 
