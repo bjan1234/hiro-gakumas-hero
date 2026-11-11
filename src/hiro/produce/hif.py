@@ -81,6 +81,14 @@ class UnhandledPage(ResumeBlocked):
     """我们没有接管的页面 / 钩子，或读不出、决策不合法：停下、存帧、报警（不重试，不交给 KAA 默认）。"""
 
 
+class PageLeft(Exception):
+    """页内循环里发现画面已经离开这一页（Session.left_page）：退出循环，交回主循环。"""
+
+    def __init__(self, page: str):
+        super().__init__(page)
+        self.page = page
+
+
 
 def retry_tickets(boxes) -> tuple[int, int] | None:
     """再挑戦确认框「所持 a → b」的 (a, b)；读不到 None。"""
@@ -292,6 +300,9 @@ class HiroHifStrategy(HifGrindStrategy):
                 # 续跑 / 定制后停在菜单页或提示上（q12-r1：菜单页读不到卡格，决策判「卡未识别」直接结束，少做一次定制）：先退回一览
                 if not sg._to_grid(sg._runner(None, None, None, time.monotonic, time.sleep, None, True), tries=3):
                     time.sleep(1.0)
+            if o is not None and (gone := self.s.left_page("SPECIAL_GUIDANCE", o, ("cards",))) is not None:
+                logger.warning("特別指導：画面已经是 %s，退出定制循环", gone)
+                return True
             d = self.deciders.decide("SPECIAL_GUIDANCE", self.s.state)
             logger.info("特別指導 %s ← %s：%s", d.action, d.source, d.reason)
             if d.action.kind is not ActionKind.CUSTOMIZE_CARD:
@@ -1257,6 +1268,16 @@ class HiroHifStrategy(HifGrindStrategy):
         for step in range(self.MAX_SHOP_STEPS):
             t0 = time.monotonic()
             obs = self.s.observe_complete("CONSULT", ("shelf",), tries=4, interval=0.8)
+            if (gone := self.s.left_page("CONSULT", obs, ("shelf",))) is not None:
+                logger.warning("相談：画面已经是 %s，退出相談循环（不按沿用的旧货架继续点）", gone)
+                return
+            if not obs.fields.get("shelf"):  # 还在相談、货架没读出来（演出 / 弹窗盖着）：不拿旧货架决策，重新观测
+                streak += 1
+                logger.warning("相談 第 %d 步：货架没读出来，重新观测", step + 1)
+                if streak >= 3:
+                    break
+                sleep(self.SELECT_RETRY_WAIT)
+                continue
             for _ in range(self.CONSULT_P_REREADS):  # 要用 P 判断买不买：读不到先重读（D43），还读不到由决策按「未识别」处理
                 if (self.s.state.produce or {}).get("produce_point") is not None:
                     break
@@ -1354,6 +1375,8 @@ class HiroHifStrategy(HifGrindStrategy):
         def observe() -> dict:
             t = time.monotonic()
             cur["obs"] = self.s.observe_complete("HIF_ROUND_INTERVAL", ("interval",), tries=4, interval=0.8)
+            if (gone := self.s.left_page("HIF_ROUND_INTERVAL", cur["obs"], ("interval",))) is not None:
+                raise PageLeft(gone)
             cur["t0"] = time.monotonic()
             cur["observe_ms"] = (cur["t0"] - t) * 1000
             return dict(self.s.state.page_fields)
@@ -1392,7 +1415,11 @@ class HiroHifStrategy(HifGrindStrategy):
         from hiro.produce.interval import execute_interval
 
         execute = partial(execute_interval, deck_size=self._deck_size())
-        if interval_loop(observe, decide, record, execute=execute, max_steps=self.MAX_INTERVAL_STEPS, hp_target=target, status=status):
+        try:
+            if interval_loop(observe, decide, record, execute=execute, max_steps=self.MAX_INTERVAL_STEPS, hp_target=target, status=status):
+                return
+        except PageLeft as e:  # 画面已经不是轮间：不再按沿用的旧字段买 / 回体力，交回主循环
+            logger.warning("轮间：画面已经是 %s，退出轮间循环", e.page)
             return
         self.s.recover("tap_no_effect", "轮间结束失败，交回 KAA 结束")
         ctx.end()  # 兜底：执行器结束不了时用 KAA 的结束流程

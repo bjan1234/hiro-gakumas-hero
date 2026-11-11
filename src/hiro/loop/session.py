@@ -189,6 +189,18 @@ class Session:
         self.recover("missing_fields", f"{scene} 连续 {tries} 帧缺 {obs.missing(required)}，带缺字段继续")
         return obs
 
+    def left_page(self, scene: str, obs: Observation, required: list[str] | tuple[str, ...]) -> str | None:
+        """页内循环守卫（相談 / 轮间 / 特別指導）：obs（一般是 observe_complete 用尽重试后的那帧）里 required 仍读不到（None 或空）时，
+        不指定页面重新观测一次（重新分类）。已经不在 scene 就记 recover:page_misjudged、返回现在的页面名，调用方退出循环交回主循环；
+        否则返回 None。DMM 第 12 天相談：离开后画面已是选拔加载页 / 考试说明，相談循环按沿用的旧货架又点了 3 次。"""
+        if all(obs.fields.get(n) not in (None, [], {}) for n in required):
+            return None
+        now = self.observe()
+        if now.page.name == scene:
+            return None
+        self.recover("page_misjudged", f"{scene} 页内连续读不到 {list(required)}，重新分类是 {now.page.name}：退出页内循环")
+        return now.page.name
+
     # ---------------------------------------------------------------- 记录
     def recover(self, kind: str, detail: str) -> None:
         assert kind in RECOVER_KINDS, kind

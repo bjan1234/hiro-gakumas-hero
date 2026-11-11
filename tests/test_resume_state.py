@@ -83,10 +83,10 @@ def test_consult_rereads_when_p_missing(monkeypatch):
         reads.append(k.get("scene"))
         if len(reads) >= 2:
             sess.state = GameState(page_fields={"shelf": []}, produce={"produce_point": 380})
-        return NS(fields={})
+        return NS(fields={"shelf": [{"index": 0}]})
 
     sess = NS(state=GameState(page_fields={"shelf": []}, produce={}), observe=observe, record=lambda *a, **k: None,
-              observe_complete=lambda *a, **k: observe(scene="CONSULT"))  # fmt: skip
+              observe_complete=lambda *a, **k: observe(scene="CONSULT"), left_page=lambda *a: None)  # fmt: skip
     seen = []
     h = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
     h.s = sess

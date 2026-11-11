@@ -235,7 +235,13 @@ def _end(r: Run) -> ExecutionResult:
     删卡 / 强化后底部弹「〜を削除しました」提示条时第一帧就满足（Mac 第 33 局选拔 0.062s / 0.035s，DMM 0.047s），
     实际还在相談，决策器从「第 1 步」重开相談；画面真的走了以后 state 又停在 CONSULT，在 loading / 考试画面上接着点（DMM 实机）。"""
     r.until(consult_idle, END_IDLE_WAIT)  # 先等提示条 / 演出退掉，盖着的时候点「終了」可能不生效
-    r.snap(r.shoot(), "end-open")
+    im0 = r.shoot()
+    r.snap(im0, "end-open")
+    if not cancel_visible(im0) and not shop_shown(r.ocr(im0)):
+        # 已经不在商店页（离开后的相談人物画面仍被分类成 CONSULT，DMM 第 12 天）：不在人物画面上盲点「終了」的位置
+        im1 = r.shoot()
+        if not cancel_visible(im1) and not shop_shown(r.ocr(im1)):
+            return r.result(True, page_after=None)
     for attempt in range(1 + END_RETAPS):
         r.tap(END_TAP)
         last = [r.clock() - SKIP_EVERY]
