@@ -150,7 +150,7 @@ def run(mode: str, trace: str, common: list[str], extra: list[str]) -> int:
     t0 = time.monotonic()
     cur = ROOT / ".temp/current_run"  # 当前在跑的 trace 名：录屏 / 剪辑等外部流程按它对齐（主仓库同款）
     cur.parent.mkdir(parents=True, exist_ok=True)
-    cur.write_text(trace)
+    cur.write_text(trace, encoding="utf-8")
     with open(log, "w") as f:
         code = subprocess.call(run_cmd(mode, trace, common, extra), cwd=ROOT, stdout=f, stderr=subprocess.STDOUT,
                                env=child_env())  # fmt: skip

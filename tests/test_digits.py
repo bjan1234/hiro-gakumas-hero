@@ -17,7 +17,7 @@ FIX = Path(__file__).with_name("fixtures") / "hif_hud"
 
 def _cases():
     """(帧, 字段, 框, 真值)：HUD 上位置固定的数字。"""
-    for name, truth in json.loads((FIX / "truth.json").read_text()).items():
+    for name, truth in json.loads((FIX / "truth.json").read_text(encoding="utf-8")).items():
         img = load(cv2.imread(str(FIX / f"{name}.jpg")))
         for field, box in (("remaining_turns", hif.BOX_TURNS), ("genki", hif.BOX_GENKI), ("hp", hif.BOX_HP)):
             yield img, f"{name}.{field}", box, truth[field]

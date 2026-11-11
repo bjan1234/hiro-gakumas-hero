@@ -55,7 +55,7 @@ def main():
         "frames": len(rows), "scenes": dict(counts.most_common()), "unknown": counts.get("unknown", 0),
         "changed_since_collect": len(changed), "classify_ms_median": ms[len(ms) // 2], "classify_ms_max": ms[-1],
     }
-    (root / "report.json").write_text(json.dumps({"summary": summary, "rows": rows}, ensure_ascii=False, indent=1, default=str))
+    (root / "report.json").write_text(json.dumps({"summary": summary, "rows": rows}, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
 
     groups = defaultdict(list)
     for r in rows:

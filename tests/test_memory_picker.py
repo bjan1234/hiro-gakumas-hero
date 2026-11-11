@@ -96,7 +96,7 @@ def test_scan_reads_each_cell_and_cancels(tmp_path):
     assert e["card"]["name"] == "デイドリーミング" and e["timing"] == "start" and any("初期Pポイント" in a["text"] for a in e["abilities"])
     assert inv["complete"] and dev.state == "closed"  # 画面不动 = 到顶也到底
     assert (475, 1160) not in dev.taps  # 从不点「決定」
-    assert json.loads(out.read_text())["entries"][0]["card"]["card_id"] == "p_card-02-act-1_037"
+    assert json.loads(out.read_text(encoding="utf-8"))["entries"][0]["card"]["card_id"] == "p_card-02-act-1_037"
 
 
 def test_scan_refuses_outside_picker(tmp_path):

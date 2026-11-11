@@ -114,7 +114,7 @@ def test_collect_clusters(ci, shots, tmp_path):
         4,
         2,
     ]  # 1 号道具 4 帧、2 号道具 2 帧（第二格，第一格也是道具）；空栏背景不成类
-    labels = json.loads((tmp_path / "work" / "labels.json").read_text())
+    labels = json.loads((tmp_path / "work" / "labels.json").read_text(encoding="utf-8"))
     assert set(labels) == {"status", "pitem"} and len(labels["status"]) == 3
     assert (tmp_path / "work" / "sheet_status.png").exists() and (tmp_path / "work" / "sheet_pitem.png").exists()
 
@@ -124,16 +124,16 @@ def test_apply_writes_user_assets_and_reads_back(ci, shots, tmp_path, master):
 
     work, user = tmp_path / "work", tmp_path / "user"
     cs = ci.collect([str(shots)], work, user, exam_only=False)
-    labels = json.loads((work / "labels.json").read_text())
+    labels = json.loads((work / "labels.json").read_text(encoding="utf-8"))
     circle = next(c.id for c in cs["status"] if len(c.members) == 4)
     labels["status"][str(circle)]["name"] = "やる気"
     labels["status"][str(next(c.id for c in cs["status"] if c.id != circle))]["name"] = "好印象"
     labels["pitem"]["0"]["name"] = "合成オブジェ"
     labels["pitem"]["1"]["name"] = "主数据里没有的道具"
-    (work / "labels.json").write_text(json.dumps(labels, ensure_ascii=False))
+    (work / "labels.json").write_text(json.dumps(labels, ensure_ascii=False), encoding="utf-8")
     written = ci.apply(work, user)
     assert sorted(written["status"]) == ["examcardplayaggressive", "examreview"]
-    sindex = json.loads((user / "icons" / "status" / "index.json").read_text())
+    sindex = json.loads((user / "icons" / "status" / "index.json").read_text(encoding="utf-8"))
     assert sindex["examcardplayaggressive"] == {
         "type": "ProduceExamEffectType_ExamCardPlayAggressive",
         "name": "やる気",
@@ -144,7 +144,7 @@ def test_apply_writes_user_assets_and_reads_back(ci, shots, tmp_path, master):
         str(user / "icons" / "status" / "img_general_icon_exam-effect_examcardplayaggressive.png"), cv2.IMREAD_UNCHANGED
     )
     assert png.shape == (ci.STATUS_SIZE, ci.STATUS_SIZE, 4)
-    pindex = json.loads((user / "icons" / "pitem" / "index.json").read_text())
+    pindex = json.loads((user / "icons" / "pitem" / "index.json").read_text(encoding="utf-8"))
     assert pindex == {"img_general_pitem_9-001": "合成オブジェ", "user_pitem_1": "主数据里没有的道具"}
 
     # 识别层的图库（只有两个图标也能用）：新的一帧里两个道具都认得出，名称来自 index.json

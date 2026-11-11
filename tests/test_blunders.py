@@ -238,7 +238,7 @@ def test_crash_after_produce_end_and_manual_restart():
 
 def test_manual_log(tmp_path):
     p = tmp_path / "manual.jsonl"
-    p.write_text(json.dumps({"run": "lead35-qualify12-20261101-164908", "reason": "全屏切换", "detail": "手动点了一下"}, ensure_ascii=False) + "\n")
+    p.write_text(json.dumps({"run": "lead35-qualify12-20261101-164908", "reason": "全屏切换", "detail": "手动点了一下"}, ensure_ascii=False) + "\n", encoding="utf-8")
     f = B.manual_log([seg(None, run={}), B.Segment("lead35-qualify12-20261101-164908-r1", Path("."), {}, [], [], [])], p)
     assert kinds(f) == ["manual_intervention"] and "全屏切换" in f[0].detail
 

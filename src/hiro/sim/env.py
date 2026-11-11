@@ -226,7 +226,7 @@ class SimExam:
         from hiro.sim import FIXTURES
 
         path = FIXTURES / f"{fixture}.json"
-        self.observation = json.loads(path.read_text())
+        self.observation = json.loads(path.read_text(encoding="utf-8"))
         self.exam = Exam(self.observation, **kw)
         self.label = exam_label
         self.profile = profile
@@ -238,5 +238,5 @@ class SimExam:
     def restore(self, snapshot: str, seed: int, **kw) -> SimGame:
         from hiro.sim import FIXTURES
 
-        obs = json.loads((FIXTURES / f"{snapshot}.json").read_text())
+        obs = json.loads((FIXTURES / f"{snapshot}.json").read_text(encoding="utf-8"))
         return SimGame(self.exam.restore(obs, seed), self.label, self.profile, **kw)

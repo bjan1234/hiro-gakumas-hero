@@ -92,7 +92,7 @@ def main(argv=None):
         top = ", ".join(f"{k} {v / 60:.1f}m" for k, v in sorted(dw.items(), key=lambda kv: -kv[1])[:3])
         print(f"{f'{key[0]}:{key[1]} → {key[2]}':60s} {len(rs):4d} {st.median(g):6.1f} {q(g, .9):6.1f} {sum(g) / 60:7.1f}  {top}")
     if a.json:
-        Path(a.json).write_text(json.dumps(rows, ensure_ascii=False, indent=1))
+        Path(a.json).write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 if __name__ == "__main__":

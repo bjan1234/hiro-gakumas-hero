@@ -80,7 +80,7 @@ def write_manifest(dist: Path) -> dict:
             raise SystemExit(f"认不出平台：{w.name}")
         wheels[key] = {"file": w.name, "sha256": hashlib.sha256(w.read_bytes()).hexdigest()}
     manifest = {"source_hash": source_hash(), "wheels": wheels}
-    (dist / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n")
+    (dist / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
     return manifest
 
 

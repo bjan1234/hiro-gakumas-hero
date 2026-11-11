@@ -64,7 +64,7 @@ class TraceWriter:
         except (OSError, ValueError):
             old = None
         data = this if old is None else {**old, "segments": [*old.get("segments", []), {**this, "first_seq": self.seq + 1}]}
-        run.write_text(json.dumps(data, ensure_ascii=False, indent=1))
+        run.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
 
     def next_seq(self) -> int:
         self.seq += 1

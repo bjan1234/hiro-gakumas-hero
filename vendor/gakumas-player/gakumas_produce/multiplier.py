@@ -29,7 +29,7 @@ ATTRS=('Vo','Da','Vi')
 
 
 def load_observations(path=OBSERVATIONS):
-    return json.loads(Path(path).read_text())['observations']
+    return json.loads(Path(path).read_text(encoding='utf-8'))['observations']
 
 
 def base_permil(mode,position,stats,idol_card_id):

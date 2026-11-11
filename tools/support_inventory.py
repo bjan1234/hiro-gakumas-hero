@@ -165,7 +165,7 @@ def main() -> None:
         formations = offline(a.offline) if a.offline else live(a.formations)
         inv = {"generated": time.time(), "source": "formations", "note": "只含编成里出现过的卡；全量用 --list", **aggregate(formations)}
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(a.out).write_text(json.dumps(inv, ensure_ascii=False, indent=1))
+    Path(a.out).write_text(json.dumps(inv, ensure_ascii=False, indent=1), encoding="utf-8")
     print("wrote", a.out, len(inv["cards"]), "cards")
 
 

@@ -152,7 +152,7 @@ def main():
                 ep.flush()
                 print(f"{name:12s} seed {seed:3d} score {r['score']:>9,}  {r['seconds']:6.1f}s  llm {r['llm_calls']}"
                       + (f"  regret {r['regret_sum']:,}" if r["regret_sum"] is not None else ""), flush=True)  # fmt: skip
-    audits = [json.loads(line) for line in audit_path.read_text().splitlines() if line.strip()]
+    audits = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     (out / "summary.md").write_text(summarize(rows, audits, args.exam, args), encoding="utf-8")
     sig = sorted((a for a in audits if a["regret"] > 2 * a.get("regret_se", 0) and a["regret"] > 0), key=lambda a: -a["regret"])
     (out / "candidates.json").write_text(json.dumps(sig[:30], ensure_ascii=False, indent=1), encoding="utf-8")

@@ -11,7 +11,7 @@ import hiro  # noqa: F401
 from hiro.vision.action import read_action_select
 
 FIX = Path(__file__).with_name("fixtures") / "action"
-TRUTH = json.loads((FIX / "truth.json").read_text())
+TRUTH = json.loads((FIX / "truth.json").read_text(encoding="utf-8"))
 
 
 @pytest.mark.parametrize("name", sorted(TRUTH))

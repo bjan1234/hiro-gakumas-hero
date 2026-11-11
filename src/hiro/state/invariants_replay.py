@@ -85,7 +85,7 @@ def main() -> None:
     for r in results:
         print(report(r), "\n")
     if args.json:
-        args.json.write_text(json.dumps(results, ensure_ascii=False, indent=1, default=str))
+        args.json.write_text(json.dumps(results, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
 
 
 if __name__ == "__main__":

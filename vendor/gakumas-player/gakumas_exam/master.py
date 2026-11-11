@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-ENUMS = json.loads((Path(__file__).parent / 'enums.json').read_text())
+ENUMS = json.loads((Path(__file__).parent / 'enums.json').read_text(encoding='utf-8'))
 _ENUM_RE = re.compile(r'^([A-Z][A-Za-z0-9]*)_([A-Za-z0-9_]+)$')
 
 

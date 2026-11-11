@@ -21,7 +21,7 @@ SNAPSHOT=ROOT/'data/master'/COMMIT
 
 def build():
     started=time.perf_counter()
-    manifest=json.loads((SNAPSHOT/'manifest.json').read_text())
+    manifest=json.loads((SNAPSHOT/'manifest.json').read_text(encoding='utf-8'))
     target=SNAPSHOT/'catalog.sqlite';temp=SNAPSHOT/'catalog.building.sqlite'
     if temp.exists():temp.unlink()
     db=sqlite3.connect(temp)
@@ -83,8 +83,8 @@ def build():
         db.commit();db.close();temp.replace(target)
         info['database_sha256']=hashlib.sha256(target.read_bytes()).hexdigest()
         info['database_bytes']=target.stat().st_size
-        (SNAPSHOT/'build.json').write_text(json.dumps(info,ensure_ascii=False,indent=2)+'\n')
-        if UPDATE_POINTER:(ROOT/'data/master/current.json').write_text(json.dumps(dict(commit=COMMIT,database=COMMIT+'/catalog.sqlite',manifest_sha256=info['manifest_sha256'],database_sha256=info['database_sha256']),indent=2)+'\n')
+        (SNAPSHOT/'build.json').write_text(json.dumps(info,ensure_ascii=False,indent=2)+'\n', encoding='utf-8')
+        if UPDATE_POINTER:(ROOT/'data/master/current.json').write_text(json.dumps(dict(commit=COMMIT,database=COMMIT+'/catalog.sqlite',manifest_sha256=info['manifest_sha256'],database_sha256=info['database_sha256']),indent=2)+'\n', encoding='utf-8')
         print(json.dumps({k:v for k,v in info.items() if k!='table_counts'},ensure_ascii=False),flush=True)
     except Exception:
         db.close()
