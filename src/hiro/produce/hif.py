@@ -377,7 +377,7 @@ class HiroHifStrategy(HifGrindStrategy):
             d.warnings.append(f"{d.action} 暂不支持执行，改拿决策候选里的第 {alt} 项")
         return alt if 0 <= alt < n else fallback
 
-    MAX_REROLLS_PER_PAGE = 3
+    MAX_REROLLS_PER_PAGE = 5  # 只防死循环（决策层另有「刷新后候选没变就停」）；确定强化页决策会把整局的刷新用光（实机 4 次），不能比它小
     exclude_failures = 0  # カード除去 连续失败次数（进程内）；≥2 后本局不再尝试，直接再抽選
     _rerolls_this_page = 0
     REROLL_CONFIRM = ("再抽選する", "決定", "はい", "OK")
@@ -458,6 +458,13 @@ class HiroHifStrategy(HifGrindStrategy):
         if d.action.kind is ActionKind.REROLL and self._rerolls_this_page < self.MAX_REROLLS_PER_PAGE:
             if self._reroll(obs, d, t0):
                 return  # 候选换了：主循环重新 observe → 再决策
+        if d.action.kind is ActionKind.REROLL:
+            # 没刷成（每页上限 / 执行失败）：按刷新已用完重新决策（可能改用禁用），不退到候选里第一个「拿」的动作
+            #（DMM 选拔第 6 天：决策要用最后 1 次刷新，执行侧每页上限先到，拿了不要的 本番前夜+，禁用还剩 3 次没用）
+            st = replace(self.s.state, page_fields={**self.s.state.page_fields, "rerolls_left": 0})
+            d2 = self.deciders.decide("SELECT_CARD", st, n_options=len(options))
+            logger.info("选卡：刷新没做成（本页已刷 %d 次），按刷新用完重新决策 → %s", self._rerolls_this_page, d2.action)
+            d = replace(d2, warnings=[*d2.warnings, f"刷新没做成（本页已刷 {self._rerolls_this_page} 次），按刷新已用完重新决策"])
         if d.action.kind is ActionKind.EXCLUDE_CARD and HiroHifStrategy.exclude_failures >= 2:
             d = replace(d, warnings=[*d.warnings, "カード除去 本局已连续失败，改用再抽選"])
             if self._rerolls_this_page < self.MAX_REROLLS_PER_PAGE and self._reroll(obs, replace(d, action=Action(ActionKind.REROLL)), t0):
