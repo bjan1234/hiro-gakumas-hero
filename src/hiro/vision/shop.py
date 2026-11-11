@@ -278,9 +278,9 @@ def _sale_split(nums: list[int]) -> list[int]:
 
 # 相談货架价格（主数据没有商店价格表，下面取自 83 个实机 trace 的 CONSULT 货架读数，Vision 为主）：
 # 饮料只看稀有度（id 里 pdrink_XX-稀有度-NNN）：50 / 75 / 100，SALE 七折取整 35 / 52 / 70，没有例外。
-# 卡不规整：原价 70 / 77 / 105（随稀有度和强化），SALE 有 24 / 40 / 49 / 53 等几种折扣，所以卡只设下限、不给预期价。
+# 卡不规整：原价 35（未强化的 R2 卡，如 前途洋々、成長痛）/ 70 / 77 / 105，SALE 有 24 / 40 / 49 / 53 等几种折扣，所以卡只设下限、不给预期价。
 DRINK_PRICES = {1: 50, 2: 75, 3: 100}
-PRICE_FLOORS = {("drink", False): 50, ("drink", True): 35, ("card", False): 70, ("card", True): 20}  # 卡 SALE 实机最低 24
+PRICE_FLOORS = {("drink", False): 50, ("drink", True): 35, ("card", False): 35, ("card", True): 20}  # 卡 SALE 实机最低 24
 
 
 def expected_price(item: dict, sale: bool) -> int | None:
@@ -343,12 +343,10 @@ def _vote_price_raw(img: MatLike, x: int, band: tuple[int, int], region_nums: li
     votes = Counter(last)
     top = max(votes.values())
     tied = [v for v in dict.fromkeys(last) if votes[v] == top]
-    if len(tied) > 1:
-        # 平票：先认已知价格表里的价，再认 ddddocr（独立引擎）；以前按读法顺序取第一个
-        #（DMM 实机：パワフル漢方ドリンク 75 读成单格 4 倍 [15] / 整块 15 / 单格 3 倍 75 / ddddocr 75，取了 15，预算按 15 算）
-        for pref in (expect, dddd):
-            if pref is not None and pref in tied:
-                return pref, seen_all, dddd
+    if len(tied) > 1 and expect is not None and expect in tied:
+        # 平票先认已知价（DMM 实机：パワフル漢方ドリンク 75 读成单格 4 倍 [15] / 整块 15 / 单格 3 倍 75 / ddddocr 75，取了 15）。
+        # 不偏向 ddddocr：Windows 第六局 #124 SALE 卡 49，三种读法 49 / 1649 / 78 各一票，ddddocr 是读错的 78
+        return expect, seen_all, dddd
     return tied[0], seen_all, dddd
 
 

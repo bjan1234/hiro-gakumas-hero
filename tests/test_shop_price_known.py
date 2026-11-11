@@ -12,7 +12,7 @@ def test_known_price_helpers():
     assert shop.expected_price({"kind": "drink", "drink_id": "pdrink_02-3-007"}, True) == 70
     assert shop.expected_price({"kind": "drink", "drink_id": "pdrink_02-1-006"}, True) == 35
     assert shop.expected_price({"kind": "card", "card_id": "p_card-02-men-2_056", "upgrade": 1}, False) is None
-    assert shop.price_floor("drink", False) == 50 and shop.price_floor("card", False) == 70 and shop.price_floor("card", True) == 20
+    assert shop.price_floor("drink", False) == 50 and shop.price_floor("card", False) == 35 and shop.price_floor("card", True) == 20
 
 
 def test_shelf_prices():
