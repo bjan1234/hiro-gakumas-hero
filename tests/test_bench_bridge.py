@@ -200,3 +200,39 @@ def test_rejects_seed_seeing_algorithms(monkeypatch):
     monkeypatch.setitem(sys.modules, "gkbench.algos", fake)
     with pytest.raises(ValueError, match="看种子"):
         A.load_algo("seer")
+
+
+class _FakeEnchants:
+    def item(self, item_id):
+        return (("enchant-item", 5, -1),) if item_id == "pitem-x" else ()
+
+    def card(self, card_id, upgrade):
+        return {"c-sus": (("enchant-sus", -1, 2, False),), "c-once": (("enchant-once", 1, -1, True),)}.get(card_id, ())
+
+
+def test_tracker_records_item_and_played_card_enchants():
+    t = ScreenTracker([("c-sus", 0), ("c-once", 0), ("c-x", 0)], trend=("Vo", "Da", "Vi"), enchants=_FakeEnchants(), items=["pitem-x"])
+    assert t.ench == [["enchant-item", 5, -1]]
+    st, mem = _state([_card(0, "c-sus"), _card(1, "c-once")], turn=1)
+    t.observe(st, mem)
+    t.played_card(st.hand[0])
+    t.played_card(st.hand[1])
+    t.played_card(st.hand[1])  # 只第一次打出时挂
+    assert sorted(map(tuple, t.ench)) == [("enchant-item", 5, -1), ("enchant-once", 1, -1), ("enchant-sus", -1, 2)]
+    st2, mem2 = _state([_card(0, "c-x")], turn=2)
+    t.observe(st2, mem2)
+    st3, mem3 = _state([_card(0, "c-x")], turn=3)
+    t.observe(st3, mem3)
+    assert ["enchant-sus", -1, 1] not in t.ench and not any(e[0] == "enchant-sus" for e in t.ench)  # 2 回合后消失
+
+
+def test_track_all_follows_bench_switch(monkeypatch):
+    from hiro.sim import screen_source as ss
+
+    monkeypatch.setenv("HIRO_BENCH_ADVISOR", "1")
+    assert ss._track_all()
+    monkeypatch.setenv("HIRO_EXAM_SIM_TRACK_ALL", "0")
+    assert not ss._track_all()
+    monkeypatch.delenv("HIRO_EXAM_SIM_TRACK_ALL")
+    monkeypatch.setenv("HIRO_BENCH_ADVISOR", "0")
+    assert not ss._track_all()
