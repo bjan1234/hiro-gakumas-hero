@@ -118,11 +118,19 @@ def _download_model(download: bool) -> Path:
     return p
 
 
+def _engine_on_path() -> None:
+    """把考试引擎（vendor/gakumas-player 里的 gakumas_exam）放进 sys.path：hiro.sim 导入时做这件事。
+    实机开局时它早就导入了；`python -m hiro.bench_bridge setup / check` 单独跑时没有，gkbench 导入 gakumas_exam 就失败
+    （Windows 上 setup 报 No module named 'gakumas_exam'，模型和主数据都没准备）。"""
+    import hiro.sim  # noqa: F401
+
+
 def ensure_master() -> Path:
     """UINet 读的 9 张主数据表：从考试引擎的 catalog（gakumasu-diff 快照）导出 jsonl，按快照提交号缓存。"""
     env = os.environ.get("GKBENCH_UINET_MASTER")
     if env:
         return Path(env).expanduser()
+    _engine_on_path()
     from gakumas_exam.catalog import Catalog
 
     cat = Catalog()
@@ -152,6 +160,7 @@ def algo_spec() -> str:
 
 def load_algo(spec: str | None = None, *, download: bool = True):
     """按名字加载 bench 算法。uinet 自动带上我们的主数据和模型（spec 里写了 master= / model= 就用写的）。"""
+    _engine_on_path()
     from gkbench.algos import make
 
     spec = spec or algo_spec()

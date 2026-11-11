@@ -236,3 +236,20 @@ def test_track_all_follows_bench_switch(monkeypatch):
     monkeypatch.delenv("HIRO_EXAM_SIM_TRACK_ALL")
     monkeypatch.setenv("HIRO_BENCH_ADVISOR", "0")
     assert not ss._track_all()
+
+
+def test_setup_puts_engine_on_path(monkeypatch):
+    """`python -m hiro.bench_bridge setup / check` 单独跑时还没导入 hiro.sim：gkbench 导入 gakumas_exam 会失败
+    （Windows 上 setup 报 No module named 'gakumas_exam'，模型和主数据都没准备）。load_algo / ensure_master 先把引擎放进 sys.path。"""
+    import importlib
+    import sys
+
+    from hiro.bench_bridge import advisor
+    from hiro.sim import ROOT
+
+    monkeypatch.setattr(sys, "path", [p for p in sys.path if p != str(ROOT)])
+    for m in [m for m in sys.modules if m == "hiro.sim" or m.startswith(("hiro.sim.", "gakumas_exam"))]:
+        monkeypatch.delitem(sys.modules, m)
+    advisor._engine_on_path()
+    assert str(ROOT) in sys.path
+    importlib.import_module("gakumas_exam.catalog")
