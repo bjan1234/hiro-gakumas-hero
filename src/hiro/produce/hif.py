@@ -1292,10 +1292,13 @@ class HiroHifStrategy(HifGrindStrategy):
             d = self._consult_open_dialog(d, done_services)
             action = d.action if step < self.MAX_SHOP_STEPS - 1 else Action(ActionKind.SHOP_END)
             logger.info("相談 第 %d 步 %s ← %s：%s", step + 1, action, d.source, d.reason)
+            HiroHifStrategy.last_dialog_pick = None
             result = execute_shop(action, dict(self.s.state.page_fields), choose_card=self._choose_dialog_card, deck_size=self._deck_size())
-            self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
             service = ("upgrade" if action.kind is ActionKind.SHOP_UPGRADE_CARD else action.args.get("service")) if action.kind in (
                 ActionKind.SHOP_UPGRADE_CARD, ActionKind.SHOP_BUY) else None  # fmt: skip
+            if result.ok and service and action is d.action:
+                d = self._consult_actual_card(d, service)
+            self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
             if action.kind is ActionKind.SHOP_END:
                 if result.ok:
                     return
@@ -1309,7 +1312,7 @@ class HiroHifStrategy(HifGrindStrategy):
                 continue
             streak += 1
             if service and HiroHifStrategy.last_dialog_pick and HiroHifStrategy.last_dialog_pick[1] and "没打开选卡页" not in (result.error or ""):
-                kind, cid = HiroHifStrategy.last_dialog_pick
+                kind, cid = HiroHifStrategy.last_dialog_pick[:2]
                 HiroHifStrategy.op_failed.setdefault(kind, set()).add(cid)
                 HiroHifStrategy.last_dialog_pick = None
                 self.s.recover("tap_no_effect", f"相談 {action} 选的 {cid} 做不成（{result.error}），本局不再选它，换下一张")
@@ -1326,6 +1329,24 @@ class HiroHifStrategy(HifGrindStrategy):
         if not end.ok:  # 不退回 KAA 的 ConsultContext.commit：它会先买第一格再离开
             self.s.recover("tap_no_effect", f"相談离开失败：{end.error}，交回主循环重新判断")
             logger.warning("相談离开失败（%s），交回主循环", end.error)
+
+    def _consult_actual_card(self, d: Decision, service: str) -> Decision:
+        """強化 / 削除做成后，把对话框里实际选的卡写进记录的动作（args.card_id / upgrade）：删卡事件、trace 和记账都按实际那张。
+        动作只带 card_index 时执行器不按它点，是在对话框里让决策重选的（DMM 第 12 天：决策写删 アイコンタクトの基本，
+        对话框里删的是 眠気，状态账本却按 card_index 删了 アイコンタクトの基本）。"""
+        pick = HiroHifStrategy.last_dialog_pick
+        if not pick or not pick[1] or d.action.args.get("card_id"):
+            return d
+        _, cid, upgrade, name = (*pick, None, None)[:4]
+        verb = "删" if service == "delete" else "强化"
+        msg = f"相談{verb}实际是 {name or cid}（{cid}），决策写的是 {d.reason.split('。')[0]}"
+        logger.info(msg)
+        self.s.note(msg)
+        v = getattr(self.deciders, "_consult_state", None)
+        if isinstance(v, dict) and isinstance(v.get("last"), dict):
+            v["last"]["label"] = f"{verb} {name or cid}"  # 下一步记账日志按实际那张
+        args = {**d.action.args, "card_id": cid, "upgrade": upgrade}
+        return replace(d, action=Action(d.action.kind, {k: x for k, x in args.items() if x is not None}))
 
     def _consult_open_dialog(self, d: Decision, done: set) -> Decision:
         """牌组未识别时决策器不出强化 / 删卡（q9、q10 第 12 天 440P 没花）。选卡对话框里能读到整副牌组（识别 26675e4 + 执行 c9ede96），
@@ -1358,7 +1379,9 @@ class HiroHifStrategy(HifGrindStrategy):
         cards = [c for c in cards if c.get("card_id") not in failed]
         state = replace(self.s.state, page_fields={**self.s.state.page_fields, "cards": cards})
         d = self.deciders.decide(page, state)
-        HiroHifStrategy.last_dialog_pick = (kind, d.action.args.get("card_id"))
+        cid = d.action.args.get("card_id")
+        card = next((c for c in cards if c.get("card_id") == cid), {})
+        HiroHifStrategy.last_dialog_pick = (kind, cid, card.get("upgrade"), card.get("name"))
         logger.info("相談%s选卡 %s ← %s：%s", "强化" if kind == "enhance" else "删除", d.action.args.get("card_id"), d.source, d.reason)
         return None if d.action.args.get("cancel") else d.action.args.get("card_id")
 

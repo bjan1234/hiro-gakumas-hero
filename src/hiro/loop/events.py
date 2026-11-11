@@ -134,6 +134,8 @@ def events_from_step(page: str | None, action: dict, ok: bool, page_fields: dict
             deck = (produce or {}).get("deck") or []
             i = args.get("card_index")
             c = deck[i] if isinstance(i, int) and 0 <= i < len(deck) else {}
+            if args.get("card_id"):  # 对话框里实际删的那张（主循环做成后写回）优先于决策写的 card_index
+                c = {"card_id": args["card_id"], "upgrade": args.get("upgrade")}
             E("CARD_DELETE", card_id=c.get("card_id"), upgrade=c.get("upgrade"), source="consult")
         elif "index" in args:
             shelf = page_fields.get("shelf") or []
