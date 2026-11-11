@@ -62,7 +62,7 @@ class IconLibrary:
             return cls.empty(size)
         masks_arr = np.stack(masks)
         index = folder / "index.json"  # 资源名 → 名称（可选；KAA 公开数据没有）
-        names = json.loads(index.read_text()) if index.exists() else {}
+        names = json.loads(index.read_text(encoding="utf-8")) if index.exists() else {}
         return cls(keys, np.stack(rows), masks_arr, masks_arr.sum(axis=1), size, names)
 
     @classmethod

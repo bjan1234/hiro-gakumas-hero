@@ -93,7 +93,7 @@ class PublicAssetSource:
         for root in self._roots():
             p = root / "layout.json"
             if p.is_file():
-                return json.loads(p.read_text())
+                return json.loads(p.read_text(encoding="utf-8"))
         return None
 
     def sprites_dir(self) -> Path | None:

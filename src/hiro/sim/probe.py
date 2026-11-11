@@ -78,7 +78,7 @@ def main():
     exam_name = run.name.rsplit("-", 1)[-1]
     fixture, label = EXAMS[exam_name]
     exam = SimExam(fixture, label, CAMPUS_HIRO)
-    records = [json.loads(line) for line in (run / "decisions.jsonl").read_text().splitlines() if line.strip()]
+    records = [json.loads(line) for line in (run / "decisions.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     env, rec = reach(exam, records, args.seed, args.turn, args.at)
     st = rec["state"]
     print(f"种子 {args.seed} 第 {args.turn} 回合：hp{env.hp} 元气{env.shield} 干劲{env.motivation} 分{env.score:,}")

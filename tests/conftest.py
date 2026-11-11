@@ -71,7 +71,7 @@ _TOP_READ = re.compile(r"\(([^()]*(?:\([^()]*\)[^()]*)*)\)\.read_text\(")
 
 
 def _missing_top_files(f: Path, top: str) -> list[Path]:
-    """模块顶层就要读的文件（`X = Path(__file__)…` 常量拼出来的 `(…).read_text()`）哪些不在。
+    """模块顶层就要读的文件（`X = Path(__file__)…` 常量拼出来的 `(…).read_text(encoding="utf-8")`）哪些不在。
     按具体文件判断：tests/fixtures 是空目录、或只放了部分样例时，缺 action/truth.json 的 test_action.py 不收集，别的照常。
     只对路径表达式求值（不给 builtins），算不出来的读法不管（交给 pytest 正常报错）。"""
     ns: dict = {"Path": Path, "__file__": str(f)}

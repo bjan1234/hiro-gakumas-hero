@@ -50,7 +50,7 @@ def _library() -> tuple[list[str], np.ndarray, dict]:
     folder = assets.support_dir()
     if folder is None:
         return [], np.zeros((0, 1), np.float32), {}  # 没有支援卡图：support_card_id 给 None
-    index = json.loads((folder / "index.json").read_text()) if (folder / "index.json").exists() else {}
+    index = json.loads((folder / "index.json").read_text(encoding="utf-8")) if (folder / "index.json").exists() else {}
     keys, rows = [], []
     for png in sorted(folder.glob("*.png")):
         im = cv2.imread(str(png), cv2.IMREAD_UNCHANGED)

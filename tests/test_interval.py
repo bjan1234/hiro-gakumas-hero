@@ -270,7 +270,7 @@ class _Main8(dict):
                 import pytest
 
                 pytest.skip("没有截图样例 tests/fixtures（第八局轮间状态）")
-            self.update(_json.loads(f.read_text()))
+            self.update(_json.loads(f.read_text(encoding="utf-8")))
         return dict.__getitem__(self, k)
 
 

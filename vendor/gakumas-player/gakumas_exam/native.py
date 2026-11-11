@@ -42,7 +42,7 @@ def master_path(m):
     doc = dict(commit=m.commit, tables=tables,
                rules=dict(debuff_effect_types=sorted(DEBUFF_EFFECT_TYPES), debuff_status_classes=sorted(DEBUFF_STATUS_CLASSES)))
     tmp = p.with_suffix('.tmp')
-    tmp.write_text(json.dumps(doc, ensure_ascii=False))
+    tmp.write_text(json.dumps(doc, ensure_ascii=False), encoding='utf-8')
     tmp.replace(p)
     return str(p)
 

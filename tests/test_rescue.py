@@ -100,7 +100,7 @@ def test_tap_retry_and_archive(tmp_path):
     rec = r.tick(f.img, {"mode": "finals"})
     assert f.clicks == [(510, 780)]
     assert rec["changed"] and rec["page"] == "通信エラー" and not rec.get("blocked")
-    d = json.loads((tmp_path / next(p.name for p in tmp_path.iterdir()) / "record.json").read_text())
+    d = json.loads((tmp_path / next(p.name for p in tmp_path.iterdir()) / "record.json").read_text(encoding="utf-8"))
     assert d["prompt"] == prompt_version("rescue.md") and d["boxes"][3][0] == "リトライ"
     assert "3: リトライ @ (510, 780)" in r.llm.calls[0][1]
     assert r.summary() == {"count": 1, "actions": {"tap_box": 1}, "blocked": 0, "pages": {"通信エラー": 1}}

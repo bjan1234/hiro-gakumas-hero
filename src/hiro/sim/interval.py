@@ -38,7 +38,7 @@ WAPPEN_STAR = 15  # 轮间买一张卡用掉一枚ワッペン：星星 +15（�
 
 @lru_cache(maxsize=None)
 def _template(name: str = TEMPLATE) -> dict:
-    return json.loads((FIXTURES / f"{name}.json").read_text())
+    return json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
 
 
 @dataclass

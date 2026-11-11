@@ -27,7 +27,7 @@ FLAT_VAR = 1.0  # 窗口内灰度方差（每像素）低于此值视为纯色�
 
 @cache
 def _signatures() -> dict[str, list[dict]]:
-    data = json.loads(SIGNATURES.read_text()) if SIGNATURES.exists() else {}
+    data = json.loads(SIGNATURES.read_text(encoding="utf-8")) if SIGNATURES.exists() else {}
     root = assets.sprites_dir()
     if root is None:
         return {}  # 没有界面 Sprite：签名判页关闭（走 KAA / quick_page / OCR 补判）

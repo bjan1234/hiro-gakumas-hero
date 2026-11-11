@@ -133,7 +133,7 @@ def main() -> None:
 
     recs = offline(a.offline) if a.offline else live(a.pages, Path(a.frames))
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(a.out).write_text(json.dumps({"generated": time.time(), "count": len(recs), "memories": recs}, ensure_ascii=False, indent=1))
+    Path(a.out).write_text(json.dumps({"generated": time.time(), "count": len(recs), "memories": recs}, ensure_ascii=False, indent=1), encoding="utf-8")
     print("wrote", a.out, len(recs))
 
 

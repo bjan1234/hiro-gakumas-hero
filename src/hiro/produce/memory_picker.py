@@ -291,7 +291,7 @@ def scan(picker: Picker, out: Path, *, max_pages: int = 600, on_entry: Callable[
     if not picker_open(picker.ocr(img)):
         raise RuntimeError("不在回忆选择页（没看到 キャンセル / 決定 / 編成詳細）：请先在编成页点开一格回忆")
     if out.exists():
-        out.with_suffix(out.suffix + ".bak").write_text(out.read_text())
+        out.with_suffix(out.suffix + ".bak").write_text(out.read_text(encoding="utf-8"), encoding="utf-8")
     img = to_top(picker)
     inv = {"entries": [], "gaps": [], "scanned_at": None, "complete": False}
     pages = new = 0
@@ -309,7 +309,7 @@ def scan(picker: Picker, out: Path, *, max_pages: int = 600, on_entry: Callable[
                 if on_entry:
                     on_entry(e)
                 inv["scanned_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-                out.write_text(json.dumps(inv, ensure_ascii=False, indent=1))
+                out.write_text(json.dumps(inv, ensure_ascii=False, indent=1), encoding="utf-8")
         prev, prev_base, before = rows, row_base, img
         pages += 1
         if not prev:
@@ -339,7 +339,7 @@ def scan(picker: Picker, out: Path, *, max_pages: int = 600, on_entry: Callable[
             row_base, start = prev_base + len(prev), 0
         else:
             row_base, start = prev_base + len(prev) - m, m
-    out.write_text(json.dumps(inv, ensure_ascii=False, indent=1))
+    out.write_text(json.dumps(inv, ensure_ascii=False, indent=1), encoding="utf-8")
     picker.cancel()
     logger.info("回忆扫描：%d 页，读了 %d 格，漏行 %d 处，complete=%s → %s", pages, new, len(inv["gaps"]), inv["complete"], out)
     return inv
@@ -355,7 +355,7 @@ def explore(picker: Picker, out_dir: Path) -> list[dict]:
         boxes = picker.ocr(img)
         imgio.imwrite(str(out_dir / f"{len(log):02d}-{tag}.png"), img)
         log.append({"tag": tag, "texts": [[t, list(b)] for t, _, b in boxes]})
-        (out_dir / "explore.json").write_text(json.dumps(log, ensure_ascii=False, indent=1))
+        (out_dir / "explore.json").write_text(json.dumps(log, ensure_ascii=False, indent=1), encoding="utf-8")
         return img, boxes
 
     img, boxes = shot("picker")

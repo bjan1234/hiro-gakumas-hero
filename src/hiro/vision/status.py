@@ -65,7 +65,7 @@ def _icon_index() -> tuple[dict, dict[str, list[np.ndarray]]]:
     if icons is None:
         return {}, {}  # 没有考试效果图标：状态名给 None，只读数值
     index = icons / "index.json"
-    meta = json.loads(index.read_text()) if index.exists() else {}
+    meta = json.loads(index.read_text(encoding="utf-8")) if index.exists() else {}
     templates, seen = {}, {}
     for png in sorted(icons.glob("*.png")):
         alpha = cv2.imread(str(png), cv2.IMREAD_UNCHANGED)[:, :, 3]

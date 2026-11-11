@@ -31,7 +31,7 @@ def master_ready() -> bool:
         return False
     import json
 
-    return (ROOT / "data" / "master" / json.loads(cur.read_text())["database"]).exists()
+    return (ROOT / "data" / "master" / json.loads(cur.read_text(encoding="utf-8"))["database"]).exists()
 
 
 ROOT = engine_root()

@@ -20,7 +20,7 @@ SCHEDULE = {1: {"shop", "gift", "special_guidance"}, 2: {"training"}, 3: {"class
 
 
 def test_produce_observation_matches_schedule():
-    for name in json.loads((FIX / "action" / "truth.json").read_text()):
+    for name in json.loads((FIX / "action" / "truth.json").read_text(encoding="utf-8")):
         obs = produce_observation(read_action_select(cv2.imread(str(FIX / "action" / f"{name}.jpg"))).to_dict())
         assert obs["mode"] == "produce-007"
         assert set(obs["params"]) == {"Vo", "Da", "Vi"} and obs["param_cap"] == 3000

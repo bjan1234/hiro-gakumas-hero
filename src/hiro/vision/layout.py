@@ -23,12 +23,12 @@ EXAM = "ExamTypeAuditionView"
 @cache
 def _views() -> dict:
     views = assets.layout()  # AssetSource 给的完整 UI 布局（自建素材包）；没有时用随仓库的实测框
-    return views if views else json.loads(DEFAULT.read_text())
+    return views if views else json.loads(DEFAULT.read_text(encoding="utf-8"))
 
 
 @cache
 def calibration() -> dict:
-    return json.loads(CALIB.read_text()) if CALIB.exists() else {}
+    return json.loads(CALIB.read_text(encoding="utf-8")) if CALIB.exists() else {}
 
 
 def node(view: str, suffix: str) -> tuple[str, dict]:

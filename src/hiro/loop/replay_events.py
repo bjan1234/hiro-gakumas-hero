@@ -60,7 +60,7 @@ def main() -> int:
     args = ap.parse_args()
     rows = [replay(b) for b in args.bases]
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(rows, ensure_ascii=False, indent=1, default=str))
+    args.out.write_text(json.dumps(rows, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
     for r in rows:
         print(f"{r['base']}: steps {r['steps']}，有事件 {r['steps_with_events']}，有互验 {r['steps_with_checks']}，{r['verdicts']}")
         for e in r["read_errors"]:
