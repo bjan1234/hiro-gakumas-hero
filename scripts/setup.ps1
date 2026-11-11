@@ -114,7 +114,7 @@ if ($LASTEXITCODE) {
     Write-Host "  ⚠ gakumas-bench / UINet 没装上：考试出牌会退回社区规则"
 } else {
     & $Py -m hiro.bench_bridge setup
-    if ($LASTEXITCODE) { Write-Host "  ⚠ UINet 模型 / 主数据没准备好（网络？）：考试出牌会退回社区规则；可稍后重跑本脚本" }
+    if ($LASTEXITCODE) { Write-Host "  ⚠ UINet 模型 / 主数据没准备好（原因见上面几行）：考试出牌会退回社区规则；修好后重跑本脚本" }
 }
 
 Step "7/7 自检"

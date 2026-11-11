@@ -253,3 +253,19 @@ def test_setup_puts_engine_on_path(monkeypatch):
     advisor._engine_on_path()
     assert str(ROOT) in sys.path
     importlib.import_module("gakumas_exam.catalog")
+
+
+def test_setup_failure_prints_real_reason(monkeypatch, capsys):
+    """setup 失败时打印异常类型、出错位置和按类型给的提示，不再一律猜「网络？」。"""
+    from hiro.bench_bridge import __main__ as M
+    from hiro.bench_bridge import advisor
+
+    def boom(**k):
+        import gakumas_exam_missing_for_test  # noqa: F401
+
+    monkeypatch.setattr(advisor, "load_algo", boom)
+    assert M.main(["setup"]) == 1
+    out = capsys.readouterr().out
+    assert "ModuleNotFoundError: No module named 'gakumas_exam_missing_for_test'" in out
+    assert "出错位置：" in out and "test_bench_bridge.py" in out
+    assert "缺 Python 模块 gakumas_exam_missing_for_test" in out and "网络" not in out
