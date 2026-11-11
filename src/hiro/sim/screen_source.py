@@ -26,6 +26,7 @@ from typing import Any
 from hiro.defaults.exam_state import ScreenExamStateSource
 
 logger = logging.getLogger(__name__)
+_SEEN_ERRORS: set[str] = set()  # 预演异常：每种只在第一次记调用栈
 
 FINALS_LABELS = ("r1", "r2")
 # 哪几轮给预演（逗号分隔，缺省 r1,r2）。Windows 第二十局：R1 有预演时 LLM 跟着预演早兑现，R1 只打 8.2 万（R2 反而受益），
@@ -270,7 +271,11 @@ class SimScreenExamStateSource(ScreenExamStateSource):
                     remap[k] = p
             out = Preview.from_slots(remap)
         except Exception as e:  # noqa: BLE001
-            logger.info("模拟器预演失败：%s: %s", type(e).__name__, e)
+            # 同一种异常第一次出现时带调用栈（DMM 本战 R2 预演 24 次 KeyError '…@3' 只有一句文字，查不到在哪一步查表）
+            sig = f"{type(e).__name__}: {e}"
+            first = sig not in _SEEN_ERRORS
+            _SEEN_ERRORS.add(sig)
+            logger.info("模拟器预演失败：%s", sig, exc_info=first)
             return None
         legal = {a.legal_key() if hasattr(a, "legal_key") else a for a in (state.legal_actions() if hasattr(state, "legal_actions") else [])}
         if legal:
