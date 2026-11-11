@@ -1028,6 +1028,19 @@ def r1_deck_to_note(exam: str, session, context: dict) -> list | None:
     return [(c["card_id"], int(c.get("upgrade") or 0)) for c in rows if isinstance(c, dict) and c.get("card_id")] or None
 
 
+def _round_deck(session) -> list:
+    """这一场考试的牌组 [(card_id, 强化次数)]：培育记账（R2 含轮间买的）；没有时用 R1 记下的（finals_context）。"""
+    rows = []
+    if session is not None:
+        rows = (getattr(session.state, "produce", None) or {}).get("deck") or []
+    deck = [(c["card_id"], int(c.get("upgrade") or 0)) for c in rows if isinstance(c, dict) and c.get("card_id")]
+    if deck:
+        return deck
+    from hiro.state.finals_context import CONTEXT
+
+    return [tuple(x[:2]) for x in CONTEXT.get("deck") or []]
+
+
 def run_exam(
     brain: BattleBrain,
     exam: str,
@@ -1056,7 +1069,8 @@ def run_exam(
             session.note(f"读回本场考试记忆（{restored.name}）：T{memory.turn}")
     source.begin({"exam": exam, "profile": brain.profile, "target_score": target_score, "session": session, "brain": brain, "rec": rec})
     advisor.on_round_start(round_no if round_no is not None else (2 if exam == "r2" else 1),
-                           {"exam": exam, "idol": brain.profile.idol_id if brain.profile else None, "brain": brain})  # fmt: skip
+                           {"exam": exam, "idol": brain.profile.idol_id if brain.profile else None, "brain": brain,
+                            "deck": _round_deck(session)})  # fmt: skip
     rec.log("exam_brain_start", exam=exam, profile=brain.profile.idol_id if brain.profile else None, source=source.confidence())
     failures = 0
     wait_state = BoundedWait(LIVE_WAIT_S)  # 局面来源暂时给不出（返回 None）时最多等这么久，之后换帧重读

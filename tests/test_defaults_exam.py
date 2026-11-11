@@ -30,9 +30,11 @@ def _no_llm(monkeypatch):
 
 
 def test_plugins_resolve_defaults():
+    from hiro.bench_bridge.advisor import BenchAdvisor
+
     adv = plugins.get("exam_advisor")
     src = plugins.get("exam_state_source")
-    assert isinstance(adv, RuleLLMAdvisor) and isinstance(src, ScreenExamStateSource)
+    assert isinstance(adv, BenchAdvisor) and isinstance(src, ScreenExamStateSource)  # 缺省出招：bench 算法（测试里关着，走规则）
     assert isinstance(adv, plugins.ExamAdvisor) and isinstance(src, plugins.ExamStateSource)
 
 

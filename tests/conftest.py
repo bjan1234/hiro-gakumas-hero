@@ -170,6 +170,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "lowres_sample(why): 样例是低分辨率截图（360x640 / 540x960 放大），只在 Vision OCR 下断言；"
                                        "RapidOCR（Windows / DMM 默认）读这类放大图错字多，DMM 实机帧 1081x1921 另有回归集")
     config.addinivalue_line("markers", "vision_only(why): 测的是以 Apple Vision 为裁判的路径，非 Vision OCR 下跳过（写明为什么实机不走这条路）")
+    config.addinivalue_line("markers", "bench_on: 不关 bench 出招（其余测试一律 HIRO_BENCH_ADVISOR=0，免得装了 gkbench 时去下载模型）")
 
 
 def _missing_user_assets(kinds) -> list[str]:
@@ -327,3 +328,11 @@ def _sim_test_defaults(request, monkeypatch):
     else:
         monkeypatch.setattr(deciders, "_sim_ready", lambda: False)  # 别的决策器用例只验规则（本机建了主数据也不跑模拟）
     yield
+
+
+@pytest.fixture(autouse=True)
+def _bench_advisor_off(monkeypatch, request):
+    """缺省出招器是 bench 算法（hiro.bench_bridge）：装了 gkbench 时构造它会去下载 UINet 模型。
+    测试里默认关掉（不联网、行为和以前的规则出招一致）；bench 中转层自己的测试（标 bench_on）再打开。"""
+    if request.node.get_closest_marker("bench_on") is None:
+        monkeypatch.setenv("HIRO_BENCH_ADVISOR", "0")

@@ -200,17 +200,17 @@ class HiroHifStrategy(HifGrindStrategy):
                      llm=f"{llm.name}:{llm.model}" if llm else None)  # fmt: skip
 
     def _exam_advisor(self, llm):
-        """考试出招插件。默认实现（RuleLLMAdvisor）用本局的偶像档案和同一个 LLM（--llm / --no-llm）；
+        """考试出招插件。默认实现（BenchAdvisor：bench 算法出牌，出错退回规则；关掉 bench 时是规则 + 同一个 LLM，--llm / --no-llm）；
         注册 / 环境变量 / 入口点给了别的实现就原样用它（返回 None，run_exam 自己取插件）。"""
         from hiro import plugins
 
         if not plugins.source("exam_advisor").startswith("default:"):
             return None
-        from hiro.defaults.advisor import RuleLLMAdvisor
+        from hiro.bench_bridge.advisor import BenchAdvisor
 
-        adv = RuleLLMAdvisor(self.profile, llm)
+        adv = BenchAdvisor(self.profile, llm)  # 缺省：bench 算法出牌（HIRO_BENCH_ADVISOR=0 时就是原来的规则 + LLM）
         if llm is None:  # --no-llm：只用规则（RuleLLMAdvisor 收到 None 会去读 HIRO_LLM）
-            adv.brain = BattleBrain(self.profile, None)
+            adv.rules.brain = BattleBrain(self.profile, None)
         return adv
 
     # ---------------------------------------------------------------- 选行动
