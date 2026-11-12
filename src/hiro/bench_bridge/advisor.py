@@ -443,7 +443,10 @@ class BenchAdvisor:
         elif act[0] == "drink":
             slot = slot_of[int(act[1])]
             action = Action.use_drink(slot)
-            what = next((x.name for x in state.drinks if x.slot == slot), f"饮料 {slot}")
+            dv = next((x for x in state.drinks if x.slot == slot), None)
+            what = dv.name if dv is not None else f"饮料 {slot}"
+            if dv is not None:
+                self.tracker.drank(getattr(dv, "drink_id", None))
         else:
             action = Action.skip()
             what = "结束回合"
