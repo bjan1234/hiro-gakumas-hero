@@ -142,3 +142,24 @@ def test_missing_plugins_raise(monkeypatch, env):
     monkeypatch.setattr(ex, "_plugin", lambda kind: None)
     with pytest.raises(RuntimeError):
         ex.run_exam(Brain(), "r1", Rec(), lambda: True)
+
+
+def test_schedule_probe_once_per_exam_before_first_move(env, monkeypatch):
+    """HIRO_EXAM_SCHEDULE_PROBE=1：第 1 回合出牌前探一次，之后重新截图再决策；同一场考试（再挑戦）不再探。默认关时不探。"""
+    calls = []
+    monkeypatch.setattr(ex.schedule_probe, "probe", lambda img, **k: calls.append(k["exam"]) or {})
+    monkeypatch.setattr(ex, "SCHEDULE_PROBED", set())
+    monkeypatch.delenv(ex.schedule_probe.ENABLED_ENV, raising=False)
+    src, adv = Source([]), Advisor()
+    done = iter([False, True])
+    ex.run_exam(Brain(), "r1", Rec(), lambda: next(done), source=src, advisor=adv)
+    assert calls == []
+    monkeypatch.setenv(ex.schedule_probe.ENABLED_ENV, "1")
+    src, adv = Source([]), Advisor()
+    done = iter([False, False, True])
+    ex.run_exam(Brain(), "r1", Rec(), lambda: next(done), source=src, advisor=adv)
+    assert calls == ["r1"] and src.calls.count("read") == 1  # 探完那一帧不拿来决策，下一轮重读
+    src, adv = Source([]), Advisor()
+    done = iter([False, True])
+    ex.run_exam(Brain(), "r1", Rec(), lambda: next(done), source=src, advisor=adv)  # 再挑戦同一场
+    assert calls == ["r1"]

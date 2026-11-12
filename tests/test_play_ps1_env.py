@@ -45,3 +45,10 @@ def test_play_ps1_sets_default_pause_flag():
     assert 'if (-not $env:HIRO_PAUSE_FLAG) { $env:HIRO_PAUSE_FLAG = Join-Path $env:LOCALAPPDATA "hiro\\pause.flag" }' in s
     i_admin = s.index("IsInRole(")
     assert s.index("if (-not $env:HIRO_PAUSE_FLAG)") > i_admin  # 在提权重开之后设，管理员进程里也有
+
+
+def test_play_ps1_schedule_probe_switch():
+    """-ScheduleProbe 在提权重开之后设 HIRO_EXAM_SCHEDULE_PROBE（提权重开不一定带上调用方的环境变量）。"""
+    s = (Path(__file__).resolve().parents[1] / "scripts" / "play.ps1").read_text(encoding="utf-8-sig")
+    assert "[switch]$ScheduleProbe" in s
+    assert s.index('if ($ScheduleProbe) { $env:HIRO_EXAM_SCHEDULE_PROBE = "1" }') > s.index("IsInRole(")

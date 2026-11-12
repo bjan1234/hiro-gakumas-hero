@@ -21,6 +21,7 @@
 #   -NoSettingsCheck  跳过开局前的设置检查（tools/check_settings.py；它只在首页做，不在首页会自己跳过）
 #   -AllowDiscard  开局时其他端末有进行中的培育就破弃它（run_hif --allow-discard；不可撤回，只在确认不要那局时加）
 #   暂停：缺省设 HIRO_PAUSE_FLAG=%LOCALAPPDATA%\hiro\pause.flag（已设就用已设的）；建这个文件就停在下一个检查点，删掉继续
+#   -ScheduleProbe  每场考试第 1 回合出牌前点开审查日程一次、存帧、关掉（HIRO_EXAM_SCHEDULE_PROBE=1，测试局用；关不掉会停机）
 #   -RunHifArgs  原样交给 run_hif 的其他参数，一个字符串，如 -RunHifArgs "--no-llm"
 #
 # 为什么是这些缺省（Windows 实测，2026-11-07–09，22 局 3 次夺冠）：
@@ -44,6 +45,7 @@ param(
     [switch]$NoSim,
     [switch]$Wait,
     [switch]$NoSettingsCheck,
+    [switch]$ScheduleProbe,
     [switch]$AllowDiscard,
     [string]$RunHifArgs = ""
 )
@@ -76,6 +78,8 @@ if (-not $env:HIRO_PAUSE_FLAG) { $env:HIRO_PAUSE_FLAG = Join-Path $env:LOCALAPPD
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $env:HIRO_PAUSE_FLAG) | Out-Null
 if (Test-Path $env:HIRO_PAUSE_FLAG) { Write-Host "⚠ 暂停旗标已存在（$env:HIRO_PAUSE_FLAG）：开局前会一直等它被删掉" }
 Write-Host "暂停：New-Item `"$env:HIRO_PAUSE_FLAG`"；继续：Remove-Item `"$env:HIRO_PAUSE_FLAG`""
+# 审查日程探测（默认关）：每场考试第 1 回合出牌前点开左上「残りターン / 属性」一次，存帧、关掉、记耗时（hiro.exec.schedule_probe）
+if ($ScheduleProbe) { $env:HIRO_EXAM_SCHEDULE_PROBE = "1" }
 $env:HIRO_SUPPORT_SET = $SupportSet; $env:HIRO_MEMORY_SET = $MemorySet
 $env:HIRO_LLM = $Llm
 if ($Proxy) { $env:HTTPS_PROXY = $Proxy; $env:HTTP_PROXY = $Proxy; $env:NO_PROXY = "127.0.0.1,localhost" }

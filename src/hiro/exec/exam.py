@@ -34,6 +34,7 @@ from hiro.contracts import Action, Decision as DecisionContract, ExecutionResult
 from hiro.perception.lesson import _read_int
 from hiro.produce import ops
 from hiro.recorder import Recorder
+from hiro.exec import schedule_probe
 
 logger = logging.getLogger(__name__)
 
@@ -1041,6 +1042,9 @@ def _round_deck(session) -> list:
     return [tuple(x[:2]) for x in CONTEXT.get("deck") or []]
 
 
+SCHEDULE_PROBED: set[str] = set()  # 已经探测过审查日程的考试标签（再挑戦同一场不再点）
+
+
 def run_exam(
     brain: BattleBrain,
     exam: str,
@@ -1128,6 +1132,17 @@ def run_exam(
             if stable_wait.waited >= STABLE_WAIT_S and session is not None:
                 session.note(f"画面 {stable_wait.waited:.0f}s 不稳定，用单帧出决策")
             stable_wait.reset()
+            if schedule_probe.enabled() and exam not in SCHEDULE_PROBED and memory.turn <= 1 and restored is None and frame.remaining is not None:
+                # 审查日程探测（默认关）：每场考试第 1 回合出牌前点开一次，存帧、关掉、记耗时，回到考试画面后重新截图再决策
+                SCHEDULE_PROBED.add(exam)
+                from hiro.vision import hif as _hif
+
+                with _phase("schedule_probe"):
+                    schedule_probe.probe(frame.img, exam=exam, shoot=device.screenshot, click=lambda x, y: device.click(x, y),
+                                         ocr_boxes=ops.ocr_boxes, is_exam=_hif.is_hif_exam, log=rec.log,
+                                         note=session.note if session is not None else None)  # fmt: skip
+                animating = True
+                continue
             # ---- 局面（插件）
             with _phase("state_read"):
                 state, why = source.read(frame, memory)
