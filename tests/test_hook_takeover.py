@@ -333,27 +333,17 @@ def test_live_tick_taps_start_and_warns_when_still(monkeypatch):
     assert notes and "没变" in notes[0]
 
 
-def test_finals_hopeless_and_stop_loss_cancels_ticket(monkeypatch):
-    """RETRY_STOP_LOSS：本战差距翻不了盘时，再挑戦确认框要用券就点キャンセル，返回 None（Win2：R2 19 万、夺冠要 83.5 万）。"""
+def test_finals_retry_restarts_exam(monkeypatch):
+    """本战最终结果页敗退、有再挑戦按钮：点了（免费 / 券）就标记考试重开。"""
+    from types import SimpleNamespace as NS
+
     import hiro.produce.hif as hif
+    import hiro.vision.pages as pages
 
-    f = {"score": 432466, "round_score": 190569,
-         "entries": [{"score": 1076914}, {"score": 816254}, {"score": 432466}]}  # fmt: skip
-    assert hif.finals_hopeless(f) and "R2" in hif.finals_hopeless(f)
-    assert hif.finals_hopeless({**f, "round_score": None}) is None  # 读数不全不判
-    close = {"score": 1000000, "round_score": 500000, "entries": [{"score": 1080000}, {"score": 1000000}]}
-    assert hif.finals_hopeless(close) is None  # 只差 8 万：值得再打
-
-    def T(text, y=1100):
-        return Text(text, Box(300 - 10, y - 10, 300 + 10, y + 10))
-
-    clicks = []
-    monkeypatch.setattr(hif, "device", type("D", (), {"click": staticmethod(lambda *a: clicks.append(a)), "screenshot": staticmethod(lambda: None)}))
-    monkeypatch.setattr(hif, "sleep", lambda s: None)
     st = _strategy()
-    st._retries_so_far = lambda label: 0
-    cancel = T("キャンセル")
-    monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [T("再挑戦券を1枚使用"), cancel,
-                                                                                          T(hif.HiroHifStrategy.RETRY_CONFIRM[0])])  # fmt: skip
-    assert st._click_retry("r2", T("再挑戦"), [], allow_ticket=False) is None
-    assert clicks[-1] == tuple(cancel.rect.center)  # 最后点的是キャンセル，不是確定
+    st.rec = NS(log=lambda *a, **k: None)
+    monkeypatch.setattr(pages, "classify_page", lambda img: ("HIF_FINALS_RANKING", {"kind": "final", "rank": 2, "outcome": "敗退"}))
+    btn = NS(text="再挑戦", rect=NS(center=NS(y=1100)))
+    monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [btn])
+    st._click_retry = lambda label, b, texts: "free"
+    assert st._finals_retry(None, "r2") is True and st.exam_restarted is True
