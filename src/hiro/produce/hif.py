@@ -192,7 +192,10 @@ class HiroHifStrategy(HifGrindStrategy):
         self.deciders.picked_musts |= set(MEMORY_CARDS) | self._picked_cards_from_trace()  # 回忆带的卡算已有
         self._load_finals_context()
         self._seed_produce_from_trace()
-        # 同一进程内崩溃重启（run_hif 的 _supervised_resume）时沿用已完成的场次；跨进程续跑用 run_hif --exams-done
+        # 同一进程内崩溃重启（run_hif 的 _supervised_resume）时沿用已完成的场次；跨进程续跑用 run_hif --exams-done，
+        # 没给时从之前的 trace 段数（dmmt2：续跑后第 2 场记成 qualify-1）
+        if not HiroHifStrategy.exams_done and self.scenario == HifScenario.QUALIFY:
+            HiroHifStrategy.exams_done = self._exams_done_from_trace()
         self.exam_count = HiroHifStrategy.exams_done
         self.lesson_count = HiroHifStrategy.lessons_done
         self.advisor = self._exam_advisor(llm)
@@ -685,6 +688,33 @@ class HiroHifStrategy(HifGrindStrategy):
         if steps.exists() and steps.stat().st_size > 0:
             dirs.append(cur)
         return dirs
+
+    def _exams_done_from_trace(self) -> int:
+        """之前 trace 段里已经考完的选拔场数：出现过的最大 qualify-N；停机时还在那场考试里（最后一步是 HIF_EXAM 且标签是它）就算没考完。"""
+        import json
+        import re
+
+        top, last_label, last_page = 0, None, None
+        for d in self._prior_trace_dirs():
+            try:
+                with (d / "steps.jsonl").open(encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            step = json.loads(line)
+                        except ValueError:
+                            continue
+                        label = ((step.get("state") or {}).get("exam_session") or {}).get("label") or ""
+                        if m := re.fullmatch(r"qualify-(\d)", label):
+                            top = max(top, int(m.group(1)))
+                        last_label = label or last_label
+                        last_page = ((step.get("observation") or {}).get("page") or {}).get("name") or last_page
+            except OSError:
+                continue
+        if top and last_page == "HIF_EXAM" and last_label == f"qualify-{top}":
+            top -= 1  # 停在第 top 场考试中途：续跑会重新进这一场
+        if top:
+            logger.info("续跑：之前的 trace 段已考完 %d 场选拔", top)
+        return top
 
     def _seed_produce_from_trace(self) -> None:
         """续跑：画面还没读到 P / 体力 / 模式（续跑停在相談等不读头部的页面）时，用之前 trace 段最后一个有 produce 的状态打底
@@ -1509,6 +1539,11 @@ class HiroHifStrategy(HifGrindStrategy):
             except Exception:  # 读不到就沿用计数
                 participants = None
             n = {128: 1, 64: 2, 32: 3}.get(participants)
+            brief = getattr(self.s.state.exam_session, "brief_exam_no", None)
+            if n is None and brief is not None and brief > self.exam_count:
+                # DMM 上考试画面常读不到突破线人数；考前说明页（選抜試験N）读到的场次比计数大，说明计数落后了
+                #（dmmt2 续跑后第 2 场记成 qualify-1，中转层给 UINet 的 exam.step 跟着错成第 1 场）。取大的，旧说明页不会把计数往回拉
+                n = brief
             if n is not None and n != self.exam_count:
                 logger.info("考试场次以画面为准：選抜試験%d（计数为 %d）", n, self.exam_count)
                 self.exam_count = n

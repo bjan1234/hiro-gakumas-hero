@@ -38,6 +38,7 @@ class ExamSession:
     turn: int = 0
     last_remaining: int | None = None
     brief_permil: dict[str, int] | None = None  # 最近一次考前说明页的三属性倍率（千分比，{Vo, Da, Vi}），进考试时填 exam.attr_permil
+    brief_exam_no: int | None = None  # 最近一次考前说明页读到的选拔场次（選抜試験N）；续跑后计数从头算时以它为准
 
 
 @dataclass

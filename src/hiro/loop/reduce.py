@@ -141,6 +141,9 @@ def _reduce_fields(s: GameState, obs: Observation) -> None:
         got = {k: int(pct[k]) * 10 for k in ("Vo", "Da", "Vi") if pct.get(k)} if isinstance(pct, dict) else {}
         if got:  # 读到几个属性记几个（q17 #431 Da 一度读不到）；整体替换，不与上一场（本战 R1）的旧值混
             s.exam_session.brief_permil = got
+        n = obs.fields.get("exam_no")
+        if isinstance(n, int) and 1 <= n <= 3:
+            s.exam_session.brief_exam_no = n
 
 
 def _attr_permil(s: GameState, obs: Observation) -> None:
