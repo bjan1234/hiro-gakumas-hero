@@ -313,3 +313,27 @@ def test_default_uses_screen_path_even_with_sim_game(monkeypatch):
     monkeypatch.setattr(A, "_engine_state", lambda game: (_ for _ in ()).throw(AssertionError("不该读引擎局面")))
     d = adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
     assert d.source == "bench" and "画面读数" in d.reason
+
+
+def test_types_respect_turn_quota():
+    """未知回合按配额填（dmmt2：R1 实际 Vo4 / Da3 / Vi2，以前未知回合一律填 流1 = Vo）。"""
+    t = ScreenTracker([], trend=("Vo", "Da", "Vi"))
+    t.attrs = {1: "Vo"}
+    alloc = {"random_prefix_counts": {"Vo": 3, "Da": 2, "Vi": 1}, "fixed_tail": ["Vi", "Da", "Vo"]}
+    types = t.types(1, 9, alloc)
+    assert types[-3:] == [3, 2, 1]
+    assert sorted(types[:6]) == [1, 1, 1, 2, 2, 3] and types[0] == 1
+
+
+def test_from_screen_fills_unread_numbers_and_permil():
+    t = ScreenTracker([("p_card-a", 0)], trend=("Vo", "Da", "Vi"))
+    ex = exam_fields("r1", idol=None, plan=3)
+    ex["permil_default"] = {"Vo": 31000, "Da": 32000, "Vi": 20000}
+    st, mem = _state([_card(0, "p_card-a")])
+    st.attr_permils = {}
+    t.observe(st, mem)
+    obs, _ = from_screen(st, mem, st.legal_actions(), t, ex)
+    assert obs["exam"]["permil"] == [31000, 32000, 20000]  # 开考第一步还没读到倍率：用记下的 / 参考值，不给 0
+    st.score, st.genki = None, None  # 这一帧分数 / 元気没读出来
+    obs, _ = from_screen(st, mem, st.legal_actions(), t, ex)
+    assert obs["num"]["score"] == 1000 and obs["num"]["block"] == 10  # 用上一次的读数，不是 0
