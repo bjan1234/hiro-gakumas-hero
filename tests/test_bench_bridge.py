@@ -337,3 +337,61 @@ def test_from_screen_fills_unread_numbers_and_permil():
     st.score, st.genki = None, None  # 这一帧分数 / 元気没读出来
     obs, _ = from_screen(st, mem, st.legal_actions(), t, ex)
     assert obs["num"]["score"] == 1000 and obs["num"]["block"] == 10  # 用上一次的读数，不是 0
+
+
+class _Facts(_FakeEnchants):
+    """主数据替身：c-sleepy 打出时往山札塞一张眠気；眠気回合结束除外；d-buff 饮料挂附魔。"""
+
+    def creates(self, card_id, upgrade):
+        return (("p_card-00-acc-0_002", 0, 1),) if card_id == "c-sleepy" else ()
+
+    def end_turn_lost(self, card_id, upgrade):
+        return card_id == "c-endlost"
+
+    def lost_on_play(self, card_id, upgrade):
+        return card_id == "p_card-00-acc-0_002"
+
+    def drink(self, drink_id):
+        return (("enchant-drink", -1, -1),) if drink_id == "d-buff" else ()
+
+    def enchant_card(self, name):
+        return {"ワクワク": "c-sus"}.get(name)
+
+
+def test_tracker_adds_created_cards_and_end_turn_lost():
+    """dmmt / 履歴对照：山札总少一张 眠気（打出 気まぐれハート 等时塞进山札，画面看不到），第二张眠気被抽到时还误判成洗牌、弃牌清空。"""
+    t = ScreenTracker([("c-sleepy", 0), ("c-x", 0), ("c-y", 0)], trend=("Vo", "Da", "Vi"), enchants=_Facts())
+    st, mem = _state([_card(0, "c-sleepy"), _card(1, "c-x")], turn=1)
+    t.observe(st, mem)
+    t.played_card(st.hand[0])
+    assert t.deck[("p_card-00-acc-0_002", 0)] == 1  # 打出时塞进山札
+    st2, mem2 = _state([_card(0, "c-x"), _card(1, "p_card-00-acc-0_002")], turn=1)
+    t.observe(st2, mem2)  # 抽到那张眠気：从山札扣，不触发洗牌
+    assert ("c-sleepy", 0) in t.grave and t.deck[("p_card-00-acc-0_002", 0)] == 0
+    t.played_card(st2.hand[1])  # 打出眠気：主数据 playMovePositionType = Lost
+    st3, mem3 = _state([_card(0, "c-y")], turn=2)
+    t.observe(st3, mem3)  # 换回合：眠気 除外，c-x 进弃牌
+    assert t.lost[("p_card-00-acc-0_002", 0)] == 1 and t.grave[("c-x", 0)] == 1
+
+
+def test_tracker_drink_enchant_pitem_charges_and_status_names():
+    t = ScreenTracker([("c-a", 0)], trend=("Vo", "Da", "Vi"), enchants=_Facts(), items=["pitem-x"])
+    t.drank("d-buff")
+    assert ["enchant-drink", -1, -1] in t.ench
+    st, mem = _state([_card(0, "c-a")], statuses=[{"type": None, "name": "ワクワク", "value": 1, "unit": "stack"}])
+    st.pitem_charges = 3
+    t.observe(st, mem)
+    obs, _ = from_screen(st, mem, st.legal_actions(), t, exam_fields("r1", idol=None, plan=3))
+    assert ["enchant-item", 3, -1] in obs["ench"]  # P 道具次数用画面读数
+    assert any(e[0] == "enchant-sus" for e in obs["ench"])  # 状态栏有这张卡的持续效果、跟踪漏了：补上
+
+
+def test_tracker_does_not_reshuffle_when_deck_still_has_cards():
+    """qualifydmmw1 T3：持续效果塞进山札的第二张眠気被抽到，跟踪以为洗牌了，把 8 张弃牌倒回山札（存档：弃牌 8 张）。
+    实际只有山札抽空才洗牌：山札还有牌时，找不到的卡当作看不见的插入。"""
+    t = ScreenTracker([("c-a", 0), ("c-b", 0), ("c-c", 0), ("c-d", 0), ("c-e", 0), ("c-f", 0)], trend=("Vo", "Da", "Vi"))
+    t.grave[("p_card-00-acc-0_002", 0)] = 1
+    t.grave[("c-z", 0)] = 1
+    st, mem = _state([_card(0, "p_card-00-acc-0_002"), _card(1, "c-a")], turn=3)
+    t.observe(st, mem)
+    assert sum(t.grave.values()) == 2 and sum(t.deck.values()) == 5

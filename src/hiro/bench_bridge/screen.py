@@ -43,6 +43,7 @@ EFFECT_KIND = {
     "ProduceExamEffectType_ExamReviewMultiple": ("review_multiple", "pct"),
     "ProduceExamEffectType_ExamGimmickLessonDebuff": ("lesson_debuff", "value"),
 }
+RESHUFFLE_AT = 2  # 山札剩这么多张以内时，抽到山札里没有的卡才当作洗牌（每回合抽 3 张，抽空才洗）
 UIOBS_KINDS = {k for k, _ in EFFECT_KIND.values()} | {"parameter_buff", "stance_lock", "extra_turn"}
 
 
@@ -94,11 +95,13 @@ class ScreenTracker:
     def __init__(self, deck: list | None, trend: tuple | None = None, enchants=None, items: list | None = None):
         self.enchants = enchants  # enchants.Enchants（主数据查询）；None 时不记持续效果
         self.ench: list[list] = []  # [附魔 id, 次数, 剩余回合]
+        self._item_ench: set = set()  # 偶像自带 P 道具的附魔（次数按画面图标上的数字）
         self._once: set = set()
         if enchants is not None:
             for it in items or ():
                 for eid, n, t in enchants.item(it):
                     self.ench.append([eid, n, t])
+                    self._item_ench.add(eid)
         self.all = Counter(_key(c[0], c[1]) for c in deck or () if c and c[0])
         self.deck: Counter = Counter(self.all)
         self.grave: Counter = Counter()
@@ -125,9 +128,11 @@ class ScreenTracker:
         return max(lower, key=lambda x: x[1]) if lower else min(same, key=lambda x: x[1])
 
     def _draw(self, k: tuple) -> tuple:
-        """抽到 k（看到的）：从山札扣掉对应的原始卡，返回原始 key。山札里没有 → 弃牌重洗回山札再找。"""
+        """抽到 k（看到的）：从山札扣掉对应的原始卡，返回原始 key。
+        山札里找不到：山札快抽空（≤ RESHUFFLE_AT 张）时才当作弃牌洗回山札；否则当作看不见的插入（持续效果 / P 道具塞进山札的卡），
+        不动弃牌（qualifydmmw1：山札 12 张时把 8 张弃牌倒回去了）。"""
         base = self._find(self.deck, k)
-        if base is None and self._find(self.grave, k) is not None:
+        if base is None and self._find(self.grave, k) is not None and sum(self.deck.values()) <= RESHUFFLE_AT:
             self.deck += self.grave
             self.grave = Counter()
             base = self._find(self.deck, k)
@@ -138,6 +143,15 @@ class ScreenTracker:
         self.deck[base] -= 1
         self.deck = +self.deck
         return base
+
+    def _fact(self, name: str, key: tuple):
+        """主数据事实（enchants.Enchants 的方法）；没给主数据或查不到时 False / 空。"""
+        if self.enchants is None or not hasattr(self.enchants, name):
+            return ()
+        try:
+            return getattr(self.enchants, name)(key[0], key[1])
+        except Exception:  # noqa: BLE001
+            return ()
 
     def _leave(self, base: tuple, once: bool) -> None:
         (self.lost if once else self.grave)[base] += 1
@@ -155,7 +169,7 @@ class ScreenTracker:
                 if i is not None:
                     self._leave(rest.pop(i)[1], self.last_play_once)
             for h in rest:
-                self._leave(h[1], False)
+                self._leave(h[1], self._fact("end_turn_lost", h[1]))
             self.hand, self.played, self.last_play = [], [], None
             for e in self.ench:  # 有回合数的持续效果每回合减 1
                 if e[2] > 0:
@@ -187,6 +201,41 @@ class ScreenTracker:
             if new[i] is None:
                 new[i] = [k, self._draw(k)]
         self.hand, self.turn, self.started = new, turn, True
+        self.reconcile(state)
+
+    def drank(self, drink_id: str | None) -> None:
+        """喝下这瓶饮料：挂上它的附魔。"""
+        if self.enchants is None or not drink_id or not hasattr(self.enchants, "drink"):
+            return
+        try:
+            for eid, n, t in self.enchants.drink(drink_id):
+                self.ench.append([eid, n, t])
+        except Exception:  # noqa: BLE001
+            pass
+
+    def reconcile(self, state: Any) -> None:
+        """状态栏按来源卡名列出的持续效果：跟踪里没有这张卡的附魔就补上（只补不删：状态栏可能显示不全）。
+        P 道具次数用画面读数（state.pitem_charges，图标上的数字）。"""
+        if self.enchants is None:
+            return
+        have = {e[0] for e in self.ench}
+        for st in getattr(state, "statuses", None) or ():
+            if st.get("type") or not st.get("name") or not hasattr(self.enchants, "enchant_card"):
+                continue
+            try:
+                cid = self.enchants.enchant_card(st["name"])
+                if not cid or any(cid in e for e in have):
+                    continue
+                for eid, n, t, _once in self.enchants.card(cid, 1 if str(st["name"]).endswith("+") else 0):
+                    self.ench.append([eid, n, t])
+                    have.add(eid)
+            except Exception:  # noqa: BLE001
+                continue
+        charges = getattr(state, "pitem_charges", None)
+        if charges is not None:
+            for e in self.ench:
+                if e[0] in self._item_ench and e[1] >= 0:
+                    e[1] = int(charges)
 
     def num(self, key: str, value) -> int:
         """画面数值：读到就记下；这一帧没读出来（None）就用上一次的，不当成 0。"""
@@ -198,7 +247,9 @@ class ScreenTracker:
         """自己决定打出这张（下一次 observe 时据手牌变化确认去向）。"""
         k = _key(card.card_id, card.upgrade)
         self.last_play = k
-        self.last_play_once = bool(getattr(getattr(card, "tags", None), "once", False))
+        self.last_play_once = bool(getattr(getattr(card, "tags", None), "once", False)) or bool(self._fact("lost_on_play", k))
+        for cid, up, n in self._fact("creates", k) or ():  # 打出时往山札塞的卡（眠気 等），画面上看不到
+            self.deck[(cid, int(up))] += int(n)
         self.played.append({"id": k[0], "u": k[1]})
         if self.enchants is not None:
             try:
