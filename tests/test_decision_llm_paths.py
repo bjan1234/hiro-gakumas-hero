@@ -110,3 +110,91 @@ def test_remove_judgment_call_can_choose_cancel(monkeypatch):
     assert d.source == "llm" and d.action.args.get("cancel") is True
     opts = __import__("json").loads(llm.calls[0][1])["候选"]
     assert opts[-1]["名字"] == "不删（取消）" and len(opts) == 3
+
+
+# ---- 饮料（select_drink / consult / drink_overflow 共用 drinks.choose + _drink_decision）
+COFFEE, BLEND, COPY = "pdrink_02-1-008", "pdrink_02-3-007", "pdrink_02-3-010"  # やる気 2 档 ×2、特製 0 档
+
+
+def _select_drink(ids):
+    return GameState(page_fields={"candidates": [{"drink_id": d} for d in ids]})
+
+
+def test_drink_same_tier_without_sim_goes_to_llm(monkeypatch):
+    from hiro.brain import drinks as dk
+
+    monkeypatch.setattr(dk, "SIM", False)
+    monkeypatch.setenv("HIRO_PRODUCE_LLM", "select_drink")
+    llm = MockLLM(replies=[{"choice": 1, "reason": "ブレンド 更适合", "line": "こっちかな"}])
+    d = ProduceDeciders(CAMPUS_HIRO, llm).decide("SELECT_DRINK", _select_drink([COFFEE, BLEND]))
+    assert d.source == "llm" and dc.action_key(d.action) == "pick:1" and d.line == "こっちかな" and d.llm
+    opts = __import__("json").loads(llm.calls[0][1])["候选"]
+    assert len(opts) == 3 and opts[0]["社区排名"] == 1  # 规则的选择在第 0 个；不拿也在候选里
+
+
+def test_drink_clear_tier_stays_rule(monkeypatch):
+    from hiro.brain import drinks as dk
+
+    monkeypatch.setattr(dk, "SIM", False)
+    monkeypatch.setenv("HIRO_PRODUCE_LLM", "all")
+    llm = MockLLM(replies=[{"choice": 0}])
+    d = ProduceDeciders(CAMPUS_HIRO, llm).decide("SELECT_DRINK", _select_drink([COFFEE, COPY]))
+    assert d.source == "rule" and dc.action_key(d.action) == "pick:1" and not llm.calls
+
+
+def test_drink_switch_off_and_bad_output(monkeypatch):
+    from hiro.brain import drinks as dk
+
+    monkeypatch.setattr(dk, "SIM", False)
+    llm = MockLLM(replies=[{"choice": 7}])
+    plain = ProduceDeciders(CAMPUS_HIRO, llm).decide("SELECT_DRINK", _select_drink([COFFEE, BLEND]))
+    assert plain.source == "rule" and not llm.calls
+    monkeypatch.setenv("HIRO_PRODUCE_LLM", "select_drink")
+    d = ProduceDeciders(CAMPUS_HIRO, llm).decide("SELECT_DRINK", _select_drink([COFFEE, BLEND]))
+    assert d.source == "fallback" and d.action.args == plain.action.args and d.llm
+
+
+def _fake_sim(monkeypatch, gains):
+    """模拟换成固定结果：第 0 个是社区默认，gains 是其余候选的 (gain, se)。"""
+    from hiro.sim import interval as iv
+    from hiro.sim import resource as rv
+
+    monkeypatch.setattr(rv, "setup_for", lambda exam, drinks=None, **_: ({"drinks": drinks}, []))
+    monkeypatch.setattr(iv, "_with", lambda base, **kw: dict(base, **kw))
+    rows = [{"mean": 1000, "gain": 0, "gain_se": 0, "n": 100}] + [{"mean": 1000 + g, "gain": g, "gain_se": se, "n": 100} for g, se in gains]
+    monkeypatch.setattr(rv, "adaptive_eval", lambda setups, **_: rows[: len(setups)])
+    from hiro.brain import drinks as dk
+
+    monkeypatch.setattr(dk, "SIM", True)
+
+
+def test_choose_marks_noise_level_gain_unsure(monkeypatch):
+    from hiro.brain import drinks as dk
+
+    opts = [dk.Option("a", "拿 A", [COFFEE]), dk.Option("b", "拿 B", [BLEND])]
+    _fake_sim(monkeypatch, [(300, 400)])
+    res = dk.choose(opts, "selection", 4, sim_context={"exam": "selection"})
+    assert res["pick"].key == "a" and "噪声内" in res["unsure"]
+    _fake_sim(monkeypatch, [(-300, 100)])
+    assert dk.choose(opts, "selection", 4, sim_context={"exam": "selection"})["unsure"] is None  # 别的都不如社区默认：拿得准
+    _fake_sim(monkeypatch, [(3000, 100)])
+    monkeypatch.setattr(dk, "log_deviation", lambda rec: None)
+    res = dk.choose(opts, "selection", 4, sim_context={"exam": "selection"})
+    assert res["pick"].key == "b" and res["unsure"] is None  # 显著更好：模拟直接偏离
+
+
+def test_golden_drink_cases_keep_llm_trace(monkeypatch):
+    """相談走 go（预算记账）那条路时，LLM 的调用记录、来源也要带到最终决策上。"""
+    from hiro.brain import cases
+
+    monkeypatch.setenv("HIRO_PRODUCE_LLM", "consult,select_drink")
+    case = next(c for c in cases.load_cases() if c["id"] == "consult-qualifydmmw1-254")
+    st = GameState.from_dict(case["state"])
+    from hiro.brain import drinks as dk
+
+    monkeypatch.setattr(dk, "SIM", True)
+    _fake_sim(monkeypatch, [(2000, 5000), (-100, 50), (-200, 50)])
+    llm = MockLLM(replies=[{"choice": 1, "reason": "青汁"}])
+    d = ProduceDeciders(CAMPUS_HIRO, llm).decide("CONSULT", st)
+    assert d.source == "llm" and d.llm and llm.calls
+    assert dc.action_key(d.action) != "buy:7"  # 改成了 LLM 选的第 1 个候选

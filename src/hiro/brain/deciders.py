@@ -36,7 +36,7 @@ PAGES = ("ACTION_SELECT", "SELECT_CARD", "SELECT_DRINK", "CONSULT", "STUDY", "OU
 
 # 决策点补全（总控 2026-11-13）：规则 / 模拟拿不准的局面交 LLM，LLM 不可用或输出非法再兜底。每条新 LLM 路径一个开关、默认关；
 # HIRO_PRODUCE_LLM=change_remove,remove_card,…（或 all）打开。选行动 / 抓卡三选一原来就问 LLM，不受这个开关管。
-LLM_PATHS = ("change_remove", "remove_card", "consult", "interval", "drink_overflow", "select_pitem", "special_guidance")
+LLM_PATHS = ("change_remove", "remove_card", "select_drink", "consult", "interval", "drink_overflow", "select_pitem", "special_guidance")
 
 
 def llm_path_on(name: str) -> bool:
@@ -660,7 +660,7 @@ class ProduceDeciders:
         elif can_skip:
             opts.append(dk.Option("skip", "不拿", hold, Action.exclude_card(0)))
         res = dk.choose(opts, stage, capacity, sim_context=self._drink_sim_context(ps, stage), where="SELECT_DRINK")
-        return self._drink_decision(res, opts, stage, "select_drink", warn)
+        return self._drink_decision(res, opts, stage, "select_drink", warn, state)
 
     def _drink_holding(self, state: GameState, ps) -> tuple[list | None, int, bool, list]:
         """持有饮料 [{index, drink_id, name}]、栏容量、是否已满、警告。page_fields.held 优先，没有时用 ProduceState.drinks（已知时）。"""
@@ -706,9 +706,45 @@ class ProduceDeciders:
         hp = max_hp if stage != "r2" else (ps.stamina or max_hp)
         return {"exam": stage, "deck": deck, "hp": hp, "max_hp": max_hp, "permil": permil}
 
-    def _drink_decision(self, res: dict, opts: list, stage: str, decider: str, warn: list) -> Decision:
+    def _drink_resolve(self, res: dict, opts: list, stage: str, path: str, state: GameState | None) -> None:
+        """drinks.choose 拿不准（res["unsure"]）且这条 LLM 路径开着时，让 LLM 在社区默认 + 其余不同的持有组合里选，改写 res["pick"]，
+        LLM 的记录放 res["llm_decision"]。只做一次（同一个 res 再调直接返回）。"""
         from hiro.brain import drinks as dk
 
+        if "llm_decision" in res or not res.get("unsure") or state is None or not llm_path_on(path) or self.llm is None:
+            return
+        rows = {r["key"]: r for r in res["rows"]}
+        by_key = {o.key: o for o in opts}
+        order = [res["pick"]] + [by_key[r["key"]] for r in sorted(res["rows"], key=lambda r: r["rule_rank"]) if r["key"] in by_key]
+        picked, seen = [], set()
+        for o in order:
+            sig = tuple(sorted(d for d in o.drinks if d))
+            if sig in seen or o.action is None:
+                continue
+            seen.add(sig)
+            picked.append(o)
+        picked = picked[:4]
+        options = []
+        for o in picked:
+            r = rows.get(o.key) or {}
+            info = {"名字": o.label, "之后持有": dk.describe(list(o.drinks), stage), "社区档位": r.get("tiers"), "社区排名": r.get("rule_rank")}
+            if o.cost:
+                info["花 P"] = o.cost
+            if "sim_gain" in r:
+                info.update({"模拟期望": r["sim_mean"], "比社区默认": f"{r['sim_gain']:+,} ± {r['sim_gain_se']:,}"})
+            options.append((o.action, info))
+        stub = Decision(res["pick"].action, res["why"], "rule", 0.85, decider=path)
+        d = self._ask_choice(path, stub, options, f"饮料（下一场：{ {'selection': '选拔', 'r1': '本战 R1', 'r2': '本战 R2'}.get(stage, stage)}）：选做完之后的持有组合",
+                             res["unsure"], state, {"饮料栏容量": max(len(o.drinks) for o in opts)})  # fmt: skip
+        if d is stub:
+            return
+        res["llm_decision"] = d
+        res["pick"] = next(o for o, (a, _) in zip(picked, options) if a is d.action)
+
+    def _drink_decision(self, res: dict, opts: list, stage: str, decider: str, warn: list, state: GameState | None = None) -> Decision:
+        from hiro.brain import drinks as dk
+
+        self._drink_resolve(res, opts, stage, decider, state)
         pick = res["pick"]
         rows = {r["key"]: r for r in res["rows"]}
         cands = []
@@ -722,6 +758,11 @@ class ProduceDeciders:
         w = list(warn)
         if res.get("deviation"):
             w.append(f"community_deviation：{res['deviation']['rule']} → {res['deviation']['pick']}（{res['deviation']['gain']:+,} ± {res['deviation']['gain_se']:,}）")
+        ld = res.get("llm_decision")
+        if ld is not None:
+            why = (f"{ld.reason}（LLM；{why}）" if ld.source == "llm" else why)
+            return Decision(pick.action, why, ld.source, ld.confidence, cands, warnings=w + ld.warnings, line=ld.line,
+                            llm=ld.llm, decider=decider)  # fmt: skip
         return Decision(pick.action, why, "sim" if res.get("deviation") else "rule", 0.85, cands, warnings=w, decider=decider)
 
     def _drink_free(self, state: GameState) -> int | None:
@@ -1076,7 +1117,7 @@ class ProduceDeciders:
                                   Action(ActionKind.DISCARD_DRINK, {"discard": [h["index"]], "receive": True})))  # fmt: skip
         stage = dk.stage_of(ps.mode if ps else None, interval=bool(state.page_fields.get("interval")))
         res = dk.choose(opts, stage, max(capacity, len(hold)), sim_context=self._drink_sim_context(ps, stage), where="PDRINK_MAX")
-        return self._drink_decision(res, opts, stage, "drink_overflow", warn)
+        return self._drink_decision(res, opts, stage, "drink_overflow", warn, state)
 
     def _drink_overflow_multi(self, state: GameState, ps, held: list, incomings: list, warn: list) -> Decision:
         """饮料溢出页「受け取ったドリンク」有多瓶（执行 23e6965：第十七局 #63 复制饮料 + ホエイ）：在「持有 + 新来的」里挑栏位容量内最好的一组
@@ -1104,7 +1145,7 @@ class ProduceDeciders:
             opts.append(dk.Option(key, label, drinks, Action(ActionKind.DISCARD_DRINK, {"discard": discard, "receive": bool(take), "receive_indexes": take})))
         stage = dk.stage_of(ps.mode if ps else None, interval=bool(state.page_fields.get("interval")))
         res = dk.choose(opts, stage, cap, sim_context=self._drink_sim_context(ps, stage), where="PDRINK_MAX")
-        return self._drink_decision(res, opts, stage, "drink_overflow", warn + [f"新来 {len(incomings)} 瓶，按持有 + 新来的合起来挑"])
+        return self._drink_decision(res, opts, stage, "drink_overflow", warn + [f"新来 {len(incomings)} 瓶，按持有 + 新来的合起来挑"], state)
 
     # ---------------------------------------------------------------- 相談 / 授業 / 外出 / 轮间（识别字段到位前为保守规则）
     def consult(self, state: GameState) -> Decision:
@@ -1166,6 +1207,15 @@ class ProduceDeciders:
         if d is not None:
             return d
         why = getattr(self, "_finals_drink_why", "")
+        plan = getattr(self, "_finals_drink_plan", None) or {}
+        if plan.get("source") in ("llm", "fallback"):  # 不买是 LLM 定的（或 LLM 失败按规则兜底）：结束 / 刷新的决定带上来源和调用记录（只带一次）
+            base_done = done
+
+            def done(action: Action, reason: str) -> Decision:  # noqa: F811
+                d = base_done(action, reason)
+                d.source, d.line, d.llm, d.warnings = plan["source"], plan.get("line", ""), plan.pop("llm", []), d.warnings + plan["warnings"]
+                plan["source"] = "rule"
+                return d
         v = self._consult_visit(state, ps, shelf or [], services)
         if self._consult_free_slots(state, ps) > 0 and p >= 50 and self._consult_can_reroll(state, ps, shelf or [], v):
             # 免费刷新：按价值没有值得买的饮料 → 刷新，新货架重新估值（_finals_consult_drinks 按货架签名重算）
@@ -1402,7 +1452,7 @@ class ProduceDeciders:
         rule = min(allowed, key=lambda o: (dk.holding_key(o.drinks, "r1", capacity), o.cost))
         rows = {o.key: {"选项": o.label, "持有": dk.describe(o.drinks, "r1"), "花 P": o.cost, "剩 P": p - o.cost,
                         "留 P 损失（R2 分）": round(need_loss(o)), "社区默认": "是" if o is rule else ("可选" if o in allowed else "否")} for o in opts}  # fmt: skip
-        pick, source, w, dev = rule, "rule", list(warn), None
+        pick, source, w, dev, unsure, val = rule, "rule", list(warn), None, None, {}
         why = f"社区默认（もなみ先验 + 不挤占轮间需要量）：{rule.label}"
         ctx = self._drink_sim_context(ps, "r1")
         if dk.SIM and ctx is not None:
@@ -1436,18 +1486,36 @@ class ProduceDeciders:
                     why = f"偏离社区默认：{best.label} 比 {rule.label} 价值高 {d_v:+,.0f} ± {se:,.0f}（> {dk.OVERRIDE_SE:g} 个标准误）{tail}"
                 else:
                     why += f"；模拟里最好的是 {best.label}（比默认 {d_v:+,.0f} ± {se:,.0f}），不到 {dk.OVERRIDE_SE:g} 个标准误，按默认{tail}"
+                    if best is not rule and d_v > 0:
+                        unsure = f"模拟里 {best.label} 比社区默认价值高 {d_v:+,.0f} ± {se:,.0f}，在噪声内"
             except Exception as e:
                 logger.warning("本战相談饮料估值失败，按社区默认：%s", e)
                 why += f"；模拟失败（{e}），按社区默认"
+                unsure = f"模拟失败（{e}）"
+        line, llm_traces, conf = "", [], 0.8
+        if unsure and llm_path_on("consult") and self.llm is not None:
+            others = sorted((o for o in opts if o is not rule), key=lambda o: -val.get(o.key, (float("-inf"), 0))[0])
+            picked = [rule] + others[:3]
+            options = [(Action(ActionKind.SHOP_BUY, {"index": o.extra["buy"][0]}) if o.extra["buy"] else Action(ActionKind.SHOP_END),
+                        {"名字": o.label, **{k: v for k, v in rows[o.key].items() if k != "选项"}}) for o in picked]  # fmt: skip
+            stub = Decision(options[0][0], why, "rule", 0.8, decider="consult")
+            d = self._ask_choice("consult", stub, options, "本战相談：买不买饮料（买哪几瓶），剩下的 P 留给轮间", unsure, state,
+                                 {"现有 P": p, "饮料栏空位": free})  # fmt: skip
+            if d is not stub:
+                pick = next(o for o, (a, _) in zip(picked, options) if a is d.action)
+                source, w, line, llm_traces, conf = d.source, w + d.warnings, d.line, d.llm, d.confidence
+                if d.source == "llm":
+                    why = f"{d.reason}（LLM；{why}）"
         cands = [Candidate(Action(ActionKind.SHOP_BUY, {"index": o.extra["buy"][0]}) if o.extra["buy"] else Action(ActionKind.SHOP_END),
                            preview=rows[o.key], expected=rows[o.key].get("总价值（R2 分）"), note=o.label) for o in opts]  # fmt: skip
         reason = f"【本战相談·饮料按价值】{why}；之后持有：{dk.describe(pick.drinks, 'r1')}，剩 {p - pick.cost}P"
         self._finals_drink_plan = {"key": key, "buy": pick.extra["buy"], "reason": reason, "source": source, "cands": cands, "warnings": w,
-                                   "why_end": why}  # fmt: skip
+                                   "why_end": why, "line": line, "llm": llm_traces}  # fmt: skip
         if not pick.extra["buy"]:
             self._finals_drink_why = why
             return None
-        return Decision(Action(ActionKind.SHOP_BUY, {"index": pick.extra["buy"][0]}), reason, source, 0.8, cands, warnings=w, decider="consult")
+        return Decision(Action(ActionKind.SHOP_BUY, {"index": pick.extra["buy"][0]}), reason, source, conf, cands, warnings=w, line=line,
+                        llm=llm_traces, decider="consult")  # fmt: skip
 
     def _consult_drinks(self, state: GameState, ps: ProduceState, shelf: list, p: int, budget: int, *, stage: str, only_accident: bool,
                         go=None, fill: bool = False) -> Decision | None:  # fmt: skip
@@ -1475,6 +1543,7 @@ class ProduceDeciders:
             opts.append(dk.Option(f"drink{it['index']}", f"买 {it.get('name') or drink_name(it['drink_id'])}", hold + [it["drink_id"]],
                                   Action(ActionKind.SHOP_BUY, {"index": it["index"]}), cost=it["price"], extra={"index": it["index"]}))  # fmt: skip
         res = dk.choose(opts, stage, capacity, sim_context=self._drink_sim_context(ps, stage), where="CONSULT")
+        self._drink_resolve(res, opts, stage, "consult", state)  # 拿不准时 LLM 先定 pick，后面的预算记账按它来
         pick = res["pick"]
         if pick.key == "none":
             return None
@@ -1482,15 +1551,17 @@ class ProduceDeciders:
             return None
         tier = "第一档：补全饮料（事故：" + "、".join(trouble) + "）" if trouble else ("最后一次相談收尾：空栏补饮料" if fill else "第一档：补全饮料")
         if go is None:
-            dec = self._drink_decision(res, opts, stage, "consult", warn)
+            dec = self._drink_decision(res, opts, stage, "consult", warn, state)
             dec.reason = f"【本战相談·饮料事故：{'、'.join(trouble)}】{dec.reason}（もなみ：事故时才在这里买，价格和轮间一样）"
             return dec
         dec = go(pick.action, pick.label, pick.cost, tier, index=pick.extra.get("index"))
-        sub = self._drink_decision(res, opts, stage, "consult", warn)
+        sub = self._drink_decision(res, opts, stage, "consult", warn, state)
         dec.reason += f"；{sub.reason}"
         dec.candidates = dec.candidates + sub.candidates
         dec.warnings = dec.warnings + sub.warnings
         dec.source = sub.source
+        if sub.llm:
+            dec.llm, dec.line, dec.confidence = dec.llm + sub.llm, sub.line or dec.line, sub.confidence
         return dec
 
     def study(self, state: GameState) -> Decision:
