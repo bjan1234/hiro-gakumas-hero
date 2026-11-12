@@ -42,6 +42,7 @@ STATUS_MIN_SCORE = 0.6
 # 「最像的那个」顶上（パラメータ上昇量増加 的上箭头配到 好印象 0.68）。实测同一图标 ≥ 0.725、领先 ≥ 0.15；不同图标 ≤ 0.70、领先 ≤ 0.09
 CAPTURED_MIN_SCORE, CAPTURED_MIN_MARGIN = 0.72, 0.12
 ENCHANT_MIN_SCORE = 0.6
+ENCHANT_MIN_FAINT = 0.7
 CARD_INNER = 24  # 卡面比对的缩放边长
 
 
@@ -230,11 +231,14 @@ def read_status_column(img: MatLike, *, cache: RegionCache | None = None) -> lis
     """从上往下读出全部槽位，遇到空槽停止。cache：某槽（图标 + 数值）与上次相同则复用该槽结果。"""
     out = []
     for k in range(MAX_SLOTS):
-        if diamond_score(img, k) < DIAMOND_MIN:
-            break  # 空槽：状态栏到此为止
+        if diamond_score(img, k) < DIAMOND_MIN and not (k + 1 < MAX_SLOTS and diamond_score(img, k + 1) >= DIAMOND_MIN):
+            break  # 这一格和下一格都不像菱形：状态栏到此为止
+        # 这一格不像菱形、下一格像：是底色很淡（饮料效果的茶杯）或快到期半透明的真槽，不是到底了。
+        # 以前在这里就停，下面的好印象等全漏（DMM qualifydmmw1-r1 #133–135：好印象 11 / 13 读成没有）
+        faint = diamond_score(img, k) < DIAMOND_MIN
         cy = _slot_y(k)
         region = img[cy - SLOT_HALF - 4 : cy + 36, SLOT_X - SLOT_HALF - 4 : SLOT_X + 130]
-        out.append(cached(cache, f"status{k}", region, lambda k=k: _read_slot(img, k)))
+        out.append(cached(cache, f"status{k}", region, lambda k=k, faint=faint: _read_slot(img, k, faint=faint)))
     return out
 
 
@@ -248,7 +252,7 @@ def _accepted(meta: dict, top: list[tuple[float, str]]) -> bool:
     return True
 
 
-def _read_slot(img: MatLike, k: int) -> dict:
+def _read_slot(img: MatLike, k: int, *, faint: bool = False) -> dict:
     meta, _ = _icon_index()
     patch = _slot(img, k)
     blue = cv2.inRange(cv2.cvtColor(patch, cv2.COLOR_BGR2HSV), *BLUE)
@@ -267,7 +271,8 @@ def _read_slot(img: MatLike, k: int) -> dict:
                 entry["alternatives"] = alternatives
     else:
         score, asset = match_enchant_card(img, k)
-        card = _card_from_asset(asset) if score >= ENCHANT_MIN_SCORE else None
+        # 淡色槽（饮料效果的茶杯）和卡面不像也能凑到 0.61（配成「第一印象」）：真卡牌效果 0.75 以上，淡色槽要过 ENCHANT_MIN_FAINT 才认
+        card = _card_from_asset(asset) if score >= (ENCHANT_MIN_FAINT if faint else ENCHANT_MIN_SCORE) else None
         grey = None if card is not None else match_status_icon(patch)
         if grey and _accepted(meta, grey):
             # 培育计划的核心状态（やる気 等）为 0 时以灰底常驻、不显示数值；卡面认不出而字形能认出即是这种槽
@@ -278,6 +283,8 @@ def _read_slot(img: MatLike, k: int) -> dict:
         entry = {"slot": k, "kind": "enchant", "card_id": card._id if card else None,
                  "name": card.name if card else None, "asset": asset, "score": round(score, 3)}  # fmt: skip
     entry["value"], entry["unit"] = _value(img, k, entry["kind"], entry.get("card_id"))
+    if faint:
+        entry["faint"] = True
     return entry
 
 
