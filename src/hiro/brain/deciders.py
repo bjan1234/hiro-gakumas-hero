@@ -948,9 +948,22 @@ class ProduceDeciders:
         kind = CULL_TIERS.get(cull_tier(best["card_id"]), "价值最低的卡")
         if finals and cull_tier(best["card_id"]) >= 2 and best["card_id"] in FINALS_DELETE:
             kind = "本战模拟删除收益最高的牌"
-        args = {"card_id": best["card_id"], "index": best.get("index"), "upgrade": best.get("upgrade")}
-        return Decision(Action(ActionKind.REMOVE_CARD, args), f"删{kind} {_card_label(best)}（换 / 删同序，用户 2026-11-03；保护卡不删）", "rule", 0.9,
+        def act(c: dict) -> Action:
+            return Action(ActionKind.REMOVE_CARD, {"card_id": c["card_id"], "index": c.get("index"), "upgrade": c.get("upgrade")})
+
+        rule = Decision(act(best), f"删{kind} {_card_label(best)}（换 / 删同序，用户 2026-11-03；保护卡不删）", "rule", 0.9,
                         warnings=warn, decider="remove_card")  # fmt: skip
+        # 拿不准：最该删的已经不是明确的垃圾牌（0–3 档），只能按启发式价值排。这时「不删」也是个选项（相談删卡要花 P）
+        if cull_tier(best["card_id"]) < 4:
+            return rule
+        options = [(act(c), {"名字": _card_label(c), "卡 id": c["card_id"], "档": CULL_TIERS.get(cull_tier(c["card_id"]), ""),
+                             "价值估计": round(card_value(c["card_id"], c.get("upgrade") or 0), 1)}) for c in pool[:3]]  # fmt: skip
+        options.append((cancel, {"名字": "不删（取消）"}))
+        why = f"没有明确该删的牌（最该删的是「{CULL_TIERS.get(cull_tier(best['card_id']), '')}」档），只能按价值估"
+        if counts is None:
+            why += "；牌组没记账，保护卡的所有副本都不在候选里"
+        return self._ask_choice("remove_card", rule, options, "删卡：从牌组里删一张，或者不删（取消）", why, state,
+                                {"本战牌组目标张数": FINALS_DECK_TARGET} if finals else None)
 
     def enhance_card(self, state: GameState) -> Decision:
         """强化事件页（SKILL_CARD_ENHANCE）：未强化、有 + 版的卡里按 UPGRADE_ORDER（届いて！ > せのび > デイドリーミング > 紙吹雪）>

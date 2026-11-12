@@ -86,3 +86,27 @@ def test_golden_cases_rule_only_pass():
 
     passed, total, rows = cases.run(None, out=lambda *_: None)
     assert total > 0 and passed == total, [r for r in rows if not r["ok"]]
+
+
+def _remove(cards, deck=None, mode="produce-007"):
+    st = _change2(cards, deck)
+    d = st.to_dict()
+    d["page"]["name"] = "SKILL_CARD_REMOVAL"
+    d["produce"]["mode"] = mode
+    return GameState.from_dict(d)
+
+
+def test_remove_clear_junk_stays_rule(monkeypatch):
+    monkeypatch.setenv("HIRO_PRODUCE_LLM", "remove_card")
+    llm = MockLLM(replies=[{"choice": 1}])
+    d = ProduceDeciders(CAMPUS_HIRO, llm).decide("SKILL_CARD_REMOVAL", _remove([JUNK, OK_A]))
+    assert d.source == "rule" and d.action.args["card_id"] == JUNK and not llm.calls
+
+
+def test_remove_judgment_call_can_choose_cancel(monkeypatch):
+    monkeypatch.setenv("HIRO_PRODUCE_LLM", "remove_card")
+    llm = MockLLM(replies=[{"choice": 2, "reason": "两张都有用，不花 P 删"}])
+    d = ProduceDeciders(CAMPUS_HIRO, llm).decide("SKILL_CARD_REMOVAL", _remove([OK_A, OK_B]))
+    assert d.source == "llm" and d.action.args.get("cancel") is True
+    opts = __import__("json").loads(llm.calls[0][1])["候选"]
+    assert opts[-1]["名字"] == "不删（取消）" and len(opts) == 3
