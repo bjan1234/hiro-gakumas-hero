@@ -16,6 +16,7 @@
 import json
 import logging
 import math
+import os
 import time
 from dataclasses import replace
 from functools import lru_cache
@@ -31,6 +32,16 @@ logger = logging.getLogger(__name__)
 TIER_RANK = {"S": 3, "A": 2, "B": 1}
 PAGES = ("ACTION_SELECT", "SELECT_CARD", "SELECT_DRINK", "CONSULT", "STUDY", "OUTING", "HIF_ROUND_INTERVAL", "SELECT_PITEM", "PDRINK_MAX", "SPECIAL_GUIDANCE", "FORMATION", "QUALIFY_MEMORY",
          "SKILL_CARD_CHANGE_1", "SKILL_CARD_CHANGE_2", "SKILL_CARD_REMOVAL", "SKILL_CARD_ENHANCE", "PDRINK_MAX_CONFIRM")
+
+
+# 决策点补全（总控 2026-11-13）：规则 / 模拟拿不准的局面交 LLM，LLM 不可用或输出非法再兜底。每条新 LLM 路径一个开关、默认关；
+# HIRO_PRODUCE_LLM=change_remove,remove_card,…（或 all）打开。选行动 / 抓卡三选一原来就问 LLM，不受这个开关管。
+LLM_PATHS = ("change_remove", "remove_card", "consult", "interval", "drink_overflow", "select_pitem", "special_guidance")
+
+
+def llm_path_on(name: str) -> bool:
+    parts = {x.strip() for x in os.environ.get("HIRO_PRODUCE_LLM", "").split(",") if x.strip()}
+    return "all" in parts or name in parts
 
 
 def action_key(a: Action) -> str:
@@ -1608,15 +1619,35 @@ class ProduceDeciders:
             return Decision(Action(ActionKind.CHANGE_CARD, {"cancel": True}), "牌组里只剩核心 / 保护卡 / 定制卡，取消换卡", "rule", 0.7, warnings=warn,
                             decider="card_change")  # fmt: skip
         value, card = worst
-        incoming = card_value(self.change_target, 0) if self.change_target else None
+        incoming_id = self.change_target
+        incoming = card_value(incoming_id, 0) if incoming_id else None
         if incoming is not None and incoming <= value:
             # 取消会绕回换卡页（main8 死循环），换亏也只能换：换出价值最低的那张
             warn.append(f"换入的卡（{incoming:g}）不比换出的 {_card_label(card)}（{value:g}）强；取消会绕回换卡页，只能换")
-        args = {"stage": 2, "remove_card_id": card["card_id"], "remove_index": card.get("index"), "remove_upgrade": card.get("upgrade")}
         self.change_target = None
+
+        def act(c: dict) -> Action:
+            return Action(ActionKind.CHANGE_CARD, {"stage": 2, "remove_card_id": c["card_id"], "remove_index": c.get("index"),
+                                                   "remove_upgrade": c.get("upgrade")})  # fmt: skip
+
         tier = CULL_TIERS.get(cull_tier(card["card_id"]), "")
-        return Decision(Action(ActionKind.CHANGE_CARD, args), f"换出{tier} {_card_label(card)}（价值 {value:g}；换 / 删同序，用户 2026-11-03；保护卡不换）", "rule", 0.8,
+        rule = Decision(act(card), f"换出{tier} {_card_label(card)}（价值 {value:g}；换 / 删同序，用户 2026-11-03；保护卡不换）", "rule", 0.8,
                         warnings=warn, decider="card_change")  # fmt: skip
+        # 拿不准：最该换出的已经不是明确的垃圾牌（0–3 档），只能按启发式价值排。牌组没记账 / 有格没认出只作补充说明
+        # （没记账时规则已经保护所有副本，没认出的格 LLM 也选不了）
+        if cull_tier(card["card_id"]) < 4:
+            return rule
+        unsure = [f"没有明确该换的牌（最该换出的是「{tier}」档），只能按价值估"]
+        if counts is None:
+            unsure.append("牌组没记账，保护卡的所有副本都不在候选里")
+        if any(c.get("card_id") is None for c in cards):
+            unsure.append("有卡格没认出，不在候选里")
+        pool = cull_pool(cards, "change", counts=counts, finals=(state.produce or {}).get("mode") == FINALS)[:4]
+        options = [(act(c), {"名字": _card_label(c), "卡 id": c["card_id"], "档": CULL_TIERS.get(cull_tier(c["card_id"]), ""),
+                             "价值估计": round(card_value(c["card_id"], c.get("upgrade") or 0), 1)}) for c in pool]  # fmt: skip
+        extra = {"换入的卡": _card_label({"card_id": incoming_id, "upgrade": 0}) if incoming_id else "未知"}
+        return self._ask_choice("change_remove", rule, options, "授業セレクトチェンジ第 2 步：从牌组里选一张换出（不能取消，必须换一张）",
+                                "；".join(unsure), state, extra)
 
     def _study_effect(self) -> tuple[str | None, str]:
         """本人おすすめ効果的日文名，以及它在授業里是 A 档还是 B 档。"""
@@ -2218,6 +2249,32 @@ class ProduceDeciders:
         version = prompt_version(*prompts)
         res = self.llm.ask_json(load_prompt(*prompts), json.dumps(user, ensure_ascii=False))
         return res.data, [res.record(prompt_version=version)]
+
+    def _ask_choice(self, path: str, rule: Decision, options: list[tuple[Action, dict]], question: str, why: str, state: GameState,
+                    extra: dict | None = None) -> Decision:
+        """规则拿不准（why）时让 LLM 在 options 里选一个（options：[(动作, 给 LLM 看的说明)]，第一个是规则的选择）。
+        开关没开 / 没有 LLM / 只有一个选项：原样返回规则的决定。LLM 输出非法：按规则的选择兜底（source=fallback），带 LLM 记录和提醒。"""
+        if not llm_path_on(path) or self.llm is None or len(options) < 2:
+            return rule
+        ps = self.produce_state(state)
+        unknown = set(state.unobserved_produce_fields()) if state.produce else set()
+        from hiro.state.context import situation
+
+        user = {"局面": situation(ps, unknown) if ps is not None and state.produce else "识别未提供完整局面",
+                "问题": question, "规则为什么拿不准": why,
+                "候选": [dict(序号=i, **info) for i, (_, info) in enumerate(options)],
+                "规则的选择": 0} | (extra or {})  # fmt: skip
+        data, calls = self._ask(["produce_choice.md", "hif_produce.md", *self.playbook], user)
+        k = _int(data, "choice")
+        traces = [llm_trace_from_call(c) for c in calls]
+        if k is None or not 0 <= k < len(options):
+            bad = data if data is not None else (calls[-1].get("error") if calls else None)
+            return replace(rule, source="fallback", confidence=0.3, llm=traces,
+                           warnings=[*rule.warnings, f"规则拿不准（{why}）；LLM 输出无效（{bad}），按规则的选择兜底"])
+        return replace(rule, action=options[k][0], reason=str((data or {}).get("reason", ""))[:300], source="llm", confidence=None,
+                       line=str((data or {}).get("line", "")), llm=traces,
+                       warnings=[*rule.warnings, f"规则拿不准（{why}），交 LLM：选 {options[k][1].get('名字', k)}"
+                                 + ("（和规则相同）" if k == 0 else f"（规则原本选 {options[0][1].get('名字', 0)}）")])  # fmt: skip
 
     @staticmethod
     def _fallback(action: Action, reason: str, cands: list[Candidate], decider: str, calls: list[dict], *, source: str = "fallback") -> Decision:

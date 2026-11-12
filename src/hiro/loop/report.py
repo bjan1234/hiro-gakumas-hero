@@ -76,6 +76,9 @@ def summarize(steps: list[Step], run_meta: dict | None = None) -> dict:
         "decisions": len(decisions),
         "decisions_by_source": dict(Counter(s.decision.source for s in decisions)),
         "decisions_by_decider": dict(Counter(s.decision.decider or "?" for s in decisions)),
+        # 决策点补全（总控 11-13）：每个决策器各来源几次；兜底（fallback）次数应该逐局下降
+        "decisions_by_decider_source": {d: dict(c) for d, c in sorted(_by_decider_source(decisions).items())},
+        "fallbacks": sum(1 for s in decisions if s.decision.source == "fallback"),
         "page_changes": page_changes,
         "final_page": steps[-1].state.page.name if steps else None,
         "exam_shot_to_tap_ms": {"n": len(exam_lat), "median": _pct(exam_lat, 0.5), "p90": _pct(exam_lat, 0.9), "max": max(exam_lat) if exam_lat else None},
@@ -88,6 +91,13 @@ def summarize(steps: list[Step], run_meta: dict | None = None) -> dict:
         },
         "exams": exams,
     }  # fmt: skip
+
+
+def _by_decider_source(decisions) -> dict:
+    out: dict = {}
+    for s in decisions:
+        out.setdefault(s.decision.decider or "?", Counter())[s.decision.source] += 1
+    return out
 
 
 def report(trace_dir: Path) -> dict:
@@ -107,6 +117,7 @@ def markdown(r: dict) -> str:
         f"# 运行报告 {r.get('trace', '')}",
         "",
         f"- 步数 {r['steps']}，决策 {r['decisions']}（来源 {r['decisions_by_source']}；决策器 {r['decisions_by_decider']}）",
+        f"- 兜底 {r.get('fallbacks', 0)} 次；各决策器来源：" + "；".join(f"{d} {dict(c)}" for d, c in (r.get("decisions_by_decider_source") or {}).items()),
         f"- 页面切换 {r['page_changes']} 次，终止页面 {r['final_page']}",
         f"- 考试内截图→点击：n={lat['n']}，中位 {lat['median']} ms，p90 {lat['p90']} ms，最大 {lat['max']} ms",
         f"- LLM：{llm['calls']} 次、总输入 {llm.get('total_input', llm['input_tokens'])}（其中缓存读 {llm.get('cache_read', 0)}、缓存写 {llm.get('cache_creation', 0)}）、"
