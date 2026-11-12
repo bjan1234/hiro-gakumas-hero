@@ -1,8 +1,8 @@
 # 来源：digital-hiro hiro/tap.py（c3fc27f）
 """手动导航：在 720x1280 逻辑坐标点击，等待后截图保存，便于逐步走页面。
 
-    .venv/bin/python -m hiro.tap 360 1161 [--wait 1.5] [--out reports/live/tap.png]
-    .venv/bin/python -m hiro.tap --shot-only
+    PYTHONPATH=src .venv/bin/python tools/tap.py 360 1161 [--wait 1.5] [--out reports/live/tap.png]
+    PYTHONPATH=src .venv/bin/python tools/tap.py --shot-only
 """
 
 import argparse
