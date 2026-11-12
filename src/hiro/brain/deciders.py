@@ -1569,12 +1569,14 @@ class ProduceDeciders:
         cands = state.page_fields.get("candidates") or []
         if not cands:
             return Decision(Action.ui(ActionKind.WAIT, why="换卡候选未识别"), "换卡候选未识别", "fallback", 0.1, decider="card_change")
-        scored = sorted(((card_value(c.get("card_id"), c.get("upgrade") or 0), c) for c in cands), key=lambda x: (-x[0], x[1].get("index", 0)))
-        if CHANGE_PICK_BY_CULL:
-            from hiro.state.produce import FINALS
+        # 换入按删卡顺序挑（协调 2026-11-07）：挑 cull_key 最大的（最晚才会被删），同档再比价值。只按 card_value 挑时，
+        # 换进来的往往正是下次最先换掉的那类（Win2：换进「止められない想い」，下一次换卡就把它换掉，3 张元気な挨拶 没动）
+        from hiro.state.produce import FINALS
 
-            finals = (state.produce or {}).get("mode") == FINALS
-            scored.sort(key=lambda x: (cull_key(x[1].get("card_id"), x[1].get("upgrade") or 0, finals=finals), x[0]), reverse=True)
+        finals = (state.produce or {}).get("mode") == FINALS
+        scored = sorted(((card_value(c.get("card_id"), c.get("upgrade") or 0), c) for c in cands),
+                        key=lambda x: (cull_key(x[1].get("card_id"), x[1].get("upgrade") or 0, finals=finals), x[0], -x[1].get("index", 0)),
+                        reverse=True)  # fmt: skip
         value, best = scored[0]
         notes = [f"#{c.get('index')} {_card_label(c)} {v:g}" for v, c in scored]
         # 阶段 1 没有取消键（main8：取消后绕回换卡页死循环），所以总是选最好的那张
@@ -1711,7 +1713,7 @@ class ProduceDeciders:
         按计算选（协调 4a 第八局分析 B3，用户确认）：R1 的牌组 / 剩余饮料 / 倍率已记下（hiro.state.finals_context.CONTEXT）、
         模拟器主数据已构建时，进轮间算一次方案——回体力到几、买哪些饮料 / 卡，各组合用模拟器跑 R2 取期望分，选最高的；
         之后每帧按「还差什么」出下一个动作，货架刷新也按模拟估期望。算不了时走社区规则（_interval_rule）：
-        先回体力到角色目标，再按 饮料 > 必拿 / S / A 卡 > 强化核心卡 花 P（货架没有复制 / 爆发时先刷新，HIRO_INTERVAL_REFRESH）。"""
+        先回体力到角色目标，再按 饮料 > 必拿 / S / A 卡 > 强化核心卡 花 P（货架没有复制 / 爆发时先刷新）。"""
         items = state.page_fields.get("interval")
         if not items:
             return self._interval_without_shelf(state)
@@ -2141,7 +2143,7 @@ class ProduceDeciders:
             better = [(dk.holding_key(held + [it["drink_id"]], "r2", ps.drink_capacity), it) for it in _items(shelf, "drink")
                       if it.get("drink_id") and _affordable(it, budget)]  # fmt: skip
             better = [x for x in better if x[0] < cur]
-            if INTERVAL_REFRESH and (why := self._interval_refresh_why(items, shelf, budget)):
+            if why := self._interval_refresh_why(items, shelf, budget):
                 return done(Action(ActionKind.REROLL, {"scope": "interval"}), why)
             if better:
                 it = min(better, key=lambda x: x[0])[1]
@@ -2169,7 +2171,7 @@ class ProduceDeciders:
         return done(Action(ActionKind.INTERVAL_END), f"没有要买的（剩 {p}P，体力 {hp}/{max_hp}，目标 {target}）")
 
     def _interval_refresh_why(self, items: dict, shelf: list, budget: int) -> str | None:
-        """轮间货架没有 R2 优先档饮料（复制 / 爆发）时先刷新再买（开关 HIRO_INTERVAL_REFRESH）。
+        """轮间货架没有 R2 优先档饮料（复制 / 爆发）时先刷新再买。
         Windows 第七局：货架只有 ホエイ + 青汁，买完剩 380P 没花；A5b 买到了复制饮料 特製ハツボシエキス。
         只在还没买饮料时刷（买过以后持有数未知，再买可能溢出）；两格饮料都认出才判断；刷完货架没变（没刷成）、
         刷满 INTERVAL_REFRESH_MAX 次、或刷完不够买两瓶 100P 饮料就不刷。返回刷新理由，不刷返回 None。"""
@@ -2317,9 +2319,6 @@ SLEEP_ID = "p_card-00-acc-0_002"  # 眠気
 # 按瘦牌组规则（能刷新先刷新，否则拿最不污染的：一次性 > 不生成眠気 > 不冲突），不取游戏推荐。行为变化，默认关
 SELECT_NONE_LEAN = True  # 开源版默认开（主仓库 D40）
 SELECTION_LEAN_PICK = False  # 选拔里必拿已齐、候选无核心卡时按瘦牌组规则选（不调 LLM；协调 2026-11-03 提速）。行为变化，默认关，等用户答复（总控 2026-11-03）
-# 换卡阶段 1 按删卡顺序挑换入卡（协调 2026-11-07）：原来只按 card_value 挑，换出却按 cull_key（删卡顺序）排，
-# 结果换进来的往往正是下次最先换掉的那类（Win2：换进「止められない想い」价值 2，下一次换卡就把它换掉，牌组里 3 张元気な挨拶 没动）。
-# 开：换入挑 cull_key 最大的（最晚才会被删），同档再比价值。行为变化，默认关；HIRO_CHANGE_PICK_BY_CULL=1 打开
 def _sim_ready() -> bool:
     """模拟器可用：引擎能导入、主数据（catalog.sqlite）已构建。HIRO_SIM=0 强制不用（只按社区规则）。"""
     import os
@@ -2334,10 +2333,7 @@ def _sim_ready() -> bool:
         return False
 
 
-CHANGE_PICK_BY_CULL = __import__("os").environ.get("HIRO_CHANGE_PICK_BY_CULL") == "1"
-# 轮间货架没有复制 / 爆发饮料时先刷新（协调 2026-11-08，Windows 第七 / 九 / 十 / 十二局剩 400P 以上）。
-# 用户 2026-11-08 定为默认开（主仓库 11-02 已有同样的刷新，靠模拟器估值；这里是社区默认的规则版）；HIRO_INTERVAL_REFRESH=0 关
-INTERVAL_REFRESH = __import__("os").environ.get("HIRO_INTERVAL_REFRESH", "1") != "0"
+# 轮间货架没有复制 / 爆发饮料时先刷新（协调 2026-11-08，Windows 第七 / 九 / 十 / 十二局剩 400P 以上），最多刷这么多次
 INTERVAL_REFRESH_MAX = 3
 INTERVAL_DRINK_RESERVE = 200  # 刷完至少还够买两瓶 100P 饮料
 CHANGE_JUNK_VALUE = 1.0  # card_value ≤ 它算「废牌」（冲突 0、基础卡 0.5、好印象系 1）：授業セレクトチェンジ 只在有废牌时才选

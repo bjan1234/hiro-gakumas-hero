@@ -28,7 +28,7 @@
 #   HIRO_SCREENSHOT=adb：Windows + MuMu 6 用 nemu_ipc 时截图正常但点击送不到游戏（kaa_env 缺省已是 adb，这里写明）。
 #   HIRO_SIM_WORKERS=1：模拟器每个 worker 约 600 MB；16 GB 内存的机器多开时 MuMu 会被系统杀掉。
 #   HIRO_EXAM_SIM_ROUNDS=r2：R1 开考试预演会早兑现（win20 R1 只得 8.2 万），只在 R2 开。
-#   HIRO_EXAM_PLAYBOOK / HIRO_R1_TURN_PROXY / HIRO_CHANGE_PICK_BY_CULL：考试按攻略打法、R1 回合属性替身、换牌按精简牌组挑，三局夺冠都开着。
+#   HIRO_EXAM_PLAYBOOK / HIRO_R1_TURN_PROXY：考试按攻略打法、R1 回合属性替身，三局夺冠都开着。
 #   内存吃紧时 MuMu 会杀游戏：加 -Relaunch 让程序自己拉起。
 param(
     [Parameter(Mandatory = $true)][string]$Idol,
@@ -83,7 +83,7 @@ if ($ScheduleProbe) { $env:HIRO_EXAM_SCHEDULE_PROBE = "1" }
 $env:HIRO_SUPPORT_SET = $SupportSet; $env:HIRO_MEMORY_SET = $MemorySet
 $env:HIRO_LLM = $Llm
 if ($Proxy) { $env:HTTPS_PROXY = $Proxy; $env:HTTP_PROXY = $Proxy; $env:NO_PROXY = "127.0.0.1,localhost" }
-$env:HIRO_EXAM_PLAYBOOK = "1"; $env:HIRO_R1_TURN_PROXY = "1"; $env:HIRO_CHANGE_PICK_BY_CULL = "1"; $env:HIRO_INTERVAL_REFRESH = "1"
+$env:HIRO_EXAM_PLAYBOOK = "1"; $env:HIRO_R1_TURN_PROXY = "1"
 if ($Relaunch) { $env:HIRO_RELAUNCH_GAME = "1" }
 if ($NoSim) {
     $env:HIRO_SIM = "0"
