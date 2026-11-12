@@ -10,7 +10,7 @@ KAA / kotonebot 的 DMM 后台输入（SendMessageImpl）每次点击、滑动�
 这里给 SendMessageImpl.click / swipe 包一层：遇到「拒绝访问」就每 POLL_S 秒试一次 GetCursorPos，桌面恢复后重做这一下；
 等满 DESKTOP_WAIT_S 还不行，抛 DesktopUnavailable（讲清原因，由人处理）。其他错误照常抛出。
 
-滑动另改一处（HIRO_DMM_SWIPE_HOLD，缺省开）：kotonebot 的拖拽匀速移到终点后立刻松开，游戏的滚动列表按松手瞬间的速度
+滑动另改一处：kotonebot 的拖拽匀速移到终点后立刻松开，游戏的滚动列表按松手瞬间的速度
 惯性继续滑，选卡对话框一次多滑几十到一百多像素（行距 147、一屏露 3 行），相邻两屏没有重叠的行 → 牌组拼接不可信
 （2026-11-10 dmm1m 本战相談删 眠気：「第 2 屏和上一屏没有重叠的行」「拼出 38 张，记账 22 张」，重复无效 3 次停机）。
 改成到终点后原地停 HOLD_S 秒（继续发同一位置的移动消息）再松手，松手速度≈0，不再惯性滑动——和人手「拖到位、停一下、再抬手」一样。
@@ -117,12 +117,9 @@ def apply() -> bool:
         from kotonebot.client.implements.windows.send_message import SendMessageImpl
     except Exception:  # noqa: BLE001  非 Windows / 没装 pywin32
         return False
-    import os
-
     import win32gui
 
-    if os.environ.get("HIRO_DMM_SWIPE_HOLD", "1") != "0":
-        SendMessageImpl.swipe = swipe_hold
+    SendMessageImpl.swipe = swipe_hold
     for attr, name in (("click", "点击"), ("swipe", "滑动")):
         fn = getattr(SendMessageImpl, attr, None)
         if fn is not None and not getattr(fn, "_hiro_desktop_guard", False):
