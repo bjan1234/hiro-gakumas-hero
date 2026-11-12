@@ -148,6 +148,9 @@ def _toggle(r: Run, y: int, want: bool, what: str) -> str | None:
     return None if ok else f"{what}的勾选框点了 {TOGGLE_TIMEOUT:.0f}s 没变成{'勾上' if want else '取消'}"
 
 
+OWNED_SCROLL = (360, 900, 360, 650)  # 在已有饮料列表里往上滑 250（x1, y1, x2, y2）；滑回去时反过来
+OWNED_SCROLL_TRIES = 2
+OWNED_SCROLL_SETTLE = 0.6
 LAST_ROWS: dict = {}  # 最近一次 resolve_overflow 在溢出页上看到的行数 {"new": n, "owned": n}（钩子据此把视口外的已有饮料标成点不到）
 
 
@@ -164,6 +167,7 @@ def resolve_overflow(
     sleep: Callable[[float], None] = time.sleep,
     ocr=None,
     calib: bool = True,
+    swipe: Callable[[int, int, int, int], None] | None = None,
 ) -> ExecutionResult:
     """溢出页（PDRINK_MAX）：丢第 discard 瓶（可多瓶）已有饮料，留下新饮料，点「残す」，等离开溢出页。
     receive_indexes：要勾的新饮料（「受け取ったドリンク」区从上往下 0 起，决策 99fa922 febd374）；没给时勾最下面那瓶，还差再补勾。
@@ -192,15 +196,46 @@ def resolve_overflow(
     if not new:
         return r.result(False, "溢出页上没找到新饮料那一行（可能要往上滚）")
     discards = [int(discard)] if isinstance(discard, int) else [int(i) for i in discard]
-    if bad := [i for i in discards if not 0 <= i < len(owned)]:
-        return r.result(False, f"溢出页上只看到 {len(owned)} 瓶已有饮料，没有第 {bad} 瓶")
+    if [i for i in discards if not 0 <= i < len(owned)]:
+        # 新饮料的说明很长时（センブリソーダ 四行），已有饮料的最后一行被对话框底边切掉、勾选框找不到
+        #（DMM 单局测试 dmmt2 选拔：要丢第 [2] 瓶，只看到 2 瓶，重试一次照样停机）。往上滑一点再找，取消要丢的那几瓶，再滑回来勾新饮料
+        do_swipe = swipe or (lambda x1, y1, x2, y2: device.swipe(x1, y1, x2, y2, duration=0.5))
+        n0 = len(owned)
+        for _ in range(OWNED_SCROLL_TRIES):
+            do_swipe(*OWNED_SCROLL)
+            r.sleep(OWNED_SCROLL_SETTLE)
+            img = r.shoot()
+            h = find_text(r.ocr(img), OVERFLOW_HEADER)
+            owned = [y for y, _ in checkboxes(img) if h is not None and y > h[1]]
+            if not [i for i in discards if not 0 <= i < len(owned)]:
+                break
+        r.snap(img, "scrolled")
+        if bad := [i for i in discards if not 0 <= i < len(owned)]:
+            return r.result(False, f"溢出页上只看到 {len(owned)} 瓶已有饮料（滑动后），没有第 {bad} 瓶")
+        logger.info("饮料溢出：已有饮料只露出 %d 瓶，往上滑后看到 %d 瓶", n0, len(owned))
+        for i in discards:
+            if err := _toggle(r, owned[i], False, f"已有第 {i} 瓶"):
+                return r.result(False, err)
+        do_swipe(*OWNED_SCROLL[2:], *OWNED_SCROLL[:2])  # 滑回去：新饮料那一行要看得到
+        r.sleep(OWNED_SCROLL_SETTLE)
+        img = r.shoot()
+        h = find_text(r.ocr(img), OVERFLOW_HEADER)
+        cbs = checkboxes(img)
+        new = [y for y, _ in cbs if h is not None and y < h[1]]
+        owned = [y for y, _ in cbs if h is not None and y > h[1]]
+        if not new:
+            return r.result(False, "滑回去后没找到新饮料那一行")
+        discards_done = True
+    else:
+        discards_done = False
     receives = [new[-1]] if receive_indexes is None else []
     for j in receive_indexes or []:
         if not 0 <= int(j) < len(new):
             return r.result(False, f"溢出页上只看到 {len(new)} 瓶新饮料，没有第 {j} 瓶")
         receives.append(new[int(j)])
     # 先腾出名额再勾新的：已选满（あと0個選択）时游戏不让多勾（第十七局 #401）。没给 receive_indexes 时勾识别的 incoming = 最下面那瓶
-    steps = [(owned[i], False, f"已有第 {i} 瓶") for i in discards] + [(y, True, f"新饮料第 {new.index(y)} 瓶") for y in receives]
+    steps = ([] if discards_done else [(owned[i], False, f"已有第 {i} 瓶") for i in discards]) + [
+        (y, True, f"新饮料第 {new.index(y)} 瓶") for y in receives]
     for y, want, what in steps:
         if err := _toggle(r, y, want, what):
             return r.result(False, err)
@@ -211,7 +246,7 @@ def resolve_overflow(
     left = select_left(boxes)
     # 补勾顺序：其余新饮料 → 没让丢的已有饮料 → 让丢的已有饮料（从后往前；决策给的数量对不上时宁可少丢一瓶，也要把新饮料留下）
     fill = ([(y, "其余新饮料") for y in new if y not in receives] + [(y, f"已有第 {i} 瓶") for i, y in enumerate(owned) if i not in discards]
-            + [(owned[i], f"已有第 {i} 瓶（原定丢弃）") for i in reversed(discards)])  # fmt: skip
+            + [(owned[i], f"已有第 {i} 瓶（原定丢弃）") for i in reversed(discards) if i < len(owned)])  # fmt: skip
     while left and fill:
         y, what = fill.pop(0)
         if checked(img, y):
