@@ -178,7 +178,6 @@ class SimTracker:
     def _advance(self, base, actions: list[dict], screen_hand: list, notes: list[str]):
         """按画面推进一步：先原样推；手牌不同时把画面上新出现的牌放到山札顶重放；回合开始「随机强化 1 张」之类的随机效果
         再换几个随机种子重放，取手牌与强化次数都和画面一致的那次。都不完全一致时取卡 ID 一致的第一次（强化次数不一致只记一笔）。"""
-        from gakumas_exam.rng import NativeRandom
 
         want = [cid for cid, _ in screen_hand]
         tries = []
@@ -198,7 +197,8 @@ class SimTracker:
                 replay = clone(base)
                 replay.zones["deck"] = top + deck
                 if k:
-                    replay.rng = NativeRandom((base.rng.state + k * 0x9E3779B9) % 2**32)
+                    # 新引擎（Python / Rust）的 rng 是只读属性，只能改 state；以前赋新对象，每次都 AttributeError（dmmt1 R1 99 次 sim_error）
+                    replay.rng.state = (base.rng.state + k * 0x9E3779B9) % 2**32 or 1
                 _apply_all(replay, actions)
                 tries.append(replay)
                 if _match(replay, screen_hand) == 2:
