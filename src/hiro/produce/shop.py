@@ -190,6 +190,33 @@ def _buy(r: Run, item: dict, purchased, confirm_reader=_read_dialog) -> Executio
     return r.result(True)
 
 
+DONE_BUBBLE = ("しました",)  # 「ゆめみごこちを強化しました」「〜を削除しました」消息框
+DONE_BUBBLE_REGION = (0, 930, 720, 1120)
+DONE_BUBBLE_TAPS = 3
+
+
+def dismiss_done_bubble(r: Run) -> bool:
+    """强化 / 删除后底部的「〜しました」消息框（DMM 上一直挂着、卡牌弹窗也不退，要点一下）：看到文字才点它本身，返回是否点了。
+    DMM 第 12 天相談：强化 ゆめみごこち 后它盖了 18s，相談循环连续 3 帧读不出货架，只好结束相談；「終了」第一下也被它吃掉。"""
+    b = find_text(r.ocr(r.shoot()), DONE_BUBBLE, region=DONE_BUBBLE_REGION)
+    if b is None:
+        return False
+    r.tap(b)
+    return True
+
+
+def settle_after_op(r: Run) -> tuple[bool, np.ndarray]:
+    """强化 / 删除之后等回到空闲相談页；被「〜しました」消息框挡着就点掉它（最多 DONE_BUBBLE_TAPS 次）。"""
+    back, img = r.until(consult_idle, SETTLE_TIMEOUT / 3)
+    for _ in range(DONE_BUBBLE_TAPS):
+        if back or not dismiss_done_bubble(r):
+            break
+        back, img = r.until(consult_idle, SETTLE_TIMEOUT / 3)
+    if not back:
+        back, img = r.until(consult_idle, SETTLE_TIMEOUT / 3)
+    return back, img
+
+
 def _service(r: Run, name: str, services: dict, card_id: str | None = None, choose_card=None, deck_size: int | None = None) -> ExecutionResult:
     """相談「強化 / 削除」：点服务键打开选卡页 → 读卡格 → card_id（动作给的，或 choose_card(kind, cards) 让决策选）
     → 点卡、核对选中 →「強化 / 削除」→ 确认框 →「〜しました」→ 回到相談。走 kaa_patches._card_op；
@@ -211,7 +238,7 @@ def _service(r: Run, name: str, services: dict, card_id: str | None = None, choo
     choose = (lambda cards: choose_card(kind, cards)) if choose_card is not None else None
     done = _card_op(kind, card_id, shoot=r.shoot, click=r.click_fn, clock=r.clock, sleep=r.sleep, ocr=r.ocr,
                     calib=r.calib is not None, choose=choose, expected_size=deck_size)  # fmt: skip
-    back, img = r.until(consult_idle, SETTLE_TIMEOUT)
+    back, img = settle_after_op(r)
     r.snap(img, f"{kind}-back")
     if not done:
         return r.result(False, f"「{label}」没做成（见日志：没给 / 没找到 card_id 或选中不符，已取消）", page_after=PAGE if back else None)
@@ -254,7 +281,9 @@ def _end(r: Run) -> ExecutionResult:
     成功要正面确认：连续 END_LEFT_FRAMES 帧既没有商店页文字、也没有确认框。以前「不是空闲相談页、没有取消框」就算离开：
     删卡 / 强化后底部弹「〜を削除しました」提示条时第一帧就满足（Mac 第 33 局选拔 0.062s / 0.035s，DMM 0.047s），
     实际还在相談，决策器从「第 1 步」重开相談；画面真的走了以后 state 又停在 CONSULT，在 loading / 考试画面上接着点（DMM 实机）。"""
-    r.until(consult_idle, END_IDLE_WAIT)  # 先等提示条 / 演出退掉，盖着的时候点「終了」可能不生效
+    ok, _ = r.until(consult_idle, END_IDLE_WAIT)  # 先等提示条 / 演出退掉，盖着的时候点「終了」可能不生效
+    if not ok and dismiss_done_bubble(r):  # 「〜しました」消息框不会自己退
+        r.until(consult_idle, END_IDLE_WAIT)
     im0 = r.shoot()
     r.snap(im0, "end-open")
     if not cancel_visible(im0) and not shop_shown(r.ocr(im0)):
@@ -303,6 +332,13 @@ REROLL_TITLES = ("リフレッシュ実行確認", "相談リフレッシュ確�
 JEWEL_WORDS = ("ジュエル",)
 SHELF_REGION = (30, 470, 690, 870)  # 货架两行（相談 / 轮间都在这一片）
 SHELF_CHANGED_MIN = 12.0  # 货架区灰度平均差：换了一批商品远大于这个；同一货架两帧 < 3
+SHELF_CHANGED_WEAK = 6.0  # 刷新按钮那块也变了时，货架差过这个就算换了（同一货架两帧 < 3）
+
+
+def refresh_badge(boxes) -> str:
+    """左下「あと N回」+「リフレッシュ」（轮间是价格）那一块的文字，用来看刷新后它变没变。"""
+    x1, y1, x2, y2 = REROLL_REGION
+    return "".join(t.replace(" ", "") for t, _, (bx1, by1, bx2, by2) in boxes if x1 <= (bx1 + bx2) / 2 <= x2 and y1 <= (by1 + by2) / 2 <= y2)
 REROLL_TIMEOUT = 10.0
 
 
@@ -355,6 +391,7 @@ def _reroll(r: Run, scope: str, info: dict | None) -> ExecutionResult:
         r.tap(btn or REROLL_TAP[scope])
     state = {"jewel": False, "changed": 0, "confirmed": False}
     last = [r.clock() - SKIP_EVERY]
+    badge0 = refresh_badge(boxes0)
 
     def tick(im):
         if r.clock() - last[0] < SKIP_EVERY:
@@ -383,7 +420,11 @@ def _reroll(r: Run, scope: str, info: dict | None) -> ExecutionResult:
             return True  # 已取消、回到主画面
         # 连续两帧都与刷新前明显不同才算换了（单帧可能是动画）。不要求相邻两帧一样：
         # 第十九局本战轮间第 2 次刷新成功（P 229→219、货架差 19.1），新货架上「NEW」标记一直在动，按「停稳」判了 10s 没换
-        state["changed"] = state["changed"] + 1 if shelf_diff(before, im) >= SHELF_CHANGED_MIN else 0
+        diff = shelf_diff(before, im)
+        # 新货架和旧货架长得像时差值不大（DMM 第 12 天相談真的换了货架，差 11.2 < 12，判了「没换」）：
+        # 左下「あと N回 / リフレッシュ」变了（次数减少、按钮消失、价格变化）时，差值过 SHELF_CHANGED_WEAK 就算换了
+        weak = diff >= SHELF_CHANGED_WEAK and refresh_badge(r.ocr(im)) != badge0
+        state["changed"] = state["changed"] + 1 if diff >= SHELF_CHANGED_MIN or weak else 0
         return state["changed"] >= REROLL_CHANGED_FRAMES
 
     ok, img = r.until(done, REROLL_TIMEOUT, tick=tick)
