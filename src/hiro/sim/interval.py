@@ -812,6 +812,7 @@ def plan_tiered(shelf: dict, *, hp: int, max_hp: int, p: int, star: int | None, 
     # 原来「中间回到几由 B3 模拟定」不经检验（第十八、十九局都回到 24）；用户 2026-11-03「回体力的必要性也待考证」，
     # 第十九局 R2 开局快照 64 局配对：17 比 24 −0.9 万 ± 1.3 万（不显著），16（不回）−3.5 万 ± 1.2 万，12 −4.3 万 ± 1.2 万（决策-17 §5）
     same = {o.key for o in sim} == {o.key for o in rule}
+    unsure = alt = None
     pair, n_used = _pair_adaptive([setup, apply_all(setup, rule)] + ([] if same else [apply_all(setup, sim)]), list(seeds), policy, workers, **kw)
     r_rule = pair[1]
     pick, deviation = rule, None
@@ -827,6 +828,14 @@ def plan_tiered(shelf: dict, *, hp: int, max_hp: int, p: int, star: int | None, 
                          "has_hp": any(o.group == "hp" for o in sim) and {o.key for o in sim if o.group == "hp"} != {o.key for o in rule if o.group == "hp"}}  # fmt: skip
         notes.append(f"模拟方案 {'、'.join(o.label for o in sim) or '不买'} 比社区默认 {d:+,.0f} ± {se:,.0f}"
                      + ("（> 2 个标准误：偏离社区默认）" if deviation else "（不到 2 个标准误：按社区默认）"))
+        # 决策点补全：模拟方案更好但在噪声内 → 拿不准，交 LLM 二选一（deciders._interval_ask）。回体力超过角色目标的模拟方案不算
+        # （用户「控制在半血以上就好」：多回体力要单独显著，这里没有检验）
+        if deviation is None and d > 0 and not any(o.group == "hp" and int(o.key[2:]) > max(target_hp, hp) for o in sim):
+            unsure = f"模拟方案 {'、'.join(o.label for o in sim) or '不买'} 比社区默认 {d:+,.0f} ± {se:,.0f}，在噪声内"
+            alt = {"target_hp": max([hp] + [int(o.key[2:]) for o in sim if o.group == "hp"]),
+                   "buy": [a[1]["index"] for o in sim if o.group != "hp" for a in o.actions if "index" in a[1]],
+                   "upgrade": next((o.card_id for o in sim if o.key == "upgrade"), None) or next((o.card_id for o in rule if o.key == "upgrade"), None),
+                   "labels": [o.label for o in sim], "gain": r_sim["gain"], "gain_se": r_sim["gain_se"], "cost": sum(o.cost for o in sim)}
     else:
         notes.append("模拟方案与社区默认一致")
     r_pick = pair[1] if pick is rule else pair[2]
@@ -875,7 +884,7 @@ def plan_tiered(shelf: dict, *, hp: int, max_hp: int, p: int, star: int | None, 
     up = next((o.card_id for o in pick if o.key == "upgrade"), None) or next((o.card_id for o in rule if o.key == "upgrade"), None)
     return {"target_hp": target, "buy": buy, "upgrade": up, "labels": [o.label for o in pick], "gain": gain, "gain_se": gain_se,
             "cost": sum(o.cost for o in pick), "significant": True, "final": True, "rule_labels": [o.label for o in rule], "rule_notes": notes,
-            "deviation": deviation, "rows": run["combos"], "seconds": round(time.monotonic() - t0, 1), "policy": policy, "seeds": list(seeds)[:n_used]}  # fmt: skip
+            "deviation": deviation, "unsure": unsure, "alt": alt, "rows": run["combos"], "seconds": round(time.monotonic() - t0, 1), "policy": policy, "seeds": list(seeds)[:n_used]}  # fmt: skip
 
 
 # ---------------------------------------------------------------- 轮间刷新货架（用户 2026-11-02：第十六局 R2 只有 漢方、第十七局只有 ハーブティー）

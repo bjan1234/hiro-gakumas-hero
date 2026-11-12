@@ -198,3 +198,44 @@ def test_golden_drink_cases_keep_llm_trace(monkeypatch):
     d = ProduceDeciders(CAMPUS_HIRO, llm).decide("CONSULT", st)
     assert d.source == "llm" and d.llm and llm.calls
     assert dc.action_key(d.action) != "buy:7"  # 改成了 LLM 选的第 1 个候选
+
+
+# ---- 轮间：plan_tiered 标出拿不准（模拟方案更好但在噪声内）时，LLM 在社区默认 / 模拟方案里二选一
+def _interval_setup(monkeypatch, unsure=True):
+    import json
+    from pathlib import Path
+
+    from hiro.sim import interval as iv
+
+    fix = json.loads((Path(__file__).parent / "fixtures" / "main18_interval.json").read_text(encoding="utf-8"))
+    monkeypatch.setattr(ProduceDeciders, "INTERVAL_DRINK_STEP", False)
+    monkeypatch.setattr(dc, "_sim_ready", lambda: True)
+    alt = {"target_hp": 0, "buy": [7], "upgrade": None, "labels": ["买饮料 初星スペシャル青汁"], "gain": 9000, "gain_se": 6000, "cost": 100}
+    plan = {"target_hp": 0, "buy": [6], "upgrade": None, "labels": ["买饮料 ブーストエキス"], "gain": 8000, "gain_se": 6000, "cost": 100,
+            "significant": True, "final": True, "rule_labels": ["买饮料 ブーストエキス"], "rule_notes": [], "deviation": None,
+            "unsure": "模拟方案 买饮料 初星スペシャル青汁 比社区默认 +1,000 ± 8,000，在噪声内" if unsure else None, "alt": alt if unsure else None,
+            "rows": [], "seconds": 1.0, "policy": "community", "seeds": [0]}  # fmt: skip
+    monkeypatch.setattr(iv, "plan_tiered", lambda *a, **k: __import__("copy").deepcopy(plan))
+    monkeypatch.setattr(iv, "CONTEXT", {"deck": fix["finals_context"]["deck"], "permil": fix["finals_context"]["permil"], "drinks": []})
+    f = fix["121"]
+    return GameState(page_fields=f["page_fields"], produce=dict(f["produce"], drink_capacity=4))
+
+
+def test_interval_unsure_plan_llm_picks_sim_plan(monkeypatch):
+    monkeypatch.setenv("HIRO_PRODUCE_LLM", "interval")
+    st = _interval_setup(monkeypatch)
+    llm = MockLLM(replies=[{"choice": 1, "reason": "青汁更好", "line": "青汁で"}])
+    dec = ProduceDeciders(CAMPUS_HIRO, llm)
+    d = dec.decide("HIF_ROUND_INTERVAL", st)
+    assert d.source == "llm" and d.action.args == {"index": 7} and d.llm and "LLM：青汁更好" in d.reason
+    d2 = dec.decide("HIF_ROUND_INTERVAL", st)  # 同一次轮间不再问，来源仍是 LLM，调用记录只带一次
+    assert len(llm.calls) == 1 and d2.source == "llm" and not d2.llm
+
+
+def test_interval_unsure_off_or_sure_keeps_rule_plan(monkeypatch):
+    llm = MockLLM(replies=[{"choice": 1}])
+    d = ProduceDeciders(CAMPUS_HIRO, llm).decide("HIF_ROUND_INTERVAL", _interval_setup(monkeypatch))
+    assert d.source == "rule" and d.action.args == {"index": 6} and not llm.calls
+    monkeypatch.setenv("HIRO_PRODUCE_LLM", "interval")
+    d = ProduceDeciders(CAMPUS_HIRO, llm).decide("HIF_ROUND_INTERVAL", _interval_setup(monkeypatch, unsure=False))
+    assert d.source == "rule" and d.action.args == {"index": 6} and not llm.calls

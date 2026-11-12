@@ -1847,6 +1847,7 @@ class ProduceDeciders:
                 return None
             cache = self._interval_plan = {"shelf": shelf_key, "res": res, "tried": {}, "visit": ledger["key"],
                                            "replanned": bool(ledger["drinks"] or ledger["cards"] or ledger["upgraded"])}  # fmt: skip
+            self._interval_ask(state, cache)
             self._interval_prefetch_gains(state, ps, items, res)
             iv.save_interval_cache({"plan": cache, "ledger": ledger})
         res = cache["res"]
@@ -1863,7 +1864,7 @@ class ProduceDeciders:
                                                                       "比不买": f"{r['gain']:+,} ± {r['gain_se']:,}"}, expected=r["mean"])
                  for r in res["rows"][:12]]  # fmt: skip
         dev = res.get("deviation")
-        why = (f"{'偏离社区默认，用模拟方案' if dev else '社区默认方案'}：{'、'.join(res['labels']) or '不买'}，比不买 {res['gain']:+,} ± {res['gain_se']:,}"
+        why = (f"{'偏离社区默认，用模拟方案' if dev else ('LLM 选的方案' if cache.get('llm') is not None and cache['llm'].source == 'llm' else '社区默认方案')}：{'、'.join(res['labels']) or '不买'}，比不买 {res['gain']:+,} ± {res['gain_se']:,}"
                f"（{res['cost']}P；模拟 R2 {res['policy']} {len(res['seeds'])} 个种子配对，{res['seconds']}s）。" + "；".join(res.get("rule_notes") or []))  # fmt: skip
         if dev:
             from hiro.brain.drinks import log_deviation
@@ -1879,6 +1880,11 @@ class ProduceDeciders:
             if dev and dev.get("has_hp"):
                 # 协调 2026-11-02：社区续打对体力估值偏高，偏离方案里含体力档的都单独记一条（续打第 2、3 步改好前）
                 w.append("community_deviation 含体力档：社区续打对体力的估值偏高（第十七局专家核对只是噪声），请复核")
+            ld = cache.get("llm")
+            if ld is not None:  # 方案是 LLM 定的：来源 / 台词都按它，调用记录只带在第一个动作上
+                tail = f"；LLM：{ld.reason}" if ld.source == "llm" and ld.reason else ""
+                return Decision(action, f"{step}；{why}{tail}", ld.source, ld.confidence, cands, warnings=w + ld.warnings, line=ld.line,
+                                llm=cache.pop("llm_traces", []), decider="interval")  # fmt: skip
             return Decision(action, f"{step}；{why}", "sim" if dev else "rule", 0.8, cands, warnings=w, decider="interval")
 
         recover = items.get("recover") or {}
@@ -1929,6 +1935,26 @@ class ProduceDeciders:
         cache["ended"] = True
         rr = f"；{cache['reroll_note']}" if cache.get("reroll_note") else ""
         return done(Action(ActionKind.INTERVAL_END), f"方案执行完（剩 {p}P，体力 {hp}/{max_hp}）{rr}")
+
+    def _interval_ask(self, state: GameState, cache: dict) -> None:
+        """轮间方案拿不准（plan_tiered 的 unsure：模拟方案更好但在噪声内）时，让 LLM 在社区默认 / 模拟方案里二选一。一次轮间问一次；
+        选了模拟方案就把 res 的执行字段（回体力目标、买哪些格子、强化）换成它。"""
+        res = cache["res"]
+        if not res.get("unsure") or not res.get("alt") or not llm_path_on("interval") or self.llm is None:
+            return
+        alt = res["alt"]
+        options = [(Action(ActionKind.INTERVAL_END), {"名字": "社区默认方案", "内容": res["rule_labels"] or ["不买"], "花 P": res["cost"],
+                                                       "R2 比不买": f"{res['gain']:+,} ± {res['gain_se']:,}"}),
+                   (Action(ActionKind.INTERVAL_END), {"名字": "模拟方案", "内容": alt["labels"] or ["不买"], "花 P": alt["cost"],
+                                                       "R2 比不买": f"{alt['gain']:+,} ± {alt['gain_se']:,}"})]  # fmt: skip
+        stub = Decision(options[0][0], "社区默认方案", "rule", 0.8, decider="interval")
+        d = self._ask_choice("interval", stub, options, "本战轮间（R1 与 R2 之间）：按哪套方案花 P（回体力 / 买饮料 / 买卡 / 强化）", res["unsure"], state,
+                             {"社区默认的说明": res.get("rule_notes") or []})  # fmt: skip
+        if d is stub:
+            return
+        cache["llm"], cache["llm_traces"] = replace(d, llm=[]), d.llm
+        if d.source == "llm" and d.action is options[1][0]:
+            res.update({k: alt[k] for k in ("target_hp", "buy", "upgrade", "labels", "gain", "gain_se", "cost")})
 
     @staticmethod
     def _keep_last_slot(gains: dict, it: dict, spare: int, price: int) -> bool:
