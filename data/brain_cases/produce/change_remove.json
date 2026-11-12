@@ -1,0 +1,5346 @@
+[
+ {
+  "id": "change2-maindmmt2-20-14",
+  "decider": "SKILL_CARD_CHANGE_2",
+  "source": "实机 maindmmt2-20261112-155806 seq14（本战轮间换卡第 2 步）",
+  "note": "规则拿不准（没有明确该换的牌）；社区规则：核心卡（デイドリーミング / 届いて / せのび / 紙吹雪）永不换出",
+  "forbid": [
+   "change:p_card-02-act-1_037",
+   "change:p_card-02-act-2_062",
+   "change:p_card-02-act-3_039",
+   "change:p_card-02-act-3_186"
+  ],
+  "state": {
+   "mode": "produce",
+   "page": {
+    "name": "SKILL_CARD_CHANGE_2",
+    "area": "produce",
+    "since_seq": 13,
+    "stable": true,
+    "frames": 2
+   },
+   "produce": {
+    "mode": "produce-008",
+    "step": 1,
+    "stamina": 33,
+    "max_stamina": 33,
+    "produce_point": 200,
+    "params": {
+     "Vo": 1411,
+     "Da": 2220,
+     "Vi": 1207
+    },
+    "growth_permil": {
+     "Vo": 1455,
+     "Da": 1444,
+     "Vi": 1413
+    },
+    "star": 786,
+    "param_cap": 3200,
+    "drinks": [],
+    "drink_capacity": 4,
+    "deck": [
+     {
+      "card_id": "p_card-02-act-3_039",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-3_045",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-3_186",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-ido-3_105",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-2_047",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-2_062",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_004",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_028",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_037",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-3_002",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_004",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_052",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_056",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_057",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-2_100",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_111",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-1_031",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-1_031",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-00-sup-3_093",
+      "upgrade": 1
+     }
+    ],
+    "deck_size": 19
+   },
+   "exam": null,
+   "exam_session": {
+    "label": null,
+    "turn": 0,
+    "last_remaining": null,
+    "brief_permil": null
+   },
+   "page_fields": {
+    "cards": [
+     {
+      "deck_index": 0,
+      "row": 0,
+      "col": 0,
+      "card_id": "p_card-02-act-1_004",
+      "name": "元気な挨拶",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 0
+     },
+     {
+      "deck_index": 1,
+      "row": 0,
+      "col": 1,
+      "card_id": "p_card-02-act-1_028",
+      "name": "ゆるふわおしゃべり",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 1
+     },
+     {
+      "deck_index": 2,
+      "row": 0,
+      "col": 2,
+      "card_id": "p_card-02-act-1_037",
+      "name": "デイドリーミング",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 0,
+      "index": 2
+     },
+     {
+      "deck_index": 3,
+      "row": 0,
+      "col": 3,
+      "card_id": "p_card-02-act-2_047",
+      "name": "ありがとうの言葉",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 3
+     },
+     {
+      "deck_index": 4,
+      "row": 1,
+      "col": 0,
+      "card_id": "p_card-02-act-2_062",
+      "name": "きらきら紙吹雪",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 4
+     },
+     {
+      "deck_index": 5,
+      "row": 1,
+      "col": 1,
+      "card_id": "p_card-02-act-3_039",
+      "name": "届いて！",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 5
+     },
+     {
+      "deck_index": 6,
+      "row": 1,
+      "col": 2,
+      "card_id": "p_card-02-act-3_045",
+      "name": "あのときの約束",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 6
+     },
+     {
+      "deck_index": 7,
+      "row": 1,
+      "col": 3,
+      "card_id": "p_card-02-act-3_186",
+      "name": "せのびの魔法",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 7
+     },
+     {
+      "deck_index": 8,
+      "row": 2,
+      "col": 0,
+      "card_id": "p_card-02-ido-3_105",
+      "name": "エウレカ！",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 8
+     },
+     {
+      "deck_index": 9,
+      "row": 2,
+      "col": 1,
+      "card_id": "p_card-00-sup-3_093",
+      "name": "紅葉ランニング",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 9
+     },
+     {
+      "deck_index": 10,
+      "row": 2,
+      "col": 2,
+      "card_id": "p_card-02-men-1_031",
+      "name": "えいえいおー",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 0,
+      "index": 10
+     },
+     {
+      "deck_index": 11,
+      "row": 2,
+      "col": 3,
+      "card_id": "p_card-02-men-1_031",
+      "name": "えいえいおー",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 0,
+      "index": 11
+     },
+     {
+      "deck_index": 12,
+      "row": 3,
+      "col": 0,
+      "card_id": "p_card-02-men-2_004",
+      "name": "ワクワクが止まらない",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 1,
+      "index": 12
+     },
+     {
+      "deck_index": 13,
+      "row": 3,
+      "col": 1,
+      "card_id": null,
+      "name": null,
+      "upgrade": null,
+      "customized": null,
+      "dimmed": false,
+      "screen": 1,
+      "index": 13
+     },
+     {
+      "deck_index": 14,
+      "row": 3,
+      "col": 2,
+      "card_id": "p_card-02-men-2_056",
+      "name": "止められない想い",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 14
+     },
+     {
+      "deck_index": 15,
+      "row": 3,
+      "col": 3,
+      "card_id": "p_card-02-men-2_057",
+      "name": "ゆめみごこち",
+      "upgrade": 0,
+      "customized": false,
+      "dimmed": false,
+      "screen": 1,
+      "index": 15
+     },
+     {
+      "deck_index": 16,
+      "row": 4,
+      "col": 0,
+      "card_id": "p_card-02-men-2_100",
+      "name": "気まぐれハート",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 16
+     },
+     {
+      "deck_index": 17,
+      "row": 4,
+      "col": 1,
+      "card_id": "p_card-02-men-2_111",
+      "name": "成長痛",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 17
+     },
+     {
+      "deck_index": 18,
+      "row": 4,
+      "col": 2,
+      "card_id": "p_card-02-men-3_002",
+      "name": "私がスター",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 18
+     }
+    ],
+    "deck_complete": true,
+    "deck_screens": 4
+   },
+   "sources": {
+    "produce.mode": {
+     "origin": "screen",
+     "seq": 4
+    },
+    "produce.step": {
+     "origin": "screen",
+     "seq": 4
+    },
+    "produce.stamina": {
+     "origin": "screen",
+     "seq": 4
+    },
+    "produce.max_stamina": {
+     "origin": "screen",
+     "seq": 4
+    },
+    "produce.produce_point": {
+     "origin": "screen",
+     "seq": 4
+    },
+    "produce.params": {
+     "origin": "screen",
+     "seq": 4
+    },
+    "produce.growth_permil": {
+     "origin": "screen",
+     "seq": 4
+    },
+    "produce.star": {
+     "origin": "screen",
+     "seq": 4
+    },
+    "produce.param_cap": {
+     "origin": "screen",
+     "seq": 4
+    },
+    "produce.drinks": {
+     "origin": "screen",
+     "seq": 4
+    },
+    "produce.drink_capacity": {
+     "origin": "screen",
+     "seq": 4
+    },
+    "produce.deck": {
+     "origin": "screen",
+     "seq": 6
+    },
+    "produce.deck_size": {
+     "origin": "screen",
+     "seq": 6
+    }
+   },
+   "seq": 14,
+   "pending_page": null,
+   "conflicts": [],
+   "field_status": {
+    "produce.mode": "observed",
+    "produce.step": "observed",
+    "produce.stamina": "observed",
+    "produce.max_stamina": "observed",
+    "produce.produce_point": "observed",
+    "produce.params.Vo": "observed",
+    "produce.params.Da": "observed",
+    "produce.params.Vi": "observed",
+    "produce.growth_permil": "observed",
+    "produce.star": "observed",
+    "produce.param_cap": "observed",
+    "produce.advice": "observed",
+    "produce.drinks": "observed",
+    "produce.drink_capacity": "observed",
+    "produce.options": "observed",
+    "produce.complete": "observed",
+    "produce.deck": "verified",
+    "produce.deck_size": "observed",
+    "produce.cards": "observed",
+    "produce.problems": "observed"
+   },
+   "pending_review": [],
+   "ledger": [
+    {
+     "seq": 5,
+     "kind": "DECK_REVIEW",
+     "origin": "review",
+     "args": {
+      "deck": [
+       {
+        "card_id": "p_card-02-act-3_039",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_045",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_186",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-ido-3_105",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_062",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_028",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_037",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-men-3_002",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_052",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_056",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_057",
+        "upgrade": 0,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_100",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_111",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-00-sup-3_093",
+        "upgrade": 1,
+        "customized": false
+       }
+      ],
+      "deck_size": 19
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {},
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 6,
+     "kind": "DECK_REVIEW",
+     "origin": "review",
+     "args": {
+      "deck": [
+       {
+        "card_id": "p_card-02-act-3_039",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_045",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_186",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-ido-3_105",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_062",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_028",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_037",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-men-3_002",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_052",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_056",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_057",
+        "upgrade": 0,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_100",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_111",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-00-sup-3_093",
+        "upgrade": 1,
+        "customized": false
+       }
+      ],
+      "deck_size": 19
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 6,
+      "screenshot": "frames/00006.jpg",
+      "page": "DECK_LIST"
+     },
+     "confidence": 1.0,
+     "note": "强化只分 0 / 1（++ 还没有样本）",
+     "version": "1.2"
+    }
+   ],
+   "version": "1.2"
+  }
+ },
+ {
+  "id": "change2-maindmmt2-20-78",
+  "decider": "SKILL_CARD_CHANGE_2",
+  "source": "实机 maindmmt2-20261112-155806 seq78（本战轮间换卡第 2 步）",
+  "note": "规则拿不准（没有明确该换的牌）；社区规则：核心卡（デイドリーミング / 届いて / せのび / 紙吹雪）永不换出",
+  "forbid": [
+   "change:p_card-02-act-1_037",
+   "change:p_card-02-act-2_062",
+   "change:p_card-02-act-3_039",
+   "change:p_card-02-act-3_186"
+  ],
+  "state": {
+   "mode": "produce",
+   "page": {
+    "name": "SKILL_CARD_CHANGE_2",
+    "area": "produce",
+    "since_seq": 77,
+    "stable": true,
+    "frames": 2
+   },
+   "produce": {
+    "mode": "produce-008",
+    "step": 4,
+    "stamina": 20,
+    "max_stamina": 33,
+    "produce_point": 330,
+    "params": {
+     "Vo": 1765,
+     "Da": 2271,
+     "Vi": 1214
+    },
+    "growth_permil": {
+     "Vo": 1455,
+     "Da": 1444,
+     "Vi": 1413
+    },
+    "star": 846,
+    "param_cap": 3200,
+    "drinks": [
+     "pdrink_00-2-008",
+     "pdrink_00-3-001",
+     "pdrink_02-3-010"
+    ],
+    "drink_capacity": 4,
+    "deck": [
+     {
+      "card_id": "p_card-02-act-3_039",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-3_045",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-3_186",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-ido-3_105",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-2_047",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-2_062",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_004",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_028",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_037",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-3_002",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_004",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_052",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_057",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-2_100",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_111",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-1_031",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-1_031",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-00-sup-3_093",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-1_031",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-00-men-3_005",
+      "upgrade": 0
+     }
+    ],
+    "deck_size": 19
+   },
+   "exam": null,
+   "exam_session": {
+    "label": null,
+    "turn": 0,
+    "last_remaining": null,
+    "brief_permil": null
+   },
+   "page_fields": {
+    "cards": [
+     {
+      "deck_index": 0,
+      "row": 0,
+      "col": 0,
+      "card_id": "p_card-02-act-1_004",
+      "name": "元気な挨拶",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 0
+     },
+     {
+      "deck_index": 1,
+      "row": 0,
+      "col": 1,
+      "card_id": "p_card-02-act-1_028",
+      "name": "ゆるふわおしゃべり",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 1
+     },
+     {
+      "deck_index": 2,
+      "row": 0,
+      "col": 2,
+      "card_id": "p_card-02-act-1_037",
+      "name": "デイドリーミング",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 0,
+      "index": 2
+     },
+     {
+      "deck_index": 3,
+      "row": 0,
+      "col": 3,
+      "card_id": "p_card-02-act-2_047",
+      "name": "ありがとうの言葉",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 3
+     },
+     {
+      "deck_index": 4,
+      "row": 1,
+      "col": 0,
+      "card_id": "p_card-02-act-2_062",
+      "name": "きらきら紙吹雪",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 4
+     },
+     {
+      "deck_index": 5,
+      "row": 1,
+      "col": 1,
+      "card_id": "p_card-02-act-3_039",
+      "name": "届いて！",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 5
+     },
+     {
+      "deck_index": 6,
+      "row": 1,
+      "col": 2,
+      "card_id": "p_card-02-act-3_045",
+      "name": "あのときの約束",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 6
+     },
+     {
+      "deck_index": 7,
+      "row": 1,
+      "col": 3,
+      "card_id": "p_card-02-act-3_186",
+      "name": "せのびの魔法",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 7
+     },
+     {
+      "deck_index": 8,
+      "row": 2,
+      "col": 0,
+      "card_id": "p_card-02-ido-3_105",
+      "name": "エウレカ！",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 8
+     },
+     {
+      "deck_index": 9,
+      "row": 2,
+      "col": 1,
+      "card_id": "p_card-00-men-3_005",
+      "name": "仕切り直し",
+      "upgrade": 0,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 9
+     },
+     {
+      "deck_index": 10,
+      "row": 2,
+      "col": 2,
+      "card_id": "p_card-00-sup-3_093",
+      "name": "紅葉ランニング",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 10
+     },
+     {
+      "deck_index": 11,
+      "row": 2,
+      "col": 3,
+      "card_id": "p_card-02-men-1_031",
+      "name": "えいえいおー",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 0,
+      "index": 11
+     },
+     {
+      "deck_index": 12,
+      "row": 3,
+      "col": 0,
+      "card_id": "p_card-02-men-1_031",
+      "name": "えいえいおー",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 1,
+      "index": 12
+     },
+     {
+      "deck_index": 13,
+      "row": 3,
+      "col": 1,
+      "card_id": "p_card-02-men-1_031",
+      "name": "えいえいおー",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 1,
+      "index": 13
+     },
+     {
+      "deck_index": 14,
+      "row": 3,
+      "col": 2,
+      "card_id": "p_card-02-men-2_004",
+      "name": "ワクワクが止まらない",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 1,
+      "index": 14
+     },
+     {
+      "deck_index": 15,
+      "row": 3,
+      "col": 3,
+      "card_id": null,
+      "name": null,
+      "upgrade": null,
+      "customized": null,
+      "dimmed": false,
+      "screen": 1,
+      "index": 15
+     },
+     {
+      "deck_index": 16,
+      "row": 4,
+      "col": 0,
+      "card_id": "p_card-02-men-2_057",
+      "name": "ゆめみごこち",
+      "upgrade": 0,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 16
+     },
+     {
+      "deck_index": 17,
+      "row": 4,
+      "col": 1,
+      "card_id": "p_card-02-men-2_100",
+      "name": "気まぐれハート",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 17
+     },
+     {
+      "deck_index": 18,
+      "row": 4,
+      "col": 2,
+      "card_id": "p_card-02-men-2_111",
+      "name": "成長痛",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 18
+     },
+     {
+      "deck_index": 19,
+      "row": 4,
+      "col": 3,
+      "card_id": "p_card-02-men-3_002",
+      "name": "私がスター",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 19
+     }
+    ],
+    "deck_complete": true,
+    "deck_screens": 4
+   },
+   "sources": {
+    "produce.mode": {
+     "origin": "screen",
+     "seq": 69
+    },
+    "produce.step": {
+     "origin": "screen",
+     "seq": 69
+    },
+    "produce.stamina": {
+     "origin": "screen",
+     "seq": 69
+    },
+    "produce.max_stamina": {
+     "origin": "screen",
+     "seq": 69
+    },
+    "produce.produce_point": {
+     "origin": "screen",
+     "seq": 69
+    },
+    "produce.params": {
+     "origin": "screen",
+     "seq": 69
+    },
+    "produce.growth_permil": {
+     "origin": "screen",
+     "seq": 69
+    },
+    "produce.star": {
+     "origin": "screen",
+     "seq": 69
+    },
+    "produce.param_cap": {
+     "origin": "screen",
+     "seq": 69
+    },
+    "produce.drinks": {
+     "origin": "screen",
+     "seq": 69
+    },
+    "produce.drink_capacity": {
+     "origin": "screen",
+     "seq": 69
+    },
+    "produce.deck": {
+     "origin": "screen",
+     "seq": 6
+    },
+    "produce.deck_size": {
+     "origin": "screen",
+     "seq": 6
+    }
+   },
+   "seq": 78,
+   "pending_page": null,
+   "conflicts": [
+    "seq 41: produce.star 读数 1 违反 star_monotonic（参考 {'min': 786}），丢弃"
+   ],
+   "field_status": {
+    "produce.mode": "observed",
+    "produce.step": "observed",
+    "produce.stamina": "observed",
+    "produce.max_stamina": "observed",
+    "produce.produce_point": "observed",
+    "produce.params.Vo": "observed",
+    "produce.params.Da": "observed",
+    "produce.params.Vi": "observed",
+    "produce.growth_permil": "observed",
+    "produce.star": "observed",
+    "produce.param_cap": "observed",
+    "produce.advice": "observed",
+    "produce.drinks": "pending",
+    "produce.drink_capacity": "observed",
+    "produce.options": "observed",
+    "produce.complete": "observed",
+    "produce.deck": "predicted",
+    "produce.deck_size": "predicted",
+    "produce.cards": "observed",
+    "produce.problems": "observed"
+   },
+   "pending_review": [
+    "produce.drinks"
+   ],
+   "ledger": [
+    {
+     "seq": 5,
+     "kind": "DECK_REVIEW",
+     "origin": "review",
+     "args": {
+      "deck": [
+       {
+        "card_id": "p_card-02-act-3_039",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_045",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_186",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-ido-3_105",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_062",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_028",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_037",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-men-3_002",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_052",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_056",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_057",
+        "upgrade": 0,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_100",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_111",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-00-sup-3_093",
+        "upgrade": 1,
+        "customized": false
+       }
+      ],
+      "deck_size": 19
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {},
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 6,
+     "kind": "DECK_REVIEW",
+     "origin": "review",
+     "args": {
+      "deck": [
+       {
+        "card_id": "p_card-02-act-3_039",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_045",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_186",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-ido-3_105",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_062",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_028",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_037",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-men-3_002",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_052",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_056",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_057",
+        "upgrade": 0,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_100",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_111",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-00-sup-3_093",
+        "upgrade": 1,
+        "customized": false
+       }
+      ],
+      "deck_size": 19
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 6,
+      "screenshot": "frames/00006.jpg",
+      "page": "DECK_LIST"
+     },
+     "confidence": 1.0,
+     "note": "强化只分 0 / 1（++ 还没有样本）",
+     "version": "1.2"
+    },
+    {
+     "seq": 14,
+     "kind": "CARD_CHANGE",
+     "origin": "action",
+     "args": {
+      "remove_card_id": "p_card-02-men-2_056",
+      "remove_upgrade": 1,
+      "card_id": "p_card-02-men-1_031",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 14
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 31,
+     "kind": "DRINK_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "drink_id": "pdrink_00-2-008"
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 31,
+      "screenshot": "frames/00031.jpg",
+      "page": "ACQUIRE"
+     },
+     "confidence": 1.0,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 35,
+     "kind": "DRINK_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "drink_id": "pdrink_00-3-001"
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 35,
+      "screenshot": "frames/00035.jpg",
+      "page": "ACQUIRE"
+     },
+     "confidence": 1.0,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 59,
+     "kind": "CARD_ACQUIRE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-00-men-3_005",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 59
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    }
+   ],
+   "version": "1.2"
+  }
+ },
+ {
+  "id": "change2-maindmmw1-20-41",
+  "decider": "SKILL_CARD_CHANGE_2",
+  "source": "实机 maindmmw1-20261111-215002 seq41（本战轮间换卡第 2 步）",
+  "note": "规则拿不准（没有明确该换的牌）；社区规则：核心卡（デイドリーミング / 届いて / せのび / 紙吹雪）永不换出",
+  "forbid": [
+   "change:p_card-02-act-1_037",
+   "change:p_card-02-act-2_062",
+   "change:p_card-02-act-3_039",
+   "change:p_card-02-act-3_186"
+  ],
+  "state": {
+   "mode": "produce",
+   "page": {
+    "name": "SKILL_CARD_CHANGE_2",
+    "area": "produce",
+    "since_seq": 40,
+    "stable": true,
+    "frames": 2
+   },
+   "produce": {
+    "mode": "produce-008",
+    "step": 2,
+    "stamina": 28,
+    "max_stamina": 33,
+    "produce_point": 200,
+    "params": {
+     "Vo": 1613,
+     "Da": 2269,
+     "Vi": 1176
+    },
+    "growth_permil": {
+     "Vo": 1455,
+     "Da": 1359,
+     "Vi": 1413
+    },
+    "star": 811,
+    "param_cap": 3200,
+    "drinks": [],
+    "drink_capacity": 4,
+    "deck": [
+     {
+      "card_id": "p_card-02-act-3_039",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-3_186",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-ido-3_105",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-2_047",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-2_062",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_037",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_071",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_071",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-3_002",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-sup-3_094",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_004",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_008",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_052",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_056",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_057",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_100",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_111",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-1_031",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-00-sup-3_093",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_008",
+      "upgrade": 0
+     }
+    ],
+    "deck_size": 20
+   },
+   "exam": null,
+   "exam_session": {
+    "label": null,
+    "turn": 0,
+    "last_remaining": null,
+    "brief_permil": null
+   },
+   "page_fields": {
+    "cards": [
+     {
+      "deck_index": 0,
+      "row": 0,
+      "col": 0,
+      "card_id": "p_card-02-act-1_037",
+      "name": "デイドリーミング",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 0,
+      "index": 0
+     },
+     {
+      "deck_index": 1,
+      "row": 0,
+      "col": 1,
+      "card_id": "p_card-02-act-1_071",
+      "name": "がむしゃら",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 1
+     },
+     {
+      "deck_index": 2,
+      "row": 0,
+      "col": 2,
+      "card_id": "p_card-02-act-1_071",
+      "name": "がむしゃら",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 2
+     },
+     {
+      "deck_index": 3,
+      "row": 0,
+      "col": 3,
+      "card_id": "p_card-02-act-2_047",
+      "name": "ありがとうの言葉",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 3
+     },
+     {
+      "deck_index": 4,
+      "row": 1,
+      "col": 0,
+      "card_id": "p_card-02-act-2_062",
+      "name": "きらきら紙吹雪",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 0,
+      "index": 4
+     },
+     {
+      "deck_index": 5,
+      "row": 1,
+      "col": 1,
+      "card_id": "p_card-02-act-3_039",
+      "name": "届いて！",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 5
+     },
+     {
+      "deck_index": 6,
+      "row": 1,
+      "col": 2,
+      "card_id": "p_card-02-act-3_186",
+      "name": "せのびの魔法",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 6
+     },
+     {
+      "deck_index": 7,
+      "row": 1,
+      "col": 3,
+      "card_id": "p_card-02-ido-3_105",
+      "name": "エウレカ！",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 7
+     },
+     {
+      "deck_index": 8,
+      "row": 2,
+      "col": 0,
+      "card_id": "p_card-00-sup-3_093",
+      "name": "紅葉ランニング",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 8
+     },
+     {
+      "deck_index": 9,
+      "row": 2,
+      "col": 1,
+      "card_id": "p_card-02-men-1_031",
+      "name": "えいえいおー",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 0,
+      "index": 9
+     },
+     {
+      "deck_index": 10,
+      "row": 2,
+      "col": 2,
+      "card_id": null,
+      "name": null,
+      "upgrade": null,
+      "customized": null,
+      "dimmed": false,
+      "screen": 0,
+      "index": 10
+     },
+     {
+      "deck_index": 11,
+      "row": 2,
+      "col": 3,
+      "card_id": "p_card-02-men-2_008",
+      "name": "イメトレ",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 11
+     },
+     {
+      "deck_index": 12,
+      "row": 3,
+      "col": 0,
+      "card_id": "p_card-02-men-2_008",
+      "name": "イメトレ",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 1,
+      "index": 12
+     },
+     {
+      "deck_index": 13,
+      "row": 3,
+      "col": 1,
+      "card_id": null,
+      "name": null,
+      "upgrade": null,
+      "customized": null,
+      "dimmed": false,
+      "screen": 1,
+      "index": 13
+     },
+     {
+      "deck_index": 14,
+      "row": 3,
+      "col": 2,
+      "card_id": "p_card-02-men-2_056",
+      "name": "止められない想い",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 14
+     },
+     {
+      "deck_index": 15,
+      "row": 3,
+      "col": 3,
+      "card_id": "p_card-02-men-2_057",
+      "name": "ゆめみごこち",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 1,
+      "index": 15
+     },
+     {
+      "deck_index": 16,
+      "row": 4,
+      "col": 0,
+      "card_id": "p_card-02-men-2_100",
+      "name": "気まぐれハート",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 16
+     },
+     {
+      "deck_index": 17,
+      "row": 4,
+      "col": 1,
+      "card_id": null,
+      "name": null,
+      "upgrade": null,
+      "customized": null,
+      "dimmed": false,
+      "screen": 2,
+      "index": 17
+     },
+     {
+      "deck_index": 18,
+      "row": 4,
+      "col": 2,
+      "card_id": "p_card-02-men-3_002",
+      "name": "私がスター",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 18
+     },
+     {
+      "deck_index": 19,
+      "row": 4,
+      "col": 3,
+      "card_id": "p_card-02-sup-3_094",
+      "name": "ほかほか焼き芋",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 19
+     }
+    ],
+    "deck_complete": true,
+    "deck_screens": 4
+   },
+   "sources": {
+    "produce.mode": {
+     "origin": "screen",
+     "seq": 25
+    },
+    "produce.step": {
+     "origin": "screen",
+     "seq": 25
+    },
+    "produce.stamina": {
+     "origin": "screen",
+     "seq": 25
+    },
+    "produce.max_stamina": {
+     "origin": "screen",
+     "seq": 25
+    },
+    "produce.produce_point": {
+     "origin": "screen",
+     "seq": 25
+    },
+    "produce.params": {
+     "origin": "screen",
+     "seq": 25
+    },
+    "produce.growth_permil": {
+     "origin": "screen",
+     "seq": 25
+    },
+    "produce.star": {
+     "origin": "screen",
+     "seq": 25
+    },
+    "produce.param_cap": {
+     "origin": "screen",
+     "seq": 25
+    },
+    "produce.drinks": {
+     "origin": "screen",
+     "seq": 25
+    },
+    "produce.drink_capacity": {
+     "origin": "screen",
+     "seq": 25
+    },
+    "produce.deck": {
+     "origin": "screen",
+     "seq": 9
+    },
+    "produce.deck_size": {
+     "origin": "screen",
+     "seq": 9
+    }
+   },
+   "seq": 41,
+   "pending_page": null,
+   "conflicts": [
+    "seq 39: ACQUIRE → SKILL_CARD_CHANGE_1 不在转移图里，连续 3 帧后接受"
+   ],
+   "field_status": {
+    "produce.mode": "observed",
+    "produce.step": "observed",
+    "produce.stamina": "observed",
+    "produce.max_stamina": "observed",
+    "produce.produce_point": "observed",
+    "produce.params.Vo": "observed",
+    "produce.params.Da": "observed",
+    "produce.params.Vi": "observed",
+    "produce.growth_permil": "observed",
+    "produce.star": "observed",
+    "produce.param_cap": "observed",
+    "produce.advice": "observed",
+    "produce.drinks": "predicted",
+    "produce.drink_capacity": "observed",
+    "produce.options": "observed",
+    "produce.complete": "observed",
+    "produce.deck": "predicted",
+    "produce.deck_size": "predicted",
+    "produce.cards": "observed",
+    "produce.problems": "observed"
+   },
+   "pending_review": [],
+   "ledger": [
+    {
+     "seq": 8,
+     "kind": "DECK_REVIEW",
+     "origin": "review",
+     "args": {
+      "deck": [
+       {
+        "card_id": "p_card-02-act-3_039",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_186",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-ido-3_105",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_062",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-act-1_037",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-act-1_071",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_071",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-0_038",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-3_002",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-sup-3_094",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_008",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_052",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_056",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_057",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_100",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_111",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-00-sup-3_093",
+        "upgrade": 1,
+        "customized": false
+       }
+      ],
+      "deck_size": 20
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {},
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 9,
+     "kind": "DECK_REVIEW",
+     "origin": "review",
+     "args": {
+      "deck": [
+       {
+        "card_id": "p_card-02-act-3_039",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_186",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-ido-3_105",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_062",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-act-1_037",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-act-1_071",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_071",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-0_038",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-3_002",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-sup-3_094",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_008",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_052",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_056",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_057",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_100",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_111",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-00-sup-3_093",
+        "upgrade": 1,
+        "customized": false
+       }
+      ],
+      "deck_size": 20
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 9,
+      "screenshot": "frames/00009.jpg",
+      "page": "DECK_LIST"
+     },
+     "confidence": 1.0,
+     "note": "强化只分 0 / 1（++ 还没有样本）",
+     "version": "1.2"
+    },
+    {
+     "seq": 17,
+     "kind": "CARD_CHANGE",
+     "origin": "action",
+     "args": {
+      "remove_card_id": "p_card-02-act-0_038",
+      "remove_upgrade": 1,
+      "card_id": "p_card-02-men-2_008",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 17
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 35,
+     "kind": "DRINK_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "drink_id": "pdrink_02-3-010"
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 35,
+      "screenshot": "frames/00035.jpg",
+      "page": "ACQUIRE"
+     },
+     "confidence": 1.0,
+     "note": null,
+     "version": "1.2"
+    }
+   ],
+   "version": "1.2"
+  }
+ },
+ {
+  "id": "change2-maindmmw1-20-83",
+  "decider": "SKILL_CARD_CHANGE_2",
+  "source": "实机 maindmmw1-20261111-215002 seq83（本战轮间换卡第 2 步）",
+  "note": "规则拿不准（没有明确该换的牌）；社区规则：核心卡（デイドリーミング / 届いて / せのび / 紙吹雪）永不换出",
+  "forbid": [
+   "change:p_card-02-act-1_037",
+   "change:p_card-02-act-2_062",
+   "change:p_card-02-act-3_186"
+  ],
+  "state": {
+   "mode": "produce",
+   "page": {
+    "name": "SKILL_CARD_CHANGE_2",
+    "area": "produce",
+    "since_seq": 82,
+    "stable": true,
+    "frames": 2
+   },
+   "produce": {
+    "mode": "produce-008",
+    "step": 4,
+    "stamina": 22,
+    "max_stamina": 33,
+    "produce_point": 330,
+    "params": {
+     "Vo": 1773,
+     "Da": 2286,
+     "Vi": 1190
+    },
+    "growth_permil": {
+     "Vo": 1455,
+     "Da": 1359,
+     "Vi": 1413
+    },
+    "star": 856,
+    "param_cap": 3200,
+    "drinks": [
+     "pdrink_02-3-010",
+     "pdrink_00-3-001"
+    ],
+    "drink_capacity": 4,
+    "deck": [
+     {
+      "card_id": "p_card-02-act-3_039",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-3_186",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-ido-3_105",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-2_047",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-2_062",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_037",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_071",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_071",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-3_002",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-sup-3_094",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_004",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_008",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_052",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_057",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_100",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_111",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-1_031",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-00-sup-3_093",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_008",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-act-2_047",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-2_056",
+      "upgrade": 0
+     }
+    ],
+    "deck_size": 20
+   },
+   "exam": null,
+   "exam_session": {
+    "label": null,
+    "turn": 0,
+    "last_remaining": null,
+    "brief_permil": null
+   },
+   "page_fields": {
+    "cards": [
+     {
+      "deck_index": 0,
+      "row": 0,
+      "col": 0,
+      "card_id": "p_card-02-act-1_037",
+      "name": "デイドリーミング",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 0,
+      "index": 0
+     },
+     {
+      "deck_index": 1,
+      "row": 0,
+      "col": 1,
+      "card_id": "p_card-02-act-1_071",
+      "name": "がむしゃら",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 1
+     },
+     {
+      "deck_index": 2,
+      "row": 0,
+      "col": 2,
+      "card_id": "p_card-02-act-1_071",
+      "name": "がむしゃら",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 2
+     },
+     {
+      "deck_index": 3,
+      "row": 0,
+      "col": 3,
+      "card_id": "p_card-02-act-2_047",
+      "name": "ありがとうの言葉",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 3
+     },
+     {
+      "deck_index": 4,
+      "row": 1,
+      "col": 0,
+      "card_id": "p_card-02-act-2_047",
+      "name": "ありがとうの言葉",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 4
+     },
+     {
+      "deck_index": 5,
+      "row": 1,
+      "col": 1,
+      "card_id": "p_card-02-act-2_062",
+      "name": "きらきら紙吹雪",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 0,
+      "index": 5
+     },
+     {
+      "deck_index": 6,
+      "row": 1,
+      "col": 2,
+      "card_id": null,
+      "name": null,
+      "upgrade": null,
+      "customized": null,
+      "dimmed": false,
+      "screen": 0,
+      "index": 6
+     },
+     {
+      "deck_index": 7,
+      "row": 1,
+      "col": 3,
+      "card_id": "p_card-02-act-3_186",
+      "name": "せのびの魔法",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 7
+     },
+     {
+      "deck_index": 8,
+      "row": 2,
+      "col": 0,
+      "card_id": "p_card-02-ido-3_105",
+      "name": "エウレカ！",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 8
+     },
+     {
+      "deck_index": 9,
+      "row": 2,
+      "col": 1,
+      "card_id": "p_card-00-sup-3_093",
+      "name": "紅葉ランニング",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 9
+     },
+     {
+      "deck_index": 10,
+      "row": 2,
+      "col": 2,
+      "card_id": "p_card-02-men-1_031",
+      "name": "えいえいおー",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 0,
+      "index": 10
+     },
+     {
+      "deck_index": 11,
+      "row": 2,
+      "col": 3,
+      "card_id": null,
+      "name": null,
+      "upgrade": null,
+      "customized": null,
+      "dimmed": false,
+      "screen": 0,
+      "index": 11
+     },
+     {
+      "deck_index": 12,
+      "row": 3,
+      "col": 0,
+      "card_id": "p_card-02-men-2_008",
+      "name": "イメトレ",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 1,
+      "index": 12
+     },
+     {
+      "deck_index": 13,
+      "row": 3,
+      "col": 1,
+      "card_id": "p_card-02-men-2_008",
+      "name": "イメトレ",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 1,
+      "index": 13
+     },
+     {
+      "deck_index": 14,
+      "row": 3,
+      "col": 2,
+      "card_id": null,
+      "name": null,
+      "upgrade": null,
+      "customized": null,
+      "dimmed": false,
+      "screen": 1,
+      "index": 14
+     },
+     {
+      "deck_index": 15,
+      "row": 3,
+      "col": 3,
+      "card_id": "p_card-01-men-3_036",
+      "name": "魅惑の視線",
+      "upgrade": 0,
+      "customized": false,
+      "dimmed": false,
+      "screen": 4,
+      "index": 15
+     },
+     {
+      "deck_index": 16,
+      "row": 4,
+      "col": 0,
+      "card_id": "p_card-02-men-2_057",
+      "name": "ゆめみごこち",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 16
+     },
+     {
+      "deck_index": 17,
+      "row": 4,
+      "col": 1,
+      "card_id": "p_card-02-men-2_100",
+      "name": "気まぐれハート",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 17
+     },
+     {
+      "deck_index": 18,
+      "row": 4,
+      "col": 2,
+      "card_id": "p_card-02-men-2_111",
+      "name": "成長痛",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 18
+     },
+     {
+      "deck_index": 19,
+      "row": 4,
+      "col": 3,
+      "card_id": "p_card-02-men-3_002",
+      "name": "私がスター",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 19
+     },
+     {
+      "deck_index": 20,
+      "row": 5,
+      "col": 0,
+      "card_id": "p_card-02-sup-3_094",
+      "name": "ほかほか焼き芋",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 3,
+      "index": 20
+     }
+    ],
+    "deck_complete": true,
+    "deck_screens": 5
+   },
+   "sources": {
+    "produce.mode": {
+     "origin": "screen",
+     "seq": 74
+    },
+    "produce.step": {
+     "origin": "screen",
+     "seq": 74
+    },
+    "produce.stamina": {
+     "origin": "screen",
+     "seq": 74
+    },
+    "produce.max_stamina": {
+     "origin": "screen",
+     "seq": 74
+    },
+    "produce.produce_point": {
+     "origin": "screen",
+     "seq": 74
+    },
+    "produce.params": {
+     "origin": "screen",
+     "seq": 74
+    },
+    "produce.growth_permil": {
+     "origin": "screen",
+     "seq": 74
+    },
+    "produce.star": {
+     "origin": "screen",
+     "seq": 74
+    },
+    "produce.param_cap": {
+     "origin": "screen",
+     "seq": 74
+    },
+    "produce.drinks": {
+     "origin": "screen",
+     "seq": 74
+    },
+    "produce.drink_capacity": {
+     "origin": "screen",
+     "seq": 74
+    },
+    "produce.deck": {
+     "origin": "screen",
+     "seq": 9
+    },
+    "produce.deck_size": {
+     "origin": "screen",
+     "seq": 9
+    }
+   },
+   "seq": 83,
+   "pending_page": null,
+   "conflicts": [
+    "seq 39: ACQUIRE → SKILL_CARD_CHANGE_1 不在转移图里，连续 3 帧后接受",
+    "seq 49: produce.star 读数 1 违反 digit_count（参考 811），丢弃",
+    "seq 49: produce.star 读数 1 违反 star_monotonic（参考 {'min': 811}），丢弃",
+    "seq 63: SELECT_DRINK → GIFT 不在转移图里，连续 3 帧后接受"
+   ],
+   "field_status": {
+    "produce.mode": "observed",
+    "produce.step": "observed",
+    "produce.stamina": "observed",
+    "produce.max_stamina": "observed",
+    "produce.produce_point": "observed",
+    "produce.params.Vo": "observed",
+    "produce.params.Da": "observed",
+    "produce.params.Vi": "observed",
+    "produce.growth_permil": "observed",
+    "produce.star": "observed",
+    "produce.param_cap": "observed",
+    "produce.advice": "observed",
+    "produce.drinks": "verified",
+    "produce.drink_capacity": "observed",
+    "produce.options": "observed",
+    "produce.complete": "observed",
+    "produce.deck": "predicted",
+    "produce.deck_size": "predicted",
+    "produce.cards": "observed",
+    "produce.problems": "observed"
+   },
+   "pending_review": [],
+   "ledger": [
+    {
+     "seq": 8,
+     "kind": "DECK_REVIEW",
+     "origin": "review",
+     "args": {
+      "deck": [
+       {
+        "card_id": "p_card-02-act-3_039",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_186",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-ido-3_105",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_062",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-act-1_037",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-act-1_071",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_071",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-0_038",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-3_002",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-sup-3_094",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_008",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_052",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_056",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_057",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_100",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_111",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-00-sup-3_093",
+        "upgrade": 1,
+        "customized": false
+       }
+      ],
+      "deck_size": 20
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {},
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 9,
+     "kind": "DECK_REVIEW",
+     "origin": "review",
+     "args": {
+      "deck": [
+       {
+        "card_id": "p_card-02-act-3_039",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_186",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-ido-3_105",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_062",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-act-1_037",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-act-1_071",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_071",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-0_038",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-3_002",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-sup-3_094",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_008",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_052",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_056",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_057",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_100",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_111",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-00-sup-3_093",
+        "upgrade": 1,
+        "customized": false
+       }
+      ],
+      "deck_size": 20
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 9,
+      "screenshot": "frames/00009.jpg",
+      "page": "DECK_LIST"
+     },
+     "confidence": 1.0,
+     "note": "强化只分 0 / 1（++ 还没有样本）",
+     "version": "1.2"
+    },
+    {
+     "seq": 17,
+     "kind": "CARD_CHANGE",
+     "origin": "action",
+     "args": {
+      "remove_card_id": "p_card-02-act-0_038",
+      "remove_upgrade": 1,
+      "card_id": "p_card-02-men-2_008",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 17
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 35,
+     "kind": "DRINK_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "drink_id": "pdrink_02-3-010"
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 35,
+      "screenshot": "frames/00035.jpg",
+      "page": "ACQUIRE"
+     },
+     "confidence": 1.0,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 41,
+     "kind": "CARD_CHANGE",
+     "origin": "action",
+     "args": {
+      "remove_card_id": "p_card-02-men-2_056",
+      "remove_upgrade": 1,
+      "card_id": "p_card-02-act-2_047",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 41
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 66,
+     "kind": "CARD_ACQUIRE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-02-men-2_056",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 66
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    }
+   ],
+   "version": "1.2"
+  }
+ },
+ {
+  "id": "change2-maindmmw1-20-105",
+  "decider": "SKILL_CARD_CHANGE_2",
+  "source": "实机 maindmmw1-20261111-215002 seq105（本战轮间换卡第 2 步）",
+  "note": "规则拿不准（没有明确该换的牌）；社区规则：核心卡（デイドリーミング / 届いて / せのび / 紙吹雪）永不换出",
+  "forbid": [
+   "change:p_card-02-act-1_037",
+   "change:p_card-02-act-2_062",
+   "change:p_card-02-act-3_186"
+  ],
+  "state": {
+   "mode": "produce",
+   "page": {
+    "name": "SKILL_CARD_CHANGE_2",
+    "area": "produce",
+    "since_seq": 104,
+    "stable": true,
+    "frames": 2
+   },
+   "produce": {
+    "mode": "produce-008",
+    "step": 5,
+    "stamina": 17,
+    "max_stamina": 33,
+    "produce_point": 330,
+    "params": {
+     "Vo": 1953,
+     "Da": 2286,
+     "Vi": 1197
+    },
+    "growth_permil": {
+     "Vo": 1455,
+     "Da": 1359,
+     "Vi": 1413
+    },
+    "star": 856,
+    "param_cap": 3200,
+    "drinks": [
+     "pdrink_02-3-010",
+     "pdrink_00-3-001"
+    ],
+    "drink_capacity": 4,
+    "deck": [
+     {
+      "card_id": "p_card-02-act-3_039",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-3_186",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-ido-3_105",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-2_047",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-2_062",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_037",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_071",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_071",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-3_002",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-sup-3_094",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_004",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_008",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_052",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_057",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_100",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_111",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-1_031",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-00-sup-3_093",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_008",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-act-2_047",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-2_056",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-2_008",
+      "upgrade": 0
+     }
+    ],
+    "deck_size": 20
+   },
+   "exam": null,
+   "exam_session": {
+    "label": null,
+    "turn": 0,
+    "last_remaining": null,
+    "brief_permil": null
+   },
+   "page_fields": {
+    "cards": [
+     {
+      "deck_index": 0,
+      "row": 0,
+      "col": 0,
+      "card_id": "p_card-02-act-1_037",
+      "name": "デイドリーミング",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 0,
+      "index": 0
+     },
+     {
+      "deck_index": 1,
+      "row": 0,
+      "col": 1,
+      "card_id": "p_card-02-act-1_071",
+      "name": "がむしゃら",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 1
+     },
+     {
+      "deck_index": 2,
+      "row": 0,
+      "col": 2,
+      "card_id": "p_card-02-act-1_071",
+      "name": "がむしゃら",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 2
+     },
+     {
+      "deck_index": 3,
+      "row": 0,
+      "col": 3,
+      "card_id": "p_card-02-act-2_047",
+      "name": "ありがとうの言葉",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 3
+     },
+     {
+      "deck_index": 4,
+      "row": 1,
+      "col": 0,
+      "card_id": "p_card-02-act-2_047",
+      "name": "ありがとうの言葉",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 4
+     },
+     {
+      "deck_index": 5,
+      "row": 1,
+      "col": 1,
+      "card_id": "p_card-02-act-2_062",
+      "name": "きらきら紙吹雪",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 0,
+      "index": 5
+     },
+     {
+      "deck_index": 6,
+      "row": 1,
+      "col": 2,
+      "card_id": null,
+      "name": null,
+      "upgrade": null,
+      "customized": null,
+      "dimmed": false,
+      "screen": 0,
+      "index": 6
+     },
+     {
+      "deck_index": 7,
+      "row": 1,
+      "col": 3,
+      "card_id": "p_card-02-act-3_186",
+      "name": "せのびの魔法",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 7
+     },
+     {
+      "deck_index": 8,
+      "row": 2,
+      "col": 0,
+      "card_id": "p_card-02-ido-3_105",
+      "name": "エウレカ！",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 8
+     },
+     {
+      "deck_index": 9,
+      "row": 2,
+      "col": 1,
+      "card_id": "p_card-00-sup-3_093",
+      "name": "紅葉ランニング",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 9
+     },
+     {
+      "deck_index": 10,
+      "row": 2,
+      "col": 2,
+      "card_id": "p_card-02-men-1_031",
+      "name": "えいえいおー",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 0,
+      "index": 10
+     },
+     {
+      "deck_index": 11,
+      "row": 2,
+      "col": 3,
+      "card_id": null,
+      "name": null,
+      "upgrade": null,
+      "customized": null,
+      "dimmed": false,
+      "screen": 0,
+      "index": 11
+     },
+     {
+      "deck_index": 12,
+      "row": 3,
+      "col": 0,
+      "card_id": "p_card-02-men-2_008",
+      "name": "イメトレ",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 1,
+      "index": 12
+     },
+     {
+      "deck_index": 13,
+      "row": 3,
+      "col": 1,
+      "card_id": "p_card-02-men-2_008",
+      "name": "イメトレ",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 1,
+      "index": 13
+     },
+     {
+      "deck_index": 14,
+      "row": 3,
+      "col": 2,
+      "card_id": "p_card-02-men-2_008",
+      "name": "イメトレ",
+      "upgrade": 0,
+      "customized": false,
+      "dimmed": false,
+      "screen": 1,
+      "index": 14
+     },
+     {
+      "deck_index": 15,
+      "row": 3,
+      "col": 3,
+      "card_id": null,
+      "name": null,
+      "upgrade": null,
+      "customized": null,
+      "dimmed": false,
+      "screen": 1,
+      "index": 15
+     },
+     {
+      "deck_index": 16,
+      "row": 4,
+      "col": 0,
+      "card_id": "p_card-02-men-2_057",
+      "name": "ゆめみごこち",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 16
+     },
+     {
+      "deck_index": 17,
+      "row": 4,
+      "col": 1,
+      "card_id": "p_card-02-men-2_100",
+      "name": "気まぐれハート",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 17
+     },
+     {
+      "deck_index": 18,
+      "row": 4,
+      "col": 2,
+      "card_id": "p_card-02-men-2_111",
+      "name": "成長痛",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 18
+     },
+     {
+      "deck_index": 19,
+      "row": 4,
+      "col": 3,
+      "card_id": "p_card-02-men-3_002",
+      "name": "私がスター",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 19
+     },
+     {
+      "deck_index": 20,
+      "row": 5,
+      "col": 0,
+      "card_id": "p_card-02-sup-3_094",
+      "name": "ほかほか焼き芋",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 3,
+      "index": 20
+     }
+    ],
+    "deck_complete": true,
+    "deck_screens": 5
+   },
+   "sources": {
+    "produce.mode": {
+     "origin": "screen",
+     "seq": 91
+    },
+    "produce.step": {
+     "origin": "screen",
+     "seq": 91
+    },
+    "produce.stamina": {
+     "origin": "screen",
+     "seq": 91
+    },
+    "produce.max_stamina": {
+     "origin": "screen",
+     "seq": 91
+    },
+    "produce.produce_point": {
+     "origin": "screen",
+     "seq": 91
+    },
+    "produce.params": {
+     "origin": "screen",
+     "seq": 91
+    },
+    "produce.growth_permil": {
+     "origin": "screen",
+     "seq": 91
+    },
+    "produce.star": {
+     "origin": "screen",
+     "seq": 91
+    },
+    "produce.param_cap": {
+     "origin": "screen",
+     "seq": 91
+    },
+    "produce.drinks": {
+     "origin": "screen",
+     "seq": 91
+    },
+    "produce.drink_capacity": {
+     "origin": "screen",
+     "seq": 91
+    },
+    "produce.deck": {
+     "origin": "screen",
+     "seq": 9
+    },
+    "produce.deck_size": {
+     "origin": "screen",
+     "seq": 9
+    }
+   },
+   "seq": 105,
+   "pending_page": null,
+   "conflicts": [
+    "seq 39: ACQUIRE → SKILL_CARD_CHANGE_1 不在转移图里，连续 3 帧后接受",
+    "seq 49: produce.star 读数 1 违反 digit_count（参考 811），丢弃",
+    "seq 49: produce.star 读数 1 违反 star_monotonic（参考 {'min': 811}），丢弃",
+    "seq 63: SELECT_DRINK → GIFT 不在转移图里，连续 3 帧后接受"
+   ],
+   "field_status": {
+    "produce.mode": "observed",
+    "produce.step": "observed",
+    "produce.stamina": "observed",
+    "produce.max_stamina": "observed",
+    "produce.produce_point": "observed",
+    "produce.params.Vo": "observed",
+    "produce.params.Da": "observed",
+    "produce.params.Vi": "observed",
+    "produce.growth_permil": "observed",
+    "produce.star": "observed",
+    "produce.param_cap": "observed",
+    "produce.advice": "observed",
+    "produce.drinks": "verified",
+    "produce.drink_capacity": "observed",
+    "produce.options": "observed",
+    "produce.complete": "observed",
+    "produce.deck": "predicted",
+    "produce.deck_size": "predicted",
+    "produce.cards": "observed",
+    "produce.problems": "observed"
+   },
+   "pending_review": [
+    "produce.deck"
+   ],
+   "ledger": [
+    {
+     "seq": 8,
+     "kind": "DECK_REVIEW",
+     "origin": "review",
+     "args": {
+      "deck": [
+       {
+        "card_id": "p_card-02-act-3_039",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_186",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-ido-3_105",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_062",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-act-1_037",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-act-1_071",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_071",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-0_038",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-3_002",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-sup-3_094",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_008",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_052",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_056",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_057",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_100",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_111",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-00-sup-3_093",
+        "upgrade": 1,
+        "customized": false
+       }
+      ],
+      "deck_size": 20
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {},
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 9,
+     "kind": "DECK_REVIEW",
+     "origin": "review",
+     "args": {
+      "deck": [
+       {
+        "card_id": "p_card-02-act-3_039",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_186",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-ido-3_105",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_062",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-act-1_037",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-act-1_071",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_071",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-0_038",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-3_002",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-sup-3_094",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_008",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_052",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_056",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_057",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_100",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_111",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-00-sup-3_093",
+        "upgrade": 1,
+        "customized": false
+       }
+      ],
+      "deck_size": 20
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 9,
+      "screenshot": "frames/00009.jpg",
+      "page": "DECK_LIST"
+     },
+     "confidence": 1.0,
+     "note": "强化只分 0 / 1（++ 还没有样本）",
+     "version": "1.2"
+    },
+    {
+     "seq": 17,
+     "kind": "CARD_CHANGE",
+     "origin": "action",
+     "args": {
+      "remove_card_id": "p_card-02-act-0_038",
+      "remove_upgrade": 1,
+      "card_id": "p_card-02-men-2_008",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 17
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 35,
+     "kind": "DRINK_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "drink_id": "pdrink_02-3-010"
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 35,
+      "screenshot": "frames/00035.jpg",
+      "page": "ACQUIRE"
+     },
+     "confidence": 1.0,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 41,
+     "kind": "CARD_CHANGE",
+     "origin": "action",
+     "args": {
+      "remove_card_id": "p_card-02-men-2_056",
+      "remove_upgrade": 1,
+      "card_id": "p_card-02-act-2_047",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 41
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 66,
+     "kind": "CARD_ACQUIRE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-02-men-2_056",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 66
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 83,
+     "kind": "CARD_CHANGE",
+     "origin": "action",
+     "args": {
+      "remove_card_id": "p_card-01-men-3_036",
+      "remove_upgrade": 0,
+      "card_id": "p_card-02-men-2_008",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 83
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    }
+   ],
+   "version": "1.2"
+  }
+ },
+ {
+  "id": "change2-maindmmt1-20-16",
+  "decider": "SKILL_CARD_CHANGE_2",
+  "source": "实机 maindmmt1-20261112-103317 seq16（本战轮间换卡第 2 步）",
+  "note": "规则拿不准（没有明确该换的牌）；社区规则：核心卡（デイドリーミング / 届いて / せのび / 紙吹雪）永不换出",
+  "forbid": [
+   "change:p_card-02-act-1_037",
+   "change:p_card-02-act-2_062",
+   "change:p_card-02-act-3_039"
+  ],
+  "state": {
+   "mode": "produce",
+   "page": {
+    "name": "SKILL_CARD_CHANGE_2",
+    "area": "produce",
+    "since_seq": 15,
+    "stable": true,
+    "frames": 2
+   },
+   "produce": {
+    "mode": "produce-008",
+    "step": 1,
+    "stamina": 33,
+    "max_stamina": 33,
+    "produce_point": 200,
+    "params": {
+     "Vo": 1539,
+     "Da": 2419,
+     "Vi": 962
+    },
+    "growth_permil": {
+     "Vo": 1455,
+     "Da": 1444,
+     "Vi": 1413
+    },
+    "star": 786,
+    "param_cap": 3200,
+    "drinks": [],
+    "drink_capacity": 4,
+    "deck": [
+     {
+      "card_id": "p_card-02-act-3_039",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-3_045",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-ido-3_105",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-2_047",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-2_047",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-act-2_062",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_028",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_028",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_037",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-3_002",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-sup-3_094",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-sup-3_182",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_004",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_008",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-2_052",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_056",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_057",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_100",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-2_111",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-1_031",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-00-sup-3_093",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-00-acc-0_002",
+      "upgrade": 0
+     }
+    ],
+    "deck_size": 22
+   },
+   "exam": null,
+   "exam_session": {
+    "label": null,
+    "turn": 0,
+    "last_remaining": null,
+    "brief_permil": null
+   },
+   "page_fields": {
+    "cards": [
+     {
+      "deck_index": 0,
+      "row": 0,
+      "col": 0,
+      "card_id": "p_card-02-act-1_028",
+      "name": "ゆるふわおしゃべり",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 0
+     },
+     {
+      "deck_index": 1,
+      "row": 0,
+      "col": 1,
+      "card_id": "p_card-02-act-1_028",
+      "name": "ゆるふわおしゃべり",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 1
+     },
+     {
+      "deck_index": 2,
+      "row": 0,
+      "col": 2,
+      "card_id": "p_card-02-act-1_037",
+      "name": "デイドリーミング",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 0,
+      "index": 2
+     },
+     {
+      "deck_index": 3,
+      "row": 0,
+      "col": 3,
+      "card_id": "p_card-02-act-2_047",
+      "name": "ありがとうの言葉",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 3
+     },
+     {
+      "deck_index": 4,
+      "row": 1,
+      "col": 0,
+      "card_id": "p_card-02-act-2_047",
+      "name": "ありがとうの言葉",
+      "upgrade": 0,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 4
+     },
+     {
+      "deck_index": 5,
+      "row": 1,
+      "col": 1,
+      "card_id": "p_card-02-act-2_062",
+      "name": "きらきら紙吹雪",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 5
+     },
+     {
+      "deck_index": 6,
+      "row": 1,
+      "col": 2,
+      "card_id": "p_card-02-act-3_039",
+      "name": "届いて！",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 6
+     },
+     {
+      "deck_index": 7,
+      "row": 1,
+      "col": 3,
+      "card_id": "p_card-02-act-3_045",
+      "name": "あのときの約束",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 7
+     },
+     {
+      "deck_index": 8,
+      "row": 2,
+      "col": 0,
+      "card_id": "p_card-02-ido-3_105",
+      "name": "エウレカ！",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 8
+     },
+     {
+      "deck_index": 9,
+      "row": 2,
+      "col": 1,
+      "card_id": "p_card-00-sup-3_093",
+      "name": "紅葉ランニング",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 9
+     },
+     {
+      "deck_index": 10,
+      "row": 2,
+      "col": 2,
+      "card_id": "p_card-02-men-1_031",
+      "name": "えいえいおー",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 0,
+      "index": 10
+     },
+     {
+      "deck_index": 11,
+      "row": 2,
+      "col": 3,
+      "card_id": "p_card-02-men-2_004",
+      "name": "ワクワクが止まらない",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 11
+     },
+     {
+      "deck_index": 12,
+      "row": 3,
+      "col": 0,
+      "card_id": "p_card-02-men-2_008",
+      "name": "イメトレ",
+      "upgrade": 0,
+      "customized": false,
+      "dimmed": false,
+      "screen": 1,
+      "index": 12
+     },
+     {
+      "deck_index": 13,
+      "row": 3,
+      "col": 1,
+      "card_id": null,
+      "name": null,
+      "upgrade": null,
+      "customized": null,
+      "dimmed": false,
+      "screen": 1,
+      "index": 13
+     },
+     {
+      "deck_index": 14,
+      "row": 3,
+      "col": 2,
+      "card_id": "p_card-02-men-2_056",
+      "name": "止められない想い",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 14
+     },
+     {
+      "deck_index": 15,
+      "row": 3,
+      "col": 3,
+      "card_id": "p_card-02-men-2_057",
+      "name": "ゆめみごこち",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 1,
+      "index": 15
+     },
+     {
+      "deck_index": 16,
+      "row": 4,
+      "col": 0,
+      "card_id": "p_card-02-men-2_100",
+      "name": "気まぐれハート",
+      "upgrade": 0,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 16
+     },
+     {
+      "deck_index": 17,
+      "row": 4,
+      "col": 1,
+      "card_id": "p_card-02-men-2_111",
+      "name": "成長痛",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 17
+     },
+     {
+      "deck_index": 18,
+      "row": 4,
+      "col": 2,
+      "card_id": "p_card-02-men-3_002",
+      "name": "私がスター",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 18
+     },
+     {
+      "deck_index": 19,
+      "row": 4,
+      "col": 3,
+      "card_id": "p_card-02-sup-3_094",
+      "name": "ほかほか焼き芋",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 19
+     },
+     {
+      "deck_index": 20,
+      "row": 5,
+      "col": 0,
+      "card_id": "p_card-02-sup-3_182",
+      "name": "頭上に注意！",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 3,
+      "index": 20
+     },
+     {
+      "deck_index": 21,
+      "row": 5,
+      "col": 1,
+      "card_id": "p_card-00-acc-0_002",
+      "name": "眠気",
+      "upgrade": 0,
+      "customized": false,
+      "dimmed": true,
+      "screen": 3,
+      "index": 21
+     }
+    ],
+    "deck_complete": true,
+    "deck_screens": 5
+   },
+   "sources": {
+    "produce.mode": {
+     "origin": "screen",
+     "seq": 6
+    },
+    "produce.step": {
+     "origin": "screen",
+     "seq": 6
+    },
+    "produce.stamina": {
+     "origin": "screen",
+     "seq": 6
+    },
+    "produce.max_stamina": {
+     "origin": "screen",
+     "seq": 6
+    },
+    "produce.produce_point": {
+     "origin": "screen",
+     "seq": 6
+    },
+    "produce.params": {
+     "origin": "screen",
+     "seq": 6
+    },
+    "produce.growth_permil": {
+     "origin": "screen",
+     "seq": 6
+    },
+    "produce.star": {
+     "origin": "screen",
+     "seq": 6
+    },
+    "produce.param_cap": {
+     "origin": "screen",
+     "seq": 6
+    },
+    "produce.drinks": {
+     "origin": "screen",
+     "seq": 6
+    },
+    "produce.drink_capacity": {
+     "origin": "screen",
+     "seq": 6
+    },
+    "produce.deck": {
+     "origin": "screen",
+     "seq": 8
+    },
+    "produce.deck_size": {
+     "origin": "screen",
+     "seq": 8
+    }
+   },
+   "seq": 16,
+   "pending_page": null,
+   "conflicts": [],
+   "field_status": {
+    "produce.mode": "observed",
+    "produce.step": "observed",
+    "produce.stamina": "observed",
+    "produce.max_stamina": "observed",
+    "produce.produce_point": "observed",
+    "produce.params.Vo": "observed",
+    "produce.params.Da": "observed",
+    "produce.params.Vi": "observed",
+    "produce.growth_permil": "observed",
+    "produce.star": "observed",
+    "produce.param_cap": "observed",
+    "produce.drinks": "observed",
+    "produce.drink_capacity": "observed",
+    "produce.options": "observed",
+    "produce.complete": "observed",
+    "produce.deck": "verified",
+    "produce.deck_size": "observed",
+    "produce.cards": "observed",
+    "produce.problems": "observed"
+   },
+   "pending_review": [],
+   "ledger": [
+    {
+     "seq": 7,
+     "kind": "DECK_REVIEW",
+     "origin": "review",
+     "args": {
+      "deck": [
+       {
+        "card_id": "p_card-02-act-3_039",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_045",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-ido-3_105",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 0,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_062",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_028",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_028",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_037",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-men-3_002",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-sup-3_094",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-sup-3_182",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_008",
+        "upgrade": 0,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_052",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_056",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_057",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_100",
+        "upgrade": 0,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_111",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-00-sup-3_093",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-00-acc-0_002",
+        "upgrade": 0,
+        "customized": false
+       }
+      ],
+      "deck_size": 22
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {},
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 8,
+     "kind": "DECK_REVIEW",
+     "origin": "review",
+     "args": {
+      "deck": [
+       {
+        "card_id": "p_card-02-act-3_039",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_045",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-ido-3_105",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 0,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_062",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_028",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_028",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_037",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-men-3_002",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-sup-3_094",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-sup-3_182",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_008",
+        "upgrade": 0,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_052",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_056",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_057",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_100",
+        "upgrade": 0,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_111",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-00-sup-3_093",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-00-acc-0_002",
+        "upgrade": 0,
+        "customized": false
+       }
+      ],
+      "deck_size": 22
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 8,
+      "screenshot": "frames/00008.jpg",
+      "page": "DECK_LIST"
+     },
+     "confidence": 1.0,
+     "note": "强化只分 0 / 1（++ 还没有样本）",
+     "version": "1.2"
+    }
+   ],
+   "version": "1.2"
+  }
+ },
+ {
+  "id": "change2-maindmmt1-20-84",
+  "decider": "SKILL_CARD_CHANGE_2",
+  "source": "实机 maindmmt1-20261112-103317 seq84（本战轮间换卡第 2 步）",
+  "note": "规则拿不准（没有明确该换的牌）；社区规则：核心卡（デイドリーミング / 届いて / せのび / 紙吹雪）永不换出",
+  "forbid": [
+   "change:p_card-02-act-1_037",
+   "change:p_card-02-act-2_062",
+   "change:p_card-02-act-3_039",
+   "change:p_card-02-act-3_186"
+  ],
+  "state": {
+   "mode": "produce",
+   "page": {
+    "name": "SKILL_CARD_CHANGE_2",
+    "area": "produce",
+    "since_seq": 83,
+    "stable": true,
+    "frames": 2
+   },
+   "produce": {
+    "mode": "produce-008",
+    "step": 4,
+    "stamina": 22,
+    "max_stamina": 33,
+    "produce_point": 330,
+    "params": {
+     "Vo": 1699,
+     "Da": 2449,
+     "Vi": 1174
+    },
+    "growth_permil": {
+     "Vo": 1455,
+     "Da": 1444,
+     "Vi": 1413
+    },
+    "star": 831,
+    "param_cap": 3200,
+    "drinks": [
+     "pdrink_00-3-001",
+     "pdrink_00-2-009",
+     "pdrink_02-3-010"
+    ],
+    "drink_capacity": 4,
+    "deck": [
+     {
+      "card_id": "p_card-02-act-3_039",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-3_045",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-ido-3_105",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-2_047",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-2_047",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-act-2_062",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_028",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_028",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_037",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-3_002",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-sup-3_094",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-sup-3_182",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_004",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_008",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-2_052",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_057",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_100",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-2_111",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-1_031",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-00-sup-3_093",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-00-acc-0_002",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-act-3_186",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-00-men-3_005",
+      "upgrade": 0
+     }
+    ],
+    "deck_size": 22
+   },
+   "exam": null,
+   "exam_session": {
+    "label": null,
+    "turn": 0,
+    "last_remaining": null,
+    "brief_permil": null
+   },
+   "page_fields": {
+    "cards": [
+     {
+      "deck_index": 0,
+      "row": 0,
+      "col": 0,
+      "card_id": "p_card-02-act-1_028",
+      "name": "ゆるふわおしゃべり",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 0
+     },
+     {
+      "deck_index": 1,
+      "row": 0,
+      "col": 1,
+      "card_id": "p_card-02-act-1_028",
+      "name": "ゆるふわおしゃべり",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 1
+     },
+     {
+      "deck_index": 2,
+      "row": 0,
+      "col": 2,
+      "card_id": "p_card-02-act-1_037",
+      "name": "デイドリーミング",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 0,
+      "index": 2
+     },
+     {
+      "deck_index": 3,
+      "row": 0,
+      "col": 3,
+      "card_id": "p_card-02-act-2_047",
+      "name": "ありがとうの言葉",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 3
+     },
+     {
+      "deck_index": 4,
+      "row": 1,
+      "col": 0,
+      "card_id": "p_card-02-act-2_047",
+      "name": "ありがとうの言葉",
+      "upgrade": 0,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 4
+     },
+     {
+      "deck_index": 5,
+      "row": 1,
+      "col": 1,
+      "card_id": "p_card-02-act-2_062",
+      "name": "きらきら紙吹雪",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 5
+     },
+     {
+      "deck_index": 6,
+      "row": 1,
+      "col": 2,
+      "card_id": "p_card-02-act-3_039",
+      "name": "届いて！",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 6
+     },
+     {
+      "deck_index": 7,
+      "row": 1,
+      "col": 3,
+      "card_id": "p_card-02-act-3_045",
+      "name": "あのときの約束",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 7
+     },
+     {
+      "deck_index": 8,
+      "row": 2,
+      "col": 0,
+      "card_id": "p_card-02-act-3_186",
+      "name": "せのびの魔法",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 8
+     },
+     {
+      "deck_index": 9,
+      "row": 2,
+      "col": 1,
+      "card_id": "p_card-02-ido-3_105",
+      "name": "エウレカ！",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 9
+     },
+     {
+      "deck_index": 10,
+      "row": 2,
+      "col": 2,
+      "card_id": "p_card-00-men-3_005",
+      "name": "仕切り直し",
+      "upgrade": 0,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 10
+     },
+     {
+      "deck_index": 11,
+      "row": 2,
+      "col": 3,
+      "card_id": "p_card-00-sup-3_093",
+      "name": "紅葉ランニング",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 0,
+      "index": 11
+     },
+     {
+      "deck_index": 12,
+      "row": 3,
+      "col": 0,
+      "card_id": "p_card-02-men-1_031",
+      "name": "えいえいおー",
+      "upgrade": 1,
+      "customized": true,
+      "dimmed": false,
+      "screen": 1,
+      "index": 12
+     },
+     {
+      "deck_index": 13,
+      "row": 3,
+      "col": 1,
+      "card_id": "p_card-02-men-2_004",
+      "name": "ワクワクが止まらない",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 1,
+      "index": 13
+     },
+     {
+      "deck_index": 14,
+      "row": 3,
+      "col": 2,
+      "card_id": "p_card-02-men-2_008",
+      "name": "イメトレ",
+      "upgrade": 0,
+      "customized": false,
+      "dimmed": false,
+      "screen": 1,
+      "index": 14
+     },
+     {
+      "deck_index": 15,
+      "row": 3,
+      "col": 3,
+      "card_id": null,
+      "name": null,
+      "upgrade": null,
+      "customized": null,
+      "dimmed": false,
+      "screen": 1,
+      "index": 15
+     },
+     {
+      "deck_index": 16,
+      "row": 4,
+      "col": 0,
+      "card_id": "p_card-02-men-2_057",
+      "name": "ゆめみごこち",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 16
+     },
+     {
+      "deck_index": 17,
+      "row": 4,
+      "col": 1,
+      "card_id": "p_card-02-men-2_100",
+      "name": "気まぐれハート",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 17
+     },
+     {
+      "deck_index": 18,
+      "row": 4,
+      "col": 2,
+      "card_id": "p_card-02-men-2_111",
+      "name": "成長痛",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 18
+     },
+     {
+      "deck_index": 19,
+      "row": 4,
+      "col": 3,
+      "card_id": "p_card-02-men-3_002",
+      "name": "私がスター",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 2,
+      "index": 19
+     },
+     {
+      "deck_index": 20,
+      "row": 5,
+      "col": 0,
+      "card_id": "p_card-02-sup-3_094",
+      "name": "ほかほか焼き芋",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 3,
+      "index": 20
+     },
+     {
+      "deck_index": 21,
+      "row": 5,
+      "col": 1,
+      "card_id": "p_card-02-sup-3_182",
+      "name": "頭上に注意！",
+      "upgrade": 1,
+      "customized": false,
+      "dimmed": false,
+      "screen": 3,
+      "index": 21
+     },
+     {
+      "deck_index": 22,
+      "row": 5,
+      "col": 2,
+      "card_id": "p_card-00-acc-0_002",
+      "name": "眠気",
+      "upgrade": 0,
+      "customized": false,
+      "dimmed": true,
+      "screen": 3,
+      "index": 22
+     }
+    ],
+    "deck_complete": true,
+    "deck_screens": 5
+   },
+   "sources": {
+    "produce.mode": {
+     "origin": "screen",
+     "seq": 76
+    },
+    "produce.step": {
+     "origin": "screen",
+     "seq": 76
+    },
+    "produce.stamina": {
+     "origin": "screen",
+     "seq": 76
+    },
+    "produce.max_stamina": {
+     "origin": "screen",
+     "seq": 76
+    },
+    "produce.produce_point": {
+     "origin": "screen",
+     "seq": 76
+    },
+    "produce.params": {
+     "origin": "screen",
+     "seq": 76
+    },
+    "produce.growth_permil": {
+     "origin": "screen",
+     "seq": 76
+    },
+    "produce.star": {
+     "origin": "screen",
+     "seq": 76
+    },
+    "produce.param_cap": {
+     "origin": "screen",
+     "seq": 76
+    },
+    "produce.drinks": {
+     "origin": "screen",
+     "seq": 76
+    },
+    "produce.drink_capacity": {
+     "origin": "screen",
+     "seq": 76
+    },
+    "produce.deck": {
+     "origin": "screen",
+     "seq": 8
+    },
+    "produce.deck_size": {
+     "origin": "screen",
+     "seq": 8
+    }
+   },
+   "seq": 84,
+   "pending_page": null,
+   "conflicts": [],
+   "field_status": {
+    "produce.mode": "observed",
+    "produce.step": "observed",
+    "produce.stamina": "observed",
+    "produce.max_stamina": "observed",
+    "produce.produce_point": "observed",
+    "produce.params.Vo": "observed",
+    "produce.params.Da": "observed",
+    "produce.params.Vi": "observed",
+    "produce.growth_permil": "observed",
+    "produce.star": "observed",
+    "produce.param_cap": "observed",
+    "produce.drinks": "observed",
+    "produce.drink_capacity": "observed",
+    "produce.options": "observed",
+    "produce.complete": "observed",
+    "produce.deck": "predicted",
+    "produce.deck_size": "predicted",
+    "produce.cards": "observed",
+    "produce.problems": "observed",
+    "produce.advice": "observed"
+   },
+   "pending_review": [],
+   "ledger": [
+    {
+     "seq": 7,
+     "kind": "DECK_REVIEW",
+     "origin": "review",
+     "args": {
+      "deck": [
+       {
+        "card_id": "p_card-02-act-3_039",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_045",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-ido-3_105",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 0,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_062",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_028",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_028",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_037",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-men-3_002",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-sup-3_094",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-sup-3_182",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_008",
+        "upgrade": 0,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_052",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_056",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_057",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_100",
+        "upgrade": 0,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_111",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-00-sup-3_093",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-00-acc-0_002",
+        "upgrade": 0,
+        "customized": false
+       }
+      ],
+      "deck_size": 22
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {},
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 8,
+     "kind": "DECK_REVIEW",
+     "origin": "review",
+     "args": {
+      "deck": [
+       {
+        "card_id": "p_card-02-act-3_039",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-3_045",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-ido-3_105",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_047",
+        "upgrade": 0,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-2_062",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_028",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_028",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-act-1_037",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-02-men-3_002",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-sup-3_094",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-sup-3_182",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_004",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_008",
+        "upgrade": 0,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_052",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_056",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_057",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_100",
+        "upgrade": 0,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-2_111",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-02-men-1_031",
+        "upgrade": 1,
+        "customized": true
+       },
+       {
+        "card_id": "p_card-00-sup-3_093",
+        "upgrade": 1,
+        "customized": false
+       },
+       {
+        "card_id": "p_card-00-acc-0_002",
+        "upgrade": 0,
+        "customized": false
+       }
+      ],
+      "deck_size": 22
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 8,
+      "screenshot": "frames/00008.jpg",
+      "page": "DECK_LIST"
+     },
+     "confidence": 1.0,
+     "note": "强化只分 0 / 1（++ 还没有样本）",
+     "version": "1.2"
+    },
+    {
+     "seq": 16,
+     "kind": "CARD_CHANGE",
+     "origin": "action",
+     "args": {
+      "remove_card_id": "p_card-02-men-2_056",
+      "remove_upgrade": 1,
+      "card_id": "p_card-02-act-3_186",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 16
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 66,
+     "kind": "CARD_ACQUIRE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-00-men-3_005",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 66
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    }
+   ],
+   "version": "1.2"
+  }
+ }
+]

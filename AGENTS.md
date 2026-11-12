@@ -172,7 +172,6 @@ PYTHONPATH=src python -m hiro.run_hif resume --mode qualify|main   # 续跑进�
 | `HIRO_BENCH_ADVISOR` / `HIRO_BENCH_ALGO` | 考试出牌（缺省开）：用 gakumas-bench 的开源算法，`HIRO_BENCH_ALGO` 写法同 bench（缺省 `uinet`，也可 `my.py:Cls`）；出错 / 不合法 / 缺依赖时这一步退回社区规则（不调 LLM）。`HIRO_BENCH_ADVISOR=0` 关掉，回到社区规则 + LLM。模型和主数据缓存在 `~/.cache/hiro/bench`（`HIRO_BENCH_CACHE`），`python -m hiro.bench_bridge check` 查能不能用 |
 | `HIRO_EXAM_POLICY` | 有预演时怎么用：`llm`（缺省，预演写进提示词给 LLM 参考）/ `expert`（按预演期望 + 硬规则链直接选） |
 | `HIRO_SIM=0` | 不用模拟器（轮间 / 饮料 / 相談只按社区规则） |
-| `HIRO_INTERVAL_REFRESH=0` | 关掉规则版的轮间货架刷新（没有模拟器时：货架没有复制 / 爆发饮料先刷新） |
 | `HIRO_STRATEGY` | 换培育策略类（KAA `HifGrindStrategy` 子类），默认 `hiro.produce.hif:HiroHifStrategy` |
 | `HIRO_PAUSE_FLAG` | 外部暂停旗标文件路径：文件存在就暂停对局 |
 | `HIRO_DEVICE` / `HIRO_ADB` / `HIRO_SCREENSHOT` / `HIRO_EMULATOR_INSTANCE` | 设备后端与连接，见「三、环境」的「设备」表 |

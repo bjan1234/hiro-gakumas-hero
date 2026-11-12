@@ -16,6 +16,7 @@
 import json
 import logging
 import math
+import os
 import time
 from dataclasses import replace
 from functools import lru_cache
@@ -31,6 +32,16 @@ logger = logging.getLogger(__name__)
 TIER_RANK = {"S": 3, "A": 2, "B": 1}
 PAGES = ("ACTION_SELECT", "SELECT_CARD", "SELECT_DRINK", "CONSULT", "STUDY", "OUTING", "HIF_ROUND_INTERVAL", "SELECT_PITEM", "PDRINK_MAX", "SPECIAL_GUIDANCE", "FORMATION", "QUALIFY_MEMORY",
          "SKILL_CARD_CHANGE_1", "SKILL_CARD_CHANGE_2", "SKILL_CARD_REMOVAL", "SKILL_CARD_ENHANCE", "PDRINK_MAX_CONFIRM")
+
+
+# 决策点补全（总控 2026-11-13）：规则 / 模拟拿不准的局面交 LLM，LLM 不可用或输出非法再兜底。每条新 LLM 路径一个开关、默认关；
+# HIRO_PRODUCE_LLM=change_remove,remove_card,…（或 all）打开。选行动 / 抓卡三选一原来就问 LLM，不受这个开关管。
+LLM_PATHS = ("change_remove", "remove_card", "consult", "interval", "drink_overflow", "select_pitem", "special_guidance")
+
+
+def llm_path_on(name: str) -> bool:
+    parts = {x.strip() for x in os.environ.get("HIRO_PRODUCE_LLM", "").split(",") if x.strip()}
+    return "all" in parts or name in parts
 
 
 def action_key(a: Action) -> str:
@@ -1558,12 +1569,14 @@ class ProduceDeciders:
         cands = state.page_fields.get("candidates") or []
         if not cands:
             return Decision(Action.ui(ActionKind.WAIT, why="换卡候选未识别"), "换卡候选未识别", "fallback", 0.1, decider="card_change")
-        scored = sorted(((card_value(c.get("card_id"), c.get("upgrade") or 0), c) for c in cands), key=lambda x: (-x[0], x[1].get("index", 0)))
-        if CHANGE_PICK_BY_CULL:
-            from hiro.state.produce import FINALS
+        # 换入按删卡顺序挑（协调 2026-11-07）：挑 cull_key 最大的（最晚才会被删），同档再比价值。只按 card_value 挑时，
+        # 换进来的往往正是下次最先换掉的那类（Win2：换进「止められない想い」，下一次换卡就把它换掉，3 张元気な挨拶 没动）
+        from hiro.state.produce import FINALS
 
-            finals = (state.produce or {}).get("mode") == FINALS
-            scored.sort(key=lambda x: (cull_key(x[1].get("card_id"), x[1].get("upgrade") or 0, finals=finals), x[0]), reverse=True)
+        finals = (state.produce or {}).get("mode") == FINALS
+        scored = sorted(((card_value(c.get("card_id"), c.get("upgrade") or 0), c) for c in cands),
+                        key=lambda x: (cull_key(x[1].get("card_id"), x[1].get("upgrade") or 0, finals=finals), x[0], -x[1].get("index", 0)),
+                        reverse=True)  # fmt: skip
         value, best = scored[0]
         notes = [f"#{c.get('index')} {_card_label(c)} {v:g}" for v, c in scored]
         # 阶段 1 没有取消键（main8：取消后绕回换卡页死循环），所以总是选最好的那张
@@ -1608,15 +1621,35 @@ class ProduceDeciders:
             return Decision(Action(ActionKind.CHANGE_CARD, {"cancel": True}), "牌组里只剩核心 / 保护卡 / 定制卡，取消换卡", "rule", 0.7, warnings=warn,
                             decider="card_change")  # fmt: skip
         value, card = worst
-        incoming = card_value(self.change_target, 0) if self.change_target else None
+        incoming_id = self.change_target
+        incoming = card_value(incoming_id, 0) if incoming_id else None
         if incoming is not None and incoming <= value:
             # 取消会绕回换卡页（main8 死循环），换亏也只能换：换出价值最低的那张
             warn.append(f"换入的卡（{incoming:g}）不比换出的 {_card_label(card)}（{value:g}）强；取消会绕回换卡页，只能换")
-        args = {"stage": 2, "remove_card_id": card["card_id"], "remove_index": card.get("index"), "remove_upgrade": card.get("upgrade")}
         self.change_target = None
+
+        def act(c: dict) -> Action:
+            return Action(ActionKind.CHANGE_CARD, {"stage": 2, "remove_card_id": c["card_id"], "remove_index": c.get("index"),
+                                                   "remove_upgrade": c.get("upgrade")})  # fmt: skip
+
         tier = CULL_TIERS.get(cull_tier(card["card_id"]), "")
-        return Decision(Action(ActionKind.CHANGE_CARD, args), f"换出{tier} {_card_label(card)}（价值 {value:g}；换 / 删同序，用户 2026-11-03；保护卡不换）", "rule", 0.8,
+        rule = Decision(act(card), f"换出{tier} {_card_label(card)}（价值 {value:g}；换 / 删同序，用户 2026-11-03；保护卡不换）", "rule", 0.8,
                         warnings=warn, decider="card_change")  # fmt: skip
+        # 拿不准：最该换出的已经不是明确的垃圾牌（0–3 档），只能按启发式价值排。牌组没记账 / 有格没认出只作补充说明
+        # （没记账时规则已经保护所有副本，没认出的格 LLM 也选不了）
+        if cull_tier(card["card_id"]) < 4:
+            return rule
+        unsure = [f"没有明确该换的牌（最该换出的是「{tier}」档），只能按价值估"]
+        if counts is None:
+            unsure.append("牌组没记账，保护卡的所有副本都不在候选里")
+        if any(c.get("card_id") is None for c in cards):
+            unsure.append("有卡格没认出，不在候选里")
+        pool = cull_pool(cards, "change", counts=counts, finals=(state.produce or {}).get("mode") == FINALS)[:4]
+        options = [(act(c), {"名字": _card_label(c), "卡 id": c["card_id"], "档": CULL_TIERS.get(cull_tier(c["card_id"]), ""),
+                             "价值估计": round(card_value(c["card_id"], c.get("upgrade") or 0), 1)}) for c in pool]  # fmt: skip
+        extra = {"换入的卡": _card_label({"card_id": incoming_id, "upgrade": 0}) if incoming_id else "未知"}
+        return self._ask_choice("change_remove", rule, options, "授業セレクトチェンジ第 2 步：从牌组里选一张换出（不能取消，必须换一张）",
+                                "；".join(unsure), state, extra)
 
     def _study_effect(self) -> tuple[str | None, str]:
         """本人おすすめ効果的日文名，以及它在授業里是 A 档还是 B 档。"""
@@ -1680,7 +1713,7 @@ class ProduceDeciders:
         按计算选（协调 4a 第八局分析 B3，用户确认）：R1 的牌组 / 剩余饮料 / 倍率已记下（hiro.state.finals_context.CONTEXT）、
         模拟器主数据已构建时，进轮间算一次方案——回体力到几、买哪些饮料 / 卡，各组合用模拟器跑 R2 取期望分，选最高的；
         之后每帧按「还差什么」出下一个动作，货架刷新也按模拟估期望。算不了时走社区规则（_interval_rule）：
-        先回体力到角色目标，再按 饮料 > 必拿 / S / A 卡 > 强化核心卡 花 P（货架没有复制 / 爆发时先刷新，HIRO_INTERVAL_REFRESH）。"""
+        先回体力到角色目标，再按 饮料 > 必拿 / S / A 卡 > 强化核心卡 花 P（货架没有复制 / 爆发时先刷新）。"""
         items = state.page_fields.get("interval")
         if not items:
             return self._interval_without_shelf(state)
@@ -2110,7 +2143,7 @@ class ProduceDeciders:
             better = [(dk.holding_key(held + [it["drink_id"]], "r2", ps.drink_capacity), it) for it in _items(shelf, "drink")
                       if it.get("drink_id") and _affordable(it, budget)]  # fmt: skip
             better = [x for x in better if x[0] < cur]
-            if INTERVAL_REFRESH and (why := self._interval_refresh_why(items, shelf, budget)):
+            if why := self._interval_refresh_why(items, shelf, budget):
                 return done(Action(ActionKind.REROLL, {"scope": "interval"}), why)
             if better:
                 it = min(better, key=lambda x: x[0])[1]
@@ -2138,7 +2171,7 @@ class ProduceDeciders:
         return done(Action(ActionKind.INTERVAL_END), f"没有要买的（剩 {p}P，体力 {hp}/{max_hp}，目标 {target}）")
 
     def _interval_refresh_why(self, items: dict, shelf: list, budget: int) -> str | None:
-        """轮间货架没有 R2 优先档饮料（复制 / 爆发）时先刷新再买（开关 HIRO_INTERVAL_REFRESH）。
+        """轮间货架没有 R2 优先档饮料（复制 / 爆发）时先刷新再买。
         Windows 第七局：货架只有 ホエイ + 青汁，买完剩 380P 没花；A5b 买到了复制饮料 特製ハツボシエキス。
         只在还没买饮料时刷（买过以后持有数未知，再买可能溢出）；两格饮料都认出才判断；刷完货架没变（没刷成）、
         刷满 INTERVAL_REFRESH_MAX 次、或刷完不够买两瓶 100P 饮料就不刷。返回刷新理由，不刷返回 None。"""
@@ -2219,6 +2252,32 @@ class ProduceDeciders:
         res = self.llm.ask_json(load_prompt(*prompts), json.dumps(user, ensure_ascii=False))
         return res.data, [res.record(prompt_version=version)]
 
+    def _ask_choice(self, path: str, rule: Decision, options: list[tuple[Action, dict]], question: str, why: str, state: GameState,
+                    extra: dict | None = None) -> Decision:
+        """规则拿不准（why）时让 LLM 在 options 里选一个（options：[(动作, 给 LLM 看的说明)]，第一个是规则的选择）。
+        开关没开 / 没有 LLM / 只有一个选项：原样返回规则的决定。LLM 输出非法：按规则的选择兜底（source=fallback），带 LLM 记录和提醒。"""
+        if not llm_path_on(path) or self.llm is None or len(options) < 2:
+            return rule
+        ps = self.produce_state(state)
+        unknown = set(state.unobserved_produce_fields()) if state.produce else set()
+        from hiro.state.context import situation
+
+        user = {"局面": situation(ps, unknown) if ps is not None and state.produce else "识别未提供完整局面",
+                "问题": question, "规则为什么拿不准": why,
+                "候选": [dict(序号=i, **info) for i, (_, info) in enumerate(options)],
+                "规则的选择": 0} | (extra or {})  # fmt: skip
+        data, calls = self._ask(["produce_choice.md", "hif_produce.md", *self.playbook], user)
+        k = _int(data, "choice")
+        traces = [llm_trace_from_call(c) for c in calls]
+        if k is None or not 0 <= k < len(options):
+            bad = data if data is not None else (calls[-1].get("error") if calls else None)
+            return replace(rule, source="fallback", confidence=0.3, llm=traces,
+                           warnings=[*rule.warnings, f"规则拿不准（{why}）；LLM 输出无效（{bad}），按规则的选择兜底"])
+        return replace(rule, action=options[k][0], reason=str((data or {}).get("reason", ""))[:300], source="llm", confidence=None,
+                       line=str((data or {}).get("line", "")), llm=traces,
+                       warnings=[*rule.warnings, f"规则拿不准（{why}），交 LLM：选 {options[k][1].get('名字', k)}"
+                                 + ("（和规则相同）" if k == 0 else f"（规则原本选 {options[0][1].get('名字', 0)}）")])  # fmt: skip
+
     @staticmethod
     def _fallback(action: Action, reason: str, cands: list[Candidate], decider: str, calls: list[dict], *, source: str = "fallback") -> Decision:
         return Decision(action, reason, source, 0.3 if source == "fallback" else 0.8, cands,
@@ -2260,9 +2319,6 @@ SLEEP_ID = "p_card-00-acc-0_002"  # 眠気
 # 按瘦牌组规则（能刷新先刷新，否则拿最不污染的：一次性 > 不生成眠気 > 不冲突），不取游戏推荐。行为变化，默认关
 SELECT_NONE_LEAN = True  # 开源版默认开（主仓库 D40）
 SELECTION_LEAN_PICK = False  # 选拔里必拿已齐、候选无核心卡时按瘦牌组规则选（不调 LLM；协调 2026-11-03 提速）。行为变化，默认关，等用户答复（总控 2026-11-03）
-# 换卡阶段 1 按删卡顺序挑换入卡（协调 2026-11-07）：原来只按 card_value 挑，换出却按 cull_key（删卡顺序）排，
-# 结果换进来的往往正是下次最先换掉的那类（Win2：换进「止められない想い」价值 2，下一次换卡就把它换掉，牌组里 3 张元気な挨拶 没动）。
-# 开：换入挑 cull_key 最大的（最晚才会被删），同档再比价值。行为变化，默认关；HIRO_CHANGE_PICK_BY_CULL=1 打开
 def _sim_ready() -> bool:
     """模拟器可用：引擎能导入、主数据（catalog.sqlite）已构建。HIRO_SIM=0 强制不用（只按社区规则）。"""
     import os
@@ -2277,10 +2333,7 @@ def _sim_ready() -> bool:
         return False
 
 
-CHANGE_PICK_BY_CULL = __import__("os").environ.get("HIRO_CHANGE_PICK_BY_CULL") == "1"
-# 轮间货架没有复制 / 爆发饮料时先刷新（协调 2026-11-08，Windows 第七 / 九 / 十 / 十二局剩 400P 以上）。
-# 用户 2026-11-08 定为默认开（主仓库 11-02 已有同样的刷新，靠模拟器估值；这里是社区默认的规则版）；HIRO_INTERVAL_REFRESH=0 关
-INTERVAL_REFRESH = __import__("os").environ.get("HIRO_INTERVAL_REFRESH", "1") != "0"
+# 轮间货架没有复制 / 爆发饮料时先刷新（协调 2026-11-08，Windows 第七 / 九 / 十 / 十二局剩 400P 以上），最多刷这么多次
 INTERVAL_REFRESH_MAX = 3
 INTERVAL_DRINK_RESERVE = 200  # 刷完至少还够买两瓶 100P 饮料
 CHANGE_JUNK_VALUE = 1.0  # card_value ≤ 它算「废牌」（冲突 0、基础卡 0.5、好印象系 1）：授業セレクトチェンジ 只在有废牌时才选
