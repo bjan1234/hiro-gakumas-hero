@@ -417,3 +417,20 @@ def test_new_device_layer_does_not_import_kaa():
     )
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_maatools_real_tap_goes_to_real_click(monkeypatch):
+    import hiro.real_click as rc
+
+    seen = []
+    monkeypatch.setattr(rc, "click", lambda x, y: seen.append((x, y)))
+    MaaToolsDevice(client=object()).real_tap(300, 700)
+    assert seen == [(300, 700)]
+
+
+def test_adb_shell_feeds_game_app_foreground():
+    fake = FakeAdb()
+    dev = AdbDevice("127.0.0.1:16384", adb="adb", run=fake)
+    out = dev.shell("dumpsys window | grep mCurrentFocus")
+    assert fake.cmds[-1] == ["shell", "dumpsys window | grep mCurrentFocus"]
+    assert focus_package(out) == "com.bandainamcoent.idolmaster_gakuen"

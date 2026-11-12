@@ -133,6 +133,8 @@
        （`connect / close / screenshot / tap / swipe(…, hold=) / alive`，逻辑坐标 720×1280、横屏 1280×720，失败抛 `DeviceGone` /
        `DeviceUnavailable`），三个实现 `MaaToolsDevice`（Mac）、`MaaFwWin32Device`（DMM）、`AdbDevice`（MuMu / 雷电 / 真机，
        `HIRO_ADB`、`HIRO_ADB_PATH`），`hiro.devices.open_device()` 按 `HIRO_DEVICE` 选。不 import kotonebot / KAA。
+       另有两个不在统一接口里的可选方法，各自只给一个调用方：`MaaToolsDevice.real_tap`（drink_swap 的 PlayCover 真实鼠标兜底）、
+       `AdbDevice.shell`（`hiro.loop.game_app` 的 `foreground(shell)` / `relaunch(shell)`）。横屏判断看 `dev.orientation`。
      - 考试里判「画面稳了」另要求一致读数持续 1.5 秒（`play.ps1 -Device dmm` 缺省设 `HIRO_SETTLE_MIN_S=1.5`，自己设了就用自己的）：
        DMM 截图约 0.19 秒一张，三次读数不到 1 秒，会落在两段动画之间，回合没切完就决策（dmm1m：190 次决策 23 次作废重来）。
    - Windows 上的坑（实测）：16 GB 内存同时开 MuMu、模拟器和其他常驻程序时 MuMu 会被系统杀掉，开局前先关掉不用的程序；

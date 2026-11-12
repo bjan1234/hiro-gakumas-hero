@@ -254,6 +254,13 @@ class MaaToolsDevice:
         finally:
             self.client.swipe_hold = 0.0
 
+    def real_tap(self, x: int, y: int) -> None:
+        """可选方法（不在统一接口里）：真实鼠标点逻辑坐标，会把游戏切到前台、移动用户的鼠标。
+        只给一个调用方用：差し入れ饮料满时 MaaTools 点了没反应的兜底（produce/drink_swap，第二十三局）。见 hiro.real_click。"""
+        from hiro import real_click
+
+        real_click.click(x, y)
+
     def alive(self) -> bool:
         sock = self.client._sock
         if sock is not None:

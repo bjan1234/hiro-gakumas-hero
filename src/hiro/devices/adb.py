@@ -116,12 +116,14 @@ class AdbDevice:
     def close(self) -> None:
         pass  # 不 adb disconnect：别的程序可能也在用这台设备
 
+    def shell(self, cmd: str, *, timeout: float = 15.0) -> str:
+        """可选方法（不在统一接口里）：跑一条 adb shell 命令，返回输出文本。
+        只给一个调用方用：hiro.loop.game_app 的 foreground(shell) / relaunch(shell)（查前台应用、闪退后拉起游戏）。"""
+        return self._cmd("shell", cmd, timeout=timeout).decode("utf-8", "replace")
+
     def alive(self) -> bool:
         try:
-            return (
-                focus_package(self._cmd("shell", "dumpsys window | grep mCurrentFocus").decode("utf-8", "replace"))
-                == self.package
-            )
+            return focus_package(self.shell("dumpsys window | grep mCurrentFocus")) == self.package
         except (DeviceGone, DeviceUnavailable):
             return False
 
