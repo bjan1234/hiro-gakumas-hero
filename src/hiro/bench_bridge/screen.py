@@ -111,6 +111,7 @@ class ScreenTracker:
         self.last_play: tuple | None = None
         self.last_play_once = False
         self.started = False
+        self.last: dict = {}  # 最近一次读到的画面数值（分数 / 体力 / 元気）
         self.notes: list[str] = []
 
     @staticmethod
@@ -187,6 +188,12 @@ class ScreenTracker:
                 new[i] = [k, self._draw(k)]
         self.hand, self.turn, self.started = new, turn, True
 
+    def num(self, key: str, value) -> int:
+        """画面数值：读到就记下；这一帧没读出来（None）就用上一次的，不当成 0。"""
+        if value is not None:
+            self.last[key] = int(value)
+        return int(self.last.get(key, 0))
+
     def played_card(self, card: Any) -> None:
         """自己决定打出这张（下一次 observe 时据手牌变化确认去向）。"""
         k = _key(card.card_id, card.upgrade)
@@ -203,14 +210,24 @@ class ScreenTracker:
             except Exception:  # noqa: BLE001  主数据查不到：不记
                 pass
 
-    def types(self, turn: int, limit: int) -> list[int]:
+    def types(self, turn: int, limit: int, allocation: dict | None = None) -> list[int]:
+        """每回合属性：见过的照记；末三回合按配额的固定尾（没有配额时按偶像流向 流3 → 流2 → 流1）；
+        其余未知回合按配额里还没用掉的属性填（多的先填），没有配额时填 流1。"""
+        tail = list((allocation or {}).get("fixed_tail") or ()) or ([self.trend[2], self.trend[1], self.trend[0]] if len(self.trend) >= 3 else [])
+        prefix = max(0, limit - len(tail))
+        left = Counter((allocation or {}).get("random_prefix_counts") or {})
+        for t in range(1, prefix + 1):
+            if t in self.attrs:
+                left[self.attrs[t]] -= 1
         out = []
         for t in range(1, limit + 1):
-            rem = limit - t + 1
             if t in self.attrs:
                 a = self.attrs[t]
-            elif self.trend and rem <= 3 and len(self.trend) >= rem:
-                a = self.trend[rem - 1]
+            elif t > prefix and tail:
+                a = tail[t - prefix - 1]
+            elif +left:
+                a = max(sorted(+left), key=lambda x: left[x])
+                left[a] -= 1
             elif self.trend:
                 a = self.trend[0]
             else:
@@ -228,7 +245,8 @@ def from_screen(state: Any, memory: Any, legal: list, tracker: ScreenTracker, ex
     turn = max(1, int(getattr(memory, "turn", 0) or 1))
     remaining = getattr(state, "remaining_turns", None)
     limit = turn + int(remaining) - 1 if remaining else max(turn, len(tracker.attrs) or turn)
-    pm = getattr(state, "attr_permils", None) or {}
+    pm = dict(exam.get("permil_default") or {})  # 开考第一步还没读到倍率时：记下的 / 参考值
+    pm.update({k: v for k, v in (getattr(state, "attr_permils", None) or {}).items() if v})
     known = [v for v in pm.values() if v]
     permil = [int(pm.get(a) or (min(known) if known else 0)) for a in ("Vo", "Da", "Vi")]
     drinks = sorted(getattr(state, "drinks", None) or (), key=lambda d: d.slot)
@@ -251,9 +269,9 @@ def from_screen(state: Any, memory: Any, legal: list, tracker: ScreenTracker, ex
     obs = {
         "v": SCHEMA,
         "exam": {**{k: exam.get(k) for k in ("produce", "step", "plan", "idol")}, "turn": turn, "limit": limit,
-                 "types": tracker.types(turn, limit), "permil": permil, "crit": list(exam.get("crit") or [0, 0, 0])},
-        "num": {"score": int(getattr(state, "score", 0) or 0), "stamina": int(getattr(state, "hp", 0) or 0),
-                "max_stamina": int(getattr(state, "max_hp", 0) or 0), "block": int(getattr(state, "genki", 0) or 0),
+                 "types": tracker.types(turn, limit, exam.get("allocation")), "permil": permil, "crit": list(exam.get("crit") or [0, 0, 0])},
+        "num": {"score": tracker.num("score", getattr(state, "score", None)), "stamina": tracker.num("stamina", getattr(state, "hp", None)),
+                "max_stamina": tracker.num("max_stamina", getattr(state, "max_hp", None)), "block": tracker.num("block", getattr(state, "genki", None)),
                 "playable": max(1, int(getattr(state, "actions_left", None) or 1)), "plays": len(tracker.played)},
         "stance": [None, 0],
         "status": _status_rows(state),

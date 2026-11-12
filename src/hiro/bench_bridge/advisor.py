@@ -252,6 +252,35 @@ def _overlay_screen(obs: dict, screen: dict, state) -> dict:
     return obs
 
 
+def _round_defaults(label: str | None, deck: list) -> tuple[dict, dict | None]:
+    """画面还没读到时的倍率（R1 记下的 / 参考值），和本战回合属性配额（模拟器合成模板那场的配额，本战每局相同：
+    dmmw1、dmmt2 的 R1 都是 Vo4 / Da3 / Vi2、末三回合 Vi → Da → Vo）。选拔考试没有模板，配额给 None。"""
+    base = str(label or "").split("#", 1)[0].lower()
+    permil, alloc = {}, None
+    try:
+        if base in ("r1", "r2"):
+            from hiro.state.finals_context import CONTEXT
+            from hiro.state.knowledge import FINALS_REFERENCE_PERMIL
+
+            permil = {k: v for k, v in (CONTEXT.get("permil") or {}).items() if v} or dict(FINALS_REFERENCE_PERMIL)
+        else:
+            from hiro.sim.resource import REFERENCE_PERMIL
+
+            permil = dict(REFERENCE_PERMIL)
+    except Exception as e:  # noqa: BLE001
+        logger.info("参考倍率不可用：%s: %s", type(e).__name__, e)
+    if base in ("r1", "r2") and deck:
+        try:
+            from hiro.sim import interval as iv
+            from hiro.sim import resource as rv
+
+            setup, _ = rv.setup_for(base, deck=list(deck), drinks=[], hp=33, max_hp=33, permil=permil or None)
+            alloc = (getattr(iv.bare_exam(setup), "meta", None) or {}).get("allocation")
+        except Exception as e:  # noqa: BLE001  没有模拟器 / 主数据：未知回合按流向填
+            logger.info("本战回合配额不可用：%s: %s", type(e).__name__, e)
+    return permil, alloc
+
+
 def _engine_state(game) -> dict | None:
     """SimGame → 引擎导出局面（Python / Rust 后端同一格式）。"""
     env = getattr(game, "env", None)
@@ -325,6 +354,7 @@ class BenchAdvisor:
         except Exception:  # noqa: BLE001
             trend = None
         self.exam = exam_fields(self.label, idol=idol, plan=_plan_number(idol))
+        self.exam["permil_default"], self.exam["allocation"] = _round_defaults(self.label, self.deck)
         ench = items = None
         if self.algo is not None:
             try:
