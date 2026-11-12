@@ -85,3 +85,38 @@ def test_basic_card_budget_resets_per_exam():
     src.setup = object()
     src.begin({"exam": "r2"})
     assert src._added == 0 and src.setup is None
+
+
+def test_tracking_never_errors_on_random_effects(monkeypatch):
+    """dmmt1 R1：跟踪 99 次 sim_error、核对通过 0 次。按画面重放随机效果时给 env.rng 赋新对象，
+    新引擎（gakumas_exam，Python / Rust 都是）的 rng 是只读属性，只能改 rng.state。"""
+    from hiro.contracts import Action
+    from hiro.sim import track
+    from hiro.sim.screen_source import SimScreenExamStateSource
+
+    reasons = []
+    real = track.SimTracker.sync
+
+    def spy(self, screen):
+        r = real(self, screen)
+        reasons.append((r.reason, (r.notes or [""])[-1]))
+        return r
+
+    monkeypatch.setattr(track.SimTracker, "sync", spy)
+    deck, truth = _truth()
+    src = SimScreenExamStateSource()
+    src.begin({"exam": "r1", "profile": CAMPUS_HIRO, "session": _Session(deck)})
+    mem = copy.deepcopy(truth.memory)
+    for _ in range(30):
+        if truth.ended:
+            break
+        state = truth.state()
+        src.game = None
+        src.screen_drinks = [d.drink_id for d in state.drinks]
+        src._sync(state, mem)
+        legal = state.legal_actions()
+        act = next((a for a in legal if a.startswith("play:")), "skip")
+        slot = int(act.split(":")[1]) if act != "skip" else None
+        truth.step(dict(kind="play", id=truth._hand[slot]) if slot is not None else dict(kind="end_turn"))
+        src.executed(Action.from_legal(act), None)
+    assert not [r for r in reasons if r[0] == "sim_error"], reasons
