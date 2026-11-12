@@ -20,6 +20,7 @@
 #   -Wait        前台等跑完再返回（缺省后台起进程，立刻返回 PID）
 #   -NoSettingsCheck  跳过开局前的设置检查（tools/check_settings.py；它只在首页做，不在首页会自己跳过）
 #   -AllowDiscard  开局时其他端末有进行中的培育就破弃它（run_hif --allow-discard；不可撤回，只在确认不要那局时加）
+#   暂停：缺省设 HIRO_PAUSE_FLAG=%LOCALAPPDATA%\hiro\pause.flag（已设就用已设的）；建这个文件就停在下一个检查点，删掉继续
 #   -RunHifArgs  原样交给 run_hif 的其他参数，一个字符串，如 -RunHifArgs "--no-llm"
 #
 # 为什么是这些缺省（Windows 实测，2026-11-07–09，22 局 3 次夺冠）：
@@ -69,6 +70,12 @@ $env:HIRO_DEVICE = $Device
 if ($Device -eq "mumu" -and -not $env:HIRO_SCREENSHOT) { $env:HIRO_SCREENSHOT = "adb" }
 # DMM 版截图很快（PrintWindow 约 0.19s），考试稳帧 3 次读数不到 1 秒，会在两段动画之间判稳、回合没切完就决策：要求一致读数持续 1.5s
 if ($Device -eq "dmm" -and -not $env:HIRO_SETTLE_MIN_S) { $env:HIRO_SETTLE_MIN_S = "1.5" }
+# 外部暂停旗标（hiro.loop.pause_flag）：文件在就停在下一个检查点，删掉就继续。缺省放在普通用户能写的目录，
+# DMM 版 hiro 以管理员身份跑，普通权限停不了它的进程，要让它停在安全点就靠这个文件（dmmt1 想挡住花券的再挑戦时没有它）
+if (-not $env:HIRO_PAUSE_FLAG) { $env:HIRO_PAUSE_FLAG = Join-Path $env:LOCALAPPDATA "hiro\pause.flag" }
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $env:HIRO_PAUSE_FLAG) | Out-Null
+if (Test-Path $env:HIRO_PAUSE_FLAG) { Write-Host "⚠ 暂停旗标已存在（$env:HIRO_PAUSE_FLAG）：开局前会一直等它被删掉" }
+Write-Host "暂停：New-Item `"$env:HIRO_PAUSE_FLAG`"；继续：Remove-Item `"$env:HIRO_PAUSE_FLAG`""
 $env:HIRO_SUPPORT_SET = $SupportSet; $env:HIRO_MEMORY_SET = $MemorySet
 $env:HIRO_LLM = $Llm
 if ($Proxy) { $env:HTTPS_PROXY = $Proxy; $env:HTTP_PROXY = $Proxy; $env:NO_PROXY = "127.0.0.1,localhost" }

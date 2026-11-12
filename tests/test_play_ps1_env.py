@@ -37,3 +37,11 @@ def test_no_settings_check_passthrough():
     """-NoSettingsCheck 透传成 play_game 的 --no-settings-check（从本战开始确认页续本战时跳过设置检查）。"""
     assert re.search(r"\[switch\]\$NoSettingsCheck", PLAY)
     assert re.search(r'if \(\$NoSettingsCheck\) \{ \$argv \+= "--no-settings-check" \}', PLAY)
+
+
+def test_play_ps1_sets_default_pause_flag():
+    """DMM 版 hiro 以管理员身份跑，普通权限停不了它：play.ps1 缺省设暂停旗标路径（普通用户能写），外面设了就用外面的。"""
+    s = (Path(__file__).resolve().parents[1] / "scripts" / "play.ps1").read_text(encoding="utf-8-sig")
+    assert 'if (-not $env:HIRO_PAUSE_FLAG) { $env:HIRO_PAUSE_FLAG = Join-Path $env:LOCALAPPDATA "hiro\\pause.flag" }' in s
+    i_admin = s.index("IsInRole(")
+    assert s.index("if (-not $env:HIRO_PAUSE_FLAG)") > i_admin  # 在提权重开之后设，管理员进程里也有
