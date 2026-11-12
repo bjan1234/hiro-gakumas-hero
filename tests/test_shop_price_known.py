@@ -21,3 +21,10 @@ def test_shelf_prices():
     assert got[7] == ("pdrink_00-2-009", 75, False)
     assert got[0][1:] == (24, True)
     assert [got[i][1] for i in range(1, 7)] == [70, 70, 77, 52, 50, 100]
+
+
+def test_interval_drink_75_not_read_as_15():
+    """DMM 单局测试本战轮间：ミックススムージー（R2，75P）RapidOCR 读成 15，决策按 15P 判「比继续刷新划算」，实扣 75（P 211→136）。"""
+    r = shop.read_interval_shelf(frame("interval_smoothie75"))["interval"]
+    assert [(d["drink_id"], d["price"]) for d in r["drinks"]] == [("pdrink_00-2-001", 75), ("pdrink_00-2-004", 75)]
+    assert [c["price"] for c in r["cards"] + r["changes"]] == [30, 30, 50, 50, 30, 50]  # 轮间卡更便宜，不受饮料下限影响

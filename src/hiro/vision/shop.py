@@ -208,12 +208,18 @@ def read_interval_shelf(img: MatLike) -> dict:
             nums = nums or [n for n in _cell_price(img, x, INTERVAL_PRICE[top]) if n >= INTERVAL_MIN_PRICE]
             purchased = any("交換済" in t.replace(" ", "") for t in texts_in(xr, (top, top + CELL))) or _purchased_mark(img, x, top)
             price = nums[-1] if nums else None
+            d = _drink(img, x, top) if kind == "drink" else None
+            # 饮料按稀有度核对（DMM 单局测试轮间：ミックススムージー 75 读成 15，决策按 15P 判「比继续刷新划算」，实扣 75）。
+            # 轮间有没有 SALE 没见过：预期价按原价，下限取饮料最低价 35（SALE 价），卡在轮间更便宜、不设下限
+            expect = expected_price({"kind": "drink", "drink_id": d["drink_id"]}, False) if d else None
+            floor = PRICE_FLOORS[("drink", True)] if d else None
             if ocr_engine() != "vision" and not purchased:
                 # Windows 第九局轮间 #151：「おしゃれハーブティー」75 读成 15（Mac 同帧 RapidOCR 读对），也用多读法投票
-                price = _vote_price(img, x, INTERVAL_PRICE[top], nums)
+                price = _vote_price(img, x, INTERVAL_PRICE[top], nums, expect=expect, floor=floor)
+            elif not purchased and price is not None and floor is not None and price < floor:
+                price = expect
             entry = {"index": index, "price": price, "purchased": purchased, "center": [x + CELL // 2, top + CELL // 2]}
             if kind == "drink":
-                d = _drink(img, x, top)
                 entry.update(drink_id=d["drink_id"], name=d["name"], confidence=d["confidence"])
                 out["drinks"].append(entry)
             else:
