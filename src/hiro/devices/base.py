@@ -1,0 +1,106 @@
+"""设备统一接口（去 KAA 设计稿第 4 节）：6 个方法 + 两种异常，坐标一律是逻辑坐标。
+
+    connect() / close()
+    screenshot() -> BGR ndarray       竖屏 720x1280，横屏（LIVE）1280x720；缩放在驱动里做
+    tap(x, y)                         坐标和当前截图同一坐标系（竖屏 720x1280，横屏 1280x720）
+    swipe(x1, y1, x2, y2, *, duration=0.3, hold=0.0)   hold > 0：到终点停这么久再松手（列表不带惯性）
+    alive() -> bool                   游戏窗口 / 进程还在
+    name、orientation（"portrait" | "landscape"，看最近一张截图）
+
+失败时抛 DeviceGone（窗口没了 / 连接断了）或 DeviceUnavailable（连不上、截图全黑、设备离线）；驱动内部先重连一次。
+不继承 kotonebot 的基类，也没有「不带参数的 click = 点上一次找到的东西」这种隐式状态。
+
+缩放和 KAA 现在的做法保持一致，判页模板和 OCR 看到的画面不变：截图直接 cv2.resize 拉伸到逻辑分辨率（宽高比差
+超过 10% 视为不能缩放，抛 DeviceUnavailable）。点击按 x、y 各自的比例换回原生像素（KAA 统一用短边比例；
+DMM 客户区 1081x1921 不是严格 9:16，各自换算和截图的拉伸严格对应，误差在 1 像素内）。
+"""
+
+from __future__ import annotations
+
+from typing import Protocol, runtime_checkable
+
+import numpy as np
+
+PORTRAIT = (720, 1280)
+LANDSCAPE = (1280, 720)
+ASPECT_TOLERANCE = 0.1  # 和 KAA PortraitGameScaler 的缺省容差一样
+
+
+class DeviceError(RuntimeError):
+    """设备层的错误。"""
+
+
+class DeviceGone(DeviceError):
+    """窗口没了 / 连接断了（游戏关了、闪退、模拟器断开）。"""
+
+
+class DeviceUnavailable(DeviceError):
+    """连不上（端口不通、找不到窗口、设备离线、截图全黑）。"""
+
+
+@runtime_checkable
+class Device(Protocol):
+    name: str
+
+    def connect(self) -> None: ...
+
+    def close(self) -> None: ...
+
+    def screenshot(self) -> np.ndarray: ...
+
+    def tap(self, x: int, y: int) -> None: ...
+
+    def swipe(self, x1: int, y1: int, x2: int, y2: int, *, duration: float = 0.3, hold: float = 0.0) -> None: ...
+
+    def alive(self) -> bool: ...
+
+
+def logical_size(width: int, height: int) -> tuple[int, int]:
+    """原生尺寸 → 逻辑尺寸：竖屏 720x1280，横屏 1280x720。"""
+    return LANDSCAPE if width > height else PORTRAIT
+
+
+def check_aspect(width: int, height: int) -> None:
+    """宽高比和 9:16 差太多时没法按 KAA 的方式拉伸（模板会变形），直接报错。"""
+    lw, lh = logical_size(width, height)
+    long_side, short_side = max(width, height), min(width, height)
+    if width <= 0 or height <= 0 or abs(long_side / short_side - max(lw, lh) / min(lw, lh)) > ASPECT_TOLERANCE:
+        raise DeviceUnavailable(f"画面尺寸 {width}x{height} 和 9:16 差太多，不能缩放到 {lw}x{lh}")
+
+
+class LogicalScreen:
+    """原生截图 ↔ 逻辑坐标。每张截图都更新一次原生尺寸（窗口被拉大拉小、横竖屏切换时跟着变）。"""
+
+    def __init__(self) -> None:
+        self.native: tuple[int, int] | None = None  # 最近一张原生截图的 (宽, 高)
+
+    @property
+    def orientation(self) -> str:
+        if self.native is None:
+            return "portrait"
+        w, h = self.native
+        return "landscape" if w > h else "portrait"
+
+    def frame(self, image: np.ndarray) -> np.ndarray:
+        """原生 BGR 截图 → 逻辑分辨率（KAA 一样用 cv2.resize 缺省插值）。"""
+        import cv2
+
+        if image is None or image.ndim != 3 or image.shape[2] != 3 or not image.size:
+            raise DeviceUnavailable(f"截图不是 BGR 三通道图像：{None if image is None else image.shape}")
+        h, w = image.shape[:2]
+        check_aspect(w, h)
+        self.native = (w, h)
+        size = logical_size(w, h)
+        if (w, h) == size:
+            return np.ascontiguousarray(image)
+        return cv2.resize(image, size)
+
+    def to_native(self, x: float, y: float) -> tuple[int, int]:
+        """逻辑坐标 → 原生像素（x、y 各按各的比例，夹在画面内）。要先截过一张图。"""
+        if self.native is None:
+            raise DeviceUnavailable("还没截过图，不知道原生分辨率")
+        w, h = self.native
+        lw, lh = logical_size(w, h)
+        nx = min(w - 1, max(0, round(x * w / lw)))
+        ny = min(h - 1, max(0, round(y * h / lh)))
+        return nx, ny
