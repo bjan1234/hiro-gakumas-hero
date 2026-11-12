@@ -129,6 +129,10 @@
        `HIRO_MAAFW_SCREENCAP`（缺省 `FramePool`）、`HIRO_MAAFW_INPUT`（缺省 `SendMessageWithWindowPos`，和现在的后台点击同一种做法）。
        2026-11-11 只读实测（普通权限、游戏以管理员运行）：FramePool 约 29 ms、GDI 约 11 ms 一张 1081×1921，画面正常；PrintWindow 连不上；
        DXGI_DesktopDup_Window 全黑。点击还没实测（要以管理员身份跑）。`tools/maafw_probe.py` 逐个截图方式试一遍。
+     - 去 KAA 的新设备层 `hiro/devices/`（2026-11-13，还没有调用方，主循环仍走 `hiro.device.connect()`）：统一接口 6 个方法
+       （`connect / close / screenshot / tap / swipe(…, hold=) / alive`，逻辑坐标 720×1280、横屏 1280×720，失败抛 `DeviceGone` /
+       `DeviceUnavailable`），三个实现 `MaaToolsDevice`（Mac）、`MaaFwWin32Device`（DMM）、`AdbDevice`（MuMu / 雷电 / 真机，
+       `HIRO_ADB`、`HIRO_ADB_PATH`），`hiro.devices.open_device()` 按 `HIRO_DEVICE` 选。不 import kotonebot / KAA。
      - 考试里判「画面稳了」另要求一致读数持续 1.5 秒（`play.ps1 -Device dmm` 缺省设 `HIRO_SETTLE_MIN_S=1.5`，自己设了就用自己的）：
        DMM 截图约 0.19 秒一张，三次读数不到 1 秒，会落在两段动画之间，回合没切完就决策（dmm1m：190 次决策 23 次作废重来）。
    - Windows 上的坑（实测）：16 GB 内存同时开 MuMu、模拟器和其他常驻程序时 MuMu 会被系统杀掉，开局前先关掉不用的程序；
