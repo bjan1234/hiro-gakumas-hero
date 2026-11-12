@@ -269,3 +269,47 @@ def test_setup_failure_prints_real_reason(monkeypatch, capsys):
     assert "ModuleNotFoundError: No module named 'gakumas_exam_missing_for_test'" in out
     assert "出错位置：" in out and "test_bench_bridge.py" in out
     assert "缺 Python 模块 gakumas_exam_missing_for_test" in out and "网络" not in out
+
+
+@pytest.mark.bench_on
+def test_engine_path_takes_screen_truths(monkeypatch):
+    """模拟器合成开局只按画面粗对齐：回合属性是占位顺序、手牌强化被模拟器自己的随机支援强化抬高、やる気有偏差。
+    画面能看到的一律用画面的，引擎只补画面看不到的（牌区内容、附魔、其余状态）。dmmw1 R1 离线重放发现。"""
+    monkeypatch.setattr(A, "OBS_SOURCE", "engine")
+    adv, algo = _advisor(monkeypatch, ("play", 0))
+    eng = _engine_state(turn_types=[1, 1, 1, 1, 1, 1, 1, 1], limit_turn=8, current_turn=1, score=999, stamina=5)
+    eng["cards"][0] = _engine_card("p_card-a", 1, tmp=2)  # 引擎 +++，画面 +
+    eng["cards"][1] = _engine_card("p_card-b", 0)
+    eng["status"]["effects"][1]["value"] = 26  # やる気 引擎 26，画面 37
+    st, mem = _state([_card(0, "p_card-a", 1), _card(1, "p_card-b", 0)], remaining=8, turn=1, motivation=37, impression=3)
+    st.attr = "Vi"
+    st.sim_game = object()
+    monkeypatch.setattr(A, "_engine_state", lambda game: eng)
+    adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    obs = algo.seen[-1]
+    assert obs["exam"]["types"][0] == 3  # 本回合 Vi（画面），不是占位的 Vo
+    assert obs["exam"]["permil"][1] == 30000  # 画面见过的 Da 倍率
+    assert [c["u"] for c in obs["hand"]] == [1, 0]
+    assert obs["num"]["score"] == 1000 and obs["num"]["stamina"] == 20 and obs["num"]["block"] == 10
+    st_ = {k: v for k, v, _ in obs["status"]}
+    assert st_["aggressive"] == 37.0 and st_["review"] == 3.0
+    assert obs["grave"]  # 牌区仍来自引擎
+
+
+@pytest.mark.bench_on
+def test_unread_hand_upgrade_falls_back_to_deck_base(monkeypatch):
+    adv, algo = _advisor(monkeypatch, ("play", 0))
+    adv.on_round_start(1, {"exam": "r1", "idol": "i_card-shro-3-007", "deck": [("p_card-a", 1), ("p_card-b", 0)]})
+    st, mem = _state([_card(0, "p_card-a", None), _card(1, "p_card-b", 0)])
+    adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    assert [c["u"] for c in algo.seen[-1]["hand"]] == [1, 0]  # 画面读不到强化：用培育牌组里的强化次数
+
+
+@pytest.mark.bench_on
+def test_default_uses_screen_path_even_with_sim_game(monkeypatch):
+    adv, algo = _advisor(monkeypatch, ("play", 0))
+    st, mem = _state([_card(0, "p_card-a", 0)])
+    st.sim_game = object()
+    monkeypatch.setattr(A, "_engine_state", lambda game: (_ for _ in ()).throw(AssertionError("不该读引擎局面")))
+    d = adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    assert d.source == "bench" and "画面读数" in d.reason

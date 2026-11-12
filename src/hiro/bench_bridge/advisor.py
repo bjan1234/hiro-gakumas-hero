@@ -4,8 +4,8 @@
 - 算法：HIRO_BENCH_ALGO，写法同 bench（`uinet`、`uinet:threads=2`、`my.py:Cls`），缺省 uinet。只能用只看画面的算法
   （sees_seed / privileged 的拒绝加载；要 GKMS「世界」的算法拿不到世界，会在决策时出错并退回规则）。
 - 关掉：HIRO_BENCH_ADVISOR=0（回到 hiro.defaults.advisor:RuleLLMAdvisor 的行为，含 LLM）；或 HIRO_EXAM_ADVISOR 换别的插件。
-- 局面：模拟器跟踪时（hiro.sim.screen_source 把对齐过画面的引擎局面挂在 state.sim_game 上）用引擎局面转 UIObs，信息全；
-  否则用画面读数 + 本场跟踪（hiro.bench_bridge.screen）。
+- 局面：缺省用画面读数 + 本场跟踪（hiro.bench_bridge.screen）。HIRO_BENCH_OBS=engine 时改用模拟器跟踪的引擎局面
+  （hiro.sim.screen_source 挂在 state.sim_game 上），画面能看到的再用画面覆盖（_overlay_screen）。
 - 依赖（可选，setup 默认装）：gkbench、gkms-uinet、onnxruntime；UINet 模型按固定提交下载并校验 sha256，
   主数据从引擎的 catalog（我们下载的 gakumasu-diff 快照）导出 9 张表。缺任何一样：开局日志写明原因，整场用规则。
 - 退回规则时不调 LLM（RuleLLMAdvisor 去掉 LLM）。
@@ -27,6 +27,7 @@ from typing import Any
 from hiro.contracts import Action, Candidate, Decision, Preview
 
 logger = logging.getLogger(__name__)
+uiobs_log = logging.getLogger("hiro.bench_bridge.uiobs")  # 每步一行 JSON，量大：不想要时把这个 logger 调到 WARNING
 
 UINET_COMMIT = "1201b841828d9874b604f7d48f7b00ddf3b71d95"  # yuzeis/GKMSUINet Ver1.1-Hingebungsvoll（MIT）
 UINET_MODEL_URL = f"https://raw.githubusercontent.com/yuzeis/GKMSUINet/{UINET_COMMIT}/model/gkms_uinet.onnx"
@@ -35,6 +36,10 @@ UINET_TABLES = ("ProduceCard", "ProduceCardCustomize", "ProduceCardGrowEffect", 
                 "ProduceExamTrigger", "ProduceExamStatusEnchant", "ProduceDrink", "ProduceDrinkEffect")
 DEFAULT_ALGO = "uinet"
 DECIDE_BUDGET_S = float(os.environ.get("HIRO_BENCH_BUDGET_S", "5"))
+# 给算法的局面从哪来：screen（缺省，画面读数 + 本场跟踪）/ engine（模拟器跟踪的引擎局面，画面能看到的再用画面覆盖）。
+# 2026-11-12 dmmt1 R1 21.6 万后离线重放 dmmw1：跟踪大多步按画面重建，重建丢了打出的卡挂上的附魔；合成开局还带着
+# 模板那局的回忆 / P 道具附魔、山札里有模拟器自己随机的强化。引擎局面反而不如画面跟踪，先默认用画面。
+OBS_SOURCE = os.environ.get("HIRO_BENCH_OBS", "screen").strip().lower()
 
 
 def enabled() -> bool:
@@ -210,7 +215,10 @@ def _customize_ids():
         if k not in cache:
             ids = []
             for v in range(int(u), -1, -1):
-                row = cat.one("ProduceCard", card_id, v)
+                try:
+                    row = cat.one("ProduceCard", card_id, v)
+                except Exception:  # noqa: BLE001  主数据没有这一级 / 这张卡：再往下找，都没有就当没有定制
+                    row = None
                 if row is not None:
                     ids = row.get("produceCardCustomizeIds") or []
                     break
@@ -218,6 +226,30 @@ def _customize_ids():
         return cache[k]
 
     return get
+
+
+def _overlay_screen(obs: dict, screen: dict, state) -> dict:
+    """引擎局面转出的 UIObs 上，画面能看到的一律换成画面的。模拟器合成开局只按画面粗对齐（dmmw1 R1 离线重放）：
+    回合属性是模板的占位顺序；手牌强化被模拟器自己的随机支援强化抬高（画面 + 引擎 +++）；やる気 / 好印象 / 分数有偏差。
+    引擎只补画面看不到的：山札 / 弃牌 / 除外 / 保留的内容、附魔、其余状态。"""
+    for k in ("turn", "limit", "types", "permil"):
+        obs["exam"][k] = screen["exam"][k]
+    if [c["id"] for c in obs["hand"]] == [c["id"] for c in screen["hand"]]:
+        obs["hand"] = [dict(c, u=h["u"], p=h["p"]) for c, h in zip(obs["hand"], screen["hand"])]
+    else:
+        obs["hand"] = screen["hand"]  # 手牌顺序 / 内容和画面对不上：动作要落到画面，用画面的
+    obs["drinks"], obs["legal"] = screen["drinks"], screen["legal"]
+    for k, attr in (("score", "score"), ("stamina", "hp"), ("max_stamina", "max_hp"), ("block", "genki")):
+        if getattr(state, attr, None) is not None:
+            obs["num"][k] = screen["num"][k]
+    screen_kinds = {}
+    for k, attr in (("aggressive", "motivation"), ("review", "impression")):
+        if getattr(state, attr, None) is not None:
+            screen_kinds[k] = int(getattr(state, attr))
+    if screen_kinds:
+        obs["status"] = [x for x in obs["status"] if x[0] not in screen_kinds] + \
+            [[k, float(v), -1] for k, v in screen_kinds.items() if v]
+    return obs
 
 
 def _engine_state(game) -> dict | None:
@@ -321,7 +353,7 @@ class BenchAdvisor:
 
         keys = [a.legal_key() for a in legal]
         self.tracker.observe(state, memory)
-        game = getattr(state, "sim_game", None)
+        game = getattr(state, "sim_game", None) if OBS_SOURCE == "engine" else None
         if game is not None:
             try:
                 eng = _engine_state(game)
@@ -330,15 +362,7 @@ class BenchAdvisor:
                     if self._cz is None:
                         self._cz = _customize_ids()
                     obs = from_engine(eng, self.exam, [], customize_ids=self._cz, played=self.tracker.played)
-                    # 动作要落到画面：手牌顺序已由模拟器插件按画面排好；饮料与合法动作用画面的
-                    obs["hand"] = [dict(c, p=h.get("p", 0)) for c, h in zip(obs["hand"], screen_obs["hand"])] \
-                        if len(obs["hand"]) == len(screen_obs["hand"]) else screen_obs["hand"]
-                    obs["drinks"], obs["legal"] = screen_obs["drinks"], screen_obs["legal"]
-                    if not getattr(state, "sim_exact_exam", True):
-                        # 选拔考试借的合成模板：回合数 / 属性表 / 倍率不是这场的，用画面的
-                        for k in ("turn", "limit", "types", "permil"):
-                            obs["exam"][k] = screen_obs["exam"][k]
-                    return obs, slot_of, "engine"
+                    return _overlay_screen(obs, screen_obs, state), slot_of, "engine"
             except Exception as e:  # noqa: BLE001
                 logger.info("引擎局面转 UIObs 失败，改用画面读数：%s: %s", type(e).__name__, e)
         obs, slot_of = from_screen(state, memory, keys, self.tracker, self.exam)
@@ -366,6 +390,9 @@ class BenchAdvisor:
         t0 = time.monotonic()
         try:
             obs, slot_of, origin = self._obs(state, memory, legal)
+            # 每步给算法的 UIObs 记进运行日志（复盘用：实机局能直接看出 UINet 看到的局面和画面差在哪）
+            uiobs_log.info("[%s T%s %s] %s", self.label, getattr(memory, "turn", None), origin,
+                           json.dumps(obs, ensure_ascii=False, separators=(",", ":")))
             ctx = self._ctx(obs)
             if not self.began:
                 self.algo.begin(ctx)

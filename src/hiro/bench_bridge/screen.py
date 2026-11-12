@@ -243,7 +243,11 @@ def from_screen(state: Any, memory: Any, legal: list, tracker: ScreenTracker, ex
             lg.append(["drink", slot_of.index(int(arg))])
         elif kind in ("skip", "end"):
             lg.append(["end"])
-    hand = [{"id": c.card_id, "u": int(c.upgrade or 0), "p": int(c.slot in plays)} for c in state.hand if c.card_id]
+    base = [h[1][1] for h in tracker.hand] if len(tracker.hand) == sum(1 for c in state.hand if c.card_id) else None
+    hand = []
+    for i, c in enumerate(x for x in state.hand if x.card_id):
+        u = c.upgrade if c.upgrade is not None else (base[i] if base else 0)  # 画面读不到强化：用培育牌组里的
+        hand.append({"id": c.card_id, "u": int(u or 0), "p": int(c.slot in plays)})
     obs = {
         "v": SCHEMA,
         "exam": {**{k: exam.get(k) for k in ("produce", "step", "plan", "idol")}, "turn": turn, "limit": limit,
