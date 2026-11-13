@@ -55,21 +55,23 @@ def check_tap(screen: Screen, x: int, y: int) -> None:
 
 
 class GuardedDevice:
-    """hiro.devices 的设备 + 点击前检查。点击类方法（tap、real_tap）都过 check_tap；
-    其余只转发白名单里的（截图、滑动、连接、状态）；别的方法一律不给，免得新加的点击方法绕过检查。"""
+    """hiro.devices 的设备 + 点击前检查。点击类方法（tap，以及底层有的 real_tap）都过 check_tap；
+    其余只转发白名单里的（截图、滑动、连接、状态）；别的方法一律不给，免得新加的点击方法绕过检查。
+    AdbDevice.shell 不转发（能 input tap）：拉起游戏这类窄用途直接用 Runtime.raw_device。"""
 
-    PASS = frozenset({"screenshot", "swipe", "alive", "orientation", "close", "connect", "shell"})
+    PASS = frozenset({"screenshot", "swipe", "alive", "orientation", "close", "connect"})
 
     def __init__(self, device, screen: Screen):
         self._device, self._screen = device, screen
         self.name = device.name
+        if hasattr(device, "real_tap"):  # 只有 MaaToolsDevice 有（PlayCover 真实鼠标兜底）；调用方按 getattr(dev, "real_tap", None) 判断
+            self.real_tap = self._real_tap
 
     def tap(self, x: int, y: int) -> None:
         check_tap(self._screen, x, y)
         self._device.tap(x, y)
 
-    def real_tap(self, x: int, y: int) -> None:
-        """MaaToolsDevice 的真实鼠标点击（PlayCover 兜底）：同样过检查。"""
+    def _real_tap(self, x: int, y: int) -> None:
         check_tap(self._screen, x, y)
         self._device.real_tap(x, y)
 

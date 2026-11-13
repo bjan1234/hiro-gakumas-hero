@@ -129,6 +129,26 @@ def test_guard_rechecks_stale_frame_and_covers_real_tap():
     assert rt.device.screenshot().shape == (1280, 720, 3)
 
 
+def test_guarded_device_mirrors_real_tap_and_hides_shell():
+    """real_tap 跟着底层设备有没有走（adb / maafw 没有）；shell（adb 能 input tap）不转发。"""
+    class Adb:
+        name = "adb"
+
+        def tap(self, x, y): ...
+
+        def shell(self, cmd):
+            return "ok"
+
+    from hiro.runtime.frame import Screen
+
+    g = guard.GuardedDevice(Adb(), Screen(Adb(), lambda: 0.0))
+    assert getattr(g, "real_tap", None) is None
+    with pytest.raises(AttributeError):
+        g.shell("input tap 1 1")
+    rt, _ = runtime([frame()])
+    assert callable(getattr(rt.device, "real_tap", None))  # FakeDevice 有 real_tap
+
+
 def test_word_at_reads_only_a_small_region(monkeypatch):
     """点击点读字只 OCR 周围 320×80（贴边时裁到画面内），不做整帧 OCR。"""
     seen = []
