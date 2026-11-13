@@ -1,7 +1,7 @@
 # 来源：digital-hiro src/hiro/contracts/samples.py（develop ce5085f）
 """用数据集（hiro.collect 的 manifest.jsonl）生成 Observation 样本并过 schema 校验。
 
-    python -m hiro.contracts.samples datasets/20261029-224103-hif-qualify [--reread] [--limit N] [--out reports/contracts/x.jsonl]
+    PYTHONPATH=src python tools/contract_samples.py datasets/20261029-224103-hif-qualify [--reread] [--limit N] [--out reports/contracts/x.jsonl]
 
 默认直接用 manifest 里采集时保存的识别字段；--reread 对 ACTION_SELECT / SELECT_CARD 等帧重新跑识别
 （采集时未开字段提取的页面只能这样补）。输出每行一个 Observation JSON，并打印校验统计。

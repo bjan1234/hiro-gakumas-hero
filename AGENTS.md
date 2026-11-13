@@ -125,7 +125,7 @@
      - 同一个账号不要同时开 MuMu 和 DMM：另一端进入培育时会弹「プロデュースデータの破棄」。
      - 后台点击要读真实光标（游戏认的是光标位置，SendMessage 前先把窗口挪到目标点落在光标下）：程序在跑时别在这台 Windows 上
        弹 UAC / 锁屏。真碰上了，`hiro.loop.win_desktop` 会等桌面恢复（最多 10 分钟）再重做，超时讲清原因停下。
-     - 滑动到终点会原地停 0.3 秒再松手（`HIRO_DMM_SWIPE_HOLD=0` 关掉）：直接松手时选卡对话框按松手速度惯性多滑，
+     - 滑动到终点会原地停 0.3 秒再松手：直接松手时选卡对话框按松手速度惯性多滑，
        相邻两屏没有重叠的行，牌组拼接不可信。
      - 实验（缺省关）：`HIRO_DMM_DRIVER=maafw` 把截图 / 点击换成 MaaFramework 的 Win32 控制器（`pip install maafw`，`hiro/device_maafw.py`）。
        `HIRO_MAAFW_SCREENCAP`（缺省 `FramePool`）、`HIRO_MAAFW_INPUT`（缺省 `SendMessageWithWindowPos`，和现在的后台点击同一种做法）。

@@ -108,7 +108,7 @@ HIF_EXAM 的 `motivation` / `impression`：状态栏读到槽位且每个蓝底�
 
 ## 数据集样本
 
-`python -m hiro.contracts.samples datasets/<名> [--reread]` 把采集 manifest 转成 Observation 样本并过 schema（输出 `reports/contracts/`）。
+`PYTHONPATH=src python tools/contract_samples.py datasets/<名> [--reread]` 把采集 manifest 转成 Observation 样本并过 schema（输出 `reports/contracts/`）。
 
 ## 变更记录
 

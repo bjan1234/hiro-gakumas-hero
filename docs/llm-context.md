@@ -1,7 +1,7 @@
 # 培育决策的 LLM 上下文与识别字段清单
 
 决策会话 2026-10-30。代码：`src/hiro/state/`（状态 `produce.py`、社区知识 `knowledge.py`、上下文 `context.py`），
-演示：`.venv/bin/python -m hiro.state.demo action_select|card_pick`。攻略提示词：`brain/prompts/hif_produce.md`、`idols/campus_hiro.md`。
+演示：`PYTHONPATH=src .venv/bin/python tools/state_demo.py action_select|card_pick`。攻略提示词：`brain/prompts/hif_produce.md`、`idols/campus_hiro.md`。
 
 ## 原则
 

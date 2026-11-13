@@ -78,7 +78,7 @@ def test_strategy_sets_flag_on_finals_retry(monkeypatch):
 
 
 def test_declined_retry_not_reopened_on_same_page(monkeypatch):
-    """Windows 第七局：止损（RETRY_STOP_LOSS）取消再挑戦后，收尾循环每轮又点开确认框、再取消，一直没点「次へ」，空转看门狗停机。
+    """Windows 第七局：取消再挑戦（要花ジュエル / 到上限）后，收尾循环每轮又点开确认框、再取消，一直没点「次へ」，空转看门狗停机。
     同一张结算页决定不再挑戦后，不再点开确认框；换了一张结算页（分数不同）照常判断。"""
     from types import SimpleNamespace as NS
 
@@ -95,7 +95,7 @@ def test_declined_retry_not_reopened_on_same_page(monkeypatch):
     btn = Text("再挑戦", Box(290, 1090, 310, 1110))
     monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [btn])
     calls = []
-    st._click_retry = lambda label, b, texts, **kw: calls.append(kw) or None
+    st._click_retry = lambda label, b, texts: calls.append(label) or None
     assert st._finals_retry(None, "r2") is False and st._finals_retry(None, "r2") is False and len(calls) == 1
     page.update(score=900000, round_score=300000)
     assert st._finals_retry(None, "r2") is False and len(calls) == 2

@@ -1,7 +1,7 @@
 # 来源：digital-hiro src/hiro/eval_hand.py（develop ce5085f）
 """对数据集中所有 HIF 考试帧跑手牌识别，统计识别率与耗时，导出卡面对照图供人工核对。
 
-    .venv/bin/python -m hiro.eval_hand datasets/<目录>
+    PYTHONPATH=src .venv/bin/python tools/eval_hand.py datasets/<目录>
 """
 
 import argparse
