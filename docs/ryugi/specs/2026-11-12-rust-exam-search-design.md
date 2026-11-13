@@ -177,3 +177,17 @@ GNRPA（按 Cazenave 2020 自己写，动作编码 = 回合 / 本回合第几手
 4. 搜索起点 = 对齐后的引擎局面；`sample_world` 的 `free_turns` = 还没看到属性的回合，`known_deck_prefix` = 0（画面看不到山札顶）。
 
 验证项不变（原文「验证」第 2 条：用育成履歴回放比起点和真实局面）。
+
+### 11-14：合入清单（协调转 /goal 减开关：合入时开关总数不能比现在多）
+
+1. 删 `HIRO_BENCH_ADVISOR`（= `HIRO_EXAM_ADVISOR=hiro.defaults.advisor:RuleLLMAdvisor`，重复）。
+2. 删 `HIRO_BENCH_OBS=engine` 这一支和开关（引擎局面路径已查明是错的局面；② 的起点走 SearchAdvisor）。
+3. `HIRO_EXAM_POLICY` / `HIRO_EXAM_PLAYBOOK` / `HIRO_R1_TURN_PROXY`：只服务「规则 + LLM」出牌，定好兜底留多少，留的写死。
+4. `HIRO_EXAM_SIM_TRACK_ALL` / `_ROUNDS` / `_BUDGET_S` / `_WORLDS`：跟踪改成 ② 的做法后，没用的删，有用的写死。
+5. 本分支新加的 `HIRO_EXAM_SEARCH` / `_S` / `_WORLDS` / `_THREADS`：用 `HIRO_EXAM_ADVISOR` 选插件代替开关；预算写死（15 秒、8 个世界、CPU 核数 − 1）。
+
+### 11-14：冒烟和验证 2 结果（合入前）
+
+- 冒烟（自家引擎打完整 R2，每步 2 秒，8 局）：GNRPA 47.1 万、UINet 44.2 万、随机 3.2 万；配对差 +2.9 万 ± 3.2 万，不显著。
+- 验证 2（育成履歴 12 场本战，`.temp/plans-20261112/uiobs-compare/track_compare.py`）：核对通过 39.5%；附魔 98%、状态 85%、牌区 80–89% 的步不一致。
+  第 1 个决策点牌区一致，差在开考效果（やる気 6 / 好印象 6、定制 P 道具附魔、回忆附魔 enc02）。起点误差查完、验证达标前不合入。
