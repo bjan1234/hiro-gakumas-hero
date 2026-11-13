@@ -1,7 +1,7 @@
 """hiro.tool_device：工具脚本用的设备（统一接口 + 危险点击拦截），以及改过来的工具不再碰 kotonebot / KAA。"""
 
-import re
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from hiro.runtime import guard
+from hiro.runtime.frame import Frame
 from hiro.runtime.guard import DangerBlocked
 from hiro.tool_device import ToolDevice, open_tool_device
 
@@ -49,7 +50,12 @@ def dev(monkeypatch):
     fake, clock = FakeDevice(), Clock()
     monkeypatch.setattr("hiro.tool_device.open_device", lambda name=None: fake)
     seen = []
-    monkeypatch.setattr(guard, "check_tap", lambda screen, x, y: seen.append((screen.frame.img[0, 0, 0], x, y)))
+
+    def word_at(frame, x, y):  # 真的 check_tap，只把「点击点上是什么字」换成记下它看的是哪一帧
+        seen.append((frame.img[0, 0, 0], x, y))
+
+    monkeypatch.setattr(guard, "word_at", word_at)
+    monkeypatch.setattr(Frame, "has_dialog", False)
     d = open_tool_device(clock=clock)
     return d, fake, clock, seen
 
@@ -68,19 +74,13 @@ def test_tap_reshoots_when_frame_is_missing_or_stale(dev):
     d.tap(1, 1)  # 还没截过：先补拍
     assert fake.shots == 1
     clock.t = 5.0
-    d.tap(2, 2)  # 超过 FRESH_S：再补拍
+    d.tap(2, 2)  # 太旧（超过 guard.FRESH_S）：再补拍
     assert fake.shots == 2 and [s[0] for s in seen] == [1, 2]
 
 
-def test_blocked_tap_never_reaches_the_device(monkeypatch):
-    fake = FakeDevice()
-    monkeypatch.setattr("hiro.tool_device.open_device", lambda name=None: fake)
-
-    def block(screen, x, y):
-        raise DangerBlocked("ジュエル")
-
-    monkeypatch.setattr(guard, "check_tap", block)
-    d = open_tool_device(clock=Clock())
+def test_blocked_tap_never_reaches_the_device(dev, monkeypatch):
+    d, fake, _, _ = dev
+    monkeypatch.setattr(guard, "word_at", lambda frame, x, y: "ジュエルで購入")
     d.screenshot()
     with pytest.raises(DangerBlocked):
         d.tap(100, 100)
@@ -117,6 +117,8 @@ def test_tool_device_does_not_import_kaa():
         "bad = sorted(m for m in sys.modules if m.split('.')[0] in ('kotonebot', 'kaa'));"
         "print(bad); sys.exit(1 if bad else 0)"
     )
-    env = {k: v for k, v in os.environ.items() if k != "HIRO_KAA_GAME_DATA"}  # 设了它 hiro.vision 会给 KAA 指主数据目录（KAA 还在时要）
+    env = {
+        k: v for k, v in os.environ.items() if k != "HIRO_KAA_GAME_DATA"
+    }  # 设了它 hiro.vision 会给 KAA 指主数据目录（KAA 还在时要）
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False, env=env)
     assert r.returncode == 0, r.stdout + r.stderr
