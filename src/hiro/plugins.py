@@ -119,7 +119,7 @@ KINDS: dict[str, tuple[type, str, str]] = {
     # 种类 → (接口, 环境变量, 默认实现 "模块:类")
     "asset_source": (AssetSource, "HIRO_ASSET_SOURCE", "hiro.defaults.assets:PublicAssetSource"),
     "exam_state_source": (ExamStateSource, "HIRO_EXAM_STATE_SOURCE", "hiro.defaults.exam_state:ScreenExamStateSource"),
-    "exam_advisor": (ExamAdvisor, "HIRO_EXAM_ADVISOR", "hiro.bench_bridge.advisor:BenchAdvisor"),
+    "exam_advisor": (ExamAdvisor, "HIRO_EXAM_ADVISOR", "hiro.search.advisor:SearchAdvisor"),  # 任务 ②：搜索不了退回 bench 中转层
 }
 _registered: dict[str, Callable[[], Any]] = {}
 _cache: dict[str, Any] = {}
