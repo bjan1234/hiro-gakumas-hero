@@ -137,3 +137,153 @@ def test_opening_imports_no_kaa():
     env = {k: v for k, v in os.environ.items() if k != "HIRO_KAA_GAME_DATA"}
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True, env=env).stdout.strip()
     assert out == "[]"
+
+
+# ---------------------------------------------------------------- 第 1 步选偶像
+def _step1(monkeypatch, selected_frames):
+    """idol_selected 按帧上的 selected 标记；idol_select.locate 直接给卡位。"""
+    monkeypatch.setattr(opening, "idol_selected", lambda f, skin: getattr(f, "selected", False))
+    monkeypatch.setattr("hiro.produce.idol_select.locate", lambda skin, **kw: Box(200, 600, 349, 797))
+
+
+def test_step1_already_selected_just_next(monkeypatch):
+    _step1(monkeypatch, None)
+    s1 = frame({"Produce.TextStepIndicator1": (1, 1), "Produce.Step1.ButtonNext": (500, 1160)})
+    s1.selected = True
+    rt, _ = rig(monkeypatch, [s1], on_tap=lambda taps: [frame({"Produce.TextStepIndicator2": (1, 1)})])
+    opening.step1(rt, "i_card-skin-hski-3-007")
+    assert rt.raw_device.taps == [(500, 1160)]
+
+
+def test_step1_selects_from_overview_then_next(monkeypatch):
+    _step1(monkeypatch, None)
+    s1 = frame({"Produce.TextStepIndicator1": (1, 1), "Produce.ButtonPIdolOverview": (600, 400)})
+    another = frame({"Common.ButtonConfirmNoIcon": (500, 1160), "Produce.TextAnotherIdolAvailableDialog": (360, 500), "Common.ButtonIconClose": (650, 300)})
+    overview = frame({"Produce.IdolOverview.ButtonConfirm": (500, 1160), "Common.ButtonConfirmNoIcon": (500, 1160)})
+    back = frame({"Produce.TextStepIndicator1": (1, 1), "Produce.Step1.ButtonNext": (500, 1160)})
+    back.selected = True
+    s2 = frame({"Produce.TextStepIndicator2": (1, 1)})
+    script = {1: [another], 2: [overview], 3: [overview], 4: [back], 5: [s2]}  # 第几次点击之后的画面
+    rt, _ = rig(monkeypatch, [s1], on_tap=lambda taps: script.get(len(taps)))
+    opening.step1(rt, "i_card-skin-hski-3-007")
+    assert rt.raw_device.taps == [(600, 400), (650, 300), (274, 698), (500, 1160), (500, 1160)]  # 一览、关提示、点卡、确认、次へ
+
+
+def test_step1_idol_missing_stops(monkeypatch):
+    monkeypatch.setattr(opening, "idol_selected", lambda f, skin: False)
+    monkeypatch.setattr("hiro.produce.idol_select.locate", lambda skin, **kw: None)
+    s1 = frame({"Produce.TextStepIndicator1": (1, 1), "Produce.IdolOverview.ButtonConfirm": (500, 1160)})
+    rt, _ = rig(monkeypatch, [s1])
+    with pytest.raises(ResumeBlocked, match="找不到"):
+        opening.step1(rt, "i_card-skin-none")
+
+
+# ---------------------------------------------------------------- 第 2 步支援卡 + 租借
+def _step2(monkeypatch, *, enabled_after_pick=True, picked=True, mismatch=False):
+    calls = {"set": [], "pick": []}
+    from hiro.produce import formation_steps, prep_steps
+
+    monkeypatch.setattr(prep_steps, "select_set", lambda n, **kw: calls["set"].append(n) or True)
+    monkeypatch.setattr(formation_steps, "autofix_support", lambda dev, plan: None)
+
+    def check(img, plan, set_no):
+        if mismatch:
+            raise opening.ResumeBlocked("支援卡编成和方案对不上")  # FormationMismatch 也是停机类
+
+    monkeypatch.setattr(formation_steps, "check_support", check)
+    state = {"enabled": False}
+
+    def pick(plan, attr, main):
+        calls["pick"].append(attr)
+        state["enabled"] = enabled_after_pick
+        return picked
+
+    monkeypatch.setattr(formation_steps, "rental_pick", pick)
+    monkeypatch.setattr(opening, "_next_enabled", lambda f, name: Match(Box(500, 1150, 501, 1151), 0.9) if state["enabled"] or getattr(f, "lit", False) else None)
+    return calls, state
+
+
+def test_step2_full_formation_goes_next(monkeypatch):
+    calls, state = _step2(monkeypatch)
+    s2 = frame({"Produce.TextStepIndicator2": (1, 1)})
+    s2.lit = True
+    rt, _ = rig(monkeypatch, [s2], on_tap=lambda taps: [frame({"Produce.TextStepIndicator3": (1, 1)})])
+    opening.step2(rt, set_no=4)
+    assert calls["set"] == [4] and calls["pick"] == [] and rt.raw_device.taps == [(500, 1150)]
+
+
+def test_step2_rents_when_slot_empty(monkeypatch):
+    calls, state = _step2(monkeypatch)
+    rt, _ = rig(monkeypatch, [frame({"Produce.TextStepIndicator2": (1, 1)})], on_tap=lambda taps: [frame({"Produce.TextStepIndicator3": (1, 1)})])
+    opening.step2(rt, set_no=4, rental_attr="Vi")
+    assert calls["pick"] == ["Vi"] and rt.raw_device.taps == [(500, 1150)]
+
+
+def test_step2_stops_without_rental_or_set_or_on_mismatch(monkeypatch):
+    s2 = [frame({"Produce.TextStepIndicator2": (1, 1)})]
+    _step2(monkeypatch, picked=False, enabled_after_pick=False)
+    rt, _ = rig(monkeypatch, s2)
+    with pytest.raises(ResumeBlocked, match="租借"):
+        opening.step2(rt, set_no=4)
+    rt, _ = rig(monkeypatch, s2)
+    with pytest.raises(ResumeBlocked, match="编成号"):
+        opening.step2(rt, set_no=None)
+    _step2(monkeypatch, mismatch=True)
+    rt, _ = rig(monkeypatch, s2)
+    with pytest.raises(ResumeBlocked, match="对不上"):
+        opening.step2(rt, set_no=4)
+
+
+# ---------------------------------------------------------------- 第 3 / 4 步、本战选拔回忆
+def test_step3_confirms_rent_tip_then_next(monkeypatch):
+    from hiro.produce import formation_steps, prep_steps
+
+    monkeypatch.setattr(prep_steps, "select_set", lambda n, **kw: True)
+    monkeypatch.setattr(formation_steps, "autofix_memory", lambda dev, plan, mk: None)
+    checked = []
+    monkeypatch.setattr(formation_steps, "check_memory_set", lambda img, plan, n: checked.append(n))
+    s3 = frame({"Produce.TextStepIndicator3": (1, 1), "Produce.Step3.ButtonNext": (500, 1160)})
+    tip = frame({"Produce.TextRentAvailable": (360, 600), "Produce.RentAvailableConfirmButton": (360, 900)})
+    s4 = frame({"Produce.TextStepIndicator4Or2": (1, 1)})
+    rt, _ = rig(monkeypatch, [s3], on_tap=lambda taps: [tip] if len(taps) == 1 else [s4])
+    opening.step3(rt, set_no=5)
+    assert checked == [5] and rt.raw_device.taps == [(500, 1160), (360, 900)]
+
+
+def test_step4_sets_boost_checkboxes(monkeypatch):
+    states = {"Produce.Step4.CheckboxNoteBoost": True, "Produce.Step4.CheckboxPtBoost": False}
+    monkeypatch.setattr("hiro.vision.ui_templates.checkbox_checked", lambda img, m: states[m.name])
+    s4 = frame({"Produce.TextStepIndicator4Or2": (1, 1), "Produce.Step4.CheckboxNoteBoost": (100, 800), "Produce.Step4.CheckboxPtBoost": (100, 900)})
+    rt, _ = rig(monkeypatch, [s4])
+    real_find = nav.find
+    monkeypatch.setattr(nav, "find", lambda f, name, **kw: (m := real_find(f, name, **kw)) and type("M", (), {"rect": m.rect, "name": name})())
+    opening.step4(rt, note_boost=False, pt_boost=False)
+    assert rt.raw_device.taps == [(100, 800)]  # 只把勾着的 NoteBoost 取消，PtBoost 本来就没勾
+
+
+def test_check_main_memory(monkeypatch):
+    from hiro.produce import memory_select
+
+    rt, _ = rig(monkeypatch, [frame({})])
+    seq = iter([[], ["2066"], []])
+    picked = []
+    monkeypatch.setattr(memory_select, "memory_missing_on_page", lambda expect, **kw: next(seq))
+    monkeypatch.setattr(memory_select, "select_memory", lambda expect, **kw: picked.append(expect) or True)
+    opening.check_main_memory(rt, ("1498", "2066", "944"))  # 页面上已经是这份
+    opening.check_main_memory(rt, ("1498", "2066", "944"))  # 缺 2066 → 去列表选 → 再核通过
+    assert picked == [("1498", "2066", "944")]
+    monkeypatch.setattr(memory_select, "memory_missing_on_page", lambda expect, **kw: ["944"])
+    with pytest.raises(memory_select.MemoryMismatch):
+        opening.check_main_memory(rt, ("1498", "2066", "944"))
+    opening.check_main_memory(rt, ())  # 没指定就不查
+
+
+def test_prepare_main_skips_formation_steps(monkeypatch):
+    called = []
+    monkeypatch.setattr(opening, "check_main_memory", lambda rt, expect: called.append(("memory", expect)))
+    monkeypatch.setattr(opening, "step4", lambda rt, **kw: called.append(("step4", kw)))
+    monkeypatch.setattr(opening, "step1", lambda *a, **k: called.append("step1"))
+    s1 = frame({"Produce.TextStepIndicator1": (1, 1), "Produce.Step1.ButtonNext": (500, 1160)})
+    rt, _ = rig(monkeypatch, [s1], on_tap=lambda taps: [frame({"Produce.TextStepIndicator4Or2": (1, 1)})])
+    opening.prepare(rt, "main", idol="i_card-skin-hski-3-007", expect_memory=("1", "2", "3"))
+    assert called == [("memory", ("1", "2", "3")), ("step4", {"note_boost": False, "pt_boost": False})]

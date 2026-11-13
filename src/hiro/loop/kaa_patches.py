@@ -28,15 +28,6 @@ from hiro.vision.ocr import screen_texts
 
 logger = logging.getLogger(__name__)
 
-MAX_PAGES = 20
-TOP_SWIPES = 8
-SWIPE_PX = 220  # 约 1 行，页间有重叠
-SETTLE = 1.2
-COLS = (30, 200, 371, 541)  # 720x1280 下四列卡片的左边缘
-CARD_W, CARD_H = 149, 197
-MIN_H = 120  # 裁剪高度不足时不查（被底部遮住的行）
-ROW_STEP = 16
-MATCH_THRESHOLD = 12  # 实测命中距离 2–8，误匹配 ≥ 10
 
 # 授業换卡
 CHANGE_LETTERS_BOX = (40, 860, 640, 160)  # (x, y, w, h)； 候选卡行的角标带；KAA 参考图上下平移 ±30px 都能找到 3 张
@@ -109,42 +100,12 @@ def _progress(why: str) -> None:
 
 
 def locate_idol_by_swipe(skin_id: str) -> Rect | None:
-    """固定 4 列、滑动行的网格裁剪逐格查偶像图像库（KAA 的 extract_idols 轮廓检测会漏掉部分卡位，2026-10-31 实测漏掉 Campus 広）。
-    先回到列表顶部，再逐页上滑，到底（画面不再变化）为止。"""
-    from kaa.game_ui.idols_overview import idols_db
+    """KAA prepare 的 locate_idol 换成这个：找法在 hiro.produce.idol_select（不依赖 KAA），这里接 kotonebot 设备、换回 KAA 的 Rect。"""
+    from hiro.produce import idol_select
 
-    from hiro.vision.ui_templates import box
-
-    x0, y0, w, h = box("Produce.BoxIdolOverviewIdols").xywh
-    cx = x0 + w // 2
-    bottom = y0 + h
-    db = idols_db()
-    for _ in range(TOP_SWIPES):  # 回到顶部
-        device.swipe(cx, y0 + 60, cx, bottom - 40, duration=0.4)
-        time.sleep(0.5)
-    time.sleep(0.8)
-    last_sig = None
-    for page in range(MAX_PAGES):
-        img = device.screenshot()
-        for x in COLS:
-            for y in range(y0 - 8, bottom - MIN_H, ROW_STEP):
-                crop = img[y : min(y + CARD_H, bottom), x : x + CARD_W]
-                if crop.shape[0] < MIN_H:
-                    continue
-                res = db.query(crop, k=1, threshold=MATCH_THRESHOLD)
-                if res and res[0].key.startswith(skin_id):
-                    logger.info("Found idol %s on page %d at (%d, %d), distance %.1f", skin_id, page + 1, x, y, res[0].distance)
-                    return Rect(x, y, CARD_W, crop.shape[0])
-        sig = img[y0:bottom:8, x0 : x0 + w : 8].tobytes()
-        if sig == last_sig:
-            logger.info("偶像列表翻到底仍未找到 %s", skin_id)
-            return None
-        last_sig = sig
-        _progress(f"找偶像：第 {page + 1} 页没有")
-        device.swipe(cx, bottom - 40, cx, bottom - 40 - SWIPE_PX, duration=0.6)
-        time.sleep(SETTLE)
-    logger.info("翻了 %d 页仍未找到 %s", MAX_PAGES, skin_id)
-    return None
+    hit = idol_select.locate(skin_id, shoot=device.screenshot, swipe=lambda x1, y1, x2, y2, d: device.swipe(x1, y1, x2, y2, duration=d),
+                             progress=_progress)  # fmt: skip
+    return None if hit is None else Rect(hit.x1, hit.y1, hit.w, hit.h)
 
 
 def find_card_marks(img, region, threshold: float | None = None) -> list:
@@ -723,137 +684,25 @@ def pitem_commit(self, index: int, *, shoot=None, click=None, clock=time.monoton
 EXPECT_MEMORY: tuple[str, ...] = ()  # run_hif --expect-memory：本战开局前，开始确认页上必须出现的选拔回忆属性数字
 
 
-class MemoryMismatch(RuntimeError):
-    """本战开始确认页上选中的选拔回忆不是指定的那份：不开局。"""
+from hiro.produce.memory_select import MemoryMismatch, memory_value_seen  # noqa: E402,F401  run_hif 按 kaa_patches.MemoryMismatch 捕获
 
 
-MEMORY_CHANGE_BTN = (636, 577)  # 开始确认页「選択中の選抜試験メモリー」右侧「変更」
-MEMORY_OK_BTN = (360, 1085)  # 回忆列表底部「OK」
-MEMORY_SORT_BTN = (527, 860)  # 列表上的排序键按钮（「スター性」/「入手」…）→ ソート・フィルタ 弹窗
-MEMORY_SORT_NEWEST = (413, 273)  # 弹窗里「入手」
-MEMORY_SORT_OK = (500, 1160)  # 弹窗「決定」
-MEMORY_CELLS = [(x, y) for y in (487, 627, 767) for x in (140, 360, 580)]  # 列表可见的 3×3 格
-MEMORY_PAGES = 12  # 回忆 45 份以上（q10），每次只滑 2 行防跳行
+def select_memory(expect: tuple[str, ...], **kw) -> bool:
+    """在回忆列表里选中 expect（hiro.produce.memory_select.select_memory），没给设备时用 kotonebot 的。"""
+    from hiro.produce import memory_select
+
+    kw.setdefault("shoot", device.screenshot)
+    kw.setdefault("click", device.click)
+    kw.setdefault("swipe", device.swipe)
+    return memory_select.select_memory(expect, **kw)
 
 
-MEMORY_HEADER_BAND = (100, 220)  # 列表上方所选回忆的属性行（110 < y < 210）
-MEMORY_CELL_WAIT = 0.6  # 点一格后等上方属性更新
-MEMORY_SORT_TEXT = "入手"  # ソート・フィルタ 弹窗里按入手排序的选项
+def _memory_missing_on_page(**kw) -> list:
+    """开始确认页缺哪几项选拔回忆属性（hiro.produce.memory_select.memory_missing_on_page），没给截图时用 kotonebot 的。"""
+    from hiro.produce import memory_select
 
-
-def _memory_snap(img, tag: str) -> None:
-    """回忆切换每一步存帧（第二十二局没找到第十八局回忆，又没有帧，分不清是排序错了还是回忆已不在列表）。"""
-    if img is None:
-        return
-    try:
-        import cv2
-
-        from hiro.produce.ops import CALIB_DIR
-
-        d = CALIB_DIR / f"{time.strftime('%Y%m%d-%H%M%S', time.localtime(_memory_snap.t0))}-回忆"
-        d.mkdir(parents=True, exist_ok=True)
-        _memory_snap.n += 1
-        imgio.imwrite(str(d / f"{_memory_snap.n:02d}-{tag}.jpg"), img)
-    except Exception:
-        pass
-
-
-_memory_snap.t0, _memory_snap.n = time.time(), 0
-
-
-def _find_text_center(boxes, word: str, *, exact: bool = False):
-    hits = [((x1 + x2) // 2, (y1 + y2) // 2) for t, _, (x1, y1, x2, y2) in boxes
-            if (t.replace(" ", "") == word if exact else word in t.replace(" ", ""))]  # fmt: skip
-    return hits[0] if hits else None
-
-
-def select_memory(expect: tuple[str, ...], *, shoot=None, click=None, swipe=None, texts_of=None, sleep=time.sleep, boxes_of=None) -> bool:
-    """本战开始确认页：点「変更」→ 按「入手」排序 → 逐格点开回忆、读上方属性，找到属性全部吻合的那份 → OK。找不到就关掉列表、返回 False
-    （回首页再进开始确认页时游戏会重置为上次用过的回忆，q8 实机，所以只能在这一页当场选）。
-    第二十二局：12 页 × 9 格每格「等 1.2s + 整帧 OCR（3 倍放大）」，翻完要 5 分半；排序选项按固定坐标点，总控看到列表按「タグ」排。
-    现在排序选项按 OCR 找「入手」点（找不到才用固定坐标），每格只 OCR 上方属性条（1.5 倍），等 0.6s；每步存帧到 calib/*-回忆。"""
-    from hiro.produce.ops import ocr_boxes
-
-    shoot = shoot or device.screenshot
-    click = click or device.click
-    swipe = swipe or device.swipe
-    y1, y2 = MEMORY_HEADER_BAND
-    texts_of = texts_of or (lambda img: [t for t, _, _ in ocr_boxes(img[y1:y2])])
-    boxes_of = boxes_of or (lambda img: ocr_boxes(img) if img is not None else [])
-    _memory_snap.t0, _memory_snap.n = time.time(), 0
-    click(*MEMORY_CHANGE_BTN)
-    sleep(1.5)
-    # 按「入手」排序：刚打完的选拔回忆排在最前（q11：按スター性 排时新回忆在 46 份里靠后，没找到）
-    click(*MEMORY_SORT_BTN)
-    sleep(1.0)
-    img = shoot()
-    _memory_snap(img, "sort-dialog")
-    boxes = boxes_of(img)
-    click(*(_find_text_center(boxes, MEMORY_SORT_TEXT, exact=True) or _find_text_center(boxes, MEMORY_SORT_TEXT) or MEMORY_SORT_NEWEST))
-    sleep(0.5)
-    img = shoot()
-    _memory_snap(img, "sort-picked")
-    click(*(_find_text_center(boxes_of(img), "決定") or MEMORY_SORT_OK))
-    sleep(1.2)
-    for page in range(MEMORY_PAGES):
-        for i, cell in enumerate(MEMORY_CELLS):
-            click(*cell)
-            sleep(MEMORY_CELL_WAIT)
-            img = shoot()
-            if i == 0:
-                _memory_snap(img, f"page{page:02d}")
-            got = "|".join(texts_of(img)).replace(",", "").replace(" ", "")
-            # 拼成一串再找：OCR 常给「+1434」「⑨1454」这种带前缀 / 读混的块，按块精确相等永远对不上（第十八局本战两次没找到）
-            if all(memory_value_seen(v, got) for v in expect):
-                logger.info("本战开局：在回忆列表里选中 %s（第 %d 页第 %d 格）", "/".join(expect), page + 1, i + 1)
-                click(*MEMORY_OK_BTN)
-                sleep(2.0)
-                return True
-        swipe(360, 900, 360, 620, 1.2)  # 约 2 行，慢滑无惯性
-        sleep(1.0)
-    logger.warning("回忆列表里没找到 %s（翻了 %d 页，每页首格帧存在 calib/*-回忆）", "/".join(expect), MEMORY_PAGES)
-    click(*MEMORY_OK_BTN)  # 关掉列表；之后的核对仍会不通过，不开局
-    sleep(2.0)
-    return False
-
-
-_DIGIT_CONFUSION = {"3": "35", "5": "53", "6": "68", "8": "86", "0": "08", "1": "17", "7": "71"}  # 开始确认页粗体数字 OCR 常混淆
-
-
-def memory_value_seen(value: str, texts: str) -> bool:
-    """页面文字里有没有这个回忆属性值；允许最多 1 位按 _DIGIT_CONFUSION 混淆（第十八局：1434 被读成 1454，本战核对拒绝开局）。"""
-    if value in texts:
-        return True
-    import re
-
-    for m in re.finditer(r"\d{%d}" % len(value), texts):
-        cand = m.group(0)
-        diffs = [(a, b) for a, b in zip(value, cand) if a != b]
-        if len(diffs) == 1 and diffs[0][1] in _DIGIT_CONFUSION.get(diffs[0][0], ""):
-            return True
-    return False
-
-
-MEMORY_PAGE_READS = 3
-
-
-def _memory_missing_on_page(*, shoot=None, texts=None, sleep=time.sleep) -> list:
-    """开始确认页读选中回忆的属性，最多读 MEMORY_PAGE_READS 次（页面刚出来时数字可能还没画完）；返回没读到的那几项。
-    shoot() → 帧，texts(帧) → 文字列表。"""
-    if shoot is None:
-        from kotonebot import device as _d
-
-        shoot = _d.screenshot
-    texts = texts or (lambda img: [t.text for t in screen_texts(img)])
-    missing = list(EXPECT_MEMORY)
-    for i in range(MEMORY_PAGE_READS):
-        got = "".join(texts(shoot())).replace(",", "")
-        missing = [v for v in EXPECT_MEMORY if not memory_value_seen(v, got)]
-        if not missing:
-            return []
-        if i + 1 < MEMORY_PAGE_READS:
-            sleep(1.0)
-    return missing
+    kw.setdefault("shoot", device.screenshot)
+    return memory_select.memory_missing_on_page(EXPECT_MEMORY, **kw)
 
 
 def _check_memory_then(step4):
@@ -949,18 +798,11 @@ RENTAL_ATTR: str | None = None  # 租借挑哪个属性（run_hif 按 --main-att
 
 
 def _default_rental_pick() -> bool:
-    """有开局编成方案：按「加上这张后编成的价值」挑（support_select.rental_scorer，自己 5 张取方案的）；没有方案：主属性、等级最高。"""
+    """有开局编成方案按编成价值挑，没有按主属性、等级最高（hiro.produce.formation_steps.rental_pick）。"""
     from hiro import kaa_env
-    from hiro.produce import rental
+    from hiro.produce import formation_steps
 
-    plan = kaa_env.ACTIVE_PLAN or {}
-    own = [{"support_card_id": o["support_card_id"], "level": o.get("level")} for o in (plan.get("support") or {}).get("own") or []]
-    scorer = None
-    if own:
-        from hiro.brain.support_select import rental_scorer
-
-        scorer = rental_scorer(own, RENTAL_ATTR or kaa_env.PLAN_MAIN_ATTR, (plan.get("idol") or {}).get("plan"))
-    return rental.pick_rental(attr=RENTAL_ATTR or rental.WANT_ATTR, scorer=scorer)
+    return formation_steps.rental_pick(kaa_env.ACTIVE_PLAN, RENTAL_ATTR, kaa_env.PLAN_MAIN_ATTR)
 
 
 RENTAL_PICK: Callable | None = _default_rental_pick  # 默认：主属性、等级最高的一张；策略层可替换成自己的选择
@@ -970,35 +812,18 @@ from hiro.produce.formation_check import FormationMismatch  # noqa: E402  run_hi
 
 
 def _check_support(img) -> None:
-    """有开局编成方案时核对第 2 步的 5 格支援卡；对不上抛 FormationMismatch（不开局）。核对本身出错只记日志。"""
+    """有开局编成方案时核对第 2 步支援卡（hiro.produce.formation_steps.check_support）；对不上抛 FormationMismatch。"""
     from hiro import kaa_env
+    from hiro.produce import formation_steps
 
-    if not kaa_env.ACTIVE_PLAN:
-        return
-    from hiro.produce.formation_check import check_support_step2
-
-    try:
-        from hiro.vision.support_screens import read_support_formation
-
-        problems, warnings = check_support_step2(read_support_formation(img), kaa_env.ACTIVE_PLAN)
-    except Exception as e:  # noqa: BLE001
-        logger.warning("支援卡编成核对失败（不拦开局）：%s", e)
-        return
-    for w in warnings:
-        logger.warning("支援卡编成核对：%s", w)
-    if problems:
-        logger.error("支援卡编成和方案对不上，不开局：%s", "；".join(problems))
-        raise FormationMismatch("支援卡编成和方案对不上：" + "；".join(problems))
-    logger.info("支援卡编成核对通过（编成 %s）", kaa_env.SUPPORT_SET)
+    formation_steps.check_support(img, kaa_env.ACTIVE_PLAN, kaa_env.SUPPORT_SET)
 
 
 def _autofix_on() -> bool:
-    """开局自动编成（produce.formation_writer）：HIRO_FORMATION_AUTOFIX=1 且有开局编成方案时才启用（默认关，执行步骤待实机验证）。"""
-    import os
-
     from hiro import kaa_env
+    from hiro.produce import formation_steps
 
-    return os.environ.get("HIRO_FORMATION_AUTOFIX") == "1" and bool(kaa_env.ACTIVE_PLAN)
+    return formation_steps.autofix_on(kaa_env.ACTIVE_PLAN)
 
 
 def _writer_device(tag: str):
@@ -1021,99 +846,52 @@ def _writer_device(tag: str):
 
 
 def _autofix_support() -> None:
-    """第 2 步：编成和方案不一致的格子自动改（只在 KAA 已切到方案编成号之后）。失败抛 FormationMismatch，不开局。"""
+    """第 2 步：编成和方案不一致的格子自动改（hiro.produce.formation_steps.autofix_support）。"""
     if not _autofix_on():
         return
     from hiro import kaa_env
-    from hiro.produce.formation_writer import FormationWriteError, fix_support
-    from hiro.vision.support_screens import read_support_formation, read_support_list
+    from hiro.produce import formation_steps
 
-    try:
-        done = fix_support(_writer_device("支援卡"), kaa_env.ACTIVE_PLAN, read_formation=read_support_formation, read_list=read_support_list)
-    except FormationWriteError as e:
-        logger.error("开局自动编成（支援卡）失败，不开局：%s", e)
-        raise FormationMismatch(f"开局自动编成（支援卡）失败：{e}") from e
-    if done:
-        logger.info("开局自动编成（支援卡）：改了 %d 格 %s", len(done), done)
+    formation_steps.autofix_support(_writer_device("支援卡"), kaa_env.ACTIVE_PLAN)
 
 
 def _autofix_memory() -> None:
-    """第 3 步：回忆格和方案不一致时自动改；回忆列表滚动临时用「终点停住」防惯性（同 hiro.memory_scan）。"""
+    """第 3 步：回忆格和方案不一致时自动改（hiro.produce.formation_steps.autofix_memory）；
+    旧设备的回忆列表滚动临时用「终点停住」防惯性（同 hiro.memory_scan）。"""
     if not _autofix_on():
         return
     from hiro import device as hdev
     from hiro import kaa_env
-    from hiro.produce.formation_writer import FormationWriteError, fix_memory
+    from hiro.produce import formation_steps
     from hiro.produce.memory_picker import SWIPE_DURATION, SWIPE_HOLD, Picker
-    from hiro.vision.memory_icons import read_step3_icons
 
     impl = getattr(hdev.DEVICE, "_touch", None) if hdev.DEVICE is not None else None  # 最近一次 connect() 的设备
     old_hold = getattr(impl, "swipe_hold", None)
     if impl is not None and old_hold is not None:
         impl.swipe_hold = SWIPE_HOLD
-    plan = kaa_env.ACTIVE_PLAN
     try:
-        def make_picker():
-            return Picker(device.screenshot, lambda x, y: device.click(x, y),
-                          lambda x1, y1, x2, y2: device.swipe(x1, y1, x2, y2, duration=SWIPE_DURATION))  # fmt: skip
-
-        done = fix_memory(_writer_device("回忆"), plan, read_icons=read_step3_icons, make_picker=make_picker)
-    except FormationWriteError as e:
-        logger.error("开局自动编成（回忆）失败，不开局：%s", e)
-        raise FormationMismatch(f"开局自动编成（回忆）失败：{e}") from e
+        formation_steps.autofix_memory(_writer_device("回忆"), kaa_env.ACTIVE_PLAN, lambda: Picker(
+            device.screenshot, lambda x, y: device.click(x, y), lambda x1, y1, x2, y2: device.swipe(x1, y1, x2, y2, duration=SWIPE_DURATION)))
     finally:
         if impl is not None and old_hold is not None:
             impl.swipe_hold = old_hold
-    if done:
-        logger.info("开局自动编成（回忆）：改了 %d 格 %s", len(done), done)
-
-
-def _check_memory_cards(img, plan: dict) -> tuple[list[str], list[str]]:
-    """第 3 步四格回忆的技能卡小图标 vs 方案的回忆卡。HIRO_MEMORY_CARD_CHECK：block（默认，有把握认错就拦）/ warn / off。"""
-    import os
-
-    mode = (os.environ.get("HIRO_MEMORY_CARD_CHECK") or "block").lower()
-    if mode == "off":
-        return [], []
-    try:
-        from hiro.produce.formation_check import check_memory_cards
-        from hiro.vision.memory_icons import read_step3_icons
-
-        reads = read_step3_icons(img, expect=list((plan.get("memory") or {}).get("cards") or []))
-        logger.info("第 3 步回忆图标：%s", "；".join(f"{r['slot'] + 1}:{r['card']} {r['score']}" for r in reads))
-        problems, warnings = check_memory_cards(reads, plan)
-    except Exception as e:  # noqa: BLE001
-        return [], [f"回忆卡面核对失败（不拦开局）：{e}"]
-    if mode == "warn":
-        return [], warnings + [p + "（HIRO_MEMORY_CARD_CHECK=warn，不拦）" for p in problems]
-    return problems, warnings
 
 
 def _check_memory_set() -> None:
-    """有开局编成方案时，在 KAA 选完回忆编成后读「N/20」核对编成号；对不上抛 FormationMismatch。"""
+    """有开局编成方案时核对回忆编成号和四格回忆卡（hiro.produce.formation_steps.check_memory_set）。"""
     from hiro import kaa_env
+    from hiro.produce import formation_steps
 
-    if not kaa_env.ACTIVE_PLAN:
-        return
-    from hiro.produce.formation_check import check_memory_step3, memory_set_number
+    formation_steps.check_memory_set(device.screenshot(), kaa_env.ACTIVE_PLAN, kaa_env.MEMORY_SET)
 
-    try:
-        from hiro.produce.ops import ocr_boxes
 
-        img = device.screenshot()
-        problems, warnings = check_memory_step3(memory_set_number([(t, b) for t, _, b in ocr_boxes(img)]), kaa_env.ACTIVE_PLAN)
-    except Exception as e:  # noqa: BLE001
-        logger.warning("回忆编成核对失败（不拦开局）：%s", e)
-        return
-    if not problems:
-        p2, w2 = _check_memory_cards(img, kaa_env.ACTIVE_PLAN)
-        problems, warnings = problems + p2, warnings + w2
-    for w in warnings:
-        logger.warning("回忆编成核对：%s", w)
-    if problems:
-        logger.error("回忆编成和方案对不上，不开局：%s", "；".join(problems))
-        raise FormationMismatch("回忆编成和方案对不上：" + "；".join(problems))
-    logger.info("回忆编成核对通过（メモリー編成 %s）", kaa_env.MEMORY_SET)
+def select_set(index: int) -> None:
+    """KAA prepare._select_set 换成这个：翻编成号在 hiro.produce.prep_steps（自己的 OCR，读不出有超时）。
+    翻不到只记日志（同 KAA），后面的编成核对（_check_support / _check_memory_set）会停下。"""
+    from hiro.produce import prep_steps
+
+    if not prep_steps.select_set(index, shoot=device.screenshot, tap=lambda x, y: device.click(x, y)):
+        logger.error("编成没翻到 %d 号，交给编成核对", index)
 
 
 def _rent_step2(orig):
@@ -1132,7 +910,7 @@ def _rent_step2(orig):
         if not tpl("Produce.TextStepIndicator2").exists(device.screenshot()):
             return False
         if set_number is not None:
-            importlib.import_module("kaa.tasks.produce.prepare")._select_set(set_number)
+            select_set(set_number)
         _autofix_support()
         _check_support(device.screenshot())
         if find_enabled("Produce.Step2.ButtonNext", device.screenshot()) is not None:
@@ -1261,6 +1039,7 @@ def apply() -> None:
     if R.Produce.BreakProduceDialog.ButtonConfirm is not NeverConfirmDiscard:
         _ORIG_DISCARD_CONFIRM = R.Produce.BreakProduceDialog.ButtonConfirm
     R.Produce.BreakProduceDialog.ButtonConfirm = NeverConfirmDiscard  # do_produce 按属性名取，替换后它点不到「開始する」
+    prep._select_set = select_set  # 编成号翻页用自己的 OCR（先于下面 PREP_STEPS 的进展包装）
     if not getattr(prep.step3, "_hiro_snap", False):
         prep.step3 = _snap_step3(prep.step3)
     if not getattr(prep.step2, "_hiro_rent", False):
