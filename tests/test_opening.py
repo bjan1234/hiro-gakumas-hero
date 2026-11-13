@@ -137,3 +137,42 @@ def test_opening_imports_no_kaa():
     env = {k: v for k, v in os.environ.items() if k != "HIRO_KAA_GAME_DATA"}
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True, env=env).stdout.strip()
     assert out == "[]"
+
+
+# ---------------------------------------------------------------- 第 1 步选偶像
+def _step1(monkeypatch, selected_frames):
+    """idol_selected 按帧上的 selected 标记；idol_select.locate 直接给卡位。"""
+    monkeypatch.setattr(opening, "idol_selected", lambda f, skin: getattr(f, "selected", False))
+    monkeypatch.setattr("hiro.produce.idol_select.locate", lambda skin, **kw: Box(200, 600, 349, 797))
+
+
+def test_step1_already_selected_just_next(monkeypatch):
+    _step1(monkeypatch, None)
+    s1 = frame({"Produce.TextStepIndicator1": (1, 1), "Produce.Step1.ButtonNext": (500, 1160)})
+    s1.selected = True
+    rt, _ = rig(monkeypatch, [s1], on_tap=lambda taps: [frame({"Produce.TextStepIndicator2": (1, 1)})])
+    opening.step1(rt, "i_card-skin-hski-3-007")
+    assert rt.raw_device.taps == [(500, 1160)]
+
+
+def test_step1_selects_from_overview_then_next(monkeypatch):
+    _step1(monkeypatch, None)
+    s1 = frame({"Produce.TextStepIndicator1": (1, 1), "Produce.ButtonPIdolOverview": (600, 400)})
+    another = frame({"Common.ButtonConfirmNoIcon": (500, 1160), "Produce.TextAnotherIdolAvailableDialog": (360, 500), "Common.ButtonIconClose": (650, 300)})
+    overview = frame({"Produce.IdolOverview.ButtonConfirm": (500, 1160), "Common.ButtonConfirmNoIcon": (500, 1160)})
+    back = frame({"Produce.TextStepIndicator1": (1, 1), "Produce.Step1.ButtonNext": (500, 1160)})
+    back.selected = True
+    s2 = frame({"Produce.TextStepIndicator2": (1, 1)})
+    script = {1: [another], 2: [overview], 3: [overview], 4: [back], 5: [s2]}  # 第几次点击之后的画面
+    rt, _ = rig(monkeypatch, [s1], on_tap=lambda taps: script.get(len(taps)))
+    opening.step1(rt, "i_card-skin-hski-3-007")
+    assert rt.raw_device.taps == [(600, 400), (650, 300), (274, 698), (500, 1160), (500, 1160)]  # 一览、关提示、点卡、确认、次へ
+
+
+def test_step1_idol_missing_stops(monkeypatch):
+    monkeypatch.setattr(opening, "idol_selected", lambda f, skin: False)
+    monkeypatch.setattr("hiro.produce.idol_select.locate", lambda skin, **kw: None)
+    s1 = frame({"Produce.TextStepIndicator1": (1, 1), "Produce.IdolOverview.ButtonConfirm": (500, 1160)})
+    rt, _ = rig(monkeypatch, [s1])
+    with pytest.raises(ResumeBlocked, match="找不到"):
+        opening.step1(rt, "i_card-skin-none")

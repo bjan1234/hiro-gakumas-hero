@@ -9,8 +9,8 @@
 - AP 不足只喝 APドリンク（hiro.loop.ap_refill；确认框有ジュエル就取消）。
 - 「プロデュース開始」只在 new 流程里点（使用者放行开局后才会跑 new）。
 
-这一版是导航部分：回首页 → 培育入口 → 翻到 H.I.F → 选拔 / 本战 → AP → 开始 → 跳过交流。
-第 1–3 步（选偶像 / 支援卡和租借 / 回忆）现在由 kaa_patches 包着 KAA 的 prepare，迁过来之前 new 流程不走这里。
+已有：回首页 → 培育入口 → 翻到 H.I.F → 选拔 / 本战 → AP → 第 1 步选偶像 → 开始 → 跳过交流。
+第 2–4 步（支援卡和租借 / 回忆 / 加成）现在由 kaa_patches 包着 KAA 的 prepare，迁过来之前 new 流程不走这里。
 """
 
 from __future__ import annotations
@@ -123,3 +123,83 @@ def start(rt, timeout: float = 20.0) -> None:
                 if (m := nav.find(f, name)) is not None:
                     nav.tap_match(rt, m)
         rt.sleep(0.3)
+
+
+# ---------------------------------------------------------------- 第 1 步：选偶像（同 KAA prepare.step1 / _select_idol）
+IDOL_THRESHOLD = 20  # 同 KAA match_idol
+STEP_TIMEOUT = 20.0
+IDOL_TRIES = 5
+
+
+def idol_selected(f, skin_id: str) -> bool:
+    """第 1 步左上「已选偶像」框里是不是 skin_id（偶像卡图库，hiro.vision.idols）。"""
+    from hiro.vision import idols
+
+    x1, y1, x2, y2 = box("Produce.BoxSelectedIdol")
+    hit = idols.query(f.img[y1:y2, x1:x2], threshold=IDOL_THRESHOLD)
+    return hit is not None and hit[0].startswith(skin_id)
+
+
+def _close_dialog(rt, f) -> bool:
+    """普通提示框（Another 偶像可选等）：点 ✕ 或「キャンセル / 閉じる」。"""
+    if (m := nav.find(f, "Common.ButtonIconClose")) is not None:
+        nav.tap_match(rt, m)
+        return True
+    if (t := next((t for t in f.texts if any(w in t.text for w in ("キャンセル", "閉じる"))), None)) is not None:
+        rt.device.tap(*t.rect.center)
+        return True
+    return False
+
+
+def select_idol(rt, skin_id: str) -> None:
+    """打开偶像一览 → 翻页找到 skin_id → 点它 → 确认，回到第 1 步。"""
+    from hiro.produce import idol_select
+
+    def open_list(f):
+        if nav.find(f, "Produce.IdolOverview.ButtonConfirm") is not None:
+            return True
+        if nav.find(f, "Common.ButtonConfirmNoIcon") is None:
+            if (m := nav.find(f, "Produce.ButtonPIdolOverview")) is not None:
+                nav.tap_match(rt, m)
+        elif nav.find(f, "Produce.TextAnotherIdolAvailableDialog") is not None:
+            _close_dialog(rt, f)  # 有新的アナザー偶像可选的提示
+        return None
+
+    rt.drive(open_list, STEP_TIMEOUT, "打开偶像一览")
+    pos = idol_select.locate(skin_id, shoot=lambda: rt.screen.shot().img, sleep=rt.sleep,
+                             swipe=lambda x1, y1, x2, y2, d: rt.device.swipe(x1, y1, x2, y2, duration=d))  # fmt: skip
+    if pos is None:
+        raise ResumeBlocked(f"偶像一览里找不到 {skin_id}")
+
+    def confirm(f):
+        if nav.find(f, "Produce.TextStepIndicator1") is not None:
+            return True
+        if (m := nav.find(f, "Common.ButtonConfirmNoIcon")) is not None:
+            rt.device.tap(*pos.center)
+            rt.sleep(0.3)
+            nav.tap_match(rt, m)
+        return None
+
+    rt.drive(confirm, STEP_TIMEOUT, "确认偶像")
+
+
+def step1(rt, skin_id: str) -> None:
+    """第 1 步：目标偶像没选上就去一览里选（最多 IDOL_TRIES 次），然后点「次へ」到第 2 步。"""
+    f = rt.drive(lambda f: f if nav.find(f, "Produce.TextStepIndicator1") is not None else None, STEP_TIMEOUT, "等第 1 步")
+    for _ in range(IDOL_TRIES):
+        if idol_selected(f, skin_id):
+            break
+        logger.info("第 1 步：选中的不是 %s，去偶像一览选", skin_id)
+        select_idol(rt, skin_id)
+        f = rt.screen.shot()
+    else:
+        raise ResumeBlocked(f"选了 {IDOL_TRIES} 次，第 1 步选中的仍不是 {skin_id}")
+
+    def next_step(f):
+        if nav.find(f, "Produce.TextStepIndicator2") is not None or nav.find(f, "Produce.TextStepIndicator4Or2") is not None:
+            return True
+        if (m := nav.find(f, "Produce.Step1.ButtonNext")) is not None:
+            nav.tap_match(rt, m)
+        return None
+
+    rt.drive(next_step, STEP_TIMEOUT, "第 1 步点次へ")
