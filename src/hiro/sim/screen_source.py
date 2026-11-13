@@ -162,12 +162,33 @@ class SimScreenExamStateSource(ScreenExamStateSource):
         max_hp = state.max_hp or (self.profile.max_hp if self.profile is not None else None) or 33
         permil = {k: v for k, v in (getattr(memory, "attr_permil", None) or {}).items() if v} or dict(CONTEXT.get("permil") or {})
         setup, notes = rv.setup_for(self.template or self.label, deck=deck, drinks=drinks, hp=state.hp or max_hp, max_hp=max_hp, permil=permil)
+        # 任务 ②：P 道具 / 支援卡 / 回忆附魔换成这一局的（原来是模板那一局的，任务 ① 查到搜出来的未来是错的）
+        run, run_notes = self._run_loadout()
+        setup = iv._with(setup, **run)
+        notes = list(notes) + run_notes
         game = self._new_game(setup, copy.deepcopy(memory))
         self.setup = setup
         self.tracker = SimTracker(game, 0, self.meta)
         logger.info("模拟器跟踪：%s 合成开局（牌组 %d 张、饮料 %s、体力 %s/%s%s）", self.label, len(deck), drinks, state.hp, max_hp,
                     "；" + "、".join(notes) if notes else "")  # fmt: skip
         return True
+
+    def _run_loadout(self) -> tuple[dict, list]:
+        """这一局的编成（hiro.search.loadout）：P 道具来自培育记账，支援卡 / 回忆附魔来自开局编成方案（HIRO_FORMATION_PLAN=off 时没有）。"""
+        import os
+
+        from hiro.search.loadout import run_loadout
+
+        produce = (getattr(self.session.state, "produce", None) or {}) if self.session is not None else {}
+        plan = None
+        if os.environ.get("HIRO_FORMATION_PLAN", "").lower() != "off":
+            try:
+                from hiro.brain.formation_plan import load
+
+                plan = load(os.environ.get("HIRO_FORMATION_PLAN") or None)
+            except Exception as e:  # noqa: BLE001
+                logger.info("开局编成方案读不了：%s", e)
+        return run_loadout(produce, plan)
 
     def _new_game(self, setup, memory):
         from hiro.sim import interval as iv
