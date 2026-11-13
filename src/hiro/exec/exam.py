@@ -19,7 +19,6 @@ from pathlib import Path
 from collections.abc import Callable
 
 from hiro import master
-from kaa.game_ui.drinks_overview import locate_all_drinks_in_3_drink_slots
 from kaa.tasks.produce.shared.cards import handle_skill_card_move
 from kotonebot import Loop, device, logging, sleep
 from kotonebot.primitives import Rect
@@ -69,33 +68,28 @@ _DRINK_CACHE = None  # 饮料栏区域缓存（考试中饮料栏很少变，命
 
 def _drinks(img) -> list[tuple[master.Drink, tuple]]:
     """饮料栏 → [(master.Drink, (x, y, w, h))]，从左到右。用识别层的素材包原版图标（hiro.vision.items.read_drink_slots，带区域缓存）；
-    只有识别层有没把握的格（state=unknown）且一瓶都没认出时才退回 KAA。实机（2026-10-31 选拔①）KAA 认不出 H.I.F 饮料。
-    四格都读成空槽时不退回：第十六局本战 144 步里 113 步饮料栏是空的，KAA 每帧还要再匹配 0.2–0.4s，
-    并把空槽认成「Mismatched drink: ビタミンドリンク」，结果也是空。"""
+    认不出的格不给（这一步就不用那瓶）。原来没把握且一瓶没认出时退回 KAA 的饮料匹配，但 KAA 认不出 H.I.F 饮料（实机 2026-10-31），
+    73 张实机考试帧里这条退路一次都没触发过，去 KAA 时删掉。"""
     global _DRINK_CACHE
     from hiro.vision.items import DRINK_SIZE, read_drink_slots
     from hiro.vision.region_cache import RegionCache
 
     if _DRINK_CACHE is None:
         _DRINK_CACHE = RegionCache()
-    out, unsure = [], True
+    out = []
     try:
         slots = read_drink_slots(img, cache=_DRINK_CACHE)
-        unsure = any(d["state"] == "unknown" for d in slots)
         for d in slots:
             if d["state"] != "drink":
                 continue
             drink = master.drink_by_asset(d["asset"])
             if drink is None:
-                unsure = True
                 continue
             cx, cy = d["center"]
             out.append((drink, (cx - DRINK_SIZE // 2, cy - DRINK_SIZE // 2, DRINK_SIZE, DRINK_SIZE)))
     except Exception:  # 识别异常不能打断考试
-        out, unsure = [], True
-    if out or not unsure:
-        return out
-    return locate_all_drinks_in_3_drink_slots(img)
+        out = []
+    return out
 
 
 def drink_slot_rect(slot: int) -> tuple | None:
