@@ -87,12 +87,29 @@ def _apply_deck(s: GameState, e: Event) -> None:
     elif e.kind == "CARD_CHANGE":
         remove(a.get("remove_card_id"))
         add(a.get("card_id"), a.get("upgrade"))
+    elif e.kind == "CARD_CUSTOMIZE" and a.get("customize_id"):
+        i = a.get("deck_index")
+        c = deck[i] if isinstance(i, int) and 0 <= i < len(deck) and deck[i].get("card_id") == a.get("card_id") else \
+            next((c for c in deck if c.get("card_id") == a.get("card_id")), None)  # fmt: skip
+        if c is not None:
+            cz = c.setdefault("customize", {})
+            cz[a["customize_id"]] = int(cz.get(a["customize_id"]) or 0) + int(a.get("levels") or 1)
+            c["customized"] = True
     elif e.kind == "CARD_UPGRADE":
         c = next((c for c in deck if c.get("card_id") == a.get("card_id") and not c.get("upgrade")), None)
         if c is not None:
             c["upgrade"] = 1
     elif e.kind == "DECK_REVIEW" and a.get("deck") is not None:
-        prod["deck"] = [{"card_id": c.get("card_id"), "upgrade": int(c.get("upgrade") or 0)} for c in a["deck"]]
+        # 牌组页只读得到「有没有定制」：特別指導记下的定制按同卡同强化带过去，不被牌组确认冲掉（任务 ②）
+        old = [c for c in deck if c.get("customize")]
+        new = [{"card_id": c.get("card_id"), "upgrade": int(c.get("upgrade") or 0)} for c in a["deck"]]
+        for c in new:
+            hit = next((o for o in old if o.get("card_id") == c["card_id"] and int(o.get("upgrade") or 0) == c["upgrade"]), None) \
+                or next((o for o in old if o.get("card_id") == c["card_id"]), None)  # fmt: skip
+            if hit is not None:
+                old.remove(hit)
+                c["customize"], c["customized"] = dict(hit["customize"]), True
+        prod["deck"] = new
         s.pending_review = [f for f in s.pending_review if f != "produce.deck"]
         s.field_status["produce.deck"] = "verified"
     elif e.kind in ("CARD_AUTO_PROCESS", "UNMODELED_CHANGE") and "deck" in str(a.get("field", "deck")):
@@ -171,6 +188,10 @@ def events_from_step(page: str | None, action: dict, ok: bool, page_fields: dict
         if new:
             old = next((x for x in (produce or {}).get("items") or [] if str(x).startswith("customize_pitem-")), None)
             E("PITEM_CUSTOMIZE", item_id=new, replaces=old)
+    elif page == "SPECIAL_GUIDANCE" and kind == "CustomizeCard" and args.get("customize_id"):
+        # 记下定制了哪一项、几级（任务 ②：搜索起点要知道卡的定制，原来只记「定制过」）
+        E("CARD_CUSTOMIZE", card_id=args.get("card_id"), deck_index=args.get("card_index"), customize_id=args["customize_id"],
+          levels=int(args.get("levels") or 1))  # fmt: skip
     elif page == "PDRINK_MAX" and kind == "DiscardDrink" and args.get("receive") and args.get("discard"):
         E("DRINK_DISCARD", index=args["discard"][0])
     return ev

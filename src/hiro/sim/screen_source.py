@@ -227,7 +227,15 @@ class SimScreenExamStateSource(ScreenExamStateSource):
         rows = []
         if self.session is not None:
             rows = (getattr(self.session.state, "produce", None) or {}).get("deck") or []
-        deck = [(c["card_id"], int(c.get("upgrade") or 0)) for c in rows if isinstance(c, dict) and c.get("card_id")]
+        from hiro.search.loadout import customize_counts
+
+        deck = []
+        for c in rows:
+            if not (isinstance(c, dict) and c.get("card_id")):
+                continue
+            up = int(c.get("upgrade") or 0)
+            counts = customize_counts(c["card_id"], up, c.get("customize"))  # 特別指導记下的定制（任务 ②）
+            deck.append((c["card_id"], up, counts) if counts else (c["card_id"], up))
         if deck:
             return deck
         from hiro.state.finals_context import CONTEXT

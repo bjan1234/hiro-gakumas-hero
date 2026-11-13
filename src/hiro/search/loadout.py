@@ -59,6 +59,35 @@ def skills_from_abilities(texts: list[str]) -> list[str]:
     return out
 
 
+_CZ = None
+
+
+def customize_counts(card_id: str, upgrade: int, customize: dict | None) -> list[int] | None:
+    """一张卡的定制 {定制 ID: 次数} → 按主数据这张卡 produceCardCustomizeIds 顺序的次数列表（R2Setup 牌组项的第 3 位）。
+    没有定制返回 None；定制 ID 不在这张卡的列表里的忽略（任务 ② 验证 2：デイドリーミング 定制后打出挂的是 enc03，不是 enc01）。"""
+    global _CZ
+    if not customize:
+        return None
+    if _CZ is None:
+        from hiro.bench_bridge.advisor import _customize_ids
+
+        _CZ = _customize_ids()
+    ids = _CZ(card_id, int(upgrade or 0))
+    counts = [int(customize.get(i) or 0) for i in ids]
+    return counts if any(counts) else None
+
+
+def parse_deck_entry(s: str) -> tuple:
+    """「卡ID+强化/定制ID*次数」（gakumas-bench 题目写法）→ (card_id, upgrade, {定制 ID: 次数})。"""
+    head, _, cz = str(s).partition("/")
+    cid, _, u = head.partition("+")
+    out: dict = {}
+    for part in filter(None, cz.split(",")):
+        k, _, n = part.partition("*")
+        out[k] = out.get(k, 0) + int(n or 1)
+    return cid, int(u or 0), out
+
+
 def supports_from_plan(plan: dict) -> list[dict]:
     """开局编成方案的支援卡（自有 + 租借）→ supportCardList 项。"""
     from gakumas_exam.loadout import support_entry
