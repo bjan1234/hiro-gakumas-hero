@@ -38,8 +38,20 @@ class Rect:
     y2: int
 
     @property
+    def w(self) -> int:
+        return self.x2 - self.x1
+
+    @property
+    def h(self) -> int:
+        return self.y2 - self.y1
+
+    @property
     def xywh(self) -> tuple[int, int, int, int]:
-        return self.x1, self.y1, self.x2 - self.x1, self.y2 - self.y1
+        return self.x1, self.y1, self.w, self.h
+
+    @property
+    def top_left(self) -> "Point":
+        return Point(self.x1, self.y1)
 
     @property
     def center(self) -> Point:  # 有 .x / .y（同 OCR 文字框），也能 click(*center)

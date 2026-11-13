@@ -20,7 +20,6 @@ from collections.abc import Callable
 
 from hiro import master
 from kaa.game_ui.drinks_overview import locate_all_drinks_in_3_drink_slots
-from kaa.tasks.produce.new.play_cards.ui import locate_cards
 from kaa.tasks.produce.shared.cards import handle_skill_card_move
 from kotonebot import Loop, device, logging, sleep
 from kotonebot.primitives import Rect
@@ -34,6 +33,7 @@ from hiro.perception.lesson import _read_int
 from hiro.produce import ops
 from hiro.recorder import Recorder
 from hiro.exec import schedule_probe
+from hiro.vision.hif import EXAM_CACHE, hand_cards
 from hiro.vision.ocr import Text, find_text, screen_texts
 from hiro.vision.ui_templates import box, tpl
 
@@ -119,7 +119,7 @@ class Frame:
         self.remaining = _hud_int(img, hif.BOX_TURNS, box("InProduce.InLesson.BoxRemainingTurns"))
         self.hp = _hud_int(img, hif.BOX_HP, box("InProduce.InLesson.BoxHp"))
         self.genki = _hud_int(img, hif.BOX_GENKI, box("InProduce.InLesson.BoxGenki"))
-        self.cards = [c for c in locate_cards(img)]  # KAA 定位：只用来取点击位置
+        self.cards = hand_cards(img, cache=EXAM_CACHE)  # 位置 / 能不能打 / 卡面认出的卡（hiro.vision.hif.hand_cards）
         self.drinks: list[tuple[master.Drink, tuple]] = _drinks(img)
         self._hand: list[dict] | None | bool = False  # 识别层手牌，按需读（见 hand）
 
@@ -502,11 +502,11 @@ def _guard_dialog_loop(img, session, memory, last_action, exam) -> None:
 def _lite_sig(img):
     """(剩余回合, 体力, 元気, 手牌字母角标位置)；剩余回合读不到或没有手牌时 None（动画 / 结算中）。"""
     from hiro.vision import hif
-    from kaa.tasks.produce.new.play_cards.ui import _locate_letters
+    from hiro.vision.hand_slots import card_letters
 
     try:
         hud = tuple(_hud_int(img, hb, box(f"InProduce.InLesson.{kb}")) for hb, kb in ((hif.BOX_TURNS, "BoxRemainingTurns"), (hif.BOX_HP, "BoxHp"), (hif.BOX_GENKI, "BoxGenki")))
-        letters = tuple(sorted((int(r.x1) // 8, int(r.y1) // 8) for r in _locate_letters(img)))
+        letters = tuple(sorted((int(r.x1) // 8, int(r.y1) // 8) for r in card_letters(img)))
     except Exception:
         return None
     if hud[0] is None or not letters:
@@ -794,11 +794,7 @@ def _execute(d: Decision, frame: Frame) -> list[list[int]]:
     """执行并返回点击位置（720x1280 逻辑坐标）。"""
     if d.kind == "play":
         c = frame.cards[d.slot]
-        rect = getattr(c, "rect", None)
-        if rect is None:
-            c.double_click()
-            return []
-        return _play_card(int(rect.center.x), int(rect.center.y), frame.img)
+        return _play_card(int(c.rect.center.x), int(c.rect.center.y), frame.img)
     if d.kind == "drink":
         _, rect = frame.drinks[d.slot]
         r = Rect(xywh=rect)
