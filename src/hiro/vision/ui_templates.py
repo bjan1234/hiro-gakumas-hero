@@ -17,11 +17,17 @@ import json
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 
 PACK = Path(__file__).resolve().parents[3] / "assets" / "pack" / "ui"
 SIZE = (720, 1280)  # 模板和坐标的基准分辨率（宽, 高）
+
+
+class Point(NamedTuple):
+    x: int
+    y: int
 
 
 @dataclass(frozen=True)
@@ -36,8 +42,8 @@ class Rect:
         return self.x1, self.y1, self.x2 - self.x1, self.y2 - self.y1
 
     @property
-    def center(self) -> tuple[int, int]:
-        return (self.x1 + self.x2) // 2, (self.y1 + self.y2) // 2
+    def center(self) -> Point:  # 有 .x / .y（同 OCR 文字框），也能 click(*center)
+        return Point((self.x1 + self.x2) // 2, (self.y1 + self.y2) // 2)
 
 
 @dataclass(frozen=True)
@@ -46,7 +52,7 @@ class Match:
     score: float
 
     @property
-    def center(self) -> tuple[int, int]:
+    def center(self) -> Point:
         return self.rect.center
 
 

@@ -20,7 +20,6 @@ from collections.abc import Callable
 
 from hiro import master
 from kaa.game_ui.drinks_overview import locate_all_drinks_in_3_drink_slots
-from kaa.tasks import R
 from kaa.tasks.produce.new.play_cards.ui import locate_cards
 from kaa.tasks.produce.shared.cards import handle_skill_card_move
 from kotonebot import Loop, device, logging, sleep
@@ -36,6 +35,7 @@ from hiro.produce import ops
 from hiro.recorder import Recorder
 from hiro.exec import schedule_probe
 from hiro.vision.ocr import Text, find_text, screen_texts
+from hiro.vision.ui_templates import box, tpl
 
 logger = logging.getLogger(__name__)
 
@@ -116,10 +116,9 @@ class Frame:
 
         self.img = img
         self.t = time.monotonic()  # 这帧截图的时刻（度量截图→点击）
-        boxes = R.InProduce.InLesson
-        self.remaining = _hud_int(img, hif.BOX_TURNS, boxes.BoxRemainingTurns)
-        self.hp = _hud_int(img, hif.BOX_HP, boxes.BoxHp)
-        self.genki = _hud_int(img, hif.BOX_GENKI, boxes.BoxGenki)
+        self.remaining = _hud_int(img, hif.BOX_TURNS, box("InProduce.InLesson.BoxRemainingTurns"))
+        self.hp = _hud_int(img, hif.BOX_HP, box("InProduce.InLesson.BoxHp"))
+        self.genki = _hud_int(img, hif.BOX_GENKI, box("InProduce.InLesson.BoxGenki"))
         self.cards = [c for c in locate_cards(img)]  # KAA 定位：只用来取点击位置
         self.drinks: list[tuple[master.Drink, tuple]] = _drinks(img)
         self._hand: list[dict] | None | bool = False  # 识别层手牌，按需读（见 hand）
@@ -506,8 +505,7 @@ def _lite_sig(img):
     from kaa.tasks.produce.new.play_cards.ui import _locate_letters
 
     try:
-        b = R.InProduce.InLesson
-        hud = tuple(_hud_int(img, box, kb) for box, kb in ((hif.BOX_TURNS, b.BoxRemainingTurns), (hif.BOX_HP, b.BoxHp), (hif.BOX_GENKI, b.BoxGenki)))
+        hud = tuple(_hud_int(img, hb, box(f"InProduce.InLesson.{kb}")) for hb, kb in ((hif.BOX_TURNS, "BoxRemainingTurns"), (hif.BOX_HP, "BoxHp"), (hif.BOX_GENKI, "BoxGenki")))
         letters = tuple(sorted((int(r.x1) // 8, int(r.y1) // 8) for r in _locate_letters(img)))
     except Exception:
         return None
@@ -566,24 +564,25 @@ def _hif_drink_dialogs(*, force: bool = False, boxes=None) -> bool:
 def _handle_dialogs(img=None, *, slow: bool = False, select: bool = True) -> bool:
     """处理出牌过程中会弹出的对话框（读最近一次截图 img）。返回是否处理了什么。
     处理后等弹窗区域变化 / 画面稳定再返回，不固定睡 2s。"""
-    if R.InProduce.IconTitleSkillCardMove.exists():
+    img = img if img is not None else device.screenshot()
+    if tpl("InProduce.IconTitleSkillCardMove").exists(img):
         if handle_skill_card_move():
             ops.wait_stable(timeout=DIALOG_SETTLE)
             return True
-    if _exam_dialogs(img if img is not None else device.screenshot(), slow=slow, select=select):
+    if _exam_dialogs(img, slow=slow, select=select):
         return True
-    if R.InProduce.DialogSkillCardUseConfirm.Title.exists():
-        btn = R.InProduce.DialogSkillCardUseConfirm.ButtonConfirm.find()
+    if tpl("InProduce.DialogSkillCardUseConfirm.Title").exists(img):
+        btn = tpl("InProduce.DialogSkillCardUseConfirm.ButtonConfirm").find(img)
         if btn:
             before = device.screenshot()
-            device.click(btn.rect)
-            ops.wait_change(before, roi=btn.rect, timeout=DIALOG_SETTLE, use_signature=False)
+            device.click(*btn.center)
+            ops.wait_change(before, roi=btn.rect.xywh, timeout=DIALOG_SETTLE, use_signature=False)
             return True
     return False
 
 
 def _usable(f: Frame) -> bool:
-    return f.remaining is not None and (bool(f.cards) or find_text(f.img, "0枚", rect=R.InProduce.BoxNoSkillCard) is not None)
+    return f.remaining is not None and (bool(f.cards) or find_text(f.img, "0枚", rect=box("InProduce.BoxNoSkillCard")) is not None)
 
 
 SIG_FIELDS = ("remaining", "hp", "genki", "hand", "drinks")
@@ -675,7 +674,7 @@ def _screen_calm(max_s: float = 3.0) -> bool:
 
 def _drink_detail(img) -> tuple[bool, object | None]:
     """（详情框是否出来了，「使う」按钮框或 None）。按钮读成「く使う」也算（_button_text）。"""
-    btn = R.InProduce.ButtonUse.find()
+    btn = tpl("InProduce.ButtonUse").find(img)
     if btn:
         return True, btn
     boxes = _roi_texts(img, DRINK_DIALOG_TOP - 300, DIALOG_BAND_BOTTOM)
@@ -1040,7 +1039,7 @@ def run_exam(
     brain: BattleBrain,
     exam: str,
     rec: Recorder,
-    ended: Callable[[], bool],
+    ended: Callable[[object], bool],  # 传本轮截图
     *,
     target_score: int | None = None,
     session=None,
@@ -1089,7 +1088,7 @@ def run_exam(
                     _guard_dialog_loop(img, session, memory, last_action, exam)
                     continue
             with _phase("ended"):
-                if ended():
+                if ended(img):
                     break
             frame = None
             if animating and not slow:

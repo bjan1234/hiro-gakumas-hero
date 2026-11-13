@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING
 
 from kaa.config.const import HifScenario, ProduceAction
 from kaa.kaa_context import produce_solution
-from kaa.tasks import R
 from kaa.tasks.produce.new.strategies.hif_grind import HifGrindStrategy
 from kotonebot import Loop, device, logging, sleep
 
@@ -31,6 +30,7 @@ from hiro.loop.resume import ResumeBlocked
 from hiro.loop.session import Session
 from hiro.produce import ops
 from hiro.produce.ops import button_text
+from hiro.vision.ui_templates import box, tpl
 from hiro.exec.exam import run_exam
 from hiro.recorder import Recorder
 
@@ -1711,9 +1711,9 @@ class HiroHifStrategy(HifGrindStrategy):
         self.rec.log("exam_enter", image=device.screenshot(), exam=label)
         self.s.state.exam_session.label = label
 
-        def ended() -> bool:
+        def ended(img) -> bool:
             # 先看「次へ」按钮模板（约 60ms），有了才 OCR 顶栏（约 1s）：考试中每轮都要判，第十六局本战每轮都先 OCR 了一次
-            return bool(R.Common.ButtonNext.find() and find_text(device.screenshot(), "残りターン", rect=R.InProduce.BoxExamTop) is None)
+            return tpl("Common.ButtonNext").exists(img) and find_text(device.screenshot(), "残りターン", rect=box("InProduce.BoxExamTop")) is None
 
         run_exam(self.brain, label, self.rec, ended, session=self.s, advisor=self.advisor)
         self.rec.log("exam_end", image=device.screenshot(), exam=label)
@@ -1737,13 +1737,13 @@ class HiroHifStrategy(HifGrindStrategy):
             self._record_round_result(before, label, recorded_ranking)  # 本战每轮结果弹窗：点「次へ」前存帧、记分（用户指示）
             if self._finals_retry(before, label):
                 return  # 本战已点再挑戦：考试重开，主循环会再次进入 on_exam_entered
-            if btn := R.Common.ButtonNext.find():
-                device.click(btn.rect)
-            elif btn := R.InProduce.TextRechallengeEndProduce.find():
-                device.click(btn.rect)
+            if btn := tpl("Common.ButtonNext").find(before):
+                device.click(*btn.center)
+            elif btn := tpl("InProduce.TextRechallengeEndProduce").find(before):
+                device.click(*btn.center)
                 self.rec.log("exam_failed", exam=label)
                 self.s.note(f"{label} 未过线，游戏提示重挑战 / 结束培育")
             else:
                 break
-            ops.wait_change(before, roi=btn.rect, timeout=EXAM_END_SETTLE, use_signature=False)
+            ops.wait_change(before, roi=btn.rect.xywh, timeout=EXAM_END_SETTLE, use_signature=False)
             ops.wait_stable(timeout=EXAM_END_SETTLE)  # 转场中间帧找不到「次へ」会提前退出循环，等画面停稳再判断

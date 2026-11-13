@@ -125,7 +125,7 @@ def env(monkeypatch):
 def test_one_step_calls_plugins_in_order(env):
     src, adv, brain = Source([]), Advisor(), Brain()
     done = iter([False, True])
-    ex.run_exam(brain, "r1", Rec(), lambda: next(done), source=src, advisor=adv)
+    ex.run_exam(brain, "r1", Rec(), lambda img: next(done), source=src, advisor=adv)
     assert src.calls == ["begin", "read", ("executed", "PlayCard", True), "end"]
     assert adv.calls == [("start", 1), ("decide", ["PlayCard", "Skip"]), "end"] and brain.commits == ["play:0"]
 
@@ -134,14 +134,14 @@ def test_state_none_waits_then_rereads(env):
     """局面来源给不出（例如过场白光 hand_overlay）：不决策，换帧重读。"""
     src, adv = Source([(None, "hand_overlay"), (None, "hand_overlay")]), Advisor()
     done = iter([False, False, False, True])
-    ex.run_exam(Brain(), "r1", Rec(), lambda: next(done), source=src, advisor=adv)
+    ex.run_exam(Brain(), "r1", Rec(), lambda img: next(done), source=src, advisor=adv)
     assert src.calls.count("read") == 3 and [c for c in adv.calls if c[0] == "decide"] == [("decide", ["PlayCard", "Skip"])]
 
 
 def test_missing_plugins_raise(monkeypatch, env):
     monkeypatch.setattr(ex, "_plugin", lambda kind: None)
     with pytest.raises(RuntimeError):
-        ex.run_exam(Brain(), "r1", Rec(), lambda: True)
+        ex.run_exam(Brain(), "r1", Rec(), lambda img: True)
 
 
 def test_schedule_probe_once_per_exam_before_first_move(env, monkeypatch):
@@ -152,14 +152,14 @@ def test_schedule_probe_once_per_exam_before_first_move(env, monkeypatch):
     monkeypatch.delenv(ex.schedule_probe.ENABLED_ENV, raising=False)
     src, adv = Source([]), Advisor()
     done = iter([False, True])
-    ex.run_exam(Brain(), "r1", Rec(), lambda: next(done), source=src, advisor=adv)
+    ex.run_exam(Brain(), "r1", Rec(), lambda img: next(done), source=src, advisor=adv)
     assert calls == []
     monkeypatch.setenv(ex.schedule_probe.ENABLED_ENV, "1")
     src, adv = Source([]), Advisor()
     done = iter([False, False, True])
-    ex.run_exam(Brain(), "r1", Rec(), lambda: next(done), source=src, advisor=adv)
+    ex.run_exam(Brain(), "r1", Rec(), lambda img: next(done), source=src, advisor=adv)
     assert calls == ["r1"] and src.calls.count("read") == 1  # 探完那一帧不拿来决策，下一轮重读
     src, adv = Source([]), Advisor()
     done = iter([False, True])
-    ex.run_exam(Brain(), "r1", Rec(), lambda: next(done), source=src, advisor=adv)  # 再挑戦同一场
+    ex.run_exam(Brain(), "r1", Rec(), lambda img: next(done), source=src, advisor=adv)  # 再挑戦同一场
     assert calls == ["r1"]
