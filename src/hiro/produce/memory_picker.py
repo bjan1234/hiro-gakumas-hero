@@ -15,6 +15,7 @@
 
 import hashlib
 import json
+import logging
 import re
 import time
 from collections.abc import Callable
@@ -22,7 +23,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from kotonebot import logging
 
 from hiro.produce.ops import find_text, ocr_boxes, roi_diff
 from hiro import imgio

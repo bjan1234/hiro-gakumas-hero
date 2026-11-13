@@ -35,7 +35,7 @@ class _Dev:
     def screenshot(self):
         return object()  # 非 None 占位；OCR 由测试替身给
 
-    def click(self, x, y):
+    def tap(self, x, y):
         self.clicks.append((x, y))
 
     def swipe(self, *a):
@@ -44,12 +44,12 @@ class _Dev:
 
 def _run_check(monkeypatch, boxes):
     import check_settings as cs
-    import hiro.device
-    import hiro.produce.ops
+    import hiro.tool_device
+    import hiro.vision.ocr
 
     dev = _Dev()
-    monkeypatch.setattr(hiro.device, "connect", lambda: dev)
-    monkeypatch.setattr(hiro.produce.ops, "ocr_boxes", lambda img: boxes)
+    monkeypatch.setattr(hiro.tool_device, "open_tool_device", lambda: dev)
+    monkeypatch.setattr(hiro.vision.ocr, "ocr_boxes", lambda img, scale=1.0: boxes)
     monkeypatch.setattr(cs, "_wait", lambda d, ocr, pred, timeout, poll=1.0: pred(boxes))
     monkeypatch.setattr(cs.time, "sleep", lambda s: None)
     return dev, cs.check(None)

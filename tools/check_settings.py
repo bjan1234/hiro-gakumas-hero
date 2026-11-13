@@ -107,13 +107,15 @@ def check(save_dir: Path | None = None) -> dict[str, str | None]:
     """只读：菜单 → 設定 → プロデュース 页签，每一步按 OCR 找到再点、确认到了再走下一步（第三十三局：
     按固定坐标点「設定」没进去，两张截图都还是菜单，读成全 None，被当成「设置被重置」）。"""
     sys.path.insert(0, str(ROOT / "src"))
-    import hiro  # noqa: F401
     import cv2
 
-    from hiro.device import connect
-    from hiro.produce.ops import ocr_boxes
+    from hiro.tool_device import open_tool_device
+    from hiro.vision.ocr import ocr_boxes as _ocr
 
-    d = connect()
+    def ocr_boxes(img):
+        return _ocr(img, scale=1.5)  # 和 hiro.produce.ops.ocr_boxes 一样（那个模块要 import kotonebot）
+
+    d = open_tool_device()
     found: dict[str, str | None] = {k: None for k in WANT}
 
     def save(img, name):
@@ -127,31 +129,31 @@ def check(save_dir: Path | None = None) -> dict[str, str | None]:
         # 又盲点 HOME (63,1213)，正好是开始确认页的「ホーム」，弹出 ホーム移動確認，接着读回忆数值被挡住、本战停下（DMM 实机）
         save(img, "check-not-home")
         return {**found, "_skipped": "不在首页"}
-    d.click(*MENU)
+    d.tap(*MENU)
     pos = _wait(d, ocr_boxes, is_menu, 8.0)
     if pos is None:
         save(d.screenshot(), "check-menu-missing")  # 菜单没打开：画面多半没变，不盲点 HOME
         return found
     for _ in range(3):  # 菜单展开动画里点可能不生效：没进设置页就再点一次
-        d.click(*pos)
+        d.tap(*pos)
         tab = _wait(d, ocr_boxes, is_settings, 6.0)
         if tab is not None:
             break
     else:
         save(d.screenshot(), "check-settings-missing")
-        d.click(*HOME)
+        d.tap(*HOME)
         time.sleep(3.0)
         return found
-    d.click(*tab)
+    d.tap(*tab)
     _wait(d, ocr_boxes, lambda b: True if any("【プロデュース】" in t for t, _, _ in b) else None, 6.0)
     for i in range(2):
         img = d.screenshot()
         save(img, f"check-{i}")
         for k, v in read_toggles(ocr_boxes(img)).items():
             found[k] = found[k] or v
-        d.swipe(360, 900, 360, 450, 0.8)
+        d.swipe(360, 900, 360, 450, duration=0.8)
         time.sleep(1.5)
-    d.click(*HOME)
+    d.tap(*HOME)
     time.sleep(3.0)
     return found
 
