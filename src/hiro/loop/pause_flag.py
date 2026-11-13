@@ -7,7 +7,7 @@
   暂停 / 恢复各写一条 WARNING，并在 trace 里记 note（rec_pause / rec_resume），复盘能列出来。
 - active_clock()：扣掉暂停时长的单调时钟。空转看门狗、收尾超时、日切换恢复、AP 等待用它计时，暂停期间不会误停。
 - wait_until_recording()：开局前旗标在就等它消失。
-开关：设了旗标路径（HIRO_PAUSE_FLAG）才启用；HIRO_PAUSE=0 强制关。
+开关：设了旗标路径（HIRO_PAUSE_FLAG）才启用。
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 _FLAG_ENV = os.environ.get("HIRO_PAUSE_FLAG")
 FLAG = Path(_FLAG_ENV) if _FLAG_ENV else Path("pause.flag")
-ENABLED = bool(_FLAG_ENV) and os.environ.get("HIRO_PAUSE", "1") != "0"
+ENABLED = bool(_FLAG_ENV)
 POLL = 1.0
 
 _lock = threading.Lock()

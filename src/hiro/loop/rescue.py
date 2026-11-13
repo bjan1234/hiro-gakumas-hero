@@ -14,7 +14,7 @@
    考试画面不走这条（主循环先判考试）；
 4. 每次留档：reports/live/rescue/<时间>/{screen.jpg, record.json}，并写进 trace（recover:llm_rescue）；
    同类画面攒多了交识屏补签名。
-开关：环境变量 HIRO_RESCUE_LLM=0 关掉（默认开）；模型 HIRO_RESCUE_LLM_SPEC（缺省 HIRO_LLM / claude:sonnet）。
+开关：环境变量 HIRO_RESCUE_LLM=0 关掉（默认开）；模型同 HIRO_LLM（缺省 claude:sonnet）。
 """
 
 from __future__ import annotations
@@ -143,11 +143,10 @@ class Rescuer:
         if self._llm is None:
             from hiro.brain.llm import from_spec
 
-            spec = os.environ.get("HIRO_RESCUE_LLM_SPEC") or None
             try:
-                self._llm = from_spec(spec, timeout=LLM_TIMEOUT)
+                self._llm = from_spec(None, timeout=LLM_TIMEOUT)
             except TypeError:  # mock 不收 timeout
-                self._llm = from_spec(spec)
+                self._llm = from_spec(None)
         return self._llm
 
     def due(self, stuck_s: float, *, dialog: bool = False, img=None) -> bool:
