@@ -182,7 +182,7 @@ PYTHONPATH=src python -m hiro.run_hif resume --mode qualify|main   # 续跑进�
 | `HIRO_ASSET_SOURCE` / `HIRO_EXAM_STATE_SOURCE` / `HIRO_EXAM_ADVISOR` | 换插件实现（`包.模块:类名`）。考试预演：`HIRO_EXAM_STATE_SOURCE=hiro.sim.screen_source:SimScreenExamStateSource` |
 | `HIRO_BENCH_ADVISOR` / `HIRO_BENCH_ALGO` | 考试出牌（缺省开）：用 gakumas-bench 的开源算法，`HIRO_BENCH_ALGO` 写法同 bench（缺省 `uinet`，也可 `my.py:Cls`）；出错 / 不合法 / 缺依赖时这一步退回社区规则（不调 LLM）。`HIRO_BENCH_ADVISOR=0` 关掉，回到社区规则 + LLM。模型和主数据缓存在 `~/.cache/hiro/bench`（`HIRO_BENCH_CACHE`），`python -m hiro.bench_bridge check` 查能不能用 |
 | `HIRO_EXAM_POLICY` | 有预演时怎么用：`llm`（缺省，预演写进提示词给 LLM 参考）/ `expert`（按预演期望 + 硬规则链直接选） |
-| `HIRO_PRODUCE_LLM` | 培育决策点补全：规则 / 模拟拿不准时交 LLM 在候选里选（LLM 不可用或输出非法按规则兜底）。缺省（不设）或 `all` 全开（用户 11-14 定），`off` 全关，逗号分隔写名字只开这几条：`change_remove`（换卡第 2 段换出哪张）、`remove_card`（删卡）、`select_drink`（饮料三选一）、`consult`（相談买饮料）、`drink_overflow`（饮料满丢哪瓶）、`interval`（轮间：社区默认方案 / 模拟方案二选一）、`select_pitem`（P 道具三选一）、`special_guidance`（特別指導：优先表做完后表外定制做不做）、`event_choice`（事件选项页：没有全面更好的选项时）。每局报告里有各决策器的来源统计和兜底次数；离线回放黄金用例：`python -m hiro.brain.cases --llm claude:sonnet` |
+| `HIRO_PRODUCE_LLM` | 培育决策点补全：规则 / 模拟拿不准时交 LLM 在候选里选（LLM 不可用或输出非法按规则兜底）。缺省（不设）或 `all` 全开（用户 11-14 定），`off` 全关，逗号分隔写名字只开这几条：`change_remove`（换卡第 2 段换出哪张）、`remove_card`（删卡）、`select_drink`（饮料三选一）、`consult`（相談买饮料）、`drink_overflow`（饮料满丢哪瓶）、`interval`（轮间：社区默认方案 / 模拟方案二选一）、`select_pitem`（P 道具三选一）、`special_guidance`（特別指導：优先表做完后表外定制做不做）、`event_choice`（事件选项页：没有全面更好的选项时）、`card_move`（考试里的技能卡移动对话框：前两名差不多或有卡没认出时）。每局报告里有各决策器的来源统计和兜底次数；离线回放黄金用例：`python -m hiro.brain.cases --llm claude:sonnet` |
 | `HIRO_SIM=0` | 不用模拟器（轮间 / 饮料 / 相談只按社区规则） |
 | `HIRO_STRATEGY` | 换培育策略类（KAA `HifGrindStrategy` 子类），默认 `hiro.produce.hif:HiroHifStrategy` |
 | `HIRO_PAUSE_FLAG` | 外部暂停旗标文件路径：文件存在就暂停对局 |
