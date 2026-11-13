@@ -20,6 +20,7 @@ from hiro.loop.errors import ResumeBlocked
 from hiro.runtime import interrupts as _interrupts
 from hiro.runtime.frame import Frame, Screen
 from hiro.runtime.guard import GuardedDevice
+from hiro.vision.classify import UNKNOWN, PageHit
 
 logger = logging.getLogger(__name__)
 
@@ -45,17 +46,6 @@ class _Flow:
         self._go.wait()
 
 
-@dataclass(frozen=True)
-class PageHit:
-    """判页结果。source 沿用 PageObs.source 的取值（quick / interval_title / exam_ocr / pixel / … / none）。"""
-
-    name: str
-    source: str | None = None
-    fields: dict | None = None
-    confidence: float = 1.0
-
-
-UNKNOWN = PageHit("unknown", "none")
 
 
 @dataclass(frozen=True)
@@ -79,7 +69,7 @@ class Runtime:
     """一局的运行环境。device 是原始设备（hiro.devices），对外给的 self.device 是带拦截的。"""
 
     raw_device: object
-    classify: Callable[[object], PageHit]  # img → PageHit，纯函数
+    classify: Callable[[object], PageHit]  # img → PageHit，纯函数（hiro.vision.classify.classify）
     handlers: dict[str, Handler] = field(default_factory=dict)
     advance: Callable[["Runtime", Frame, PageHit], bool] = lambda rt, f, hit: False  # 没有处理器的页：安全推进，点了返回 True
     session: object | None = None  # hiro.loop.session.Session；有就每拍观测

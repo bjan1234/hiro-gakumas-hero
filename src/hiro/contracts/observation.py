@@ -23,6 +23,7 @@ class PageObs:
     # 哪一层判出的页面（去 KAA 第 0 步：统计 KAA 出手次数，只记不用）。主循环：quick（快速判页）/ kaa（KAA check_scene）/
     # 我们的补判 interval_title / exam_ocr / pixel / drink_ocr / pitem_ocr / idle_scene / produce_end_ocr / none（都没认出）；
     # classify = Session 自己分类；None = 调用方按上下文直接给了页面（钩子里的观测）
+    # 新主循环（hiro.vision.classify）另有：template（自有模板判页，接替 kaa）/ signature / page_ocr / start_ocr / deck_ocr / landscape
     source: str | None = None
 
 
