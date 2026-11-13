@@ -100,6 +100,7 @@ MIGRATED = [
     "tools/support_inventory.py",
     "tools/play_game.py",
     "src/hiro/memory_scan.py",
+    "src/hiro/collect.py",
 ]
 
 
