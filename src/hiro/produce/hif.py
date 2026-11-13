@@ -521,47 +521,16 @@ class HiroHifStrategy(HifGrindStrategy):
 
     POUCH_NAME = {"red": "ポーチ（赤）", "green": "ポーチ（緑）", "yellow": "ポーチ（黄）"}
 
-    PLUSH_BY_HUE = {"green": "インコ", "blue": "ロボ", "yellow": "うさぎ"}  # 实机帧：インコ绿 / ロボ蓝 / うさぎ黄；もじゃ待样本
-    PITEM_SLOTS_X = (147, 360, 573)
     POUCH_KANJI = {"red": "赤", "green": "緑", "yellow": "黄"}
 
-    import re as _re
+    def _custom_options(self, img, options: list[dict]) -> list[dict]:
+        """定制三选一（两段：毛绒 / 装饰）：hiro.vision.pitem_custom 按画面认候选，名称拼成「ロボ（黄）」「花ロボ（黄）」供决策器解析。"""
+        from hiro.vision.pitem_custom import custom_names
 
-    _PLUSH_TITLE = _re.compile(r"^(ロボ|もじゃ|インコ|うさぎ|くま|人形)[（(](赤|緑|黄)[）)]$")  # 第二段：顶部是已定制的毛绒、无装饰前缀
-    _DECO_TITLE = _re.compile(r"(花|リボン|メダル|羽)(ロボ|もじゃ|インコ|うさぎ|くま|人形)[（(](赤|緑|黄)[）)]")
-
-    def _deco_options(self, options: list[dict]) -> list[dict]:
-        """第二段定制（花 / リボン / メダル / 羽）：画面只显示选中项的名称，逐格点一下、OCR 下方说明栏标题拿全名（「花ロボ（黄）」）。"""
-        out = []
-        for i, x in enumerate(self.PITEM_SLOTS_X):
-            device.click(x, 880)
-            sleep(0.9)
-            name = next((m.group(0).replace("(", "（").replace(")", "）") for t in screen_texts(device.screenshot()) if (m := self._DECO_TITLE.search(t.text))), None)
-            base = options[i] if i < len(options) else {"slot": i}
-            out.append({**base, "slot": i, "name": name})
-        logger.info("定制候选（装饰）：%s", [o["name"] for o in out])
-        return out
-
-    def _plush_options(self, img, options: list[dict]) -> list[dict]:
-        """定制第一段（ぬいぐるみ）：每格中心 80x80 取高饱和像素的主色 → 种类；名称拼成「ロボ（黄）」供决策器解析（ロボ > もじゃ）。"""
-        import cv2
-        import numpy as np
-
-        frame = cv2.resize(img, (720, 1280)) if img.shape[:2] != (1280, 720) else img
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         pouch = self.s.state.page_fields.get("pouch_color") or next((o.get("color") for o in options if o.get("color")), "yellow")
-        out = []
-        for i, x in enumerate(self.PITEM_SLOTS_X):
-            roi = hsv[840:920, x - 40 : x + 40]
-            h = roi[..., 0][(roi[..., 1] > 110) & (roi[..., 2] > 110)]
-            counts = {"yellow": int(((h >= 18) & (h <= 35)).sum()), "green": int(((h >= 40) & (h <= 85)).sum()),
-                      "blue": int(((h >= 90) & (h <= 130)).sum())}  # fmt: skip
-            hue = max(counts, key=counts.get) if max(counts.values()) > 1500 else None
-            plush = self.PLUSH_BY_HUE.get(hue)
-            base = options[i] if i < len(options) else {"slot": i}
-            name = f"{plush}（{self.POUCH_KANJI.get(pouch, '黄')}）" if plush else None
-            out.append({**base, "slot": i, "name": name, "plush_hue": hue})
-        logger.info("定制候选：%s", [o["name"] for o in out])
+        names = custom_names(img, self.POUCH_KANJI.get(pouch, "黄"))
+        out = [{**(options[i] if i < len(options) else {}), "slot": i, "name": name} for i, name in enumerate(names)]
+        logger.info("定制候选：%s", names)
         return out
 
     def on_select_pitem(self, ctx):
@@ -572,12 +541,10 @@ class HiroHifStrategy(HifGrindStrategy):
         img = device.screenshot()
         raw, _ = extract("SELECT_PITEM", img)
         raw = dict(raw or {})
-        # 识别给颜色、决策器按名称解析：选拔①后的背包阶段补上名称（定制阶段的道具名待识别提供）
+        # 识别给颜色、决策器按名称解析：选拔①后的背包按颜色补名称，选拔②③后的定制由 hiro.vision.pitem_custom 认候选
         texts = [t.text for t in screen_texts(img)]
-        if any(self._PLUSH_TITLE.search(t) for t in texts):  # 选拔③后第二段定制（装饰）：逐格点开读名称
-            raw["options"] = self._deco_options(raw.get("options") or [])
-        elif any("カスタム" in t for t in texts):  # 选拔②后第一段定制：按毛绒颜色认种类（识别正式支持前的最小实现）
-            raw["options"] = self._plush_options(img, raw.get("options") or [])
+        if any("カスタム後を選択" in t for t in texts):  # 选拔②③后的定制（「カスタムPアイテム」过场也带カスタム，不算）
+            raw["options"] = self._custom_options(img, raw.get("options") or [])
         else:
             raw["options"] = [{**it, "name": it.get("name") or self.POUCH_NAME.get(it.get("color"))} for it in raw.get("options") or []]
         obs = self.s.observe(scene="SELECT_PITEM", img=img, fields=raw)
