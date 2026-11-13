@@ -191,6 +191,22 @@ P 点、体力、饮料栏、牌组仍从 `GameState.produce` 取（`produce_poi
   （`source="fallback"`、带 warnings）：授業 → STUDY_LAYOUT 的本人档；外出 → 第 5 天眠気档 / P≥150 付费档 / 免费档；饮料 → DRINK_PRIORITY > 本计划 > 稀有度；
   三选一 → 社区评级；P 道具 → 背包颜色 黄 > 緑 > 赤；删卡 / 强化 → 取消。没有模板可用时输出 `Wait`（主循环记 recover），**不选第 0 项**。
 
+### EXAM_CARD_MOVE（考试里的技能卡移动对话框：卡效果让你选牌移到别处）
+
+协调 11-14 新决策点：原来照 KAA 盲选（找到的最后一张）。执行器（`exec/exam.py` 的 `_skill_card_move`）认出对话框和候选后交给
+`ProduceDeciders.decide("EXAM_CARD_MOVE", state)`，按输出点第几张，再点 ✔。
+
+```json
+{"destination": "lost | grave | hold | hand | deck_top | deck | null", "count": 1, "title": "对话框标题文字（可空）",
+ "candidates": [{"index": 0, "card_id": "p_card-…", "upgrade": 1}],
+ "exam": {"turn": 5, "remaining": 7, "hp": 20, "genki": 12, "score": 150000, "motivation": 30}}
+```
+
+- `index` 是画面上第几张（执行时点它）；认不出的卡 `card_id` 给 `null`；`exam` 是考试局面摘要（可空，给 LLM 看）。
+- 输出 `ActivateEffect {"pick_indexes": [index, …]}`，`source`：`rule`（移走时选最该丢的：トラブル优先、再按价值从低到高、核心卡最后；
+  留着用时选价值最高的、核心卡优先）/ `llm`（前两名差距小或有卡没认出，开关 `HIRO_PRODUCE_LLM` 的 `card_move`）/
+  `fallback`（目的地没认出：按原来的做法选最后一张；或 LLM 失败按规则）。候选为空输出 `Wait`。
+
 ### EVENT_CHOICE（事件选项页：随机事件 / 支援事件 / 开局二选一等多选项按钮页）
 
 用户 11-14（去 KAA 设计稿 §8-2）：不按攻略写死规则，按整局培育（参数 / 体力 / 路线计划 / 后面的考试）来选，算法 → LLM → 兜底。

@@ -30,12 +30,12 @@ from hiro.state.produce import ATTRS, ProduceState
 logger = logging.getLogger(__name__)
 TIER_RANK = {"S": 3, "A": 2, "B": 1}
 PAGES = ("ACTION_SELECT", "SELECT_CARD", "SELECT_DRINK", "CONSULT", "STUDY", "OUTING", "HIF_ROUND_INTERVAL", "SELECT_PITEM", "PDRINK_MAX", "SPECIAL_GUIDANCE", "FORMATION", "QUALIFY_MEMORY",
-         "SKILL_CARD_CHANGE_1", "SKILL_CARD_CHANGE_2", "SKILL_CARD_REMOVAL", "SKILL_CARD_ENHANCE", "PDRINK_MAX_CONFIRM", "EVENT_CHOICE")
+         "SKILL_CARD_CHANGE_1", "SKILL_CARD_CHANGE_2", "SKILL_CARD_REMOVAL", "SKILL_CARD_ENHANCE", "PDRINK_MAX_CONFIRM", "EVENT_CHOICE", "EXAM_CARD_MOVE")
 
 
 # 决策点补全（总控 2026-11-13）：规则 / 模拟拿不准的局面交 LLM，LLM 不可用或输出非法再兜底。用户 11-14：默认全开（「我们先默认都模型兜底」）。
 # HIRO_PRODUCE_LLM 不设 / all = 全开；off = 全关；change_remove,remove_card,… = 只开这几条。选行动 / 抓卡三选一原来就问 LLM，不受这个开关管。
-LLM_PATHS = ("change_remove", "remove_card", "select_drink", "consult", "interval", "drink_overflow", "select_pitem", "special_guidance", "event_choice")
+LLM_PATHS = ("change_remove", "remove_card", "select_drink", "consult", "interval", "drink_overflow", "select_pitem", "special_guidance", "event_choice", "card_move")
 
 
 def llm_path_on(name: str) -> bool:
@@ -111,7 +111,7 @@ class ProduceDeciders:
         不回退到第 0 项（决策-08，用户：所有页面由我们的逻辑处理，不能落到 KAA 默认的 commit(0)）。"""
         fn = {"ACTION_SELECT": self.action_select, "SELECT_CARD": self.select_card, "SELECT_DRINK": self.select_drink,
               "CONSULT": self.consult, "STUDY": self.study, "OUTING": self.outing,
-              "HIF_ROUND_INTERVAL": self.interval, "SELECT_PITEM": self.select_pitem, "EVENT_CHOICE": self.event_choice, "PDRINK_MAX": self.drink_overflow,
+              "HIF_ROUND_INTERVAL": self.interval, "SELECT_PITEM": self.select_pitem, "EVENT_CHOICE": self.event_choice, "EXAM_CARD_MOVE": self.card_move, "PDRINK_MAX": self.drink_overflow,
               "SPECIAL_GUIDANCE": self.special_guidance, "FORMATION": self.formation,
               "QUALIFY_MEMORY": self.qualify_memory, "SKILL_CARD_CHANGE_1": self.change_pick,
               "SKILL_CARD_CHANGE_2": self.change_remove, "SKILL_CARD_REMOVAL": self.remove_card,
@@ -1832,6 +1832,65 @@ class ProduceDeciders:
         options = [(Action.activate_effect(idx[i]), {"名字": items[i].get("name") or "未识别", "颜色": items[i].get("color"),
                                                     "社区": pitem.reason(parsed[i]) if parsed[i] else "未识别"}) for i in order]  # fmt: skip
         return self._ask_choice("select_pitem", rule, options, "P 道具（カスタムPアイテム）三选一", why, state)
+
+    MOVE_OUT = ("lost", "grave")  # 移走（除外 / 弃牌）：选最该丢的
+    MOVE_KEEP = ("hold", "hand", "deck_top")  # 留着用（保留 / 手牌 / 山札顶）：选最想用的
+
+    def card_move(self, state: GameState) -> Decision:
+        """考试里的「技能卡移动」对话框（卡效果让你从候选里选牌移到别处；协调 11-14 新决策点，原来盲选找到的最后一张）。
+
+        page_fields（平台模块的执行器读出来交给这里）：
+          destination：lost（除外）/ grave（弃牌）/ hold（保留）/ hand（手牌）/ deck_top（山札顶）/ deck（山札）/ None（没认出）；
+          count：要选几张（缺省 1）；title：对话框标题文字（可空，给 LLM 看）；
+          candidates：[{index（画面上第几张，执行时点它）, card_id, upgrade}]；exam：考试局面摘要（回合、剩余回合、体力、元気、分数、やる気…，可空）。
+        算法：移走时选最该丢的（眠気等トラブル 优先，再按价值从低到高，核心卡最后）；留着用时选价值最高的（核心卡优先）。
+        前两名差距小（价值差 < 0.3、同档）或有候选没认出时交 LLM（开关 card_move）；目的地没认出时按原来的做法选最后一张、记 fallback。
+        输出 ActivateEffect {"pick_indexes": [...]}。没有候选：Wait（停下等重新识别）。"""
+        pf = state.page_fields
+        raw = sorted(pf.get("candidates") or [], key=lambda c: c.get("index", 0))
+        dest = pf.get("destination")
+        n = max(1, int(pf.get("count") or 1))
+        if not raw:
+            return Decision(Action.ui(ActionKind.WAIT, why="技能卡移动候选未识别"), "技能卡移动：候选没读出来，停下等重新识别", "fallback", 0.1,
+                            warnings=["EXAM_CARD_MOVE candidates 为空"], decider="card_move")  # fmt: skip
+        pick = lambda idx: Action(ActionKind.ACTIVATE_EFFECT, {"pick_indexes": [raw[i].get("index", i) for i in idx]})  # noqa: E731
+        name = lambda c: _card_label(c) if c.get("card_id") else "未识别"  # noqa: E731
+        if dest not in self.MOVE_OUT + self.MOVE_KEEP:
+            idx = list(range(len(raw)))[-n:]
+            return Decision(pick(idx), f"技能卡移动：目的地没认出（{dest}），按原来的做法选最后 {n} 张（{'、'.join(name(raw[i]) for i in idx)}）",
+                            "fallback", 0.3, warnings=["EXAM_CARD_MOVE destination 未识别"], decider="card_move")  # fmt: skip
+        out = dest in self.MOVE_OUT
+
+        def key(i):
+            c = raw[i]
+            cid = c.get("card_id")
+            v = card_value(cid, c.get("upgrade") or 0) if cid else 0.0
+            core = _is_core_card(cid) if cid else False
+            if out:  # 越该丢越前：トラブル → 非核心低价值 → 核心
+                return (0 if cid and cull_tier(cid) == 0 else 1, core, v)
+            return (-int(core), -v)  # 越想用越前
+
+        order = sorted(range(len(raw)), key=key)
+        idx = order[:n]
+        why_dest = {"lost": "除外", "grave": "弃牌", "hold": "保留", "hand": "手牌", "deck_top": "山札顶", "deck": "山札"}[dest] if dest in (
+            "lost", "grave", "hold", "hand", "deck_top", "deck") else dest  # fmt: skip
+        reason = (f"技能卡移动到{why_dest}：{'、'.join(name(raw[i]) for i in idx)}"
+                  f"（{'移走选最该丢的：トラブル优先、再按价值从低到高、核心卡最后' if out else '留着用选价值最高的、核心卡优先'}）")  # fmt: skip
+        cands = [Candidate(pick([i]), note=name(raw[i]), preview={"名字": name(raw[i]), "价值估计": round(card_value(raw[i].get("card_id"), raw[i].get("upgrade") or 0), 2) if raw[i].get("card_id") else None})
+                 for i in order]  # fmt: skip
+        rule = Decision(pick(idx), reason, "rule", 0.8, cands, decider="card_move")
+        if n != 1 or len(raw) < 2:
+            return rule
+        unknown = [i for i in range(len(raw)) if not raw[i].get("card_id")]
+        a, b = order[0], order[1]
+        close = key(a)[:-1] == key(b)[:-1] and abs(key(a)[-1] - key(b)[-1]) < 0.3
+        if not unknown and not close:
+            return rule
+        why = (f"{len(unknown)} 张候选没认出" if unknown else f"{name(raw[a])} 和 {name(raw[b])} 价值差不多")
+        options = [(pick([i]), {"名字": name(raw[i]), "强化": raw[i].get("upgrade"), "价值估计": cands[k].preview["价值估计"],
+                                "核心卡": _is_core_card(raw[i].get("card_id")) if raw[i].get("card_id") else None}) for k, i in enumerate(order)]  # fmt: skip
+        return self._ask_choice("card_move", rule, options, f"考试中的技能卡移动：选一张移到{why_dest}（{'移走' if out else '留着用'}）", why, state,
+                                {"对话框标题": pf.get("title"), "考试局面": pf.get("exam")})  # fmt: skip
 
     def event_choice(self, state: GameState) -> Decision:
         """事件选项页（随机事件 / 支援事件 / 开局二选一等多选项按钮页；去 KAA 设计稿 §8-2，用户 11-14：按整局培育来选，算法 → LLM → 兜底）。
