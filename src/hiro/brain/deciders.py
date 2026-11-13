@@ -184,7 +184,7 @@ class ProduceDeciders:
         if page == "SELECT_PITEM":
             items = state.page_fields.get("pitems") or []
             order = {"yellow": 0, "green": 1, "red": 2}
-            colored = [(order[it["color"]], i) for i, it in enumerate(items) if it.get("color") in order and (n is None or i < n)]
+            colored = [(order[it["color"]], i) for i, it in enumerate(items) if it.get("color") in order and not it.get("custom") and (n is None or i < n)]
             if colored:
                 i = min(colored)[1]
                 return Decision(Action.activate_effect(items[i].get("index", i)), "P 道具兜底：按背包颜色 黄 > 緑 > 赤", "fallback", 0.4,
@@ -1799,7 +1799,7 @@ class ProduceDeciders:
         from hiro.brain import pitem
 
         items = state.page_fields.get("pitems") or []
-        parsed = [pitem.parse(it) for it in items]
+        parsed = [None if it.get("custom") and not (it.get("name") or it.get("item_id") or it.get("id")) else pitem.parse(it) for it in items]
         if any(q and q["stage"] != "pouch" for q in parsed):
             # 同一页别的候选已是玩偶 / 装饰段：只有颜色（名字没认出）的格子不是背包，按没认出算（原来当「背包 黄」3 分，压过 インコ / うさぎ）
             parsed = [None if q and q["stage"] == "pouch" and not (it.get("name") or it.get("item_id") or it.get("id")) else q

@@ -297,3 +297,14 @@ def test_guidance_off_table_llm_can_customize_once(monkeypatch):
 def test_pitem_color_only_slot_not_scored_as_pouch():
     d = ProduceDeciders(CAMPUS_HIRO, None).decide("SELECT_PITEM", _pitems("うさぎ（黄）", None, "インコ（黄）"))
     assert d.action.args["pick_indexes"] == [2]  # インコ；没认出的格子原来按「背包 黄」3 分被选中
+
+
+def test_pitem_custom_page_unrecognized_slots_stop():
+    """定制页（hif._custom_options 标 custom）三格都没认出：不按背包颜色当「背包 黄」选，停下。"""
+    st = GameState(page_fields={"pitems": [{"slot": i, "name": None, "color": "yellow", "custom": True} for i in range(3)]})
+    d = ProduceDeciders(CAMPUS_HIRO, None).decide("SELECT_PITEM", st)
+    assert d.action.kind.name == "WAIT"
+    st = GameState(page_fields={"pitems": [{"slot": 0, "name": None, "color": "yellow", "custom": True},
+                                           {"slot": 1, "name": "羽ロボ（黄）", "color": "yellow", "custom": True},
+                                           {"slot": 2, "name": "花ロボ（黄）", "color": "yellow", "custom": True}]})
+    assert ProduceDeciders(CAMPUS_HIRO, None).decide("SELECT_PITEM", st).action.args["pick_indexes"] == [2]
