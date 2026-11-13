@@ -58,9 +58,9 @@ def test_enabled_switch_default_off(monkeypatch):
 
 def test_fallback_landscape_does_not_crop():
     """横屏桌面帧走像素兜底：以前按竖屏坐标裁出空图，cvtColor 断言崩溃。"""
-    from hiro.vision.scene import _fallback
+    from hiro.vision.classify import pixel_fallback
 
-    assert _fallback(np.zeros((720, 1280, 3), np.uint8)) is None
+    assert pixel_fallback(np.zeros((720, 1280, 3), np.uint8)) is None
 
 
 def test_recover_to_home_taps_no_boost():

@@ -555,6 +555,27 @@
    ],
    "source": "KAA 2d10f3c4-00cc-48c8-abd2-01d45bd659c7_template.png",
    "fixed": true
+  },
+  "Daily.ButtonHomeCurrent": {
+   "file": "Daily.ButtonHomeCurrent.png",
+   "slice_rect": [
+    332,
+    1130,
+    55,
+    50
+   ],
+   "source": "KAA 44816fcf-7a8a-4796-8588-2512d97a5a87_template.png",
+   "fixed": true
+  },
+  "Common.ButtonCommuSkip": {
+   "file": "Common.ButtonCommuSkip.png",
+   "slice_rect": [
+    180,
+    1187,
+    24,
+    28
+   ],
+   "source": "KAA f1f21925-3e22-4dd1-b53b-bb52bcf26c2b_template.png"
   }
  },
  "boxes": {
@@ -605,6 +626,18 @@
    1081,
    715,
    1100
+  ],
+  "InProduce.BoxCommuEventButtonsArea": [
+   14,
+   412,
+   703,
+   1089
+  ],
+  "InProduce.SkillCardSelect.CardsBox": [
+   82,
+   926,
+   637,
+   948
   ]
  }
 }
