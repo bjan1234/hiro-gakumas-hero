@@ -10,11 +10,34 @@
 
 from __future__ import annotations
 
+import logging
 import time
-
-from kotonebot import device, logging
+from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
+
+
+class _KotonebotDevice:
+    """旧主循环：用到时才取 kotonebot 的设备（模块导入时不拉 kotonebot）。"""
+
+    def __getattr__(self, name):
+        from kotonebot import device as _d
+
+        return getattr(_d, name)
+
+
+device = _KotonebotDevice()  # 截图 / 点击 / 滑动：screenshot()、click(x, y)、swipe(x1, y1, x2, y2, duration)
+
+
+@contextmanager
+def use(dev):
+    """这段时间用 dev 当设备（新主循环开局：hiro.runtime.opening 传进带危险点击拦截的设备适配）。"""
+    global device
+    old, device = device, dev
+    try:
+        yield
+    finally:
+        device = old
 
 RENTAL_SLOT = (588, 906)
 WANT_ATTR = "Da"
