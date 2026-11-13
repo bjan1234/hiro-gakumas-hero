@@ -31,6 +31,7 @@ from hiro.loop.resume import ResumeBlocked
 from hiro.loop.session import Session
 from hiro.produce import ops
 from hiro.produce.ops import button_text
+from hiro.vision.hif import is_final_exam
 from hiro.vision.ui_templates import box, tpl
 from hiro.exec.exam import run_exam
 from hiro.recorder import Recorder
@@ -1477,7 +1478,7 @@ class HifCore:
             rnd = finals_label_round(f.get("finals_round"), f.get("remaining_turns"))
             if rnd in (1, 2):
                 return f"r{rnd}"
-            return "r2" if ctx.is_final_exam() else "r1"
+            return "r2" if is_final_exam(device.screenshot()) else "r1"
         if scene != "HIF_EXAM":
             self.lesson_count += 1
             type(self).lessons_done = self.lesson_count
@@ -1503,7 +1504,7 @@ class HifCore:
             type(self).exams_done = self.exam_count
             return f"qualify-{self.exam_count}"
         type(self).exams_done = self.exam_count
-        return "r2" if ctx.is_final_exam() else "r1"
+        return "r2" if is_final_exam(device.screenshot()) else "r1"
 
     EXAM_SCENE_SETTLE_S = 6.0  # 本战流程里考试开头认不出 HIF_EXAM 时，再看这么久才当成レッスン
 
