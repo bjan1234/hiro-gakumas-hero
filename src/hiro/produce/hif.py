@@ -18,7 +18,8 @@ from typing import TYPE_CHECKING
 from kaa.config.const import HifScenario, ProduceAction
 from kaa.kaa_context import produce_solution
 from kaa.tasks.produce.new.strategies.hif_grind import HifGrindStrategy
-from kotonebot import Loop, device, logging, sleep
+import logging
+from hiro.devices.active import Loop, device, sleep
 
 from hiro.brain.battle import BattleBrain
 from hiro.vision.ocr import find_text, screen_texts

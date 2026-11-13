@@ -19,8 +19,8 @@ from pathlib import Path
 from collections.abc import Callable
 
 from hiro import master
-from kotonebot import Loop, device, logging, sleep
-from kotonebot.primitives import Rect
+import logging
+from hiro.devices.active import Loop, device, sleep
 
 from hiro.brain.battle import BattleBrain
 from hiro.brain.rules import Decision
@@ -32,12 +32,12 @@ from hiro.produce import ops
 from hiro.recorder import Recorder
 from hiro.exec import schedule_probe
 from hiro.vision.hif import EXAM_CACHE, hand_cards
-from hiro.vision.ocr import Text, find_text, screen_texts
+from hiro.vision.ocr import Box, Text, find_text, screen_texts
 from hiro.vision.ui_templates import box, tap, tpl
 
 logger = logging.getLogger(__name__)
 
-SKIP_BUTTON = Rect(621, 739, 85, 85)  # 与 KAA do_cards 相同的跳过回合位置（720x1280）
+SKIP_BUTTON = Box(621, 739, 706, 824)  # 与 KAA do_cards 相同的跳过回合位置（720x1280）
 STABLE_GAP = 0.4  # 两次读取间隔；两次一致才算稳定
 CHANGE_TIMEOUT = 8.0  # 执行后等画面变化的最长时间
 LIVE_WAIT_S = 2.0  # 存档暂时对不上（文件正在写、存档落后画面不止一步）时最多等这么久，之后走截图兜底
@@ -826,14 +826,15 @@ def _execute(d: Decision, frame: Frame) -> list[list[int]]:
         return _play_card(int(c.rect.center.x), int(c.rect.center.y), frame.img)
     if d.kind == "drink":
         _, rect = frame.drinks[d.slot]
-        r = Rect(xywh=rect)
+        x, y, w, h = rect
+        r = Box(x, y, x + w, y + h)
         with _phase("drink_calm"):
             _screen_calm()  # 演出 / 横幅期间点饮料游戏不响应（第二十五局 R1、R2 各一次）：先等画面停稳
-        device.click(r)
+        device.click(*r.center)
         taps = [[int(r.center.x), int(r.center.y)]]
 
         def retap():
-            device.click(r)
+            device.click(*r.center)
             taps.append([int(r.center.x), int(r.center.y)])
 
         with _phase("drink_confirm"):
@@ -841,7 +842,7 @@ def _execute(d: Decision, frame: Frame) -> list[list[int]]:
         if use is not None:
             taps.append(use)
         return taps
-    device.click(SKIP_BUTTON)
+    device.click(*SKIP_BUTTON.center)
     return [[int(SKIP_BUTTON.center.x), int(SKIP_BUTTON.center.y)]]
 
 
@@ -1252,7 +1253,7 @@ def run_exam(
                     session.recover("tap_no_effect", f"{d.action} 执行后画面 {CHANGE_TIMEOUT:.0f}s 未变（第 {failures} 次）")
                 if failures >= 3:
                     logger.warning("连续 %d 次动作无效，跳过回合", failures)
-                    device.click(SKIP_BUTTON)
+                    device.click(*SKIP_BUTTON.center)
                     if session is not None:
                         session.note("连续 3 次动作无效，强制跳过回合")
                     failures = 0

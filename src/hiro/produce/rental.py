@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import time
 
-from kotonebot import device, logging
+import logging
+from hiro.devices.active import device
 
 logger = logging.getLogger(__name__)
 

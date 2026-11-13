@@ -18,8 +18,8 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from kotonebot import device, logging
-from kotonebot.primitives import Rect
+import logging
+from hiro.devices.active import device
 
 from hiro.contracts import Action, ExecutionResult
 from hiro import imgio
@@ -51,8 +51,8 @@ class Waited:
 
 def _xywh(target, size: tuple[int, int] = ROI_DEFAULT) -> tuple[int, int, int, int]:
     """Rect / (x, y, w, h) / (x, y) → (x, y, w, h)；点按 size 取以它为中心的区域。"""
-    if isinstance(target, Rect):
-        return int(target.x1), int(target.y1), int(target.w), int(target.h)
+    if hasattr(target, "xywh"):  # Box（hiro.vision.ocr）或别的带 xywh 的框
+        return tuple(int(v) for v in target.xywh)
     if len(target) == 4:
         return tuple(int(v) for v in target)
     x, y = target

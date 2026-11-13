@@ -12,7 +12,8 @@ from kaa.config.const import HifScenario
 from kaa.kaa_context import init_produce_session
 from kaa.tasks.actions.scenes import at_home
 from kaa.tasks.produce.session import ProduceSession
-from kotonebot import device, logging
+import logging
+from hiro.devices.active import device
 
 from hiro.loop.pause_flag import active_clock  # noqa: E402
 
@@ -156,7 +157,7 @@ def finish_produce_end(*, timeout: float = 180.0, go_home: bool = False) -> bool
     """把培育结束后的结算画面（「プロデュース完了」、获得道具、升级、活动积分、关注制作人等）点回首页。
     KAA 的 goto_home 不认 H.I.F 的「プロデュース完了」页；这里按时间封顶（kotonebot Loop 不检查 timeout）。
     不点「再挑戦」「生成」以外的花费类按钮；关注制作人一律跳过。返回是否回到首页。"""
-    from kotonebot import device as dev
+    from hiro.devices.active import device as dev
 
     from hiro.loop.assist import Assist
 
