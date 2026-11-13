@@ -74,7 +74,7 @@ def test_rent_step2_stops_when_rental_slot_empty(monkeypatch):
     import sys
 
     _fake_templates(monkeypatch, False)
-    monkeypatch.setitem(sys.modules, "kaa.tasks.produce.prepare", NS(_select_set=lambda n: None))
+    monkeypatch.setattr(kaa_patches, "select_set", lambda n: None)  # 翻编成号（hiro.produce.prep_steps）不在这条用例里测
     monkeypatch.setattr(kaa_patches, "device", NS(screenshot=lambda: None), raising=False)
     import kotonebot
 
@@ -85,12 +85,10 @@ def test_rent_step2_stops_when_rental_slot_empty(monkeypatch):
 
 
 def test_rent_step2_passes_when_set_full(monkeypatch):
-    import sys
-
     import kotonebot
 
     _fake_templates(monkeypatch, True)
-    monkeypatch.setitem(sys.modules, "kaa.tasks.produce.prepare", NS(_select_set=lambda n: None))
+    monkeypatch.setattr(kaa_patches, "select_set", lambda n: None)  # 翻编成号（hiro.produce.prep_steps）不在这条用例里测
     monkeypatch.setattr(kotonebot, "device", NS(screenshot=lambda: None))
     assert kaa_patches._rent_step2(lambda **k: True)(set_number=1, auto_set=False) is True
 
