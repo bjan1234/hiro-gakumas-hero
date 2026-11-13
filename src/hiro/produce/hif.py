@@ -15,7 +15,7 @@ from pathlib import Path
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from kaa.config.const import HifScenario, ProduceAction
+from kaa.config.const import HifScenario
 from kaa.kaa_context import produce_solution
 from kaa.tasks.produce.new.strategies.hif_grind import HifGrindStrategy
 import logging
@@ -52,23 +52,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# KAA ProduceAction → 契约 Action.produce_next 的参数
-_PA = {
-    ProduceAction.VOCAL_SP: ("training", "Vo", True), ProduceAction.DANCE_SP: ("training", "Da", True), ProduceAction.VISUAL_SP: ("training", "Vi", True),
-    ProduceAction.VOCAL: ("training", "Vo", False), ProduceAction.DANCE: ("training", "Da", False), ProduceAction.VISUAL: ("training", "Vi", False),
-    ProduceAction.STUDY_VOCAL_HIF: ("class", "Vo", None), ProduceAction.STUDY_DANCE_HIF: ("class", "Da", None), ProduceAction.STUDY_VISUAL_HIF: ("class", "Vi", None),
-    ProduceAction.STUDY: ("class", None, None), ProduceAction.OUTING: ("outing", None, None), ProduceAction.GIFT: ("gift", None, None),
-    ProduceAction.CONSULT: ("shop", None, None), ProduceAction.REST: ("rest", None, None),
-}  # fmt: skip
 ACTION_REQUIRED = ("stamina", "produce_point", "params", "options")
 TAP_RETRIES = 2
 EXAM_END_LOOP_TIMEOUT = 90.0  # 考试结束后点「次へ」/ 结果页的总时长上限
 EXAM_END_SETTLE = 2.0  # 考试结束后点「次へ」等按钮区变化的上限（原来固定睡 2s）
-
-
-def to_action(pa: ProduceAction) -> Action:
-    option, attr, sp = _PA.get(pa, (pa.value, None, None))
-    return Action.produce_next(option, attr=attr, sp=sp)
 
 
 def _card_summary(card) -> dict | None:
@@ -206,29 +193,32 @@ class HifCore:
 
     # ---------------------------------------------------------------- 选行动
     @staticmethod
-    def _to_produce_action(action: Action, actions: list[ProduceAction]) -> ProduceAction | None:
-        """契约 ProduceNext(option, attr, sp) → 当前可用的 KAA ProduceAction（精确匹配优先；SP 与普通不混判）。"""
+    def _match_button(action: Action, buttons: list):
+        """契约 ProduceNext(option, attr, sp) → 当前画面上能点的行动按钮（精确匹配优先；SP 与普通不混判）。"""
         if action.kind is not ActionKind.PRODUCE_NEXT:
             return None
         want = (action.args.get("option"), action.args.get("attr"), action.args.get("sp"))
-        for a in actions:
-            o, at, sp = _PA.get(a, (a.value, None, None))
-            if (o, at) == want[:2] and (o != "training" or bool(sp) == bool(want[2])):
-                return a
-        for a in actions:  # SP 判断与 KAA 识别不一致时退一步：同课程同属性
-            o, at, _ = _PA.get(a, (a.value, None, None))
-            if (o, at) == want[:2]:
-                return a
+        for b in buttons:
+            if (b.option, b.attr) == want[:2] and (b.option != "training" or bool(b.sp) == bool(want[2])):
+                return b
+        for b in buttons:  # SP 判断与识别不一致时退一步：同课程同属性
+            if (b.option, b.attr) == want[:2]:
+                return b
         return None
 
     ACTION_WAIT_RETRIES = 3
 
-    def on_action_select(self, ctx: "ActionSelectContext"):
+    def on_action_select(self, ctx=None):
+        """选行动：识别可点的行动按钮（hiro.vision.action_buttons，替换 KAA fetch_available_actions）→ 决策 → 提交
+        （hiro.produce.action_select.action_commit）。决策和全部候选都对不上按钮时：KAA 主循环仍交给 KAA，新主循环停机。"""
+        from hiro.produce.action_select import action_commit
+        from hiro.vision.action_buttons import available_actions
+
         t0 = time.monotonic()
         obs = self.s.observe_complete("ACTION_SELECT", ACTION_REQUIRED)
         # 先等选行动页读完整（淡入结束、能点了）再开牌组一览（第二十局开局：页面刚出来就点，一览很晚才弹）
         self._maybe_review_deck()
-        actions, objects = ctx.fetch_available_actions()
+        buttons = available_actions(device.screenshot())
         d = self.deciders.decide("ACTION_SELECT", self.s.state)
         for _ in range(self.ACTION_WAIT_RETRIES):
             # 决策器异常 / 读数被拦（第十九局本战第 1 天 Da 2296 读成 3296 被不变量拦下 → 决策器缺属性抛异常 → Wait）：
@@ -238,7 +228,7 @@ class HifCore:
             sleep(self.SELECT_RETRY_WAIT)
             device.screenshot()
             obs = self.s.observe_complete("ACTION_SELECT", ACTION_REQUIRED)
-            actions, objects = ctx.fetch_available_actions()
+            buttons = available_actions(device.screenshot())
             d = self.deciders.decide("ACTION_SELECT", self.s.state)
         if d.action.kind is ActionKind.WAIT:
             self._stop("ACTION_SELECT", f"选行动重读 {self.ACTION_WAIT_RETRIES} 次决策仍是 Wait（{d.reason}），不交给 KAA 盲选", obs=obs, decision=d)
@@ -249,24 +239,26 @@ class HifCore:
                 return
             d = self.deciders.decide("ACTION_SELECT", self.s.state)  # 进不去：再决策一次，下面按候选走
             d = replace(d, warnings=[*d.warnings, "特別指導 没进去，改用候选"])
-        choice = self._to_produce_action(d.action, actions)
+        choice = self._match_button(d.action, buttons)
         if choice is None and d.action.kind is ActionKind.PRODUCE_NEXT:
-            # 首选执行不了（例如「特別指導」KAA 没有这个行动）：按决策器的候选顺序找第一个能执行的，不交给 KAA 的 v0 规则（它会回退成休息）
+            # 首选执行不了（画面上没有这个按钮）：按决策器的候选顺序找第一个能执行的，不交给 KAA 的 v0 规则（它会回退成休息）
             alt = next(((c.action, a) for c in d.candidates if c.action != d.action
-                        and (a := self._to_produce_action(c.action, actions)) is not None), None)  # fmt: skip
-            self.s.recover("page_misjudged", f"选行动：{d.action} 不在 KAA 可用行动里")
+                        and (a := self._match_button(c.action, buttons)) is not None), None)  # fmt: skip
+            self.s.recover("page_misjudged", f"选行动：{d.action} 不在画面上的可用行动里")
             if alt is not None:
-                d.warnings.append(f"首选 {d.action} 无法执行（KAA 可用 {[a.value for a in actions]}），改用候选 {alt[0]}")
+                d.warnings.append(f"首选 {d.action} 无法执行（可用 {[b.label for b in buttons]}），改用候选 {alt[0]}")
                 choice = alt[1]
             else:
-                d.warnings.append(f"决策 {d.action} 与全部候选在 KAA 可用行动 {[a.value for a in actions]} 里都找不到，交给 KAA")
-        self.rec.log("action_select", image=self.s.img, available=[str(a) for a in actions], choice=str(choice), source=d.source, reason=d.reason)
-        logger.info("选行动 %s ← %s：%s", choice, d.source, d.reason)
+                d.warnings.append(f"决策 {d.action} 与全部候选在可用行动 {[b.label for b in buttons]} 里都找不到")
+        self.rec.log("action_select", image=self.s.img, available=[b.label for b in buttons], choice=choice.label if choice else None, source=d.source, reason=d.reason)
+        logger.info("选行动 %s ← %s：%s", choice.label if choice else None, d.source, d.reason)
         if choice is None:
+            if ctx is None:  # 新主循环：不交给 KAA 盲选（用户规则 3c）
+                self._stop("ACTION_SELECT", f"决策 {d.action} 和全部候选在画面上都没有对应按钮", obs=obs, decision=d)
             self.s.record(obs, decision=d, timings_ms={"total": (time.monotonic() - t0) * 1000})
             return super().on_action_select(ctx)
-        taps = [[int(o.rect.center.x), int(o.rect.center.y)] for a, o in zip(actions, objects) if a == choice][:1]
-        result = self._act(lambda: ctx.commit(choice), d.action, page_before="ACTION_SELECT", taps=taps)
+        taps = [[int(choice.rect.center.x), int(choice.rect.center.y)]]
+        result = self._act(lambda: action_commit(choice), d.action, page_before="ACTION_SELECT", taps=taps)
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
     MAX_CUSTOMIZE_STEPS = 4

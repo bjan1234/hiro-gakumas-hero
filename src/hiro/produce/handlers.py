@@ -2,8 +2,7 @@
 
     rt = Runtime(raw_device=dev, classify=hiro.vision.classify.classify, handlers=make_handlers(core), ...)
 
-这里只登记已经不依赖 KAA 上下文的页面；还要 KAA ctx 的（选行动）换成自有执行后
-再加进来；活動支給、培育结束的执行在 hiro.runtime.finish（这里只先记观测）。没登记的页面 Runtime 交给 advance。
+HifCore 的页面方法都已经不需要 KAA 上下文（ctx 传 None）。活動支給、培育结束的执行在 hiro.runtime.finish（这里只先记观测）。没登记的页面 Runtime 交给 advance。
 
 考试入口：KAA 的 _dispatch 只在「上一页不是考试」时调 on_exam_entered；新主循环每拍都会调处理器，考试打完（run_exam 返回）后
 残留的考试帧会让它再进一次（场次重复计数、重复记录）。所以考试打完以后关门，直到处理过一个非考试页才重新开门；
@@ -69,6 +68,7 @@ def make_handlers(core) -> dict[str, Callable]:
         "SELECT_PITEM": page(core.on_select_pitem),
         "SELECT_DRINK": page(core.on_select_drink),
         "SELECT_CARD": page(core.on_select_card),
+        "ACTION_SELECT": page(core.on_action_select),
         "STUDY": page(core.on_study),
         "OUTING": page(core.on_outing),
         "SKILL_CARD_CHANGE_1": page(lambda ctx: core.on_skill_card_change(ctx, stage=1)),

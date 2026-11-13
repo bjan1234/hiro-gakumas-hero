@@ -98,3 +98,34 @@ def test_produce_end_and_allowance_record_then_delegate(monkeypatch):
     assert h["ALLOWANCE"](None, None, None) is DONE
     assert h["PRODUCE_END"](None, None, None) is finish.END
     assert seen == [("observe", "ALLOWANCE"), "claim", ("record", "ALLOWANCE"), ("observe", "PRODUCE_END"), ("record", "PRODUCE_END"), "finish_end"]
+
+
+def test_action_commit_taps_three_times_then_waits_button_gone(monkeypatch):
+    """选行动提交（hiro.produce.action_select，替换 KAA ActionSelectContext.commit）：点 3 下、等按钮消失；休息走确认框。"""
+    from types import SimpleNamespace as NS
+
+    import hiro.produce.action_select as ac
+    from hiro.vision.action_buttons import ActionButton
+    from hiro.vision.ocr import Box
+
+    t = [0.0]
+    clicks = []
+    monkeypatch.setattr(ac, "device", NS(screenshot=lambda: None, click=lambda x, y: clicks.append((x, y))))
+    monkeypatch.setattr(ac, "sleep", lambda s: t.__setitem__(0, t[0] + s))
+    present = {"InProduce.ButtonIconOuting": [True, False]}
+    monkeypatch.setattr(ac, "tpl", lambda name: NS(exists=lambda img: (present.get(name) or [False]).pop(0)))
+    ac.action_commit(ActionButton("outing", None, None, Box(140, 960, 230, 1040), "InProduce.ButtonIconOuting"), clock=lambda: t[0])
+    assert clicks == [(185, 1000)] * 3
+
+    clicks.clear()
+    frames = iter(["menu", "confirm", "confirm", "after"])  # 休む → 确认框出来 → 点了一次还在 → 关掉
+    monkeypatch.setattr(ac, "device", NS(screenshot=lambda: next(frames, "after"), click=lambda x, y: clicks.append((x, y))))
+    where = {"InProduce.Rest": ("menu", (640, 840)), "InProduce.RestConfirmBtn": ("confirm", (500, 1160))}
+
+    def tpl(name):
+        page, xy = where[name]
+        return NS(exists=lambda img: img == page, find=lambda img: NS(center=xy) if img == page else None)
+
+    monkeypatch.setattr(ac, "tpl", tpl)
+    ac.action_commit(ActionButton("rest", None, None, Box(620, 820, 670, 860), "InProduce.Rest"), clock=lambda: t[0])
+    assert clicks == [(640, 840), (500, 1160)]
