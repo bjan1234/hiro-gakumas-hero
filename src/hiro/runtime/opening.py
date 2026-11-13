@@ -203,3 +203,56 @@ def step1(rt, skin_id: str) -> None:
         return None
 
     rt.drive(next_step, STEP_TIMEOUT, "第 1 步点次へ")
+
+
+# ---------------------------------------------------------------- 第 2 步：支援卡编成 + 租借（同 kaa_patches._rent_step2）
+class _RentalDevice:
+    """hiro.produce.rental / formation_writer 要的设备形状（screenshot / click / swipe(…, duration)），转到 runtime 的设备上。"""
+
+    def __init__(self, rt):
+        self.rt = rt
+
+    def screenshot(self):
+        return self.rt.screen.shot().img
+
+    def click(self, x, y):
+        self.rt.device.tap(x, y)
+
+    def swipe(self, x1, y1, x2, y2, duration=None):
+        self.rt.device.swipe(x1, y1, x2, y2, duration=0.3 if duration is None else duration)
+
+
+def _next_enabled(f, name: str):
+    from hiro.vision.ui_templates import find_enabled
+
+    return find_enabled(name, f.img)
+
+
+def step2(rt, *, set_no: int | None, plan: dict | None = None, rental_attr: str | None = None, main_attr: str | None = None) -> None:
+    """第 2 步：翻到支援卡编成 set_no → 按方案自动改（HIRO_FORMATION_AUTOFIX=1）→ 核对 → 租借格空着就挑一张租借 → 次へ。
+    编成号翻不到 / 核对不过 / 挑不到租借 都停（FormationMismatch / ResumeBlocked），不交给おまかせ。"""
+    from hiro.produce import formation_steps, prep_steps, rental
+    from hiro.produce.formation_writer import Device as WriterDevice
+
+    rt.drive(lambda f: True if nav.find(f, "Produce.TextStepIndicator2") is not None else None, STEP_TIMEOUT, "等第 2 步")
+    if set_no is None:
+        raise ResumeBlocked("没有支援卡编成号（HIRO_SUPPORT_SET / 开局编成方案），不开局")
+    if not prep_steps.select_set(set_no, shoot=lambda: rt.screen.shot().img, tap=rt.device.tap, sleep=rt.sleep, clock=rt.clock):
+        raise ResumeBlocked(f"支援卡编成翻不到 {set_no} 号")
+    dev = _RentalDevice(rt)
+    formation_steps.autofix_support(WriterDevice(shoot=dev.screenshot, click=dev.click, swipe=dev.swipe, sleep=rt.sleep), plan)
+    formation_steps.check_support(rt.screen.shot().img, plan, set_no)
+    if _next_enabled(rt.screen.shot(), "Produce.Step2.ButtonNext") is None:
+        with rental.use(dev):
+            picked = formation_steps.rental_pick(plan, rental_attr, main_attr)
+        if not picked:
+            raise ResumeBlocked(f"支援卡编成 {set_no} 的租借格挑不到合适的卡，停下（不让おまかせ确认第一张）")
+
+    def next_step(f):
+        if nav.find(f, "Produce.TextStepIndicator3") is not None:
+            return True
+        if (m := _next_enabled(f, "Produce.Step2.ButtonNext")) is not None:
+            nav.tap_match(rt, m)
+        return None
+
+    rt.drive(next_step, STEP_TIMEOUT, "第 2 步点次へ")

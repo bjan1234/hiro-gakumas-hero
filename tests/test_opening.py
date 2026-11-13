@@ -176,3 +176,63 @@ def test_step1_idol_missing_stops(monkeypatch):
     rt, _ = rig(monkeypatch, [s1])
     with pytest.raises(ResumeBlocked, match="找不到"):
         opening.step1(rt, "i_card-skin-none")
+
+
+# ---------------------------------------------------------------- 第 2 步支援卡 + 租借
+def _step2(monkeypatch, *, enabled_after_pick=True, picked=True, mismatch=False):
+    calls = {"set": [], "pick": [], "rental_dev": None}
+    from hiro.produce import formation_steps, prep_steps, rental
+
+    monkeypatch.setattr(prep_steps, "select_set", lambda n, **kw: calls["set"].append(n) or True)
+    monkeypatch.setattr(formation_steps, "autofix_support", lambda dev, plan: None)
+
+    def check(img, plan, set_no):
+        if mismatch:
+            raise opening.ResumeBlocked("支援卡编成和方案对不上")  # FormationMismatch 也是停机类
+
+    monkeypatch.setattr(formation_steps, "check_support", check)
+    state = {"enabled": False}
+
+    def pick(plan, attr, main):
+        calls["pick"].append(attr)
+        calls["rental_dev"] = rental.device
+        state["enabled"] = enabled_after_pick
+        return picked
+
+    monkeypatch.setattr(formation_steps, "rental_pick", pick)
+    monkeypatch.setattr(opening, "_next_enabled", lambda f, name: Match(Box(500, 1150, 501, 1151), 0.9) if state["enabled"] or getattr(f, "lit", False) else None)
+    return calls, state
+
+
+def test_step2_full_formation_goes_next(monkeypatch):
+    calls, state = _step2(monkeypatch)
+    s2 = frame({"Produce.TextStepIndicator2": (1, 1)})
+    s2.lit = True
+    rt, _ = rig(monkeypatch, [s2], on_tap=lambda taps: [frame({"Produce.TextStepIndicator3": (1, 1)})])
+    opening.step2(rt, set_no=4)
+    assert calls["set"] == [4] and calls["pick"] == [] and rt.raw_device.taps == [(500, 1150)]
+
+
+def test_step2_rents_with_runtime_device(monkeypatch):
+    from hiro.produce import rental
+
+    calls, state = _step2(monkeypatch)
+    rt, _ = rig(monkeypatch, [frame({"Produce.TextStepIndicator2": (1, 1)})], on_tap=lambda taps: [frame({"Produce.TextStepIndicator3": (1, 1)})])
+    opening.step2(rt, set_no=4, rental_attr="Vi")
+    assert calls["pick"] == ["Vi"] and isinstance(calls["rental_dev"], opening._RentalDevice)
+    assert not isinstance(rental.device, opening._RentalDevice)  # 用完换回去
+
+
+def test_step2_stops_without_rental_or_set_or_on_mismatch(monkeypatch):
+    s2 = [frame({"Produce.TextStepIndicator2": (1, 1)})]
+    _step2(monkeypatch, picked=False, enabled_after_pick=False)
+    rt, _ = rig(monkeypatch, s2)
+    with pytest.raises(ResumeBlocked, match="租借"):
+        opening.step2(rt, set_no=4)
+    rt, _ = rig(monkeypatch, s2)
+    with pytest.raises(ResumeBlocked, match="编成号"):
+        opening.step2(rt, set_no=None)
+    _step2(monkeypatch, mismatch=True)
+    rt, _ = rig(monkeypatch, s2)
+    with pytest.raises(ResumeBlocked, match="对不上"):
+        opening.step2(rt, set_no=4)

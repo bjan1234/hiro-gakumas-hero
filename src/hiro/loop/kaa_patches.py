@@ -910,18 +910,11 @@ RENTAL_ATTR: str | None = None  # 租借挑哪个属性（run_hif 按 --main-att
 
 
 def _default_rental_pick() -> bool:
-    """有开局编成方案：按「加上这张后编成的价值」挑（support_select.rental_scorer，自己 5 张取方案的）；没有方案：主属性、等级最高。"""
+    """有开局编成方案按编成价值挑，没有按主属性、等级最高（hiro.produce.formation_steps.rental_pick）。"""
     from hiro import kaa_env
-    from hiro.produce import rental
+    from hiro.produce import formation_steps
 
-    plan = kaa_env.ACTIVE_PLAN or {}
-    own = [{"support_card_id": o["support_card_id"], "level": o.get("level")} for o in (plan.get("support") or {}).get("own") or []]
-    scorer = None
-    if own:
-        from hiro.brain.support_select import rental_scorer
-
-        scorer = rental_scorer(own, RENTAL_ATTR or kaa_env.PLAN_MAIN_ATTR, (plan.get("idol") or {}).get("plan"))
-    return rental.pick_rental(attr=RENTAL_ATTR or rental.WANT_ATTR, scorer=scorer)
+    return formation_steps.rental_pick(kaa_env.ACTIVE_PLAN, RENTAL_ATTR, kaa_env.PLAN_MAIN_ATTR)
 
 
 RENTAL_PICK: Callable | None = _default_rental_pick  # 默认：主属性、等级最高的一张；策略层可替换成自己的选择
@@ -931,35 +924,18 @@ from hiro.produce.formation_check import FormationMismatch  # noqa: E402  run_hi
 
 
 def _check_support(img) -> None:
-    """有开局编成方案时核对第 2 步的 5 格支援卡；对不上抛 FormationMismatch（不开局）。核对本身出错只记日志。"""
+    """有开局编成方案时核对第 2 步支援卡（hiro.produce.formation_steps.check_support）；对不上抛 FormationMismatch。"""
     from hiro import kaa_env
+    from hiro.produce import formation_steps
 
-    if not kaa_env.ACTIVE_PLAN:
-        return
-    from hiro.produce.formation_check import check_support_step2
-
-    try:
-        from hiro.vision.support_screens import read_support_formation
-
-        problems, warnings = check_support_step2(read_support_formation(img), kaa_env.ACTIVE_PLAN)
-    except Exception as e:  # noqa: BLE001
-        logger.warning("支援卡编成核对失败（不拦开局）：%s", e)
-        return
-    for w in warnings:
-        logger.warning("支援卡编成核对：%s", w)
-    if problems:
-        logger.error("支援卡编成和方案对不上，不开局：%s", "；".join(problems))
-        raise FormationMismatch("支援卡编成和方案对不上：" + "；".join(problems))
-    logger.info("支援卡编成核对通过（编成 %s）", kaa_env.SUPPORT_SET)
+    formation_steps.check_support(img, kaa_env.ACTIVE_PLAN, kaa_env.SUPPORT_SET)
 
 
 def _autofix_on() -> bool:
-    """开局自动编成（produce.formation_writer）：HIRO_FORMATION_AUTOFIX=1 且有开局编成方案时才启用（默认关，执行步骤待实机验证）。"""
-    import os
-
     from hiro import kaa_env
+    from hiro.produce import formation_steps
 
-    return os.environ.get("HIRO_FORMATION_AUTOFIX") == "1" and bool(kaa_env.ACTIVE_PLAN)
+    return formation_steps.autofix_on(kaa_env.ACTIVE_PLAN)
 
 
 def _writer_device(tag: str):
@@ -982,20 +958,13 @@ def _writer_device(tag: str):
 
 
 def _autofix_support() -> None:
-    """第 2 步：编成和方案不一致的格子自动改（只在 KAA 已切到方案编成号之后）。失败抛 FormationMismatch，不开局。"""
+    """第 2 步：编成和方案不一致的格子自动改（hiro.produce.formation_steps.autofix_support）。"""
     if not _autofix_on():
         return
     from hiro import kaa_env
-    from hiro.produce.formation_writer import FormationWriteError, fix_support
-    from hiro.vision.support_screens import read_support_formation, read_support_list
+    from hiro.produce import formation_steps
 
-    try:
-        done = fix_support(_writer_device("支援卡"), kaa_env.ACTIVE_PLAN, read_formation=read_support_formation, read_list=read_support_list)
-    except FormationWriteError as e:
-        logger.error("开局自动编成（支援卡）失败，不开局：%s", e)
-        raise FormationMismatch(f"开局自动编成（支援卡）失败：{e}") from e
-    if done:
-        logger.info("开局自动编成（支援卡）：改了 %d 格 %s", len(done), done)
+    formation_steps.autofix_support(_writer_device("支援卡"), kaa_env.ACTIVE_PLAN)
 
 
 def _autofix_memory() -> None:
