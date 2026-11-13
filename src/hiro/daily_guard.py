@@ -14,7 +14,7 @@ import threading
 import time
 from collections.abc import Callable
 
-from hiro.log import logging
+import logging
 
 logger = logging.getLogger(__name__)
 

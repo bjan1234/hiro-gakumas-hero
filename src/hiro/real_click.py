@@ -10,7 +10,7 @@ from __future__ import annotations
 import subprocess
 import time
 
-from hiro.log import logging
+import logging
 
 logger = logging.getLogger(__name__)
 

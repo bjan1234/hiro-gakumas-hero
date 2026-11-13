@@ -17,7 +17,7 @@ from collections.abc import Callable
 
 import numpy as np
 
-from hiro.log import logging
+import logging
 
 logger = logging.getLogger(__name__)
 

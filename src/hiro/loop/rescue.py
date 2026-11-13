@@ -27,7 +27,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from hiro.log import logging
+import logging
 from hiro import imgio
 
 logger = logging.getLogger(__name__)

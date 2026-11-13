@@ -13,7 +13,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
-from hiro.log import logging
+import logging
 
 from hiro.loop import rescue
 

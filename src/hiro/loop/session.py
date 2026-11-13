@@ -12,7 +12,7 @@ from typing import Any
 from hiro.contracts import Decision, ExecutionResult, GameState, Observation, Preview, Step, TraceWriter
 from hiro.loop.reduce import reduce
 from hiro.loop.transitions import is_transient, successors
-from hiro.log import logging
+import logging
 
 logger = logging.getLogger(__name__)
 
