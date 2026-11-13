@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_quick_pages.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """快速判页（协调 2026-11-02：每局 4–7 次「页面认不出超过 30 秒」）。帧取自第十五～十七局 trace，真值按截图目视。"""
 
 import glob

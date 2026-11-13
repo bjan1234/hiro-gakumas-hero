@@ -1,4 +1,4 @@
-# 来源：digital-hiro tests/test_no_omakase.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """支援卡和回忆默认不用「おまかせ」（用户 2026-11-02）：开源版要求写编成号，确实想用おまかせ写 auto。"""
 
 from types import SimpleNamespace as NS

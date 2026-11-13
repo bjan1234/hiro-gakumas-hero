@@ -1,4 +1,4 @@
-# 来源：digital-hiro tools/support_inventory.py（1fc4d19）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """支援卡库存（用户 2026-11-02：支援卡不再用おまかせ）→ reports/live/support-inventory.json，给决策的支援卡选择系统用。
 
 两种来源（hiro.vision.support_screens）：

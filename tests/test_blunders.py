@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_blunders.py（develop 4770d2b）
 """低级失误审计（tools/audit/blunders.py）：每个检测器用第九–十二局里真实出现过的片段做 fixture。
 
 真实数据里还没出现过的种类（点错牌、结果页没分数、手牌重建）用真实片段做「不该报」的用例，再改一个字段做「该报」的用例。

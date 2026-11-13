@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/support_screens.py（develop c3fc27f）
 """支援卡相关画面（用户 2026-11-02：支援卡不再用おまかせ）。样本 reports/live/rental/（540x960，放大到 720x1280 再读）。
 
 - 支援卡卡片（read_tile）：横版插画，左下「Lv 60」+ 4 个突破标记（已突破 = 亮的粉白花形，未突破 = 半透明暗色），右下属性圆标

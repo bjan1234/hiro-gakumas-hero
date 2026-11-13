@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/produce/exam_policy.py（develop 864e037）（GPL-3.0-or-later）
 """考试出牌的决策源（reports/analysis/expert-preview-pilot.md）。
 
     llm     现状：规则 → 本回合计划 → LLM → 硬约束 → 兜底（BattleBrain.decide）

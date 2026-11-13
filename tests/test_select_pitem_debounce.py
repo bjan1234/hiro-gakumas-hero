@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_select_pitem_debounce.py（fix_matto_prep_watchdog 5b5adff）
 """D39 第三十三局 seq 229：STAR_GAIN → SELECT_PITEM 不在转移图里，要防抖 3 帧；控制器补判后 observe(fields=False) 记第 1 帧，
 on_select_pitem 带 pitems 的 observe 是第 2 帧，reduce 还停在 STAR_GAIN、字段没进 state，决策器看到空 page_fields 给 Wait 停机。
 回放：seq 219 的 state（STAR_GAIN）→ 补判帧 → seq 229 带 pitems 的观测。"""

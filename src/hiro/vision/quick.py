@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/quick.py（develop c3fc27f）；开源版改：去掉活动 Logo 美术模板
 """快速判页（协调 2026-11-02：每局 4–7 次「页面认不出超过 30 秒」，一次卡 31–73 秒）。
 
 主循环每轮先调 quick_page，命中就直接处理，不再走 KAA check_scene（这类页面上它要 1–2.5 秒、返回 None）

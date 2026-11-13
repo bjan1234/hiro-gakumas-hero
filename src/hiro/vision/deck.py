@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/deck.py（develop c3fc27f）
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """牌组：培育中「所持スキルカード」一览页（DECK_LIST）与相談削除 / 強化、换卡等同款卡格网格。
 

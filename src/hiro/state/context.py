@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/state/context.py @ c3fc27f（GPL-3.0-or-later）；私有引擎依赖换成插件接口
 """给 LLM 的培育上下文：公共局面 + 页面预演。只算确定的事实，判断交给 LLM。
 
 数据来源：主数据（AssetSource.master_db()，经 hiro.state.catalog）、日程（AssetSource.schedule()）、

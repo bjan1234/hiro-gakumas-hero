@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/memory_icons.py（5af2874）；开源版：渲染库读 cache/card_icons.npz，卡面走 AssetSource.card_art_dir()（GPL-3.0-or-later）
 """回忆小图标认卡：开局第 3 步「メモリー選択」每格回忆右侧的技能卡小图，以及回忆选择页详情栏的大图标。
 
 主方法（2026-11-06 起，「渲染模板」）：cache/card_icons.npz 里每张卡面都按游戏 UI 真实结构渲染成了干净的小图标

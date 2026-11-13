@@ -1,4 +1,4 @@
-# 来源：digital-hiro tests/test_retry_reenter_exam.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """第十八局本战 R2：点「再挑戦」后画面从结果页直接回到同一场考试，KAA 记的上一页还是 EXAM，
 _dispatch 只在「上一页不是 EXAM」时进 on_exam_entered → 主循环空转（两次各卡 18 / 7 分钟）。
 策略置 exam_restarted 后，下一次看到考试页要重新进入 on_exam_entered，且只进一次。"""

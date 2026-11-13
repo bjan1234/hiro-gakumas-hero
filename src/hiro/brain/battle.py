@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/brain/battle.py @ c3fc27f（GPL-3.0-or-later）
 """考试出牌的决策编排：规则 → 本回合计划 → LLM → 硬约束复核 → 兜底。
 
 每回合通常只在开始时问一次 LLM，拿到「现在做什么 + 本回合后续打算」。后续动作若和计划一致就直接执行，

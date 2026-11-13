@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/signature.py（develop c3fc27f）；开源版改：游戏素材经插件 AssetSource（hiro.vision.assets），拿不到时退路见各处注释
 """页面签名：用客户端 Sprite 在固定小窗口里做模板匹配，快速判断当前页面。
 
 签名由 tools/assets/mine_signatures 从已标注截图挖掘（signatures.json）：每类页面若干个

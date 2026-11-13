@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/brain/pitem.py @ c3fc27f（GPL-3.0-or-later）
 """H.I.F カスタムPアイテム（P 道具背包）三选一（SELECT_PITEM）。
 
 流程（seesaawiki H.I.F「カスタムPアイテム」，master ProduceCustomizeItem / ProduceCustomizeItemRelationship 核对）：

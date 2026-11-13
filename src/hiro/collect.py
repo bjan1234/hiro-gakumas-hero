@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/collect.py（develop ce5085f）
 """实机采集：持续截图，画面变化时保存并打上识别结果，用于积累样本、验证识别。
 
     .venv/bin/python -m hiro.collect [--interval 0.5] [--minutes 30] [--name 备注] [--port 8765]

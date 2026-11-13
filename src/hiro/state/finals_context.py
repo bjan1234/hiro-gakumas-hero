@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/sim/interval.py（CONTEXT / note_exam / load_context）@ c3fc27f（GPL-3.0-or-later）；只保留记账部分
 """本战 R1 记下的信息（牌组、R1 结束剩下的饮料、三属性倍率），轮间 / R2 决策用；落盘到 trace 目录，续跑时读回。"""
 
 from __future__ import annotations

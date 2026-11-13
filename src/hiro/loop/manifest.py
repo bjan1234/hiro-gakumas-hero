@@ -1,4 +1,3 @@
-# 来源：digital-hiro hiro/loop/manifest.py（c3fc27f）；开源版：素材 / 主数据改从插件（hiro.plugins）取
 """ResourceManifest：运行前核对识别素材、主数据、布局校准、契约版本，记进 trace 的 meta；有问题只报警，不拦开局。"""
 
 from __future__ import annotations

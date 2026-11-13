@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/brain/formation.py @ c3fc27f（GPL-3.0-or-later）；支援卡技能改走 AssetSource.support_effects()
 """开局编成：从游戏里预存的支援卡编成 / 记忆编成里按社区规则选第几号（KAA prepare 的编成编号 1–20）。
 
 用户 2026-10-31：记忆和支援卡不用 KAA 自动编成，改成显式配置，并作为决策的一部分。

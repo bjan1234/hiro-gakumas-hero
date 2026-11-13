@@ -1,4 +1,3 @@
-# 来源：digital-hiro hiro/loop/landscape.py（c3fc27f）
 """横屏 LIVE 黑屏的处理（PlayCover 已知问题，PlayCover issue #1496、社区「画面回転でブラックアウトしたらフルスクリーン切替」）。
 
 选拔赛 / 本战结束后的 LIVE 要求横屏，PlayCover 窗口不跟着转，游戏在跑但画面全黑、后台点击无效。

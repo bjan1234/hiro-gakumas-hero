@@ -1,4 +1,4 @@
-# 来源：digital-hiro tools/daily/run_daily.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """用 KAA 的日常任务跑一遍不花钱的项（用户 2026-11-02 经协调定）。
 
     python tools/daily/run_daily.py [--only contest,presents]

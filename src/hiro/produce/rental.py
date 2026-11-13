@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/produce/rental.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """开局第 2 步租借格（用户 2026-11-02：不用おまかせ，租借格由我们挑）。
 
 挑法：

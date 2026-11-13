@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_pages.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """页面地图（docs/pages-hif.md）：KAA 认不出的 H.I.F 页面判定与字段，PDRINK_MAX 溢出页，培育页饮料栏。
 
 夹具 tests/fixtures/pages/ 取自 datasets/20261029-224103-hif-qualify、reports/live（实机探测图）与 KAA 参考截图，真值按截图目视。

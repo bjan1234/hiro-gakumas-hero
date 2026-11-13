@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/contracts/samples.py（develop ce5085f）
 """用数据集（hiro.collect 的 manifest.jsonl）生成 Observation 样本并过 schema 校验。
 
     PYTHONPATH=src python tools/contract_samples.py datasets/20261029-224103-hif-qualify [--reread] [--limit N] [--out reports/contracts/x.jsonl]

@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_score_read.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """考试排名栏玩家分数（read_ranking / digits.read_score）：复盘 2026-10-31 的掉位帧回归。
 
 夹具 tests/fixtures/score/*.jpg 是 traces/<run>-qualify* 帧的顶部 180 行（720 宽）。

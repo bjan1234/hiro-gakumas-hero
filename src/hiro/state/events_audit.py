@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/state/events_audit.py（develop ce5085f）
 """预测器离线审计：用实机 trace 的选行动页序列核对 LESSON / STUDY / OUTING / GIFT / REST 的预测。
 
     PYTHONPATH=src python -m hiro.state.events_audit traces/lead35-qualify6-20261031-232418 [更多 trace 目录…] [--until 6] [--json 输出]

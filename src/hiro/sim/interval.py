@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/sim/interval.py（develop 864e037）
 """轮间（R1 与 R2 之间的商店）按计算选（协调 4a 第八局本战分析 B3，用户：「当前的策略太垃圾了，每个决策的影响都要能算出来」）。
 
 做法：

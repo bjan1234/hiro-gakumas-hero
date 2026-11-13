@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_hif_hud.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """HIF 考试 HUD 数字识别对照真值：.venv/bin/python tests/test_hif_hud.py"""
 
 import json

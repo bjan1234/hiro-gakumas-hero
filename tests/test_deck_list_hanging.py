@@ -1,4 +1,4 @@
-# 来源：digital-hiro tests/test_deck_list_hanging.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """第二十局开局：读整副时一览晚于 6 秒才弹出，读牌放弃后一览留在画面上，KAA 把「Pアイテム」标签判成
 SELECT_PITEM → 决策「P 道具候选未识别」→ 停机。主循环快速判页先认牌组一览并点「閉じる」。"""
 

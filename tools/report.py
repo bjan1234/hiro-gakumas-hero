@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/report.py（develop ce5085f）
 """识别验证报告：对一批截图重新识别，按场景汇总并生成本地 HTML 画廊，便于人工核对。
 
     PYTHONPATH=src .venv/bin/python tools/report.py <数据集目录或图片目录>

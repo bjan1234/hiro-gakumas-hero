@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/brain/formation_plan.py（99092bc）（GPL-3.0-or-later）
 """开局编成方案：支援卡 + 回忆一起按社区规则选，写成 conf/formation-plan.json，开局时按它用编成号、做核对、告诉决策器回忆带哪些卡。
 
 流程（用户 2026-11-06：选择 + 方案 + 开局核对；自动写编成位留到下一步）：

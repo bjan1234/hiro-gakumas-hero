@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/customize.py（develop c3fc27f）
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """特別指導（技能卡定制）页：SPECIAL_GUIDANCE（docs/pages-hif.md §4）。按 q10 第 19 天实机帧（reports/live/special-guidance/）写。
 

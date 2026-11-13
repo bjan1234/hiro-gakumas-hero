@@ -1,4 +1,4 @@
-# 来源：digital-hiro tools/memory_inventory.py（1fc4d19）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """回忆库存扫描（回忆编成选择系统 §2）：在「メモリー選択」页逐格点回忆，读详情框两页，写 reports/live/memory-inventory.json。
 
 只读：不点「決定」，结束时停在选择页（之后手动点キャンセル 退出）。实机运行时会连游戏操作。

@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_layout.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """客户端布局 + 截图校准：游戏更新改了界面结构时应在这里报错，而不是悄悄用错坐标。"""
 
 import hiro  # noqa: F401

@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_formation_writer.py（7744207）
 """开局自动编成（produce.formation_writer）：修正计划、支援卡列表定位与改格流程、回忆按库存位置改格（假设备）。"""
 
 from pathlib import Path

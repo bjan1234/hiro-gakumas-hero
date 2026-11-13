@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/events.py（develop c3fc27f）
 """识别认出的事件（docs/state-events.md §2.1 Event、§3 事件表里认出方式为 O 的那些）。
 
 `observed_events(obs)`：一帧 Observation → list[hiro.contracts.Event]（契约 1.2）。

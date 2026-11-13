@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/region_cache.py（develop c3fc27f）
 """按区域缓存识别结果：同一区域的画面与上一次几乎相同时直接复用结果，跳过模板匹配 / OCR。
 
 考试里连续几帧之间，状态栏、P 道具、饮料、手牌、本回合属性大多不变；只有变了的区域才需要重读。

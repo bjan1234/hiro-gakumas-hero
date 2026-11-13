@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_resume_state.py（fix_matto_resume_state 1fc4d19）
 """D43 第三十三局本战：run_hif resume --trace <同名> 续跑。
 - TraceWriter 以前 seq 从 1 重编，覆盖前几段的 frames/000NN.jpg、run.json；现在接着已有的编号往下写，run.json 记 segments；
 - 续跑停在相談（不读头部 P / 体力），state.produce 全空，决策只能不买；现在用之前段最后一个有 produce 的状态打底（来源 infer，画面读到就覆盖）。

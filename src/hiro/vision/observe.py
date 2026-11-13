@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/observe.py（develop c3fc27f）；保留开源版的 register_adapter 注册接口
 """识别结果 → 决策层数据结构。识别模块保留各自的原始输出，这里是两边唯一的对接点。
 
 - 培育：字段名对齐 hiro.state.produce.ProduceState（客户端协议 UserProduceProgress），

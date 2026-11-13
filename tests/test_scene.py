@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_scene.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """场景分类回归：文件名 <帧号>-<期望场景>.jpg，期望场景已人工核对。"""
 
 from pathlib import Path

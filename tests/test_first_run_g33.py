@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_first_run_g33.py（fix_matto_prep_watchdog 5b5adff）
 """第三十三局：本地设置被重置后，开始确认页点「プロデュース開始」依次弹 4 个首次设置框（总控实机截图 tests/fixtures/first_run/）。
 - ボイス再生確認：「決定」左边的对勾被 OCR 读成「く決定」，以前按全等找「決定」找不到，不点（设置框会一直盖着）；
 - コミュ早送り設定 / 演出スキップ設定：skip_settings 照常处理；

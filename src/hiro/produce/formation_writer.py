@@ -1,4 +1,4 @@
-# 来源：digital-hiro src/hiro/produce/formation_writer.py（7744207）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """开局时把编成位改成方案（hiro.brain.formation_plan）：第 2 步支援卡、第 3 步回忆，就地修正对不上的格子。
 
 只在 KAA 已经切到方案的编成号（建议 20 号专用位）之后、点「次へ」之前运行；不进菜单、不碰其他编成位。开关

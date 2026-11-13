@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_select_retry.py（c3fc27f）
 """第十八局选拔第 1 天差し入れ：SELECT_DRINK 读到的是弹窗淡入帧，候选为空 → 决策 Wait → 停机（同一画面稍后三瓶都认得出）。
 候选为空时等 0.5s 重读，最多 SELECT_RETRIES 次，仍空才走原来的停机。"""
 

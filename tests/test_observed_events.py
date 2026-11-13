@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_observed_events.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """H1 §3.1：事件页面 → Event（docs/state-events.md §2.1 字段名）。夹具同 test_deck_events / test_pages，真值按截图目视。"""
 
 from pathlib import Path

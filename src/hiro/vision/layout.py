@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/layout.py（develop c3fc27f）；开源版改：游戏素材经插件 AssetSource（hiro.vision.assets），拿不到时退路见各处注释
 """界面元素坐标：素材包里的静态布局（tools/assets/layout）+ 截图校准。
 
 静态布局按锚点算出，纯锚点元素（回合圆盘、状态栏首槽等）可直接用；位置或尺寸由运行时组件决定的元素

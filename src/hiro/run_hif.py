@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/run_hif.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """一条命令跑 HIF 培育：KAA 流程骨架 + 策略（默认 hiro.produce.hif.HiroHifStrategy）+ 主循环 trace。
 
     python -m hiro.run_hif resume                      # 继续进行中的培育

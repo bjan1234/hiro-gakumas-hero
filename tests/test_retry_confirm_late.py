@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_retry_confirm_late.py（c3fc27f）
 """第二十局 04:06：点「再挑戦」后确认框 6 秒后才弹，旧逻辑窗口过了就当成已再挑戦，没点「決定」。"""
 
 from types import SimpleNamespace as NS

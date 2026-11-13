@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_formation_plan.py @ 99092bc；开源版：没有主数据 / 截图样例时跳过
 """开局编成方案（2026-11-06）：支援卡主属性 / 逆练、回忆流派表与 A/B 栏、方案文件、开局按方案用编成号并核对。"""
 
 import json

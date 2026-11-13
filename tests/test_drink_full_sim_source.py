@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_drink_full_sim_source.py（c3fc27f）
 """第二十一局 06:01 差し入れ：饮料满，决策按模拟偏离社区默认（> 2 SE，source=sim）要丢 パワフル漢方、收 厳選初星ブレンド；
 _drink_full_skip 只认 source=rule，把有效决策当成「认不出」停机。规则 / 模拟决策都应执行先丢再领。"""
 

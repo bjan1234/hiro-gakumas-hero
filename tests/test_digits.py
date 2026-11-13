@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_digits.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """游戏字体数字识别：要么读对，要么说不确定（交给 ddddocr），不能静默读错。"""
 
 import json
