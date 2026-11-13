@@ -968,82 +968,33 @@ def _autofix_support() -> None:
 
 
 def _autofix_memory() -> None:
-    """第 3 步：回忆格和方案不一致时自动改；回忆列表滚动临时用「终点停住」防惯性（同 hiro.memory_scan）。"""
+    """第 3 步：回忆格和方案不一致时自动改（hiro.produce.formation_steps.autofix_memory）；
+    旧设备的回忆列表滚动临时用「终点停住」防惯性（同 hiro.memory_scan）。"""
     if not _autofix_on():
         return
     from hiro import device as hdev
     from hiro import kaa_env
-    from hiro.produce.formation_writer import FormationWriteError, fix_memory
+    from hiro.produce import formation_steps
     from hiro.produce.memory_picker import SWIPE_DURATION, SWIPE_HOLD, Picker
-    from hiro.vision.memory_icons import read_step3_icons
 
     impl = getattr(hdev.DEVICE, "_touch", None) if hdev.DEVICE is not None else None  # 最近一次 connect() 的设备
     old_hold = getattr(impl, "swipe_hold", None)
     if impl is not None and old_hold is not None:
         impl.swipe_hold = SWIPE_HOLD
-    plan = kaa_env.ACTIVE_PLAN
     try:
-        def make_picker():
-            return Picker(device.screenshot, lambda x, y: device.click(x, y),
-                          lambda x1, y1, x2, y2: device.swipe(x1, y1, x2, y2, duration=SWIPE_DURATION))  # fmt: skip
-
-        done = fix_memory(_writer_device("回忆"), plan, read_icons=read_step3_icons, make_picker=make_picker)
-    except FormationWriteError as e:
-        logger.error("开局自动编成（回忆）失败，不开局：%s", e)
-        raise FormationMismatch(f"开局自动编成（回忆）失败：{e}") from e
+        formation_steps.autofix_memory(_writer_device("回忆"), kaa_env.ACTIVE_PLAN, lambda: Picker(
+            device.screenshot, lambda x, y: device.click(x, y), lambda x1, y1, x2, y2: device.swipe(x1, y1, x2, y2, duration=SWIPE_DURATION)))
     finally:
         if impl is not None and old_hold is not None:
             impl.swipe_hold = old_hold
-    if done:
-        logger.info("开局自动编成（回忆）：改了 %d 格 %s", len(done), done)
-
-
-def _check_memory_cards(img, plan: dict) -> tuple[list[str], list[str]]:
-    """第 3 步四格回忆的技能卡小图标 vs 方案的回忆卡。HIRO_MEMORY_CARD_CHECK：block（默认，有把握认错就拦）/ warn / off。"""
-    import os
-
-    mode = (os.environ.get("HIRO_MEMORY_CARD_CHECK") or "block").lower()
-    if mode == "off":
-        return [], []
-    try:
-        from hiro.produce.formation_check import check_memory_cards
-        from hiro.vision.memory_icons import read_step3_icons
-
-        reads = read_step3_icons(img, expect=list((plan.get("memory") or {}).get("cards") or []))
-        logger.info("第 3 步回忆图标：%s", "；".join(f"{r['slot'] + 1}:{r['card']} {r['score']}" for r in reads))
-        problems, warnings = check_memory_cards(reads, plan)
-    except Exception as e:  # noqa: BLE001
-        return [], [f"回忆卡面核对失败（不拦开局）：{e}"]
-    if mode == "warn":
-        return [], warnings + [p + "（HIRO_MEMORY_CARD_CHECK=warn，不拦）" for p in problems]
-    return problems, warnings
 
 
 def _check_memory_set() -> None:
-    """有开局编成方案时，在 KAA 选完回忆编成后读「N/20」核对编成号；对不上抛 FormationMismatch。"""
+    """有开局编成方案时核对回忆编成号和四格回忆卡（hiro.produce.formation_steps.check_memory_set）。"""
     from hiro import kaa_env
+    from hiro.produce import formation_steps
 
-    if not kaa_env.ACTIVE_PLAN:
-        return
-    from hiro.produce.formation_check import check_memory_step3, memory_set_number
-
-    try:
-        from hiro.produce.ops import ocr_boxes
-
-        img = device.screenshot()
-        problems, warnings = check_memory_step3(memory_set_number([(t, b) for t, _, b in ocr_boxes(img)]), kaa_env.ACTIVE_PLAN)
-    except Exception as e:  # noqa: BLE001
-        logger.warning("回忆编成核对失败（不拦开局）：%s", e)
-        return
-    if not problems:
-        p2, w2 = _check_memory_cards(img, kaa_env.ACTIVE_PLAN)
-        problems, warnings = problems + p2, warnings + w2
-    for w in warnings:
-        logger.warning("回忆编成核对：%s", w)
-    if problems:
-        logger.error("回忆编成和方案对不上，不开局：%s", "；".join(problems))
-        raise FormationMismatch("回忆编成和方案对不上：" + "；".join(problems))
-    logger.info("回忆编成核对通过（メモリー編成 %s）", kaa_env.MEMORY_SET)
+    formation_steps.check_memory_set(device.screenshot(), kaa_env.ACTIVE_PLAN, kaa_env.MEMORY_SET)
 
 
 def select_set(index: int) -> None:

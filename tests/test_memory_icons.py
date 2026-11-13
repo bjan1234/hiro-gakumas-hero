@@ -106,19 +106,18 @@ def test_blank_screen_only_warns(icon_method):
 
 
 @NEED_STEP3
-def test_kaa_patches_mode_switch(monkeypatch):
-    pytest.importorskip("kotonebot")
-    from hiro.loop import kaa_patches
+def test_memory_card_check_mode_switch(monkeypatch):
+    from hiro.produce.formation_steps import memory_card_problems
 
     img = _img(STEP3)
     plan = _plan(STEP3_TRUTH[:3] + ["p_card-02-act-3_039"])
     monkeypatch.setenv("HIRO_MEMORY_CARD_CHECK", "warn")
-    p, w = kaa_patches._check_memory_cards(img, plan)
+    p, w = memory_card_problems(img, plan)
     assert p == [] and any("不拦" in x for x in w)
     monkeypatch.setenv("HIRO_MEMORY_CARD_CHECK", "off")
-    assert kaa_patches._check_memory_cards(img, plan) == ([], [])
+    assert memory_card_problems(img, plan) == ([], [])
     monkeypatch.delenv("HIRO_MEMORY_CARD_CHECK")
-    assert kaa_patches._check_memory_cards(img, plan)[0]
+    assert memory_card_problems(img, plan)[0]
 
 
 @NEED_STEP3
