@@ -945,11 +945,6 @@ def _snap_step3(orig):
             logger.info("第 3 步回忆选择：截图 %s；租借字样 %s", p, hit or "无")
         except Exception as e:  # noqa: BLE001  只是观察，不能影响开局
             logger.warning("第 3 步截图失败：%s", e)
-        import os
-
-        if os.environ.get("HIRO_STEP3_PAUSE") == "1":
-            # 回忆租借第一次实机探查（用户 2026-11-02 同意）：停在第 3 步交总控手动点开回忆格、看租借列表、必要时租
-            raise RentalPending("第 3 步暂停：总控手动探查回忆租借（HIRO_STEP3_PAUSE=1）")
         r = orig(*a, **k)
         if r:
             _autofix_memory()
