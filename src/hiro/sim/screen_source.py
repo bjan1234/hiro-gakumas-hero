@@ -243,6 +243,16 @@ class SimScreenExamStateSource(ScreenExamStateSource):
         self._missing = []
         env = clone(self.tracker.game.env)
         notes: list[str] = []
+        # 先执行上一步已经做了、但没和画面核对上的动作，再按画面修牌区和数值：原来从出牌之前的局面重建，这一步出牌的效果
+        # （卡上挂的附魔、移到除外的卡、状态）整个丢了（任务 ② 验证 2：附魔完全一致的步只有 40%）
+        pending = getattr(self.tracker, "pending", None)
+        if pending:
+            try:
+                fast_apply(env, pending)
+                notes.append("先执行上一步的动作")
+            except Exception as e:  # noqa: BLE001  这一步在旧局面上执行不了：照旧从旧局面按画面重建
+                env = clone(self.tracker.game.env)
+                notes.append(f"上一步的动作执行不了（{type(e).__name__}），从旧局面重建")
         guard = 0
         while not env.ended and state.remaining_turns is not None and self.tracker.screen_remaining(env) > state.remaining_turns and guard < 6:
             fast_apply(env, {"kind": "end_turn"})
