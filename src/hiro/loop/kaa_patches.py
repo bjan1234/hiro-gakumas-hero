@@ -1077,6 +1077,15 @@ def _check_memory_set() -> None:
     logger.info("回忆编成核对通过（メモリー編成 %s）", kaa_env.MEMORY_SET)
 
 
+def select_set(index: int) -> None:
+    """KAA prepare._select_set 换成这个：翻编成号在 hiro.produce.prep_steps（自己的 OCR，读不出有超时）。
+    翻不到只记日志（同 KAA），后面的编成核对（_check_support / _check_memory_set）会停下。"""
+    from hiro.produce import prep_steps
+
+    if not prep_steps.select_set(index, shoot=device.screenshot, tap=lambda x, y: device.click(x, y)):
+        logger.error("编成没翻到 %d 号，交给编成核对", index)
+
+
 def _rent_step2(orig):
     def wrapped(set_number=None, auto_set=None):
         if auto_set:
@@ -1093,7 +1102,7 @@ def _rent_step2(orig):
         if not tpl("Produce.TextStepIndicator2").exists(device.screenshot()):
             return False
         if set_number is not None:
-            importlib.import_module("kaa.tasks.produce.prepare")._select_set(set_number)
+            select_set(set_number)
         _autofix_support()
         _check_support(device.screenshot())
         if find_enabled("Produce.Step2.ButtonNext", device.screenshot()) is not None:
@@ -1222,6 +1231,7 @@ def apply() -> None:
     if R.Produce.BreakProduceDialog.ButtonConfirm is not NeverConfirmDiscard:
         _ORIG_DISCARD_CONFIRM = R.Produce.BreakProduceDialog.ButtonConfirm
     R.Produce.BreakProduceDialog.ButtonConfirm = NeverConfirmDiscard  # do_produce 按属性名取，替换后它点不到「開始する」
+    prep._select_set = select_set  # 编成号翻页用自己的 OCR（先于下面 PREP_STEPS 的进展包装）
     if not getattr(prep.step3, "_hiro_snap", False):
         prep.step3 = _snap_step3(prep.step3)
     if not getattr(prep.step2, "_hiro_rent", False):
