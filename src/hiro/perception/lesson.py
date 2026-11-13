@@ -8,11 +8,11 @@
 from dataclasses import asdict, dataclass, field
 
 from cv2.typing import MatLike
-from kaa.tasks import R
 from kaa.tasks.produce.new.play_cards.page import _digits_from_image
 from kaa.tasks.produce.new.play_cards.ui import locate_cards
 
 from hiro.vision.cards import full_text
+from hiro.vision.ui_templates import box
 
 
 @dataclass
@@ -79,12 +79,11 @@ def read_hand(img: MatLike) -> tuple[list[HandCard], int]:
 
 
 def read_lesson(img: MatLike) -> LessonState:
-    boxes = R.InProduce.InLesson
     hand, missing = read_hand(img)
     return LessonState(
-        remaining_turns=_read_int(img, boxes.BoxRemainingTurns),
-        hp=_read_int(img, boxes.BoxHp),
-        genki=_read_int(img, boxes.BoxGenki),
+        remaining_turns=_read_int(img, box("InProduce.InLesson.BoxRemainingTurns")),
+        hp=_read_int(img, box("InProduce.InLesson.BoxHp")),
+        genki=_read_int(img, box("InProduce.InLesson.BoxGenki")),
         hand=hand,
         unrecognized_cards=missing,
     )

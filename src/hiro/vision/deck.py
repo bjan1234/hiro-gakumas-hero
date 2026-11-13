@@ -5,7 +5,7 @@
 画面（720x1280）：卡格 4 列、按获得顺序排（= 协议 deckProduceCardIndex），超过约 3 行要上下滑；底部标签写着总张数 N。
 
 每格：
-- 定位：卡缩略图底部的类别字母 A / M / T（KAA 模板 R.InProduce.A / M / T），按字母推卡格。
+- 定位：卡缩略图底部的类别字母 A / M / T（模板 InProduce.A / M / T，hiro.vision.ui_templates），按字母推卡格。
   一览页格宽 141、横向间距 161；相談削除 / 强化 / 换卡弹窗格宽 118、间距 147，按字母间距判断是哪种。
 - 定卡：KAA match_card_region（三选一、相談货架同一套缩略图库）。认不出 card_id 为 None。
 - 强化：卡格右侧中部的红黄「+」（素材 ProduceAtlas/icon_enhanced），数高饱和红色像素。
@@ -105,17 +105,13 @@ def read_deck_size(img: MatLike) -> int | None:
 
 
 def _marks(img: MatLike, region: tuple[int, int, int, int]) -> list[tuple[int, int]]:
-    """region 内类别字母 A / M / T 的左上角，按行再按 x 排序。直接在 img 上匹配（KAA 模板与默认阈值），不读设备截图。"""
-    from kaa.tasks import R
-    from kotonebot.backend.image import find_all
-    from kotonebot.primitives import Rect
+    """region 内类别字母 A / M / T 的左上角，按行再按 x 排序。直接在 img 上匹配（模板缺省阈值），不读设备截图。"""
+    from hiro.vision.ui_templates import tpl
 
     x1, y1, x2, y2 = region
-    rect = Rect(x1, y1, x2 - x1, y2 - y1)
     found = []
-    for prefab in (R.InProduce.A, R.InProduce.M, R.InProduce.T):
-        hits = find_all(img, prefab.template.pixels, rect=rect, threshold=prefab.threshold, colored=prefab.colored, debug_output=False)
-        found += [(r.rect.x1, r.rect.y1) for r in hits]
+    for name in ("InProduce.A", "InProduce.M", "InProduce.T"):
+        found += [(m.rect.x1, m.rect.y1) for m in tpl(name).find_all(img, region=(x1, y1, x2 - x1, y2 - y1))]
     found.sort(key=lambda p: (p[1], p[0]))
     rows: list[list[tuple[int, int]]] = []
     for p in found:

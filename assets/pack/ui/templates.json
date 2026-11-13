@@ -1,0 +1,410 @@
+{
+ "templates": {
+  "Common.ButtonHome": {
+   "file": "Common.ButtonHome.png",
+   "slice_rect": null,
+   "source": "KAA a29550a4-7184-43cb-b77f-7ef0037cb267.png"
+  },
+  "Common.ButtonIconClose": {
+   "file": "Common.ButtonIconClose.png",
+   "slice_rect": null,
+   "source": "KAA afa8c703-a954-4a5c-a3e4-64fc43b24cf2.png"
+  },
+  "Common.ButtonNext": {
+   "file": "Common.ButtonNext.png",
+   "slice_rect": null,
+   "source": "KAA e8e4331f-4cbc-4237-a243-ced3e0788a41.png"
+  },
+  "InProduce.A": {
+   "file": "InProduce.A.png",
+   "slice_rect": [
+    135,
+    1083,
+    17,
+    15
+   ],
+   "source": "KAA 5d6bce10-6b80-4c61-aef7-e1d94f04e611_template.png"
+  },
+  "InProduce.AcquireBtnDisabled": {
+   "file": "InProduce.AcquireBtnDisabled.png",
+   "slice_rect": null,
+   "source": "KAA 5d0cdc78-5510-45a9-8e25-5959d5225154.png"
+  },
+  "InProduce.ButtonNextNoIcon": {
+   "file": "InProduce.ButtonNextNoIcon.png",
+   "slice_rect": null,
+   "source": "KAA cff1d937-c909-4d14-8199-e61bf2437a82.png"
+  },
+  "InProduce.ButtonUse": {
+   "file": "InProduce.ButtonUse.png",
+   "slice_rect": [
+    490,
+    1130,
+    68,
+    40
+   ],
+   "source": "KAA a3736105-b3e6-467b-888a-f93b8f4d37be_template.png",
+   "fixed": true
+  },
+  "InProduce.DialogCardChange1.ButtonNext": {
+   "file": "InProduce.DialogCardChange1.ButtonNext.png",
+   "slice_rect": [
+    251,
+    1065,
+    43,
+    52
+   ],
+   "source": "KAA 15722cc3-4304-4f64-a930-1a74c3d19ff4_template.png",
+   "fixed": true
+  },
+  "InProduce.DialogCardChange1.TipText": {
+   "file": "InProduce.DialogCardChange1.TipText.png",
+   "slice_rect": [
+    76,
+    284,
+    567,
+    55
+   ],
+   "source": "KAA bf2c0d97-d940-4d5e-977d-0d62764e4ab7_template.png",
+   "fixed": true
+  },
+  "InProduce.DialogCardChange2.ButtonConfirm": {
+   "file": "InProduce.DialogCardChange2.ButtonConfirm.png",
+   "slice_rect": [
+    389,
+    1135,
+    48,
+    45
+   ],
+   "source": "KAA 170b9ad8-f22c-4789-b478-130f44374e19_template.png",
+   "fixed": true
+  },
+  "InProduce.DialogCardChange2.Title": {
+   "file": "InProduce.DialogCardChange2.Title.png",
+   "slice_rect": [
+    15,
+    36,
+    174,
+    41
+   ],
+   "source": "KAA e4623db6-6b79-4f8e-bc5d-ad4c0076c0d4_template.png",
+   "fixed": true
+  },
+  "InProduce.DialogCardChangeConfirm.ButtonConfirm": {
+   "file": "InProduce.DialogCardChangeConfirm.ButtonConfirm.png",
+   "slice_rect": [
+    388,
+    1133,
+    49,
+    49
+   ],
+   "source": "KAA 174fa1fc-db2a-44da-a2ea-d1e70e102154_template.png",
+   "fixed": true
+  },
+  "InProduce.DialogCardChangeConfirm.TItle": {
+   "file": "InProduce.DialogCardChangeConfirm.TItle.png",
+   "slice_rect": [
+    54,
+    272,
+    395,
+    43
+   ],
+   "source": "KAA 14b9dbe7-67ec-4f3a-afd4-598e638f935d_template.png"
+  },
+  "InProduce.DialogSkillCardUseConfirm.ButtonConfirm": {
+   "file": "InProduce.DialogSkillCardUseConfirm.ButtonConfirm.png",
+   "slice_rect": [
+    387,
+    1131,
+    170,
+    55
+   ],
+   "source": "KAA a6fe238c-ec56-4498-abfc-b76088175b8e_template.png",
+   "fixed": true
+  },
+  "InProduce.DialogSkillCardUseConfirm.Title": {
+   "file": "InProduce.DialogSkillCardUseConfirm.Title.png",
+   "slice_rect": [
+    58,
+    762,
+    322,
+    37
+   ],
+   "source": "KAA 327c7a19-a267-4d60-ab2d-486e3da1cb26_template.png",
+   "region": [
+    14,
+    694,
+    382,
+    214
+   ]
+  },
+  "InProduce.End.ButtonGenerate": {
+   "file": "InProduce.End.ButtonGenerate.png",
+   "slice_rect": [
+    324,
+    954,
+    73,
+    44
+   ],
+   "source": "KAA af3e8ea7-88ed-40f9-a6ea-8c47c7053082_template.png",
+   "fixed": true
+  },
+  "InProduce.HifInterval.Title": {
+   "file": "InProduce.HifInterval.Title.png",
+   "slice_rect": [
+    79,
+    71,
+    72,
+    63
+   ],
+   "source": "KAA f762b40a-df6a-4229-9dfb-e76e24142b37_template.png",
+   "fixed": true
+  },
+  "InProduce.IconTitleSkillCardMove": {
+   "file": "InProduce.IconTitleSkillCardMove.png",
+   "slice_rect": [
+    15,
+    35,
+    44,
+    43
+   ],
+   "source": "KAA db7d3f03-1f7f-43bf-8125-f7c2d345fca2_template.png"
+  },
+  "InProduce.M": {
+   "file": "InProduce.M.png",
+   "slice_rect": [
+    569,
+    1084,
+    16,
+    14
+   ],
+   "source": "KAA 11bd0392-050b-43d1-986d-b5cb645dc917_template.png"
+  },
+  "InProduce.T": {
+   "file": "InProduce.T.png",
+   "slice_rect": [
+    353,
+    1084,
+    14,
+    15
+   ],
+   "source": "KAA 16fbc93d-b294-4001-b4e9-ee2af181415f_template.png"
+  },
+  "InProduce.TextPDrink": {
+   "file": "InProduce.TextPDrink.png",
+   "slice_rect": [
+    244,
+    615,
+    113,
+    26
+   ],
+   "source": "KAA 8c179a21-be6f-4db8-a9b0-9afeb5c36b1c_template.png",
+   "fixed": true
+  },
+  "InProduce.TextRechallengeEndProduce": {
+   "file": "InProduce.TextRechallengeEndProduce.png",
+   "slice_rect": [
+    152,
+    1127,
+    171,
+    65
+   ],
+   "source": "KAA 207594fa-6a0b-45ec-aeff-b3e45348c508_template.png"
+  },
+  "InProduce.TextRecommend": {
+   "file": "InProduce.TextRecommend.png",
+   "slice_rect": [
+    179,
+    959,
+    83,
+    23
+   ],
+   "source": "KAA b0283997-7931-476d-a92f-d7569f6ea34c_template.png"
+  },
+  "InProduce.TextSkillCard": {
+   "file": "InProduce.TextSkillCard.png",
+   "slice_rect": [
+    229,
+    614,
+    143,
+    31
+   ],
+   "source": "KAA d271a24f-efe8-424d-8fd5-f6b3756ba4ca_template.png",
+   "fixed": true
+  },
+  "Produce.BreakProduceDialog.Title": {
+   "file": "Produce.BreakProduceDialog.Title.png",
+   "slice_rect": [
+    46,
+    409,
+    400,
+    49
+   ],
+   "source": "KAA 02143f85-fb0c-44a1-8ac6-050c127efeac_template.png",
+   "fixed": true
+  },
+  "Produce.ButtonHifMain": {
+   "file": "Produce.ButtonHifMain.png",
+   "slice_rect": [
+    448,
+    858,
+    69,
+    65
+   ],
+   "source": "KAA a1d2c54c-5754-41f2-9d29-777bab9def05_template.png",
+   "fixed": true
+  },
+  "Produce.ButtonHifQualify": {
+   "file": "Produce.ButtonHifQualify.png",
+   "slice_rect": [
+    93,
+    861,
+    62,
+    59
+   ],
+   "source": "KAA f1e85290-17b6-4091-8fd6-057c486c348f_template.png",
+   "fixed": true
+  },
+  "Produce.ButtonResume": {
+   "file": "Produce.ButtonResume.png",
+   "slice_rect": [
+    390,
+    1141,
+    190,
+    40
+   ],
+   "source": "KAA ccbcb114-7f73-43d1-904a-3a7ae660c531_template.png"
+  },
+  "Produce.LogoHajime": {
+   "file": "Produce.LogoHajime.png",
+   "slice_rect": [
+    274,
+    169,
+    169,
+    43
+   ],
+   "source": "KAA e6b45405-cd9f-4c6e-a9f1-6ec953747c65_template.png"
+  },
+  "Produce.LogoHif": {
+   "file": "Produce.LogoHif.png",
+   "slice_rect": [
+    164,
+    289,
+    198,
+    201
+   ],
+   "source": "KAA e90c015e-e6af-4780-b94f-15bc9bf60961_template.png",
+   "threshold": 0.7,
+   "fixed": true
+  },
+  "Produce.LogoNia": {
+   "file": "Produce.LogoNia.png",
+   "slice_rect": [
+    195,
+    424,
+    345,
+    42
+   ],
+   "source": "KAA a0bd6a5f-784d-4f0a-9d66-10f4b80c8d3e_template.png",
+   "fixed": true
+  },
+  "Produce.SaveMemoPic.ButtonConfirm": {
+   "file": "Produce.SaveMemoPic.ButtonConfirm.png",
+   "slice_rect": [
+    388,
+    1132,
+    52,
+    49
+   ],
+   "source": "KAA 8e2de1e8-2354-4c4d-a350-8ce25ff27fcf_template.png",
+   "fixed": true
+  },
+  "Produce.SaveMemoPic.Title": {
+   "file": "Produce.SaveMemoPic.Title.png",
+   "slice_rect": [
+    53,
+    476,
+    75,
+    44
+   ],
+   "source": "KAA 220fb13f-a779-4612-a6d0-4d8907fe2b9a_template.png",
+   "fixed": true
+  },
+  "Produce.Step2.ButtonNext": {
+   "file": "Produce.Step2.ButtonNext.png",
+   "slice_rect": [
+    250,
+    1066,
+    206,
+    54
+   ],
+   "source": "KAA 14004676-5755-4b1d-adf7-85263919ad2f_template.png",
+   "fixed": true
+  },
+  "Produce.Step2.Rent.CheckboxPlan": {
+   "file": "Produce.Step2.Rent.CheckboxPlan.png",
+   "slice_rect": [
+    538,
+    999,
+    34,
+    32
+   ],
+   "source": "KAA a8ad2f5b-f58c-4888-9675-8d9d4e8c8ef2_template.png",
+   "fixed": true
+  },
+  "Produce.TextStepIndicator2": {
+   "file": "Produce.TextStepIndicator2.png",
+   "slice_rect": [
+    59,
+    34,
+    149,
+    30
+   ],
+   "source": "KAA a48324ae-7c1a-489e-b3c4-93d12267f88d_template.png"
+  }
+ },
+ "boxes": {
+  "InProduce.BoxExamTop": [
+   5,
+   2,
+   712,
+   55
+  ],
+  "InProduce.BoxNoSkillCard": [
+   180,
+   977,
+   529,
+   1026
+  ],
+  "Produce.BoxIdolOverviewIdols": [
+   26,
+   568,
+   696,
+   992
+  ],
+  "Produce.BoxProduceOngoing": [
+   179,
+   937,
+   551,
+   1091
+  ],
+  "InProduce.InLesson.BoxRemainingTurns": [
+   54,
+   69,
+   147,
+   113
+  ],
+  "InProduce.InLesson.BoxHp": [
+   565,
+   168,
+   628,
+   209
+  ],
+  "InProduce.InLesson.BoxGenki": [
+   635,
+   133,
+   689,
+   171
+  ]
+ }
+}

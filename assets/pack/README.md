@@ -10,6 +10,7 @@
 | `icons/pitem/` | P 道具图标（532 个，`index.json` 为资源名到名称） |
 | `font/` | HUD 数字字体（`Campus-Alphanumeric-SemiBold.ttf` 等 4 个） |
 | `sprites/` | 界面 Sprite（页面签名 `hiro/vision/signatures.json` 引用） |
+| `ui/` | 界面模板（按钮、标题、类别字母等 36 张，`templates.json` 记位置 / 阈值 / 固定区域，`hiro/vision/ui_templates.py` 读）；从 KAA（kotones-auto-assistant，GPL-3.0）的界面截图切片搬来，`source` 字段是 KAA 里的原文件名 |
 | `support/` | 支援卡图（编成页识别，210 张） |
 | `layout.json` | 界面布局（各控件的位置） |
 | `manifest.json` | 生成时的客户端版本、主数据提交和各类数量 |
