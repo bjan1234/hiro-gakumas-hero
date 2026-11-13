@@ -15,18 +15,38 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 
 
 # ---------------------------------------------------------------- 设备后端
-def test_auto_on_mac_prefers_maatools_then_quartz():
-    assert device.resolve_backend("auto", platform="darwin", maatools_up=True) == "maatools"
-    assert device.resolve_backend("auto", platform="darwin", maatools_up=False) == "quartz"
+def test_auto_on_mac_is_maatools():
+    assert device.resolve_backend("auto", platform="darwin") == "maatools"
+
+
+def test_original_playcover_quartz_is_no_longer_supported(monkeypatch):
+    monkeypatch.setenv("HIRO_DEVICE", "quartz")
+    with pytest.raises(ValueError, match="可选"):
+        device.requested_backend()
+
+
+def test_maatools_unreachable_says_hguandl_playcover(monkeypatch):
+    pytest.importorskip("kotonebot")
+    import socket
+
+    from hiro.devices import maatools
+
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()  # 没人在听的端口
+    monkeypatch.setattr(device, "MaaToolsImpl", lambda dev: maatools.MaaToolsImpl(dev, port))
+    with pytest.raises(RuntimeError, match="hguandl"):
+        device.connect("maatools")
 
 
 def test_auto_elsewhere_requires_explicit_device():
     with pytest.raises(RuntimeError, match="HIRO_DEVICE"):
-        device.resolve_backend("auto", platform="win32", maatools_up=False)
+        device.resolve_backend("auto", platform="win32")
 
 
 def test_explicit_backend_passes_through(monkeypatch):
-    for name in ("maatools", "quartz", "adb", "mumu", "leidian", "dmm"):
+    for name in ("maatools", "adb", "mumu", "leidian", "dmm"):
         monkeypatch.setenv("HIRO_DEVICE", name)
         assert device.resolve_backend() == name
 
@@ -70,7 +90,7 @@ def kaa_config():
 
 
 def test_playcover_keeps_kaa_default(kaa_config):
-    for name in ("auto", "maatools", "quartz"):
+    for name in ("auto", "maatools"):
         assert kaa_env.kaa_backend(name) is None
 
 
