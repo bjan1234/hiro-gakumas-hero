@@ -16,8 +16,9 @@ from hiro.loop import comm_error, date_change, skip_settings
 from hiro.loop.errors import ResumeBlocked
 from hiro.vision.ocr import screen_texts
 
-# 维护 / 被踢下线 / 别处登录：用户 11-14 定直接停机，不重试、不等待
-STOP_WORDS = ("メンテナンス", "他の端末でログイン", "別の端末でログイン", "ログインされました", "アカウントが停止")
+# 维护进行中 / 别处登录被踢：用户 11-14 定直接停机，不重试、不等待。宁窄勿宽：登录后的「メンテナンスのお知らせ」（预告）
+# 不能停，所以只认进行中的说法，或者标题就是「メンテナンス」的弹窗。还没有实机样本，碰到新说法再补（配实机帧当用例）。
+STOP_WORDS = ("メンテナンス中", "メンテナンスを実施", "他の端末でログイン", "別の端末でログイン")
 
 
 def _cancel(frame):
@@ -49,7 +50,10 @@ def stop_notice(frame, rt) -> str | None:
     """维护 / 被踢下线：停机，写清原因。"""
     if not frame.has_dialog:
         return None
+    title = (frame.dialog or {}).get("title") or ""
     hit = next((t.text for t in frame.texts if any(w in t.text for w in STOP_WORDS)), None)
+    if hit is None and title.startswith("メンテナンス") and "お知らせ" not in title:
+        hit = title
     if hit is not None:
         raise ResumeBlocked(f"游戏维护 / 被踢下线：「{hit}」，停机（不重试）")
     return None

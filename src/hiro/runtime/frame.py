@@ -38,11 +38,6 @@ class Frame:
         """texts 的 (文字, 置信度, (x1, y1, x2, y2)) 形式：loop 下 comm_error / date_change / skip_settings 收这种。"""
         return [(t.text, t.conf, tuple(t.rect)) for t in self.texts]
 
-    def text_at(self, x: int, y: int, *, pad: int = 6) -> str | None:
-        """(x, y) 落在哪段文字的框里（框外扩 pad 像素）；落在空白处 None。"""
-        hit = next((t for t in self.texts if t.rect.x1 - pad <= x <= t.rect.x2 + pad and t.rect.y1 - pad <= y <= t.rect.y2 + pad), None)
-        return hit.text if hit else None
-
 
 class Screen:
     """设备截图 → Frame；记住最近一帧（守卫和处理器看的都是它）。"""
