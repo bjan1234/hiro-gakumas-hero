@@ -22,6 +22,8 @@ class FakeCore:
     on_skill_card_removal = _hook("removal")
     on_pdrink_max_confirm = _hook("pdrink_max_confirm")
     on_select_pitem = _hook("select_pitem")
+    on_study = _hook("study")
+    on_outing = _hook("outing")
     on_practice_entered = _hook("practice")
 
     def on_exam_entered(self, ctx):
@@ -60,3 +62,29 @@ def test_exam_retry_reenters_directly():
     assert _run(h, "HIF_EXAM") is DONE  # 再挑戦后同一场直接重进
     assert core.calls == ["exam", "exam"] and core.exam_restarted is False
     assert _run(h, "HIF_EXAM") is STAY  # 这次打完了：关门
+
+
+def test_event_commit_double_clicks_and_confirms_outing_ap_dialog(monkeypatch):
+    """授業 / 外出提交（HifCore._event_commit，替换 KAA Study/OutingContext.commit）：双击第 i 个按钮；外出时 AP 已满框点确定。"""
+    from types import SimpleNamespace as NS
+
+    import pytest
+
+    import hiro.produce.hif as hif
+    import hiro.vision.classify as cl
+    from hiro.vision.ocr import Box
+
+    t = [0.0]
+    clicks, taps = [], []
+    monkeypatch.setattr(hif.time, "monotonic", lambda: t[0])
+    monkeypatch.setattr(hif, "sleep", lambda s: t.__setitem__(0, t[0] + s))
+    monkeypatch.setattr(hif, "device", NS(screenshot=lambda: None, click=lambda x, y: None, double_click=lambda x, y: clicks.append((x, y))))
+    monkeypatch.setattr(cl, "option_regions", lambda img: [Box(80, 700, 640, 780), Box(80, 820, 640, 900)])
+    shown = iter([True, False, False])
+    monkeypatch.setattr(hif, "tpl", lambda name: NS(exists=lambda img: next(shown, False)))
+    monkeypatch.setattr(hif, "tap", lambda name, img, click: taps.append(name))
+    core = hif.HifCore.__new__(hif.HifCore)
+    core._event_commit(1, outing=True)
+    assert clicks == [(360, 860)] and taps == ["InProduce.OutingApMaxOutDialog.ButtonConfirm"]
+    with pytest.raises(ValueError):
+        core._event_commit(5, outing=False)

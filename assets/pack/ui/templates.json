@@ -1097,6 +1097,27 @@
    "file": "InProduce.LootboxSliverLock.png",
    "slice_rect": null,
    "source": "KAA af2eb9a8-641a-4f12-80d4-c926720b3e02.png"
+  },
+  "InProduce.OutingApMaxOutDialog.Title": {
+   "file": "InProduce.OutingApMaxOutDialog.Title.png",
+   "slice_rect": [
+    51,
+    914,
+    78,
+    48
+   ],
+   "source": "KAA 2c1920c4-29f2-4f98-a293-b6f0c3126203_template.png",
+   "fixed": true
+  },
+  "InProduce.OutingApMaxOutDialog.ButtonConfirm": {
+   "file": "InProduce.OutingApMaxOutDialog.ButtonConfirm.png",
+   "slice_rect": [
+    389,
+    1133,
+    205,
+    55
+   ],
+   "source": "KAA a6a7efa2-cf6b-47f8-99b8-d42428c22c3b_template.png"
   }
  },
  "boxes": {

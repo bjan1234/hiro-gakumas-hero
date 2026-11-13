@@ -32,7 +32,7 @@ from hiro.loop.session import Session
 from hiro.produce import ops
 from hiro.produce.ops import button_text
 from hiro.vision.hif import is_final_exam
-from hiro.vision.ui_templates import box, tpl
+from hiro.vision.ui_templates import box, tap, tpl
 from hiro.exec.exam import run_exam
 from hiro.recorder import Recorder
 
@@ -843,17 +843,17 @@ class HifCore:
     def _event_page(self, page: str, commit_index, n_options: int | None = None):
         t0 = time.monotonic()
         obs = self.s.observe(scene=page)
-        kaa_n = n_options
+        btn_n = n_options
         choices = self.s.state.page_fields.get("choices") or []
         if n_options is not None and len(choices) > n_options:
-            # 第二十五局本战授業：3 项里第 3 项「声の細かいチェック」被下方对话框挡住一半，KAA fetch_options 只认出 2 项。
-            # 选项数按识别层的 choices；选到 KAA 没认出的那项时按识别的 center 点（同 KAA commit：点两下 = 选中再确认）
+            # 第二十五局本战授業：3 项里第 3 项「声の細かいチェック」被下方对话框挡住一半，按钮识别只认出 2 项。
+            # 选项数按识别层的 choices；选到按钮识别没认出的那项时按识别层的 center 点（点两下 = 选中再确认）
             n_options = len(choices)
-            kaa_commit = commit_index
+            btn_commit = commit_index
 
             def commit_index(i):  # noqa: F811
-                if i < kaa_n:
-                    return kaa_commit(i)
+                if i < btn_n:
+                    return btn_commit(i)
                 c = next((c for c in choices if c.get("index") == i and c.get("center")), None)
                 if c is None:
                     return False
@@ -863,23 +863,52 @@ class HifCore:
                     sleep(0.5)
                 return True
 
-            self.s.note(f"{page}：KAA 认出 {kaa_n} 项，识别层 {len(choices)} 项（有选项被挡住），按识别层")
+            self.s.note(f"{page}：按钮识别认出 {btn_n} 项，识别层 {len(choices)} 项（有选项被挡住），按识别层")
         d = self.deciders.decide(page, self.s.state, n_options=n_options)
         self._note_fallback(page, d)
         i = int(d.action.args.get("select", -1)) if d.action.kind is ActionKind.EVENT_SELECT else -1
         if d.action.kind is not ActionKind.EVENT_SELECT or (n_options is not None and not 0 <= i < n_options):
             # 用户规则（3c）：兜底不选第 0 项。决策器自己会按社区模板兜底；到这里说明兜底也没给出合法选项 → 停下
             self._stop(page, f"决策没给出合法选项（{d.action}，共 {n_options} 项，来源 {d.source}）", obs=obs, decision=d)
-        # KAA 的 Study/OutingContext.commit 只双击一次、不等按钮消失；实机第 6 天双击只选中没确认，所以这里不信任 commit 返回，
+        # commit 只双击一次、不等按钮消失（同 KAA Study/OutingContext.commit）；实机第 6 天双击只选中没确认，所以这里不信任 commit 返回，
         # 页面没变就再双击（第二次点在已选中的项上即确认）
         result = self._act(lambda: commit_index(i), Action.event_select(i), page_before=page, taps=[], trust_commit=False)
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
-    def on_study(self, ctx: "StudyContext"):
-        self._event_page("STUDY", ctx.commit, len(ctx.fetch_options()))
+    OPTION_WAIT_S = 2.0  # 选项按钮还没出来（入场动画）时最多等这么久
 
-    def on_outing(self, ctx: "OutingContext"):
-        self._event_page("OUTING", ctx.commit, len(ctx.fetch_options()))
+    def _event_options(self) -> list:
+        """授業 / おでかけ 的选项按钮（hiro.vision.classify.option_regions，同 KAA CommuEventButtonUI）。KAA 一个都没找到时直接抛错
+        崩到续跑；这里先等一会儿再读，还没有就给空（_event_page 再按识别层 choices 或停机）。"""
+        from hiro.vision.classify import option_regions
+
+        end = time.monotonic() + self.OPTION_WAIT_S
+        while not (buttons := option_regions(device.screenshot())) and time.monotonic() < end:
+            sleep(0.4)
+        return buttons
+
+    def _event_commit(self, i: int, *, outing: bool) -> None:
+        """选第 i 项（同 KAA Study/OutingContext.commit：重新找按钮、双击、等 2 秒）。外出另外盯 3 秒「AP 已满」确认框，出了点确定。"""
+        buttons = self._event_options()
+        if not 0 <= i < len(buttons):
+            raise ValueError(f"选项 {i} 不在 {len(buttons)} 个按钮里")
+        device.double_click(*buttons[i].center)
+        sleep(2)
+        if not outing:
+            return
+        end = time.monotonic() + 3.0
+        while time.monotonic() < end:
+            img = device.screenshot()
+            if tpl("InProduce.OutingApMaxOutDialog.Title").exists(img):
+                logger.info("外出：AP 已满确认框，点确定")
+                tap("InProduce.OutingApMaxOutDialog.ButtonConfirm", img, device.click)
+            sleep(0.1)
+
+    def on_study(self, ctx=None):
+        self._event_page("STUDY", lambda i: self._event_commit(i, outing=False), len(self._event_options()))
+
+    def on_outing(self, ctx=None):
+        self._event_page("OUTING", lambda i: self._event_commit(i, outing=True), len(self._event_options()))
 
     # ---------------------------------------------------------------- 主动查看牌组（state-events §6）
     _reviewed_at_exam: int | None = None
