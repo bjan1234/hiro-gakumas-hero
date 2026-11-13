@@ -2,7 +2,7 @@
 
     rt = Runtime(raw_device=dev, classify=hiro.vision.classify.classify, handlers=make_handlers(core), ...)
 
-这里只登记已经不依赖 KAA 上下文的页面；还要 KAA ctx 的（选行动、轮间、PDRINK_MAX）换成自有执行后
+这里只登记已经不依赖 KAA 上下文的页面；还要 KAA ctx 的（选行动）换成自有执行后
 再加进来；活動支給、培育结束的执行在 hiro.runtime.finish（这里只先记观测）。没登记的页面 Runtime 交给 advance。
 
 考试入口：KAA 的 _dispatch 只在「上一页不是考试」时调 on_exam_entered；新主循环每拍都会调处理器，考试打完（run_exam 返回）后
@@ -63,7 +63,9 @@ def make_handlers(core) -> dict[str, Callable]:
         "CONSULT": page(core.on_consult),
         "SKILL_CARD_ENHANCE": page(core.on_skill_card_enhance),
         "SKILL_CARD_REMOVAL": page(core.on_skill_card_removal),
+        "PDRINK_MAX": page(core.on_pdrink_max),
         "PDRINK_MAX_CONFIRM": page(core.on_pdrink_max_confirm),
+        "HIF_ROUND_INTERVAL": page(core.on_hif_round_interval),
         "SELECT_PITEM": page(core.on_select_pitem),
         "SELECT_DRINK": page(core.on_select_drink),
         "SELECT_CARD": page(core.on_select_card),

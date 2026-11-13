@@ -34,7 +34,7 @@ def _strategy(monkeypatch, state, decide, results):
     monkeypatch.setattr(drink_swap, "resolve_overflow", resolve)
     monkeypatch.setattr(hif, "sleep", lambda s: None)
     monkeypatch.setattr(hif, "device", NS(screenshot=lambda: None))
-    monkeypatch.setattr(hif.HifGrindStrategy, "on_pdrink_max", lambda self, ctx: calls.__setitem__("kaa", calls["kaa"] + 1), raising=False)
+    monkeypatch.setattr("hiro.produce.drink_swap.skip_incoming", lambda **k: calls.__setitem__("kaa", calls["kaa"] + 1) or True)  # 不要新饮料：点離れる
     sess = NS(state=state, observe=lambda **k: NS(fields={}), record=lambda *a, **k: None, recover=lambda *a, **k: None, note=lambda *a: None)
     strat = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
     strat.s, strat.deciders = sess, NS(decide=lambda page, st: decide(sess.state))

@@ -731,8 +731,8 @@ class HifCore:
     PDRINK_RETRIES = 3  # 饮料溢出页决策给不出（Wait）时重读几次
     PDRINK_RETRY_WAIT = 0.5
 
-    def on_pdrink_max(self, ctx):
-        """饮料满（课程 / 考试奖励溢出页）：决策器（新饮料优于最差一瓶才换）→ drink_swap.resolve_overflow；决策不换时走 KAA 默认（留旧、跳过新）。
+    def on_pdrink_max(self, ctx=None):
+        """饮料满（课程 / 考试奖励溢出页）：决策器（新饮料优于最差一瓶才换）→ drink_swap.resolve_overflow；决策不换时 drink_swap.skip_incoming（留旧、跳过新，替代 KAA 默认）。
         替换执行失败不落到 KAA 默认（D41）：只在看得到的已有饮料里重新决策一次，还不行停下。"""
         from hiro.produce import drink_swap
         from hiro.produce.drink_swap import resolve_overflow
@@ -781,9 +781,14 @@ class HifCore:
         self.s.record(obs, decision=d, timings_ms={"total": (time.monotonic() - t0) * 1000})
         # 决策是不要新饮料：点 KAA 的跳过，随后的「報酬スキップ」确认由 on_pdrink_max_confirm 放行
         self._skip_incoming_drink = True
-        return super().on_pdrink_max(ctx)
+        for _ in range(self.PDRINK_SKIP_TRIES):
+            if drink_swap.skip_incoming():
+                return
+            sleep(self.SELECT_RETRY_WAIT)
+        self._stop("PDRINK_MAX", f"决策不要新饮料，但 {self.PDRINK_SKIP_TRIES} 次都没点到「離れる」", obs=obs, decision=d)
 
     PDRINK_SWAP_RETRIES = 1  # 饮料替换执行失败后（只在看得到的已有饮料里）重新决策、再执行几次
+    PDRINK_SKIP_TRIES = 3  # 不要新饮料时找「離れる」几次（对话框淡入 / 勾选后按钮才亮）
 
     def _mark_offscreen_held(self, visible_rows: int | None) -> None:
         """溢出页「手持ちのドリンク」只看到前 visible_rows 行（列表没滚、最后一行被视口切掉）：后面的已有饮料标 visible=False，
@@ -1425,7 +1430,7 @@ class HifCore:
 
     MAX_INTERVAL_STEPS = 12
 
-    def on_hif_round_interval(self, ctx: "HifRoundIntervalContext"):
+    def on_hif_round_interval(self, ctx=None):
         """轮间：observe → 决策器 interval → execute_interval，一步一步直到 IntervalEnd（hiro.produce.interval.interval_loop）。
         某一步失败不退出（重新观测后继续）；买过 / 买不了的格子标成已购；离开前先按画面回满体力（R2 不自动回血）。"""
         from hiro.produce.interval import interval_loop
@@ -1482,8 +1487,11 @@ class HifCore:
         except PageLeft as e:  # 画面已经不是轮间：不再按沿用的旧字段买 / 回体力，交回主循环
             logger.warning("轮间：画面已经是 %s，退出轮间循环", e.page)
             return
-        self.s.recover("tap_no_effect", "轮间结束失败，交回 KAA 结束")
-        ctx.end()  # 兜底：执行器结束不了时用 KAA 的结束流程
+        from hiro.produce.interval_exit import TIMEOUT, end_interval
+
+        self.s.recover("tap_no_effect", "轮间执行器结束不了，点「終了」兜底")
+        if not end_interval():  # 兜底：点「終了」和确认框直到离开轮间（替代 KAA HifRoundIntervalContext.end，带超时）
+            self._stop("HIF_ROUND_INTERVAL", f"轮间 {TIMEOUT:.0f}s 内没结束")
 
     # ---------------------------------------------------------------- 考试
     def _battle_label(self, ctx: "ExamContext") -> str:

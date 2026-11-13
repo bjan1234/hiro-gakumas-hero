@@ -105,9 +105,7 @@ def _pdrink(monkeypatch, decisions):
     it = iter(decisions)
     st.deciders = NS(decide=lambda page, state, **kw: next(it))
     kaa = []
-    from kaa.tasks.produce.new.strategies.hif_grind import HifGrindStrategy as parent  # super() 交回的 KAA 默认实现
-
-    monkeypatch.setattr(parent, "on_pdrink_max", lambda self, ctx: kaa.append("leave"), raising=False)
+    monkeypatch.setattr("hiro.produce.drink_swap.skip_incoming", lambda **k: kaa.append("leave") or True)  # 不要新饮料：点離れる
     return st, kaa
 
 
