@@ -70,6 +70,10 @@ class PublicAssetSource:
     def card_art_dir(self) -> Path | None:
         return self._fullest_dir(*(r / "cards" for r in self._roots()), self.kaa / "skill_cards")
 
+    def idol_dir(self) -> Path | None:
+        """偶像卡图（编成第 1 步选偶像，hiro.vision.idols）：KAA 公开数据的 idol_cards/。"""
+        return self._first_dir(self.kaa / "idol_cards")
+
     def icon_dir(self, kind: str) -> Path | None:
         extra = (self.kaa / "drinks",) if kind == "drink" else ()
         return self._fullest_dir(*(r / "icons" / kind for r in self._roots()), *extra)

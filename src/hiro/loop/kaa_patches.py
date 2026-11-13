@@ -28,15 +28,6 @@ from hiro.vision.ocr import screen_texts
 
 logger = logging.getLogger(__name__)
 
-MAX_PAGES = 20
-TOP_SWIPES = 8
-SWIPE_PX = 220  # 约 1 行，页间有重叠
-SETTLE = 1.2
-COLS = (30, 200, 371, 541)  # 720x1280 下四列卡片的左边缘
-CARD_W, CARD_H = 149, 197
-MIN_H = 120  # 裁剪高度不足时不查（被底部遮住的行）
-ROW_STEP = 16
-MATCH_THRESHOLD = 12  # 实测命中距离 2–8，误匹配 ≥ 10
 
 # 授業换卡
 CHANGE_LETTERS_BOX = (40, 860, 640, 160)  # (x, y, w, h)； 候选卡行的角标带；KAA 参考图上下平移 ±30px 都能找到 3 张
@@ -109,42 +100,12 @@ def _progress(why: str) -> None:
 
 
 def locate_idol_by_swipe(skin_id: str) -> Rect | None:
-    """固定 4 列、滑动行的网格裁剪逐格查偶像图像库（KAA 的 extract_idols 轮廓检测会漏掉部分卡位，2026-10-31 实测漏掉 Campus 広）。
-    先回到列表顶部，再逐页上滑，到底（画面不再变化）为止。"""
-    from kaa.game_ui.idols_overview import idols_db
+    """KAA prepare 的 locate_idol 换成这个：找法在 hiro.produce.idol_select（不依赖 KAA），这里接 kotonebot 设备、换回 KAA 的 Rect。"""
+    from hiro.produce import idol_select
 
-    from hiro.vision.ui_templates import box
-
-    x0, y0, w, h = box("Produce.BoxIdolOverviewIdols").xywh
-    cx = x0 + w // 2
-    bottom = y0 + h
-    db = idols_db()
-    for _ in range(TOP_SWIPES):  # 回到顶部
-        device.swipe(cx, y0 + 60, cx, bottom - 40, duration=0.4)
-        time.sleep(0.5)
-    time.sleep(0.8)
-    last_sig = None
-    for page in range(MAX_PAGES):
-        img = device.screenshot()
-        for x in COLS:
-            for y in range(y0 - 8, bottom - MIN_H, ROW_STEP):
-                crop = img[y : min(y + CARD_H, bottom), x : x + CARD_W]
-                if crop.shape[0] < MIN_H:
-                    continue
-                res = db.query(crop, k=1, threshold=MATCH_THRESHOLD)
-                if res and res[0].key.startswith(skin_id):
-                    logger.info("Found idol %s on page %d at (%d, %d), distance %.1f", skin_id, page + 1, x, y, res[0].distance)
-                    return Rect(x, y, CARD_W, crop.shape[0])
-        sig = img[y0:bottom:8, x0 : x0 + w : 8].tobytes()
-        if sig == last_sig:
-            logger.info("偶像列表翻到底仍未找到 %s", skin_id)
-            return None
-        last_sig = sig
-        _progress(f"找偶像：第 {page + 1} 页没有")
-        device.swipe(cx, bottom - 40, cx, bottom - 40 - SWIPE_PX, duration=0.6)
-        time.sleep(SETTLE)
-    logger.info("翻了 %d 页仍未找到 %s", MAX_PAGES, skin_id)
-    return None
+    hit = idol_select.locate(skin_id, shoot=device.screenshot, swipe=lambda x1, y1, x2, y2, d: device.swipe(x1, y1, x2, y2, duration=d),
+                             progress=_progress)  # fmt: skip
+    return None if hit is None else Rect(hit.x1, hit.y1, hit.w, hit.h)
 
 
 def find_card_marks(img, region, threshold: float | None = None) -> list:
