@@ -62,17 +62,18 @@ def test_default_rental_pick_uses_main_attr(monkeypatch):
     assert kaa_patches._default_rental_pick() and callable(scorers[-1])  # 有方案：按编成价值打分
 
 
-def _fake_R(next_enabled: bool):
-    btn = NS(q=lambda **k: NS(exists=lambda: next_enabled))
-    return NS(Produce=NS(TextStepIndicator2=NS(exists=lambda: True), Step2=NS(ButtonNext=btn)))
+def _fake_templates(monkeypatch, next_enabled: bool):
+    """第 2 步页面：步骤条在；「次へ」亮不亮由 next_enabled 定。"""
+    import hiro.vision.ui_templates as ui
+
+    monkeypatch.setattr(ui, "tpl", lambda name: NS(exists=lambda img: True))
+    monkeypatch.setattr(ui, "find_enabled", lambda name, img: object() if next_enabled else None)
 
 
 def test_rent_step2_stops_when_rental_slot_empty(monkeypatch):
     import sys
 
-    import kaa.tasks
-
-    monkeypatch.setattr(kaa.tasks, "R", _fake_R(False))
+    _fake_templates(monkeypatch, False)
     monkeypatch.setitem(sys.modules, "kaa.tasks.produce.prepare", NS(_select_set=lambda n: None))
     monkeypatch.setattr(kaa_patches, "device", NS(screenshot=lambda: None), raising=False)
     import kotonebot
@@ -86,10 +87,9 @@ def test_rent_step2_stops_when_rental_slot_empty(monkeypatch):
 def test_rent_step2_passes_when_set_full(monkeypatch):
     import sys
 
-    import kaa.tasks
     import kotonebot
 
-    monkeypatch.setattr(kaa.tasks, "R", _fake_R(True))
+    _fake_templates(monkeypatch, True)
     monkeypatch.setitem(sys.modules, "kaa.tasks.produce.prepare", NS(_select_set=lambda n: None))
     monkeypatch.setattr(kotonebot, "device", NS(screenshot=lambda: None))
     assert kaa_patches._rent_step2(lambda **k: True)(set_number=1, auto_set=False) is True

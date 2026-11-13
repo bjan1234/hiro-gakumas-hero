@@ -11,7 +11,6 @@ import hiro  # noqa: F401
 import kaa.tasks
 from hiro.loop import kaa_patches
 from hiro.vision.offline import load
-from kaa.tasks import R
 
 REFS = Path(kaa.tasks.__file__).parents[2] / "kotonebot-resource" / "sprites" / "jp" / "in_produce"  # 已安装的 KAA（vendor/kaa）
 STAGE1 = REFS / "dialog_card_change_1.png"
@@ -58,21 +57,18 @@ def dev(monkeypatch):
 
 @pytest.mark.parametrize("dy", [-30, -15, -8, 0, 8, 15, 30])
 def test_stage1_marks_found_despite_offset(dy):
-    load(_shift(cv2.imread(str(STAGE1)), dy))
-    marks = kaa_patches.find_card_marks(kaa_patches.CHANGE_LETTERS_BOX, kaa_patches.CHANGE_LETTER_THRESHOLD)
+    marks = kaa_patches.find_card_marks(_shift(cv2.imread(str(STAGE1)), dy), kaa_patches.CHANGE_LETTERS_BOX, kaa_patches.CHANGE_LETTER_THRESHOLD)
     assert len(marks) == 3
     assert [m.rect.x1 for m in marks] == sorted(m.rect.x1 for m in marks)
-    if dy:  # KAA 原来的 20px 窄带在偏移后找不到——实机 r5 崩溃的同类情形
-        box = R.InProduce.DialogCardChange1.BoxCardLetters
-        assert not R.InProduce.A.q(threshold=0.65, region=box).find_all() + R.InProduce.M.q(threshold=0.65, region=box).find_all()
 
 
 def test_stage1_clicks_leftmost_candidate(dev):
-    load(_shift(cv2.imread(str(STAGE1)), 12))
-    leftmost = kaa_patches.find_card_marks(kaa_patches.CHANGE_LETTERS_BOX, kaa_patches.CHANGE_LETTER_THRESHOLD)[0].rect.x1
+    img = _shift(cv2.imread(str(STAGE1)), 12)
+    load(img)
+    leftmost = kaa_patches.find_card_marks(img, kaa_patches.CHANGE_LETTERS_BOX, kaa_patches.CHANGE_LETTER_THRESHOLD)[0]
     assert kaa_patches.change_stage1(None, 0) is False  # 离线画面不会前进到阶段 2，超时返回而不是抛异常
     assert dev.clicks, "应当点了候选卡"
-    assert {c.rect.x1 for c in dev.clicks} == {leftmost}
+    assert set(dev.clicks) == {tuple(leftmost.center)}
 
 
 def test_stage2_on_stage1_screen_returns_false_without_raising(dev):
@@ -85,10 +81,19 @@ def test_stage2_on_stage1_screen_returns_false_without_raising(dev):
 def no_confirm(monkeypatch, dev):
     """离线画面不会自己变：点了卡就当作阶段 2 已结束（标题消失），没有确认框。
     以前靠「什么都没认出 = 完成」放行，第二十局实机正是这样把晚弹出的确认框漏掉的。"""
-    monkeypatch.setattr(R.InProduce.DialogCardChange2.ButtonConfirm, "try_click", classmethod(lambda cls, *a, **k: False))
+    import hiro.vision.ui_templates as ui
+
+    real_tap, real_tpl = ui.tap, ui.tpl
+    monkeypatch.setattr(ui, "tap", lambda name, img, click: False if name == "InProduce.DialogCardChange2.ButtonConfirm" else real_tap(name, img, click))
     monkeypatch.setattr(kaa_patches, "confirm_change_dialog", lambda img, run=None: False)
-    real = R.InProduce.DialogCardChange2.Title.exists
-    monkeypatch.setattr(R.InProduce.DialogCardChange2.Title, "exists", classmethod(lambda cls, *a, **k: not dev.clicks and real()))
+
+    def tpl(name):
+        t = real_tpl(name)
+        if name != "InProduce.DialogCardChange2.Title":
+            return t
+        return type("T", (), {"exists": staticmethod(lambda img: not dev.clicks and t.exists(img))})()
+
+    monkeypatch.setattr(ui, "tpl", tpl)
 
 
 def test_stage2_clicks_first_unprotected_deck_card(dev, no_confirm):
@@ -591,7 +596,9 @@ def test_stage2_screen_is_not_a_confirm_dialog(dev):
     img = cv2.imread(str(CHANGE_CONFIRM / "m20-after-change-tap.jpg"))
     load(img)
     assert not kaa_patches.confirm_change_dialog(img) and dev.clicks == []
-    assert R.InProduce.DialogCardChange2.Title.exists()  # 还在阶段 2：等待循环会继续等，而不是判完成
+    from hiro.vision.ui_templates import tpl
+
+    assert tpl("InProduce.DialogCardChange2.Title").exists(img)  # 还在阶段 2：等待循环会继续等，而不是判完成
 
 
 def test_select_memory_sort_by_ocr_and_fast_scan(monkeypatch):

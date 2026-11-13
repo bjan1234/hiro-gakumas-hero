@@ -161,6 +161,12 @@ def tap(name: str, img: np.ndarray, click) -> bool:
     return True
 
 
+def find_enabled(name: str, img: np.ndarray) -> Match | None:
+    """找主按钮，且按钮是亮的（同 KAA 的 GakumasPrimaryButtonPrefab.q(enabled=True)）。"""
+    m = tpl(name).find(img)
+    return m if m is not None and primary_button_enabled(img, m) else None
+
+
 def box(name: str) -> Rect:
     """固定区域（KAA 的 HintBox），(x1, y1, x2, y2)，720x1280。"""
     return Rect(*_catalog()["boxes"][name])

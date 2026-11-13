@@ -99,16 +99,16 @@ def _supervised_resume(scenario, idol, session, Strategy=None) -> None:
 def _refill_ap(scenario) -> bool:
     """AP 不足：在培育页重新点 H.I.F 按钮弹出「AP不足」，交 hiro.loop.ap_refill（只喝 APドリンク，确认框有ジュエル就取消）。
     只打选拔时本战还要 20 AP，一起补上。"""
-    from kaa.tasks import R
     from kotonebot import device
 
     from hiro.loop import ap_refill
     from hiro.produce.ops import ocr_boxes
+    from hiro.vision.ui_templates import tap
 
-    btn = R.Produce.ButtonHifMain if scenario == HifScenario.MAIN else R.Produce.ButtonHifQualify
+    btn = "Produce.ButtonHifMain" if scenario == HifScenario.MAIN else "Produce.ButtonHifQualify"
     mode = "main" if scenario == HifScenario.MAIN else "qualify"
     # 多试几帧，模板没中按 OCR「本戦 / 選抜試験」定位（第二十七局：只截一次、模板没中就失败，按钮其实在）
-    if not ap_refill.open_hif(device.screenshot, lambda x, y: device.click(x, y), ocr_boxes, mode=mode, try_template=btn.try_click):
+    if not ap_refill.open_hif(device.screenshot, lambda x, y: device.click(x, y), ocr_boxes, mode=mode, try_template=lambda: tap(btn, device.screenshot(), device.click)):
         logger.error("AP 补充：%.0fs 内培育页没找到 H.I.F「%s」按钮，弹不出「AP不足」", ap_refill.OPEN_TIMEOUT, ap_refill.HIF_BUTTON_TEXT[mode])
         return False
     r = ap_refill.refill(device.screenshot, lambda x, y: device.click(x, y), ocr_boxes, extra_ap=0 if scenario == HifScenario.MAIN else 20,

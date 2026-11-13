@@ -39,7 +39,7 @@ ROW_STEP = 16
 MATCH_THRESHOLD = 12  # 实测命中距离 2–8，误匹配 ≥ 10
 
 # 授業换卡
-CHANGE_LETTERS_BOX = Rect(40, 860, 640, 160)  # 候选卡行的角标带；KAA 参考图上下平移 ±30px 都能找到 3 张
+CHANGE_LETTERS_BOX = (40, 860, 640, 160)  # (x, y, w, h)； 候选卡行的角标带；KAA 参考图上下平移 ±30px 都能找到 3 张
 CHANGE_STAGE_TIMEOUT = 15.0  # 单个阶段最多等多久（含入场动画）
 CHANGE_POLL = 0.5
 CHANGE_LETTER_THRESHOLD = 0.65  # 与 KAA 阶段 1 相同
@@ -112,9 +112,10 @@ def locate_idol_by_swipe(skin_id: str) -> Rect | None:
     """固定 4 列、滑动行的网格裁剪逐格查偶像图像库（KAA 的 extract_idols 轮廓检测会漏掉部分卡位，2026-10-31 实测漏掉 Campus 広）。
     先回到列表顶部，再逐页上滑，到底（画面不再变化）为止。"""
     from kaa.game_ui.idols_overview import idols_db
-    from kaa.tasks import R
 
-    x0, y0, w, h = R.Produce.BoxIdolOverviewIdols.xywh
+    from hiro.vision.ui_templates import box
+
+    x0, y0, w, h = box("Produce.BoxIdolOverviewIdols").xywh
     cx = x0 + w // 2
     bottom = y0 + h
     db = idols_db()
@@ -146,21 +147,19 @@ def locate_idol_by_swipe(skin_id: str) -> Rect | None:
     return None
 
 
-def find_card_marks(region, threshold: float | None = None) -> list:
-    """在 region 内找技能卡角标 A / M（读最近一次截图），按行（40px 内算同一行）再按 x 排序。threshold=None 用 KAA 默认阈值。"""
-    from kaa.tasks import R
+def find_card_marks(img, region, threshold: float | None = None) -> list:
+    """在 img 的 region（x, y, w, h）内找技能卡角标 A / M，按行（40px 内算同一行）再按 x 排序。threshold=None 用模板缺省阈值。"""
+    from hiro.vision.ui_templates import tpl
 
-    kw = {"region": region} if threshold is None else {"region": region, "threshold": threshold}
-    found = R.InProduce.A.q(**kw).find_all() + R.InProduce.M.q(**kw).find_all()
+    found = [m for name in ("InProduce.A", "InProduce.M") for m in tpl(name).find_all(img, region=region, threshold=threshold)]
     return sorted(found, key=lambda m: (m.rect.y1 // 40, m.rect.x1))
 
 
 def _poll(check, timeout: float):
-    """截图后调用 check()，直到返回真值或超时；返回最后一次结果。"""
+    """截图后调用 check(img)，直到返回真值或超时；返回最后一次结果。"""
     deadline = time.monotonic() + timeout
     while True:
-        device.screenshot()
-        result = check()
+        result = check(device.screenshot())
         if result or time.monotonic() >= deadline:
             return result
         time.sleep(CHANGE_POLL)
@@ -183,25 +182,25 @@ def change_stage1(self, index: int = 0, cancel: bool = False) -> bool:
     阶段 1 没有「キャンセル」：KAA 参考图 dialog_card_change_1.png 底部只有「カード除去 / 次へ / 再抽選」（授業的セレクトチェンジ
     选定档位后就进了换卡流程）。所以 cancel=True 时照常选候选进入阶段 2，由 change_stage2(cancel=True) 在阶段 2 点「キャンセル」。
     """
-    from kaa.tasks import R
+    from hiro.vision.ui_templates import find_enabled, tpl
 
     if cancel:
         logger.info("换卡阶段 1：决策不换，但阶段 1 没有取消键——照常进入阶段 2，在阶段 2 取消")
     deadline = time.monotonic() + CHANGE_STAGE_TIMEOUT
     while time.monotonic() < deadline:
-        device.screenshot()
-        if R.InProduce.DialogCardChange2.Title.exists():
+        img = device.screenshot()
+        if tpl("InProduce.DialogCardChange2.Title").exists(img):
             return True
-        if R.InProduce.DialogCardChange1.ButtonNext.q(enabled=True).try_click():
+        if (nxt := find_enabled("InProduce.DialogCardChange1.ButtonNext", img)) is not None:
+            device.click(*nxt.center)
             logger.info("换卡阶段 1：已点「次へ」")
             time.sleep(CHANGE_POLL)
             continue
-        marks = find_card_marks(CHANGE_LETTERS_BOX, CHANGE_LETTER_THRESHOLD)
+        marks = find_card_marks(img, CHANGE_LETTERS_BOX, CHANGE_LETTER_THRESHOLD)
         target = _stage1_mark(marks, index) if marks else None
         if target is not None:
-            img = device.screenshot()
             _change_run().snap(img, "stage1")
-            device.click(target)
+            device.click(*target.center)
             logger.info("换卡阶段 1：换入第 %d 张候选「%s」（找到 %d 个角标）", index, _mark_card_name(img, target), len(marks))
         elif marks:
             logger.info("换卡阶段 1：第 %d 列的候选角标没找到（找到 %d 个），等下一帧", index, len(marks))
@@ -360,11 +359,10 @@ def change_stage2(self, index: int = 0, card_id: str | None = None, cancel: bool
     相談里它只退回上一层。所以 cancel=True 可能让主循环在「阶段 1 → 阶段 2 取消」之间打转：调用方需要限次，超过后改为按决策
     换一张非保护卡（或停下报警）。calib 帧 stage2-cancel 会记录取消后的第一帧，用来确认。
     """
-    from kaa.tasks import R
-
     from hiro.vision.deck import read_card_dialog
+    from hiro.vision.ui_templates import tap, tpl
 
-    if not _poll(lambda: R.InProduce.DialogCardChange2.Title.exists(), CHANGE_STAGE_TIMEOUT):
+    if not _poll(lambda img: tpl("InProduce.DialogCardChange2.Title").exists(img), CHANGE_STAGE_TIMEOUT):
         logger.warning("换卡阶段 2：画面不在阶段 2（阶段 1 未完成？），交回主循环")
         return False
     run = _change_run()
@@ -439,10 +437,10 @@ def change_stage2(self, index: int = 0, card_id: str | None = None, cancel: bool
         img = device.screenshot()
         if confirm_change_dialog(img, run):
             gone = 0
-        elif R.InProduce.DialogCardChange2.ButtonConfirm.try_click():
+        elif tap("InProduce.DialogCardChange2.ButtonConfirm", img, device.click):
             logger.info("换卡阶段 2：已点「チェンジ」")
             gone = 0
-        elif R.InProduce.DialogCardChange2.Title.exists():
+        elif tpl("InProduce.DialogCardChange2.Title").exists(img):
             gone = 0  # 还在阶段 2、确认框还没弹出来：接着等（第二十局 03:21：这里曾被当成完成，确认框晚弹出没人点）
         else:
             gone += 1
@@ -461,14 +459,15 @@ CHANGE_CONFIRM_TAP = (520, 1160)  # 确认框右下「決定」
 def confirm_change_dialog(img, run=None) -> bool:
     """画面上是换卡确认框（「スキルカードチェンジ確認」）就点「決定」，返回是否点了。先试 KAA 模板，认不出再用橙色标题条 + 局部 OCR。
     换出哪张在点「チェンジ」之前已按决策选好，确认框只是确认这一步。"""
-    from kaa.tasks import R
+    from hiro.vision.ui_templates import tpl
 
-    if R.InProduce.DialogCardChangeConfirm.TItle.exists():
+    shot = img if img is not None else device.screenshot()
+    if tpl("InProduce.DialogCardChangeConfirm.TItle").exists(shot):
         if run is not None:
-            run.snap(img, "stage2-confirm")
-        btn = R.InProduce.DialogCardChangeConfirm.ButtonConfirm.find()
+            run.snap(shot, "stage2-confirm")
+        btn = tpl("InProduce.DialogCardChangeConfirm.ButtonConfirm").find(shot)
         if btn:
-            device.click(btn.rect)
+            device.click(*btn.center)
             logger.info("换卡阶段 2：已确认")
             return True
     if img is None:
@@ -1126,24 +1125,22 @@ def _rent_step2(orig):
                 logger.warning("支援卡：HIRO_SUPPORT_SET=auto，由 KAA「おまかせ」选支援卡和租借")
                 return orig(set_number=set_number, auto_set=auto_set)
             raise RuntimeError("支援卡「おまかせ」没有被明确选择（HIRO_SUPPORT_SET=auto），auto_set_support_card 必须为 False")
-        from kaa.tasks import R
         from kotonebot import device
 
-        if not R.Produce.TextStepIndicator2.exists():
+        from hiro.vision.ui_templates import find_enabled, tpl
+
+        if not tpl("Produce.TextStepIndicator2").exists(device.screenshot()):
             return False
         if set_number is not None:
             importlib.import_module("kaa.tasks.produce.prepare")._select_set(set_number)
         _autofix_support()
         _check_support(device.screenshot())
-        if R.Produce.Step2.ButtonNext.q(enabled=True).exists():
+        if find_enabled("Produce.Step2.ButtonNext", device.screenshot()) is not None:
             logger.info("支援卡：编成 %s 已满（含租借格），直接下一步", set_number)
             return True
         if RENTAL_PICK is not None and RENTAL_PICK():
-            from kaa.tasks import R as _R
-
             for _ in range(10):
-                device.screenshot()
-                if _R.Produce.Step2.ButtonNext.q(enabled=True).exists():
+                if find_enabled("Produce.Step2.ButtonNext", device.screenshot()) is not None:
                     return True
                 time.sleep(0.5)
         logger.error("支援卡：编成 %s 的租借格还空着，选择系统未交付，停下交总控手动挑（不让 KAA 确认第一张）", set_number)
@@ -1191,7 +1188,6 @@ _ORIG_ACTION_COMMIT = None  # KAA 原版（休息走它）
 def action_commit(self, action) -> None:
     """选行动提交：同 KAA ActionSelectContext.commit，去掉点完后的固定 sleep(2)——之后的 wait_disappear 本来就轮询到按钮消失
     （第二十一局选拔：选行动每步执行 4–5s）。休息的确认框流程照旧。"""
-    from kaa.tasks import R
     from kaa.tasks.produce.new.consts import ProduceAction
 
     actions = self.fetch_available_actions()
