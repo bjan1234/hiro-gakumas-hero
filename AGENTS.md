@@ -79,17 +79,16 @@
    体积大，Windows 上 20 分钟还没拉完，2026-11-11 W4）；子模块由安装脚本只拉 `vendor/kaa` 这一层。
    自检最后会打印插件来源、有没有主数据和自建素材，以及开局命令。
 2. 游戏窗口：用 [hguandl 的 PlayCover 分支](https://github.com/hguandl/PlayCover)，在游戏的 PlayCover 设置里打开 `maaTools`（端口 `maaToolsPort`）。
-   默认的截图和点击走游戏进程内的 MaaTools 服务（见 `hiro/device.py` 开头注释），**不要求窗口在前台，也不动鼠标**；
-   只有 MaaTools 连不上、退回 Quartz 截图 + `CGEventPostToPid` 时，才需要保持竖屏窗口在前台。
+   截图和点击走游戏进程内的 MaaTools 服务（见 `hiro/devices/maatools.py`），**不要求窗口在前台，也不动鼠标**。
+   **原版 PlayCover 不支持**（2026-11-13 起）：MaaTools 连不上时直接报错停下，不再退回 Quartz 截图 + `CGEventPostToPid`。
    macOS 要给运行它的终端 / 程序「屏幕录制」权限；截图报 `could not create image from display` 时先查这个权限和显示器状态。
 
    **设备**（`HIRO_DEVICE`，与 KAA 支持的平台对齐）：
 
    | `HIRO_DEVICE` | 平台 | 截图 / 点击 | 验证情况 |
    |---|---|---|---|
-   | `auto`（缺省） | macOS：MaaTools 能连就 `maatools`，否则 `quartz`；其他系统要求显式设置 | — | — |
-   | `maatools` | macOS + hguandl 分支 PlayCover | 游戏进程内 MaaTools | 作者实机验证（6 次夺冠） |
-   | `quartz` | macOS + 原版 PlayCover | Quartz 截图 + `CGEventPostToPid`，要游戏在前台 | 作者实机用过 |
+   | `auto`（缺省） | macOS 上就是 `maatools`；其他系统要求显式设置 | — | — |
+   | `maatools` | macOS + hguandl 分支 PlayCover（原版不支持） | 游戏进程内 MaaTools | 作者实机验证（6 次夺冠） |
    | `adb` | 任意安卓设备 / 模拟器（KAA 的 custom） | `HIRO_SCREENSHOT=adb`（缺省）或 `uiautomator2` | 未实机验证 |
    | `mumu` | MuMu 12 | `adb`（缺省；Windows 上 `nemu_ipc` 截图可用但点击送不到游戏，别用） | Windows + MuMu 6.8 实机打过（见下） |
    | `leidian` | 雷电模拟器 | `adb` / `uiautomator2` | 未实机验证 |

@@ -29,7 +29,7 @@ def open_device(name: str | None = None) -> Device:
         key = "maatools"
     impl = NAMES.get(key)
     if impl is None:
-        raise ValueError(f"HIRO_DEVICE={key!r} 新设备层不支持；可选：{', '.join(NAMES)}（quartz 只有旧设备层有）")
+        raise ValueError(f"HIRO_DEVICE={key!r} 新设备层不支持；可选：{', '.join(NAMES)}（原版 PlayCover 的 quartz 已不支持）")
     if impl == "maatools":
         from .maatools import MaaToolsDevice
 
