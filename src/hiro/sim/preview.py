@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/sim/preview.py（develop 864e037）
 """动作预演：每个合法动作先在模拟器里按规则执行一遍，给决策层明确的结果与分数激励。
 
 对每个合法动作：

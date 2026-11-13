@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_genki_read.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """考试 HUD 元気读数（hiro.vision.hif.BOX_GENKI）：四位数首位「1」不再掉位。
 
 数据确认 d412748（和存档对比）：第二十～二十五局 80 处元気 ≥1000 读成去掉首位的数（存档 1,388 → 388、1,010 → 10）。

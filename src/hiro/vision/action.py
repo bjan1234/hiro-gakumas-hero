@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/action.py（develop c3fc27f）
 """培育「行动选择」页：读出决策需要的状态与可选行动。
 
 页面结构（720x1280，三种变体共用上半部分）：

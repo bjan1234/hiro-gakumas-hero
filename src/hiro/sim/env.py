@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/sim/env.py（develop 864e037）
 """考试引擎（gakumas_exam）对局 ↔ 决策层 BattleState / Decision 的转换，以及搜索用的克隆与推进。
 
 状态转换刻意对齐实机：卡牌文本优先用 KAA 卡面（定制过的卡改用引擎效果渲染），记忆（持续效果剩余、道具次数）

@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_deck_review.py（c3fc27f）
 """主动查看牌组：打开 → 读 → 关闭；找不到按钮 / 没打开不点后续。"""
 
 import hiro.produce.deck_review as dr

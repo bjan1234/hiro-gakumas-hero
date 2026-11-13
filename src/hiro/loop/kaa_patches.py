@@ -1,4 +1,3 @@
-# 来源：digital-hiro hiro/loop/kaa_patches.py（c3fc27f）
 # KAA 派生代码：对 kotones-auto-assistant（GPL-3.0）流程的运行时补丁，部分逻辑改写自 KAA 源码，按 GPL-3.0 发布
 """对 KAA 流程的运行时补丁（不改 vendor）。
 

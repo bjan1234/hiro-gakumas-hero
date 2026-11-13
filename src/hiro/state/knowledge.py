@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/state/knowledge.py @ c3fc27f（GPL-3.0-or-later）
 """社区攻略落成的结构化知识（出处见 brain/prompts/hif_produce.md 与 idols/campus_hiro.md）。
 
 只放「按 ID 查得到的事实与评级」，打法说明留在提示词里。

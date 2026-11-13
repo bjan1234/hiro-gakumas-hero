@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/sim/track.py（develop 864e037）
 """存档读不到时，用模拟器把最近一次读到的局面按实际执行的动作推下去（专家续推）。
 
 起因：main8 本战 R1（reports/runs/20261101-055854）第 3 回合起存档每次都投影失败（Physical card occurs in multiple zones），

@@ -1,4 +1,3 @@
-# 来源：digital-hiro hiro/loop/assist.py（c3fc27f）
 """收尾 / 回首页 / 日切换恢复阶段的「认不出的画面」处理（协调 2026-11-04，第二十六局）：和主循环同一套——
 快速判页（认得就按它给的位置点）→ 卡住 ≥ rescue.RESCUE_AFTER 秒交 LLM 看图（hiro.loop.rescue，同样的危险词 / 选择页 / 考试拦截）。
 

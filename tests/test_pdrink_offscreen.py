@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_pdrink_offscreen.py（fix_matto_prep_watchdog 5b5adff）
 """D41 第三十三局 18:18 seq 111：饮料溢出页「手持ちのドリンク」第 3 行被视口切掉（未知饮料），决策丢它，执行只看到 2 行报失败，
 随后落到 KAA 默认「残す」= 丢掉新来的 特製ハツボシエキス。现在：视口外的已有饮料标成点不到，只在看得到的里重新决策一次；
 还失败就停下，不交给 KAA。"""

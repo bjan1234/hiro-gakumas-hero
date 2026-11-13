@@ -1,4 +1,3 @@
-# 来源：digital-hiro tools/audit/repeat_replay.py（c3fc27f）
 """防空转回放（hiro.loop.repeat_guard）：拿历史 trace / 日志重放，看重复无效动作会在第几次被拦下、实际空转了多久。
 
     python tools/audit/repeat_replay.py trace traces/main23-20261103-201834-r4

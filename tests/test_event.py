@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_event.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """授業 / おでかけ 三选一：选项、代价（cost_hp / cost_p / trouble 结构化字段）、选中项与效果说明，以及经契约到决策器的对接。"""
 
 from pathlib import Path

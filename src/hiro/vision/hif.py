@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/hif.py（develop c3fc27f）
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """H.I.F 考试画面：场景判定与 HUD/手牌读取。
 

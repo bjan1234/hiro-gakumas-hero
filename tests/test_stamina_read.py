@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_stamina_read.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """选行动页体力「当前/上限」：斜杠被 Apple Vision 读成 1 / 0 时的兜底（q7 续跑第 1 天连续 5 帧 stamina=None，决策因「状态不全」选了相談）。"""
 
 from pathlib import Path

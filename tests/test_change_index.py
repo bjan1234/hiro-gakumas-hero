@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_change_index.py（c3fc27f）
 """第十九局 R1 授業换卡（23:59）：牌组里 えいえいおー +1 / 0 / 0，决策要换第三张没强化的（remove_index 10、remove_upgrade 0），
 执行只按 card_id 点，换出了 えいえいおー+。现在同一 card_id 有多张时按格子序号 / 强化次数选，对不上就不换（点キャンセル）。"""
 

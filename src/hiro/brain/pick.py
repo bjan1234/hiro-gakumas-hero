@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/brain/pick.py @ c3fc27f（GPL-3.0-or-later）
 """选卡决策：LLM 按牌组角色选卡，失败时退回游戏推荐。"""
 
 import json

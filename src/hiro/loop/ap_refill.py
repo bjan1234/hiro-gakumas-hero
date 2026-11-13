@@ -1,4 +1,3 @@
-# 来源：digital-hiro hiro/loop/ap_refill.py（c3fc27f）
 """AP 不够时喝 APドリンク 补（用户规则：AP 不够喝 APドリンク，绝不用ジュエル）。
 
 第二十一局开局：AP 10/100（选拔 / 本战各 20），KAA 打印「AP insufficient. Exiting produce.」退出（use_ap_drink=false）。

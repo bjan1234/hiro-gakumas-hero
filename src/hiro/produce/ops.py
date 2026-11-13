@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/produce/ops.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """操作层：执行一个动作、等画面给出反馈，返回 ExecutionResult；收拢 KAA 上下文的补丁操作。
 
 等待不用固定 sleep，而是轮询截图，满足任一条件即返回：

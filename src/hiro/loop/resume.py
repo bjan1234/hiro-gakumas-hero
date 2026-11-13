@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/loop/resume.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """继续进行中的 H.I.F 培育（选拔赛 / 本战都可），不依赖 KAA 的 resume_produce_pre。
 
 KAA 的再開流程只认识本战的再開对话框（ResumeDialogHifMain），选拔赛会报「Failed to detect produce scenario」。

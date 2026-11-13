@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_action_select_wait.py（c3fc27f）
 """第十九局本战第 1 天：Da 2296 读成 3296 被不变量拦下 → 决策器缺属性抛异常 → Wait → choice None → 交给 KAA，
 KAA 按 v0 规则自己进了 Vi 授業。Wait 时要重读再决策；仍是 Wait 就停下，不交给 KAA。"""
 

@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_card_op_cancel.py（fix_matto_prep_watchdog 5b5adff）
 """D42 第三十三局本战 18:45：礼物强化页（画面只有「強化」，没有「キャンセル」），决策说「没有值得强化的卡：取消」，钩子直接停机。
 - 有「キャンセル」：决策取消 → 点キャンセル 退回、记一条，不停机；
 - 没有「キャンセル」：钩子按画面填 page_fields.cancelable=False，决策（512e3c3）在必选页按「非核心价值最高 → 基础 → 冲突」选一张；

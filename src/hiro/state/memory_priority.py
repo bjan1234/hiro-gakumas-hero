@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/state/memory_priority.py @ 99092bc（GPL-3.0-or-later）
 """回忆（プロデュースメモリー）编成的社区优先级表。
 
 按流派分表（PROFILES，偶像卡 examEffectType → 流派见 profile_for_idol）：

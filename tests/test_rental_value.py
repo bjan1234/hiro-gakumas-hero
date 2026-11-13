@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_rental_value.py（288c548）；开源版：没有主数据 / 截图样例时跳过
 """开局第 2 步租借格按编成价值挑（有开局编成方案时）：support_select.rental_scorer + rental.scored_best / _pick_once。"""
 
 from pathlib import Path

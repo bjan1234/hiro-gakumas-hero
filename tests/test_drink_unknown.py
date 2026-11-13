@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_drink_unknown.py（c3fc27f）
 """第十八局选拔 20:23：饮料溢出页持有一格认不出（drink_id=None、name 也空）→ drink_name(None) 抛异常 → KAA 默认 Leave 跳过新饮料。
 现在：未知饮料按中等价值（不当空位、不优先丢），决策不抛异常；决策给不出时 hif 重读再决策。"""
 

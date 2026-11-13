@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/compat.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """让 kotonebot / KAA 在 macOS 上可以导入。
 
 kotonebot 0.20.x 在模块顶层引用了 Windows 专属对象：

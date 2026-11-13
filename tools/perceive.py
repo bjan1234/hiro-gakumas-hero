@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/perceive.py（develop ce5085f）
 """离线感知：对截图文件输出结构化状态。
 
     PYTHONPATH=src .venv/bin/python tools/perceive.py <截图...>

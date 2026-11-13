@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_llm_usage.py（3b03575）
 """LLM 用量记全：缓存读 / 写、费用；报告里有总输入（三者之和）和费用合计。"""
 
 from hiro.brain.llm import LLMResult, _claude_usage, _openai_usage

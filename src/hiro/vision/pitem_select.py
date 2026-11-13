@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/pitem_select.py（develop c3fc27f）
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """H.I.F 考试后的「P 道具选择」页（SELECT_PITEM）：标题「獲得するPアイテムを選択してください」，三个彩色背包，下方「受け取る」。
 

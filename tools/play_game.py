@@ -1,4 +1,3 @@
-# 来源：digital-hiro tools/play_game.py（c3fc27f）；开源版：偶像 / 主属性改成参数，trace 名不带内部前缀
 """从首页开一整局（选拔 → 本战），或只打本战。选拔结束后不等人工，直接开本战。
 
     python tools/play_game.py --idol <偶像卡 skin id> [--main-attr Da] [--tag 1]           # 整局：选拔 + 本战

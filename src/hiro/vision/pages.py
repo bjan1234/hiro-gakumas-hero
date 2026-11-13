@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/pages.py（develop c3fc27f）
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """H.I.F 培育里 KAA 认不出的页面（页面地图 docs/pages-hif.md）。
 

@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_memory.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """回忆选择页详情框读取（回忆编成选择系统 §2）。夹具是上次实机扫描存下的截图（360x640，放大到 720x1280 再读），真值按截图目视。"""
 
 from pathlib import Path

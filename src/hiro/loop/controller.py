@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/loop/controller.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """HiroController：KAA ProduceController 的子类，每个调度周期把场景喂给 Session（页面级观测 → reduce），
 弹窗类中断记为 recover:dialog。决策点的完整记录在策略钩子（hiro.produce.hif）与考试循环（hiro.exec.exam）里。"""
 

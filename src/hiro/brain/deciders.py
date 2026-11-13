@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/brain/deciders.py @ c3fc27f（GPL-3.0-or-later）；去掉模拟器分支（轮间 / 相談饮料只按社区规则）
 """培育非考试环节的决策器：输入 hiro.contracts.GameState，输出 hiro.contracts.Decision。
 
     deciders = ProduceDeciders(profile, llm)          # llm：hiro.brain.llm.from_spec(...) 或 None（只用规则）

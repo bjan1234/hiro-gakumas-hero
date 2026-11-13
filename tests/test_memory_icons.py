@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_memory_icons.py（5af2874）；开源版：没有截图样例 / 渲染库 / 卡面时跳过
 """回忆小图标认卡（第 3 步「メモリー選択」四格 + 回忆选择页详情栏）与开局回忆卡核对。"""
 
 from pathlib import Path

@@ -1,4 +1,3 @@
-# 来源：digital-hiro hiro/produce/deck_review.py（c3fc27f）
 """主动查看牌组（docs/state-events.md §6）：选行动页底栏的牌组按钮 → 「所持スキルカード」一览 → 读一屏（不全就滑到底再读、拼起来）→ 关闭。
 
 只在三种情况调用（hif.HiroHifStrategy._maybe_review_deck）：pending_review 含 produce.deck；每场考试之间第一次到选行动页；调试模式。

@@ -1,4 +1,3 @@
-# 来源：digital-hiro hiro/loop/repeat_guard.py（c3fc27f）
 """通用防空转（协调 2026-11-03，不再逐个入口修）。
 
 两类空转：

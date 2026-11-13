@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/brain/support_select.py @ c3fc27f（GPL-3.0-or-later）；支援卡技能改走 AssetSource.support_effects()
 """支援卡编成选择（用户 2026-11-02：支援卡、回忆都不用おまかせ）。自己 5 格 + 租借 1 格，由这里选。
 
 方法（社区 いおん ep02 / 05 / 08，docs/hif-playbook.md）：

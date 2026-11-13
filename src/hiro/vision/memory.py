@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/memory.py（develop c3fc27f）
 """回忆（プロデュースメモリー）选择页的读取：回忆编成选择系统 §2（docs/tasks/回忆编成选择系统.md）。
 
 选择页上半是「当前选中的回忆」的详情框，分两页（下方「1 / 2」「2 / 2」，点左右箭头翻）：

@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/card_icon_render.py（5af2874）；开源版：精灵图从使用者素材目录读，另带 build 命令（GPL-3.0-or-later）
 """按游戏 UI 的真实结构渲染技能卡小图标（没有角标的「干净」版本），给回忆 / 牌组小图标认卡用。
 
 结构取自客户端 data.unity3d 里开局准备页回忆格的技能卡图标

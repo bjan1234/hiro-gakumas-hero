@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/produce/interval.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """H.I.F 轮间（インターバル，R1 与 R2 之间）执行器：execute_interval(action, page_fields) -> ExecutionResult。
 
 一步一个动作，由上层循环「decide → execute → 重新 observe」，直到 IntervalEnd。第四局本战轮间被 KAA ctx.end() 直接结束，

@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/produce/battle.py（c3fc27f）的执行部分；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """考试执行器：替代 KAA 的 do_cards。截图 → 等画面稳定 → 读局面（ExamStateSource 插件）→ 出招（ExamAdvisor 插件）→ 点击 → 核对画面变了。
 
 只放「和局面从哪来、怎么决策无关」的执行部分：帧（HUD / 手牌 / 饮料定位）、等稳（轻量签名 + 舞台空白推进）、弹窗处理（危险弹窗只点

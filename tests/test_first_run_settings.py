@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_first_run_settings.py（c3fc27f）
 """q13：重新登录后开局弹「サポートイベント設定」，控制器不认，188s 停机。现在选「強化済みで獲得する」→「決定」。"""
 
 import sys

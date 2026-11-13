@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/scene.py（develop c3fc27f）
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """统一场景识别：判断当前截图属于哪个页面。
 

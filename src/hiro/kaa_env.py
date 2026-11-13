@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/kaa_env.py（c3fc27f）；调用 KAA（kotones-auto-assistant，GPL-3.0）；开源版：编成号 / 方案名改成环境变量
+# 调用 KAA（kotones-auto-assistant，GPL-3.0）
 """用代码构造 KAA 运行所需的 profile 与培育方案，不经 KAA 图形界面。
 
 KAA 的培育流程通过 `kaa_context.conf()` / `produce_solution()` 读取配置；方案文件写在工作目录的 conf/ 下（别提交）。

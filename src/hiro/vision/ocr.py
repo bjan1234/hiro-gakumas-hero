@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/ocr.py（develop c3fc27f）；开源版：加 RapidOCR 后端，非 macOS 也能用
 """固定区域的数字和短文本 OCR。两个后端，接口相同：
 
 - vision：Apple Vision（macOS 系统文字识别）。实测在作者机器上比 KAA 的 RapidOCR 快 2–7 倍且更准（见 README），

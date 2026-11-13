@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_memory_picker.py（c3fc27f）
 """回忆选择页（hiro.produce.memory_picker）离线测试：总控上次扫描留下的半分辨率实拍帧（放大到 720x1280）。"""
 
 import json

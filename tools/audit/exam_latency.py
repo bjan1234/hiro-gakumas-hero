@@ -1,4 +1,3 @@
-# 来源：digital-hiro tools/audit/exam_latency.py（c3fc27f）
 """考试每步耗时拆分（总控 2026-11-04：第二十四局截图→点击 中位 5.2s / p90 12.8s，要分清预演和读帧 / 执行）。
 
     python tools/audit/exam_latency.py traces/main24-20261104-000252

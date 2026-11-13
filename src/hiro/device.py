@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/device.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """连接游戏设备，统一给出 720x1280 逻辑坐标的 kotonebot Device。
 
 后端由 HIRO_DEVICE 选（见 resolve_backend / docs）：

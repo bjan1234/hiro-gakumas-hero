@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_play_game.py（c3fc27f）
 """整局脚本：从开始确认页读选拔回忆数值（第十六局实机帧：1670 / 1828 / 1011）。"""
 
 import sys

@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_check_settings.py（c3fc27f）
 """开局前设置检查：读 5 个开关（改之前全 OFF / 改之后全 ON，实机截图）。"""
 
 import sys

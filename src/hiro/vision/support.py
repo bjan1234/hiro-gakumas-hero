@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/support.py（develop c3fc27f）；开源版改：游戏素材经插件 AssetSource（hiro.vision.assets），拿不到时退路见各处注释
 """培育开始前「4.開始確認」页（PRODUCE_START_CONFIRM）：读支援卡编成 → produce.supports。
 
 KAA 开局走 auto_set_support_card，编成只能在现场读；一局读一次即可（主属性按支援卡类型多数定）。

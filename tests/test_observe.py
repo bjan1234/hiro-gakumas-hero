@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_observe.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """识别结果 → 决策层数据结构的对接（ProduceState 字段名、BattleState 观测参数）。"""
 
 import json

@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/brain/rules.py @ c3fc27f（GPL-3.0-or-later）
 """规则层：显然的情形直接出结果，LLM 的输出在执行前过一遍硬约束。
 
 硬约束只收「已经在实机里犯过、且能用公开状态判定」的错误，不做策略偏好：

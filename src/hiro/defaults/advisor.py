@@ -1,7 +1,5 @@
 """ExamAdvisor 默认实现：社区规则 + LLM，不需要模拟器。
 
-来源：digital-hiro src/hiro/produce/exam_policy.py（decide_with_policy / guard_llm）与 src/hiro/brain/battle.py（BattleBrain）。
-
 - 没有预演（默认的 ScreenExamStateSource 不提供）：BattleBrain 出一步（不需要思考的情形 → 本回合计划 → LLM → 规则兜底），
   再过一遍硬规则（guard_llm：饮料预算、届いて 留到剩 ≤2 等只看局面就能判的规则），被拦就让 LLM 重选一次，还不行用规则兜底。
 - 有预演（接了别的 ExamStateSource，例如 hiro.sim.screen_source，previews 不为 None）：预演写进局面（state.action_previews），

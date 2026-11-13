@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_card_change_strategy.py（c3fc27f）
 """HiroHifStrategy.on_skill_card_change：按决策的 card_id 换出；决策取消时传 cancel；阶段 1 候选未识别时换入第 0 张。"""
 
 from hiro.brain.deciders import ProduceDeciders

@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/drinks.py（develop c3fc27f）
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """P 饮料图标识别：多尺度模板匹配，对比 KAA 饮料图库（resources/game_data/drinks，68x68）。
 

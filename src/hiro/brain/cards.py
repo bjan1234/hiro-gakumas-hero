@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/brain/cards.py @ c3fc27f（GPL-3.0-or-later）
 """卡牌与饮料的决策视图：完整效果文本 + 从文本解析出的标签。
 
 KAA 的 effect_display_text 会省掉持续回合数与使用条件（如「元気が30以上の場合、使用可」），

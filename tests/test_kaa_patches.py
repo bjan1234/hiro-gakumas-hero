@@ -1,4 +1,4 @@
-# 来源：digital-hiro tests/test_kaa_patches.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """kaa_patches 授業换卡补丁的离线测试：用 KAA 自带的 H.I.F 换卡参考截图（阶段 1 / 阶段 2）喂离线设备。"""
 
 from pathlib import Path

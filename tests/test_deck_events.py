@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_deck_events.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """改变牌组的事件页面：删除 / 换卡页的选中项、确认弹窗（交換確認 / スキルカード削除）、获得弹窗。
 
 夹具 tests/fixtures/events/*.jpg 取自 datasets/20261029-224103-hif-qualify 与 traces/<run>-qualify2-*-r2，真值按截图目视。

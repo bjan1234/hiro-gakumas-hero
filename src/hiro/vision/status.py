@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/status.py（develop c3fc27f）；开源版改：游戏素材经插件 AssetSource（hiro.vision.assets），拿不到时退路见各处注释
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """考试画面左侧状态栏：逐个槽位识别状态效果与卡牌持续效果。
 

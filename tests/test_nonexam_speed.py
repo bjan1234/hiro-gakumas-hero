@@ -1,4 +1,4 @@
-# 来源：digital-hiro tests/test_nonexam_speed.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """选拔里考试以外的提速（协调 2026-11-03，第二十一局选拔非考试 40 分钟）：
 - 三选一快速提交：点选项 → 等「受け取る」亮 → 点 → 等消失（KAA commit 固定 sleep，选卡执行中位 8.5s）；
 - 「受け取る」改底部条带局部 OCR（以前整帧 kotonebot OCR）；

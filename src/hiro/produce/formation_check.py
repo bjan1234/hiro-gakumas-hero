@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/produce/formation_check.py（99092bc）（GPL-3.0-or-later）
 """开局编成核对（hiro.brain.formation_plan 的方案 vs 游戏画面）：对不上就停，不开局。
 
 - 第 2 步「サポート選択」：read_support_formation 读 5 格自己的卡，和方案的 own 比。认出来的卡不在方案里、或全部认出但缺方案里的卡、

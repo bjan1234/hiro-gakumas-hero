@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_finals_action.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """识别-04：本战（produce-008）选行动页的 mode / step。夹具：第四局本战 traces/<run>-main4-20261031-194839/frames/00058、00070。"""
 
 from pathlib import Path

@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/offline.py（develop c3fc27f）
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """离线识别环境：用 MockDevice 喂图，让 KAA 的识别函数作用在指定截图上。"""
 

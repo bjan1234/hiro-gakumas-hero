@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/event.py（develop c3fc27f）
 """授業（STUDY）/ おでかけ（OUTING）三选一：选项文字、代价角标、选中项与选中后弹出的效果说明。
 
 两页是同一套界面。三行选项中心 y ≈ 698 / 799 / 901（720x1280），每行右上方的角标是代价：

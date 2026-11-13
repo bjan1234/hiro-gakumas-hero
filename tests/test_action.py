@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_action.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """培育行动选择页读取：头部状态、三维与各变体的可选行动。"""
 
 import json

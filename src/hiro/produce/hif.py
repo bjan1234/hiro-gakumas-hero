@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/produce/hif.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """数字小广的 HIF 培育策略。
 
 流程骨架、弹窗和被动事件沿用 KAA 的 HifGrindStrategy；每个决策点按 observe → reduce → decide → act → verify 走一遍，

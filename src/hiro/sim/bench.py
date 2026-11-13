@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/sim/bench.py（develop 864e037）
 """离线批量对局与决策审计。
 
     .venv/bin/python -m hiro.sim.bench --exam r2 --policies community,brain-rules,expert --seeds 0-9

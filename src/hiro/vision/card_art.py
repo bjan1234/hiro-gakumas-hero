@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/card_art.py（develop c3fc27f）；开源版改：游戏素材经插件 AssetSource（hiro.vision.assets），拿不到时退路见各处注释
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """手牌卡面插图识别（灰度归一化相关）。
 

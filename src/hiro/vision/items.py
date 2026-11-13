@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/items.py（develop c3fc27f）；开源版改：游戏素材经插件 AssetSource（hiro.vision.assets），拿不到时退路见各处注释
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """考试画面中持有的 P 饮料（左下 4 格）与 P 道具（右侧牌库图标下方）。
 
