@@ -282,10 +282,26 @@ def read_int(img: MatLike, box: tuple[int, int, int, int], *, align: bool = Fals
 DDDD_FIX = str.maketrans({"o": "0", "O": "0", "l": "1", "I": "1"})
 
 
-def read_dddd(img: MatLike, box: tuple[int, int, int, int]) -> int | None:
-    """通用 OCR（KAA 自带的 ddddocr）读数字。"""
-    from kaa.tasks.produce.new.play_cards.page import _dddd
+@cache
+def _dddd():
+    import ddddocr
 
+    return ddddocr.DdddOcr(show_ad=False)
+
+
+def dddd_digits(crop: MatLike) -> list[int]:
+    """ddddocr 读一块里的数字（灰度、放大 2 倍、Otsu 二值化），返回读到的各个整数（同 KAA _digits_from_image）。"""
+    if crop is None or crop.size == 0:
+        return []
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    gray = cv2.resize(gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_LINEAR)
+    _, bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    ok, buf = cv2.imencode(".png", bw)
+    return [int(n) for n in re.findall(r"\d+", _dddd().classification(buf.tobytes()) or "")] if ok else []
+
+
+def read_dddd(img: MatLike, box: tuple[int, int, int, int]) -> int | None:
+    """通用 OCR（ddddocr）读数字。"""
     x1, y1, x2, y2 = box
     crop = cv2.resize(img[y1:y2, x1:x2], None, fx=2, fy=2)
     m = re.search(r"\d+", (_dddd().classification(cv2.imencode(".png", crop)[1].tobytes()) or "").translate(DDDD_FIX))

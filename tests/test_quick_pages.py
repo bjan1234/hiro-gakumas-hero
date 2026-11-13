@@ -104,18 +104,15 @@ def test_controller_quick_tap(monkeypatch):
     assert c._quick_page() is None
 
 
-def test_battle_drinks_no_kaa_on_empty_slots(monkeypatch):
-    """考试中饮料栏全空：识别层每格都有把握（empty），不再退回 KAA（它在空槽上每格报「Mismatched drink: ビタミンドリンク」，每帧约 0.3 秒）。
-    有拿不准的格（unknown）时才退回。"""
+def test_battle_drinks_unknown_or_empty_slots_give_nothing(monkeypatch):
+    """考试中饮料栏全空或有拿不准的格（unknown）：都只给认出的饮料，没有就是空（原来 unknown 时退回 KAA，KAA 认不出 H.I.F 饮料，已删）。"""
     from hiro.exec import exam as battle  # 考试执行原语（主仓库 hiro.produce.battle 的开源部分）
 
-    calls = []
-    monkeypatch.setattr(battle, "locate_all_drinks_in_3_drink_slots", lambda img: calls.append(1) or [])
     empty = [{"slot": i, "state": "empty", "asset": None, "center": [62 + 85 * i, 1200]} for i in range(4)]
     monkeypatch.setattr("hiro.vision.items.read_drink_slots", lambda img, cache=None: empty)
-    assert battle._drinks(None) == [] and calls == []
+    assert battle._drinks(None) == []
     monkeypatch.setattr("hiro.vision.items.read_drink_slots", lambda img, cache=None: [dict(empty[0], state="unknown")] + empty[1:])
-    assert battle._drinks(None) == [] and calls == [1]
+    assert battle._drinks(None) == []
 
 
 @pytest.mark.parametrize(

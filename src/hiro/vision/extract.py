@@ -52,13 +52,14 @@ def _dialog_counter(img: MatLike, box, button: tuple | None = None) -> int | Non
 
 def _select_card(img: MatLike) -> dict:
     from kaa.game_ui import badge
-    from kaa.tasks import R
     from kaa.tasks.produce.new.page import CardSelectContext, ProducePage
+
+    from hiro.vision.ui_templates import tpl
 
     ctx = CardSelectContext(ProducePage(), None)
     cards = ctx.fetch_cards()
     # 「おすすめ」可以同时挂在多张卡下；按 KAA fetch_recommend_card 的规则配对，recommended 取第一张（与 KAA 一致）
-    badges = [b.rect for b in R.InProduce.TextRecommend.find_all()] if cards else []
+    badges = [m.rect for m in tpl("InProduce.TextRecommend").find_all(img)] if cards else []
     flags = [m.badge is not None for m in badge.match([c.rect for c in cards], badges, "mb")] if badges else [False] * len(cards)
     options = []
     for i, o in enumerate(cards):

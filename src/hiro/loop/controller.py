@@ -35,7 +35,7 @@ INTERVAL_TITLE_MIN = 0.88
 
 
 def interval_title_visible(img) -> bool:
-    """轮间「インターバル」标题徽章（KAA R.InProduce.HifInterval.Title 同一张模板）在左上角任意位置出现。
+    """轮间「インターバル」标题徽章（模板 InProduce.HifInterval.Title）在左上角任意位置出现。
     KAA 的 exists() 只在模板原位附近找；回标题再進入后徽章会下移 13px（第二十二局）。"""
     import cv2
 
@@ -54,13 +54,11 @@ _TPL: dict = {}
 
 def _interval_title_tpl():
     if "interval" not in _TPL:
-        from pathlib import Path
-
         import cv2
-        import kaa.tasks.R as kaa_r
 
-        p = Path(kaa_r.__file__).parents[1] / "sprites/f762b40a-df6a-4229-9dfb-e76e24142b37_template.png"
-        img = cv2.imread(str(p))
+        from hiro.vision.ui_templates import PACK, tpl
+
+        img = cv2.imread(str(PACK / tpl("InProduce.HifInterval.Title").file))  # 彩色匹配（INTERVAL_TITLE_MIN 按彩色分数定的）
         _TPL["interval"] = img[:, :, :3] if img is not None else None
     return _TPL["interval"]
 

@@ -70,11 +70,11 @@ def _tap_and_decide(row: dict, ctrl: dict) -> bool:
 def _ensure_plan_fit():
     """勾上租借列表的「プラン適正」（KAA 原流程也是这么做的），只显示本方案能用的卡。"""
     try:
-        from kaa.tasks import R
+        from hiro.vision.ui_templates import checkbox_checked, tpl
 
-        device.screenshot()
-        if chk := R.Produce.Step2.Rent.CheckboxPlan.q(checked=False).find():
-            chk.set_checked(True)
+        img = device.screenshot()
+        if (chk := tpl("Produce.Step2.Rent.CheckboxPlan").find(img)) is not None and checkbox_checked(img, chk) is False:
+            device.click(*chk.center)
             logger.info("租借：勾上「プラン適正」")
             time.sleep(1.5)
     except Exception as e:  # noqa: BLE001

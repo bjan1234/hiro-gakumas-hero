@@ -2,7 +2,7 @@
 """统一场景识别：判断当前截图属于哪个页面。
 
 培育内复用 KAA 的 ProducePage 场景检测（24 种 SceneType），培育外复用 KAA 的首页/商店等检测。
-所有识别都只读当前截图（kotonebot manual 截图模式下，R.*.exists() 读取最近一次 device.screenshot()）。
+所有识别都只读当前截图（模板走 hiro.vision.ui_templates，传入同一帧；KAA 的检测在 kotonebot manual 截图模式下读最近一次 device.screenshot()）。
 """
 
 import time
@@ -11,7 +11,6 @@ from dataclasses import dataclass
 
 from kaa.config.const import HifScenario
 from kaa.kaa_context import init_produce_session, produce_session
-from kaa.tasks import R
 from kaa.tasks.actions.commu import is_at_commu
 from kaa.tasks.actions.scenes import at_home
 from kaa.tasks.produce.new.page import CardSelectContext, ProducePage
@@ -25,6 +24,7 @@ from hiro.vision.pages import acquire_over, classify_page
 from hiro.vision.pitem_select import is_select_pitem
 from hiro.vision.support import is_start_confirm
 from hiro.vision.signature import match as signature_match
+from hiro.vision.ui_templates import tpl
 
 # 授業（STUDY）与おでかけ（OUTING）是同一套选项事件界面，签名分不开，交给 KAA 按标题图标区分
 SIGNATURE_DEFER = {"OUTING", "STUDY"}
@@ -79,7 +79,7 @@ def _selecting_dialog(img) -> str | None:
     """三选一弹窗里已选中某一项时，顶部提示「受け取る…を選んでください」换成了该项详情，
     KAA 靠这行提示判断 SELECT_CARD / SELECT_DRINK，因此会落到 IDLE。
     底部「受け取る」按钮选中前后都在（全数据集只在这类弹窗出现），据此补判；卡还是饮料由能否读出卡牌决定。"""
-    if not R.InProduce.AcquireBtnDisabled.exists():
+    if not tpl("InProduce.AcquireBtnDisabled").exists(img):
         return None
     if CardSelectContext(ProducePage(), None).fetch_cards():
         return "SELECT_CARD"
@@ -92,11 +92,11 @@ def _card_or_drink(img) -> str:
     """选卡 / 选饮料 / 换卡第 1 步弹窗（签名分不开）：KAA 提示文字「受け取るスキルカード / Pドリンクを選んでください」优先；
     选中一项后提示被详情替换时，用 KAA 的选卡识别（fetch_cards）：认得出卡就是选卡，否则是选饮料。
     饮料图标分数分不开（选卡页最高 0.70，选饮料页最低 0.55）。"""
-    if R.InProduce.DialogCardChange1.TipText.exists():
+    if tpl("InProduce.DialogCardChange1.TipText").exists(img):
         return "SKILL_CARD_CHANGE_1"  # 换卡第 1 步「チェンジするスキルカードを選択してください」，布局同三选一
-    if R.InProduce.TextSkillCard.exists():
+    if tpl("InProduce.TextSkillCard").exists(img):
         return "SELECT_CARD"
-    if R.InProduce.TextPDrink.exists():
+    if tpl("InProduce.TextPDrink").exists(img):
         return "SELECT_DRINK"
     return "SELECT_CARD" if CardSelectContext(ProducePage(), None).fetch_cards() else "SELECT_DRINK"
 
