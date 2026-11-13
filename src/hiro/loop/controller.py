@@ -119,7 +119,11 @@ class HiroController(ProduceController):
         quick = self._quick_page()
         if quick == "handled":
             return  # 点一下就过的页面（获得演出 / 结果气泡 / TAP 提示 / 礼物箱）：已点，下一轮再判
-        scene = Scene(SceneType.SELECT_PITEM) if quick == "SELECT_PITEM" else (self.page.check_scene() or Scene(SceneType.UNKNOWN))
+        if quick == "SELECT_PITEM":
+            scene, src = Scene(SceneType.SELECT_PITEM), "quick"
+        else:
+            scene = self.page.check_scene() or Scene(SceneType.UNKNOWN)
+            src = "kaa" if scene.type is not SceneType.UNKNOWN else "none"  # 判页来源（PageObs.source），只记不用
         from hiro.loop import kaa_patches
 
         if kaa_patches.BLIND_CHOICE["pending"]:
@@ -136,13 +140,13 @@ class HiroController(ProduceController):
             logger.info("KAA 判到多个剧情按钮（第 %d 次 / 8 秒内），已拦下不点，下一轮再看", len(hits))
         if scene.type is SceneType.UNKNOWN and interval_title_visible(device.screenshot()):
             # 第二十二局：通信エラー 回标题后「再開」进轮间，「インターバル」标题徽章比 KAA 模板位置低 13px，KAA 判不出 → 197s 停机
-            scene = Scene(SceneType.HIF_ROUND_INTERVAL)
+            scene, src = Scene(SceneType.HIF_ROUND_INTERVAL), "interval_title"
         if scene.type in (SceneType.UNKNOWN, SceneType.IDLE) and self._is_hif_exam():
             # KAA 只认普通考试的排名文字（TextExamRank*），H.I.F 选拔 / 本战的考试画面它判不出来
-            scene = Scene(SceneType.EXAM)
+            scene, src = Scene(SceneType.EXAM), "exam_ocr"
         elif scene.type is SceneType.UNKNOWN and (fb := self._fallback_page()) is not None:
             # 像素兜底（hiro.vision.quick.fallback_page）：选行动页带提示气泡 / 淡入、饮料溢出列表，KAA 判 UNKNOWN（第二十一局选拔）
-            scene = Scene(SceneType[fb])
+            scene, src = Scene(SceneType[fb]), "pixel"
             if HiroController.session is not None:
                 HiroController.session.recover("page_misjudged", f"KAA 判不出，像素兜底补判为 {fb}")
             logger.info("UNKNOWN 补判为 %s（像素兜底）", fb)
@@ -167,14 +171,15 @@ class HiroController(ProduceController):
 
             logger.info("UNKNOWN 补判为培育结束（プロデュース完了）")
             if HiroController.session is not None:
-                HiroController.session.observe(scene="PRODUCE_END", area="produce", img=None, fields=False, save_frame=True)
+                HiroController.session.observe(scene="PRODUCE_END", area="produce", img=None, fields=False, save_frame=True,
+                                               page_source="produce_end_ocr")  # fmt: skip
                 HiroController.session.record()
             finish_produce_end()
             self.abort()
             return
         elif scene.type is SceneType.UNKNOWN and self._is_drink_offer():
             # 差し入れ等的饮料三选一（带「受け取らない」勾选框、饮料满时「Pドリンク所持上限」）：KAA 的 TextPDrink 模板认不出
-            scene = Scene(SceneType.SELECT_DRINK)
+            scene, src = Scene(SceneType.SELECT_DRINK), "drink_ocr"
             if HiroController.session is not None:
                 HiroController.session.recover("page_misjudged", "KAA 判不出饮料选择页（差し入れ），OCR 补判为 SELECT_DRINK")
             logger.info("UNKNOWN 补判为 SELECT_DRINK")
@@ -194,12 +199,15 @@ class HiroController(ProduceController):
             return  # 行动记录覆盖层（底栏文档图标）：KAA 会因「Pアイテム…を獲得」判成 SELECT_PITEM；点 ✕ 关掉，下一轮重判
         elif scene.type is SceneType.UNKNOWN and self._is_pitem_select():
             # H.I.F 考试后的 P 道具三选一（背包），KAA 的 TextPItem 模板认不出
-            scene = Scene(SceneType.SELECT_PITEM)
+            scene, src = Scene(SceneType.SELECT_PITEM), "pitem_ocr"
             if HiroController.session is not None:
                 HiroController.session.recover("page_misjudged", "KAA 判不出 H.I.F P 道具选择页，OCR 补判为 SELECT_PITEM")
             logger.info("UNKNOWN 补判为 SELECT_PITEM")
         elif scene.type is SceneType.IDLE:
+            idle = scene
             scene = self._reclassify_idle(scene)
+            if scene is not idle:
+                src = "idle_scene"
         if self._watch_unknown(scene):
             return  # 认不出的画面交给 LLM 看图：已执行一个受限动作（点框 / 点空白 / 等待），下一轮重判
         s = HiroController.session
@@ -208,13 +216,16 @@ class HiroController(ProduceController):
             before = s.state.page.name
             # P 道具页等靠补判认出的页面存一帧，供操作层标定点击位置
             keep = scene.type is SceneType.SELECT_PITEM or (s.debug_recog and name != before)  # 调试模式：页面每次变化都存帧（§7 3b）
-            s.observe(scene=name, area="produce", img=None, fields=False, save_frame=keep)
+            s.observe(scene=name, area="produce", img=None, fields=False, save_frame=keep, page_source=src)
             if s.state.page.name != before:
                 s.record()  # 页面变化才落一条（无决策）
             if scene.type in DIALOGS:
                 s.recover("dialog", f"KAA 中断弹窗 {scene.type.name}")
         if scene.type in (SceneType.UNKNOWN, SceneType.IDLE):
             self._count_taps(1)  # KAA 的 _dispatch 在 UNKNOWN / IDLE 上点一次 skip() (12,12)
+            from hiro.loop import kaa_usage
+
+            kaa_usage.count(f"skip(12,12):{scene.type.name}")
         self._rearm_exam(scene)
         self._dispatch(scene, self._last_scene)
         self._last_scene = scene
@@ -344,7 +355,8 @@ class HiroController(ProduceController):
         s = HiroController.session
         if s is not None:
             before = s.state.page.name
-            s.observe(scene=q["page"], area="produce", img=img, fields=dict(q["fields"]), save_frame=bool(s.debug_recog) or q["page"] != before)
+            s.observe(scene=q["page"], area="produce", img=img, fields=dict(q["fields"]), page_source="quick",
+                      save_frame=bool(s.debug_recog) or q["page"] != before)  # fmt: skip
             if s.state.page.name != before:
                 s.record()
         if q["tap"] is None:

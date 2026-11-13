@@ -1296,4 +1296,7 @@ def apply() -> None:
     from hiro.loop import win_desktop
 
     win_desktop.apply()  # DMM 后台点击：桌面暂时不可用（UAC / 锁屏）时等它恢复，不让主循环连崩
+    from hiro.loop import kaa_usage
+
+    kaa_usage.install()  # 最后挂：数的是补丁之后还在跑的 KAA 代码（去 KAA 第 0 步，只记不改行为）
     logger.info("已启用 KAA 补丁：locate_idol 改为上滑翻页；授業换卡放宽卡片定位、阶段 2 不换保护卡；H.I.F P 道具按实测位置点击；破弃对话框只点キャンセル")
