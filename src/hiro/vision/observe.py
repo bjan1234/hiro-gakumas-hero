@@ -506,7 +506,8 @@ def field_meta(scene: str, raw: dict, fields: dict) -> dict:
 
 
 def observation(seq: int, t: float, scene: str, raw: dict | None, *, area: str = "unknown", screenshot: str | None = None,
-                source: str = "screen", stable_frames: int = 1, timings_ms: dict | None = None, ready: bool = False):  # fmt: skip
+                source: str = "screen", stable_frames: int = 1, timings_ms: dict | None = None, ready: bool = False,
+                page_source: str | None = None):  # fmt: skip
     """识别原始输出（hiro.vision.extract 的 fields）→ hiro.contracts.Observation。
 
     raw 为 None 或带 error 时 fields 为空；ready=True 表示 raw 已经是契约字段（例如存档投影、考试循环自己拼的手牌），不再转换。
@@ -531,6 +532,6 @@ def observation(seq: int, t: float, scene: str, raw: dict | None, *, area: str =
     elif raw and "error" in raw:
         meta = {"_error": FieldMeta(method="vision", note=str(raw["error"]))}
     return Observation(
-        seq=seq, t=t, page=PageObs(name=scene, area=area, stable_frames=stable_frames),
+        seq=seq, t=t, page=PageObs(name=scene, area=area, stable_frames=stable_frames, source=page_source),
         fields=fields, field_meta=meta, screenshot=screenshot, source=source, timings_ms=dict(timings_ms or {}),
     )  # fmt: skip

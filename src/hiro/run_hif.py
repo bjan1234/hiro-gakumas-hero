@@ -325,6 +325,10 @@ def main():
         trace.close()
         try:
             r = report(trace.dir)
+            from hiro.loop import kaa_usage
+
+            r["kaa_usage"] = kaa_usage.snapshot()  # 去 KAA 第 0 步：这一段里 KAA 出手的次数
+            logger.info("KAA 出手：%s", r["kaa_usage"] or "无")
             out = Path("reports/runs") / f"{name}.json"
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(json.dumps(r, ensure_ascii=False, indent=1), encoding="utf-8")

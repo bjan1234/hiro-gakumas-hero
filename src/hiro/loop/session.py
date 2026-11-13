@@ -78,7 +78,8 @@ class Session:
 
     # ---------------------------------------------------------------- 观测
     def observe(self, *, scene: str | None = None, area: str = "produce", img=None, fields: bool | dict = True,
-                ready: bool = False, source: str = "screen", save_frame: bool = True, seq: int | None = None) -> Observation:  # fmt: skip
+                ready: bool = False, source: str = "screen", save_frame: bool = True, seq: int | None = None,
+                page_source: str | None = None) -> Observation:  # fmt: skip
         """截图（或用给定的 img）→ 分类（或用给定的 scene）→ 提取字段（fields=True 走 extract，dict 为原始字段，ready=True 表示已是契约字段）→ reduce。"""
         from hiro.vision.observe import observation
 
@@ -90,6 +91,7 @@ class Session:
         if scene is None:
             t1 = self.clock()
             scene, area = self.classify()
+            page_source = "classify"
             timings["classify"] = (self.clock() - t1) * 1000
         raw = None
         if fields is True and img is not None:
@@ -101,7 +103,7 @@ class Session:
         shot = self.trace.save_frame(seq, img) if (save_frame and img is not None) else None
         stable = self.state.page.frames + 1 if self.state.page.name == scene else 1
         obs = observation(seq, time.time(), scene, raw, area=area, screenshot=shot, source=source, stable_frames=stable,
-                          timings_ms=timings, ready=ready)  # fmt: skip
+                          timings_ms=timings, ready=ready, page_source=page_source)  # fmt: skip
         if fields is not False and source == "screen":
             self._decision_state = None  # 新的决策帧：上一次执行校验没有 record 时不能沿用旧快照
         self.state = self._reduce_checked(obs)

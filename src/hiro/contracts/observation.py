@@ -20,6 +20,10 @@ class PageObs:
     area: str = "unknown"  # produce / outside / unknown
     confidence: float = 1.0
     stable_frames: int = 1  # 连续多少帧判为同一页面（采集 / 主循环维护；单帧为 1）
+    # 哪一层判出的页面（去 KAA 第 0 步：统计 KAA 出手次数，只记不用）。主循环：quick（快速判页）/ kaa（KAA check_scene）/
+    # 我们的补判 interval_title / exam_ocr / pixel / drink_ocr / pitem_ocr / idle_scene / produce_end_ocr / none（都没认出）；
+    # classify = Session 自己分类；None = 调用方按上下文直接给了页面（钩子里的观测）
+    source: str | None = None
 
 
 @dataclass

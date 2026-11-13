@@ -34,13 +34,20 @@
       },
       "stable_frames": {
        "type": "integer"
+      },
+      "source": {
+       "type": [
+        "string",
+        "null"
+       ]
       }
      },
      "required": [
       "name",
       "area",
       "confidence",
-      "stable_frames"
+      "stable_frames",
+      "source"
      ],
      "additionalProperties": false,
      "description": "页面判定。name 为 hiro.vision.scene 的场景名（ACTION_SELECT / HIF_EXAM / …，unknown 表示没认出）。"
@@ -980,13 +987,20 @@
        },
        "stable_frames": {
         "type": "integer"
+       },
+       "source": {
+        "type": [
+         "string",
+         "null"
+        ]
        }
       },
       "required": [
        "name",
        "area",
        "confidence",
-       "stable_frames"
+       "stable_frames",
+       "source"
       ],
       "additionalProperties": false,
       "description": "页面判定。name 为 hiro.vision.scene 的场景名（ACTION_SELECT / HIF_EXAM / …，unknown 表示没认出）。"
@@ -1087,13 +1101,20 @@
        },
        "stable_frames": {
         "type": "integer"
+       },
+       "source": {
+        "type": [
+         "string",
+         "null"
+        ]
        }
       },
       "required": [
        "name",
        "area",
        "confidence",
-       "stable_frames"
+       "stable_frames",
+       "source"
       ],
       "additionalProperties": false,
       "description": "页面判定。name 为 hiro.vision.scene 的场景名（ACTION_SELECT / HIF_EXAM / …，unknown 表示没认出）。"

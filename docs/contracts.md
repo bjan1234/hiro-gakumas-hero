@@ -26,7 +26,7 @@
 | 字段 | 含义 |
 |---|---|
 | `seq`, `t` | 帧序号、`time.time()` |
-| `page` | `{name, area, confidence, stable_frames}`，`name` 为 `hiro.vision.scene` 场景名，`unknown` = 没认出 |
+| `page` | `{name, area, confidence, stable_frames, source}`，`name` 为 `hiro.vision.scene` 场景名，`unknown` = 没认出；`source` = 哪一层判出的（见 `PageObs.source`，可空） |
 | `fields` | 决策层字段名 → 值或 `None`；页面不提供的字段不出现。登记表 `FIELD_CATALOG` |
 | `field_meta` | 字段 → `{method, confidence, note}`；`_error` 记识别异常 |
 | `screenshot` | 截图相对路径 |
@@ -160,3 +160,4 @@ HIF_EXAM 的 `motivation` / `impression`：状态栏读到槽位且每个蓝底�
 | 2026-11-02 | `Preview` 加可观测字段 `worlds` / `preview_ms` / `worlds_planned` / `worlds_done` / `eliminated`（可空、只增不改，版本号不变；协调预演加速一期第 5 项）。汇总脚本 `tools/preview_stats.py`。 |
 | 2026-11-02 | 识别-01（第十八局本战轮间「リフレッシュ確認」挂 30 秒）：DIALOG kind `refresh_confirm`，`confirm` = {p_before, p_after, cost, jewel, cancel, ok}（`pages.read_refresh_confirm`）；HIF_ROUND_INTERVAL 加 `dialog`（盖在轮间上的确认框，`pages.overlay_dialog`，没有为 None）；快速判页认出后点「キャンセル」（刷新动作自己按更新，落到主循环的是没有刷新决策时挂着的框）。 |
 | 2026-11-03 | 识别-01（决策 da6c8e5 牌组读全）：`deck.merge_deck_list(screens)` 一览页多屏 → DECK_LIST 字段（deck 只在恰好拼出标签张数且全认出时给，重叠拼不上退回首屏 + 末屏），本战开局写 produce.deck；`merge_dialog_screens` 的 cards 加 `dimmed` `screen`；SKILL_CARD_REMOVAL / ENHANCE / CHANGE_2 加 `deck_complete` `deck_screens`（执行侧滑动读整副后给，cards 换成整副、带 `deck_index` `screen`）；轮间 changes 的 upgrade 不再因橙色插画给 None。 |
+| 2026-11-13 | 去 KAA 第 0 步：`PageObs.source`（可空、只增不改，版本号不变）记哪一层判出的页面：主循环 `quick` / `kaa` / 我们的补判 `interval_title` / `exam_ocr` / `pixel` / `drink_ocr` / `pitem_ocr` / `idle_scene` / `produce_end_ocr` / `none`，`Session.observe` 自己分类时为 `classify`，钩子按上下文给页面时为 None。只记不用；`tools/page_sources.py` 按 trace 出基线表（KAA 出手次数）。 |
