@@ -142,7 +142,11 @@ def finals_label_round(npc_round: int | None, turns: int | None) -> int | None:
     return 1 if turns == 9 else None
 
 
-class HiroHifStrategy(HifGrindStrategy):
+class HifCore:
+    """H.I.F 培育的决策和执行（不依赖 KAA）：每个页面的 observe → decide → act → record。
+    KAA 主循环用 HiroHifStrategy（下面，HifCore + KAA 的 HifGrindStrategy）；新主循环（hiro.runtime）的处理器也调这里。
+    共享状态放在类属性上（run_hif 用 setattr 注入、跨实例保留），方法里一律通过 type(self) 读写。"""
+
     recorder: Recorder | None = None
     session: Session | None = None  # run_hif 注入；None 时自动建一个（trace 仍会写）
     use_llm: bool = True  # run_hif 的 --no-llm 会关掉，只用规则与兜底
@@ -151,20 +155,19 @@ class HiroHifStrategy(HifGrindStrategy):
     main_attr: str | None = None  # run_hif 的 --main-attr：Vo / Da / Vi；支援卡编成识别到位前靠它指定
     llm_spec: str | None = None  # run_hif 的 --llm：claude:sonnet / openai:<model>，None 读 HIRO_LLM
 
-    def __init__(self, controller: "ProduceController") -> None:
-        super().__init__(controller)
-        if HiroHifStrategy.recorder is None:
-            HiroHifStrategy.recorder = Recorder()
-        if HiroHifStrategy.session is None:
+    def __init__(self, *, scenario: str, idol: str) -> None:
+        """scenario：qualify（选拔）/ main（本战）；idol：偶像卡 skin id。"""
+        if type(self).recorder is None:
+            type(self).recorder = Recorder()
+        if type(self).session is None:
             from hiro.contracts import TraceWriter
 
-            HiroHifStrategy.session = Session(TraceWriter())
-        self.rec = HiroHifStrategy.recorder
-        self.s = HiroHifStrategy.session
+            type(self).session = Session(TraceWriter())
+        self.rec = type(self).recorder
+        self.s = type(self).session
         logger.info("Decision log: %s；trace: %s", self.rec.dir, self.s.trace.dir)
-        solution = produce_solution().data
-        self.scenario = solution.mode
-        self.profile = profile_for(solution.idol)
+        self.scenario = scenario
+        self.profile = profile_for(idol)
         llm = from_spec(self.llm_spec) if self.use_llm else None
         self.brain = BattleBrain(self.profile, llm)
         # 特別指導：执行器有了（游戏执行-04），但定制页 cards 识别还没有，进去也只能直接结束 → 暂不进候选（选行动按候选顺序兜底）
@@ -178,12 +181,12 @@ class HiroHifStrategy(HifGrindStrategy):
         self._seed_produce_from_trace()
         # 同一进程内崩溃重启（run_hif 的 _supervised_resume）时沿用已完成的场次；跨进程续跑用 run_hif --exams-done，
         # 没给时从之前的 trace 段数（dmmt2：续跑后第 2 场记成 qualify-1）
-        if not HiroHifStrategy.exams_done and self.scenario == HifScenario.QUALIFY:
-            HiroHifStrategy.exams_done = self._exams_done_from_trace()
-        self.exam_count = HiroHifStrategy.exams_done
-        self.lesson_count = HiroHifStrategy.lessons_done
+        if not type(self).exams_done and self.scenario == "qualify":
+            type(self).exams_done = self._exams_done_from_trace()
+        self.exam_count = type(self).exams_done
+        self.lesson_count = type(self).lessons_done
         self.advisor = self._exam_advisor(llm)
-        self.rec.log("strategy_init", idol=solution.idol, profile=self.profile.idol_id if self.profile else None,
+        self.rec.log("strategy_init", idol=idol, profile=self.profile.idol_id if self.profile else None,
                      llm=f"{llm.name}:{llm.model}" if llm else None)  # fmt: skip
 
     def _exam_advisor(self, llm):
@@ -461,7 +464,7 @@ class HiroHifStrategy(HifGrindStrategy):
             d2 = self.deciders.decide("SELECT_CARD", st, n_options=len(options))
             logger.info("选卡：刷新没做成（本页已刷 %d 次），按刷新用完重新决策 → %s", self._rerolls_this_page, d2.action)
             d = replace(d2, warnings=[*d2.warnings, f"刷新没做成（本页已刷 {self._rerolls_this_page} 次），按刷新已用完重新决策"])
-        if d.action.kind is ActionKind.EXCLUDE_CARD and HiroHifStrategy.exclude_failures >= 2:
+        if d.action.kind is ActionKind.EXCLUDE_CARD and type(self).exclude_failures >= 2:
             d = replace(d, warnings=[*d.warnings, "カード除去 本局已连续失败，改用再抽選"])
             if self._rerolls_this_page < self.MAX_REROLLS_PER_PAGE and self._reroll(obs, replace(d, action=Action(ActionKind.REROLL)), t0):
                 return
@@ -473,9 +476,9 @@ class HiroHifStrategy(HifGrindStrategy):
             logger.info("选卡 カード除去 第 %d 张 ← %s：%s（%s）", k, d.source, d.reason, "成功" if res.ok else res.error)
             self.s.record(obs, decision=d, execution=res, timings_ms={"total": (time.monotonic() - t0) * 1000})
             if res.ok:
-                HiroHifStrategy.exclude_failures = 0
+                type(self).exclude_failures = 0
                 return  # 候选变了：主循环重新 observe → 再决策
-            HiroHifStrategy.exclude_failures += 1
+            type(self).exclude_failures += 1
             # 除去不成：决策本意是不要这些候选，改用再抽選（还有次数时），不退成拿一张不想要的卡
             if self._rerolls_this_page < self.MAX_REROLLS_PER_PAGE and self._reroll(obs, replace(d, action=Action(ActionKind.REROLL)), t0):
                 return
@@ -499,7 +502,7 @@ class HiroHifStrategy(HifGrindStrategy):
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
     def _stage(self) -> str:
-        mode = "qualify" if self.scenario == HifScenario.QUALIFY else "main"
+        mode = "qualify" if self.scenario == "qualify" else "main"
         return f"{mode}，已完成 {self.exam_count} 场考试"
 
     POUCH_NAME = {"red": "ポーチ（赤）", "green": "ポーチ（緑）", "yellow": "ポーチ（黄）"}
@@ -1006,7 +1009,7 @@ class HiroHifStrategy(HifGrindStrategy):
         if page not in deciders_mod.PAGES:
             self._stop(page, "决策器还没有这个页面（决策-08）")
         kind = "enhance" if page == "SKILL_CARD_ENHANCE" else "remove"
-        failed = HiroHifStrategy.op_failed.setdefault(kind, set())
+        failed = type(self).op_failed.setdefault(kind, set())
 
         def read():
             """观测卡格 → 一屏放不下时读整副 → 去掉本局做不成的卡 → 按画面有没有「キャンセル」填 cancelable（False = 必选，决策 512e3c3）。"""
@@ -1289,7 +1292,7 @@ class HiroHifStrategy(HifGrindStrategy):
             d = self._consult_open_dialog(d, done_services)
             action = d.action if step < self.MAX_SHOP_STEPS - 1 else Action(ActionKind.SHOP_END)
             logger.info("相談 第 %d 步 %s ← %s：%s", step + 1, action, d.source, d.reason)
-            HiroHifStrategy.last_dialog_pick = None
+            type(self).last_dialog_pick = None
             result = execute_shop(action, dict(self.s.state.page_fields), choose_card=self._choose_dialog_card, deck_size=self._deck_size())
             service = ("upgrade" if action.kind is ActionKind.SHOP_UPGRADE_CARD else action.args.get("service")) if action.kind in (
                 ActionKind.SHOP_UPGRADE_CARD, ActionKind.SHOP_BUY) else None  # fmt: skip
@@ -1308,10 +1311,10 @@ class HiroHifStrategy(HifGrindStrategy):
                     fails.clear()  # 新货架：失败计数按格子号记的，作废
                 continue
             streak += 1
-            if service and HiroHifStrategy.last_dialog_pick and HiroHifStrategy.last_dialog_pick[1] and "没打开选卡页" not in (result.error or ""):
-                kind, cid = HiroHifStrategy.last_dialog_pick[:2]
-                HiroHifStrategy.op_failed.setdefault(kind, set()).add(cid)
-                HiroHifStrategy.last_dialog_pick = None
+            if service and type(self).last_dialog_pick and type(self).last_dialog_pick[1] and "没打开选卡页" not in (result.error or ""):
+                kind, cid = type(self).last_dialog_pick[:2]
+                type(self).op_failed.setdefault(kind, set()).add(cid)
+                type(self).last_dialog_pick = None
                 self.s.recover("tap_no_effect", f"相談 {action} 选的 {cid} 做不成（{result.error}），本局不再选它，换下一张")
             elif service:  # 打不开 / 已用过：本次相談不再开这个服务
                 done_services.add(service)
@@ -1331,7 +1334,7 @@ class HiroHifStrategy(HifGrindStrategy):
         """強化 / 削除做成后，把对话框里实际选的卡写进记录的动作（args.card_id / upgrade）：删卡事件、trace 和记账都按实际那张。
         动作只带 card_index 时执行器不按它点，是在对话框里让决策重选的（DMM 第 12 天：决策写删 アイコンタクトの基本，
         对话框里删的是 眠気，状态账本却按 card_index 删了 アイコンタクトの基本）。"""
-        pick = HiroHifStrategy.last_dialog_pick
+        pick = type(self).last_dialog_pick
         if not pick or not pick[1] or d.action.args.get("card_id"):
             return d
         _, cid, upgrade, name = (*pick, None, None)[:4]
@@ -1372,13 +1375,13 @@ class HiroHifStrategy(HifGrindStrategy):
     def _choose_dialog_card(self, kind: str, cards: list) -> str | None:
         """相談 / 轮间的強化 / 削除对话框：把整副卡格交给决策 enhance_card / remove_card，返回要点的 card_id（None = 不选，执行器点キャンセル）。"""
         page = "SKILL_CARD_ENHANCE" if kind == "enhance" else "SKILL_CARD_REMOVAL"
-        failed = HiroHifStrategy.op_failed.setdefault(kind, set())
+        failed = type(self).op_failed.setdefault(kind, set())
         cards = [c for c in cards if c.get("card_id") not in failed]
         state = replace(self.s.state, page_fields={**self.s.state.page_fields, "cards": cards})
         d = self.deciders.decide(page, state)
         cid = d.action.args.get("card_id")
         card = next((c for c in cards if c.get("card_id") == cid), {})
-        HiroHifStrategy.last_dialog_pick = (kind, cid, card.get("upgrade"), card.get("name"))
+        type(self).last_dialog_pick = (kind, cid, card.get("upgrade"), card.get("name"))
         logger.info("相談%s选卡 %s ← %s：%s", "强化" if kind == "enhance" else "删除", d.action.args.get("card_id"), d.source, d.reason)
         return None if d.action.args.get("cancel") else d.action.args.get("card_id")
 
@@ -1449,16 +1452,16 @@ class HiroHifStrategy(HifGrindStrategy):
         """KAA 把 H.I.F 的公開レッスン也当 EXAM 场景；用我们的场景识别区分：HIF_EXAM 才是选拔 / 本战。"""
         from hiro.vision.scene import classify_current
 
-        if self.scenario != HifScenario.QUALIFY and self._r1_done_in_trace():
+        if self.scenario != "qualify" and self._r1_done_in_trace():
             # 本战 R1 结算过之后只剩 R2（中间只有轮间，没有レッスン）：不看场景直接是 r2。DMM dmm2（maindmm2-20261111-043916）：
             # 考试刚开始那一刻画面还在过场，classify_current 不是 HIF_EXAM，R2 四次挑战三次标成 lesson-N（不走 R2 预演 / 打法）
             self.exam_count += 1
-            HiroHifStrategy.exams_done = self.exam_count
+            type(self).exams_done = self.exam_count
             return "r2"
         scene = classify_current().scene
-        if scene != "HIF_EXAM" and self.scenario != HifScenario.QUALIFY:
+        if scene != "HIF_EXAM" and self.scenario != "qualify":
             scene = self._settle_exam_scene(scene)
-        if scene == "HIF_EXAM" and self.scenario != HifScenario.QUALIFY:
+        if scene == "HIF_EXAM" and self.scenario != "qualify":
             try:
                 from hiro.vision.hif import read_hif_exam
 
@@ -1466,7 +1469,7 @@ class HiroHifStrategy(HifGrindStrategy):
             except Exception:
                 f = {}
             self.exam_count += 1
-            HiroHifStrategy.exams_done = self.exam_count
+            type(self).exams_done = self.exam_count
             if self._r1_done_in_trace():
                 # R1 打完不会再考 R1：之后的考试一定是 R2（Windows 第十局 04:00 日切换后续跑进 R2 末回合，
                 # NPC 读不到、剩余回合不是 9，退回 KAA 颜色判断成了 r1，再挑戦按 r1 计数又多点了一次）
@@ -1477,10 +1480,10 @@ class HiroHifStrategy(HifGrindStrategy):
             return "r2" if ctx.is_final_exam() else "r1"
         if scene != "HIF_EXAM":
             self.lesson_count += 1
-            HiroHifStrategy.lessons_done = self.lesson_count
+            type(self).lessons_done = self.lesson_count
             return f"lesson-{self.lesson_count}"
         self.exam_count += 1
-        if self.scenario == HifScenario.QUALIFY:
+        if self.scenario == "qualify":
             # 考试画面排名栏的突破线人数：64/128 → 选拔①、32/64 → ②、16/32 → ③。以画面为准（续跑时不必再手动给 --exams-done）
             from hiro.vision.hif import read_hif_exam
 
@@ -1497,9 +1500,9 @@ class HiroHifStrategy(HifGrindStrategy):
             if n is not None and n != self.exam_count:
                 logger.info("考试场次以画面为准：選抜試験%d（计数为 %d）", n, self.exam_count)
                 self.exam_count = n
-            HiroHifStrategy.exams_done = self.exam_count
+            type(self).exams_done = self.exam_count
             return f"qualify-{self.exam_count}"
-        HiroHifStrategy.exams_done = self.exam_count
+        type(self).exams_done = self.exam_count
         return "r2" if ctx.is_final_exam() else "r1"
 
     EXAM_SCENE_SETTLE_S = 6.0  # 本战流程里考试开头认不出 HIF_EXAM 时，再看这么久才当成レッスン
@@ -1553,7 +1556,7 @@ class HiroHifStrategy(HifGrindStrategy):
         # 再挑戦同一场考试：场次不加
         self.exam_restarted = True  # 主循环据此重新进入 on_exam_entered（HiroController._rearm_exam）
         self.exam_count -= 1
-        HiroHifStrategy.exams_done = self.exam_count
+        type(self).exams_done = self.exam_count
         self.rec.log("exam_retry", exam=label, retry_kind=kind)
         return True
 
@@ -1645,7 +1648,7 @@ class HiroHifStrategy(HifGrindStrategy):
             if clicks > 1:
                 logger.info("%s 再挑戦确认框点了「%s」还在，再点一次（第 %d 次）", label, hit.text.strip(), clicks)
         kind = kind or "free"
-        HiroHifStrategy.retries_used[kind] = HiroHifStrategy.retries_used.get(kind, 0) + 1
+        type(self).retries_used[kind] = type(self).retries_used.get(kind, 0) + 1
         # 记账（协调 2026-11-04）：这一次用的是免费还是券、券还剩几张，写进日志和 trace（复盘报告读 note）
         what = {"free": "免费", "ticket": "再挑戦チケット"}[kind]
         left = f"，再挑戦チケット {tickets[0]} → {tickets[1]} 张" if tickets else "（所持张数没读到）"
@@ -1748,3 +1751,12 @@ class HiroHifStrategy(HifGrindStrategy):
                 break
             ops.wait_change(before, roi=btn.rect.xywh, timeout=EXAM_END_SETTLE, use_signature=False)
             ops.wait_stable(timeout=EXAM_END_SETTLE)  # 转场中间帧找不到「次へ」会提前退出循环，等画面停稳再判断
+
+
+class HiroHifStrategy(HifCore, HifGrindStrategy):
+    """KAA 主循环用的策略：KAA 的 _dispatch 调这些 on_* 钩子（钩子本身在 HifCore 里）。去 KAA 收尾时整个删掉。"""
+
+    def __init__(self, controller: "ProduceController") -> None:
+        HifGrindStrategy.__init__(self, controller)
+        solution = produce_solution().data
+        HifCore.__init__(self, scenario="qualify" if solution.mode == HifScenario.QUALIFY else "main", idol=solution.idol)

@@ -20,7 +20,9 @@ def _kaa_hooks() -> set[str]:
 
 
 def test_every_kaa_hook_is_overridden():
-    missing = sorted(h for h in _kaa_hooks() if h not in HiroHifStrategy.__dict__)
+    from hiro.produce.hif import HifCore
+
+    missing = sorted(h for h in _kaa_hooks() if getattr(HiroHifStrategy, h).__qualname__.split(".")[0] != HifCore.__name__)
     assert not missing, f"这些 KAA 钩子还会走 KAA 默认：{missing}"
 
 
