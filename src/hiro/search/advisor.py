@@ -58,7 +58,8 @@ def check(rx, state, legal: list[Action]) -> str | None:
     if c.ended:
         return "引擎局面已经结束"
     eng_play = {int(a[1]) for a in c.legal_actions() if a[0] == "play"}
-    scr_play = {a.slot for a in legal if a.legal_key() and a.legal_key().startswith("play:")}
+    keys = [a if isinstance(a, str) else a.legal_key() for a in legal]  # Action 或 legal_key 字符串（BattleState.legal_actions）
+    scr_play = {int(k.split(":")[1]) for k in keys if k and k.startswith("play:")}
     if eng_play != scr_play:
         return f"能打出的牌对不上：引擎 {sorted(eng_play)} / 画面 {sorted(scr_play)}"
     scr_drinks = [d for d in state.drinks or [] if getattr(d, "drink_id", None)]
