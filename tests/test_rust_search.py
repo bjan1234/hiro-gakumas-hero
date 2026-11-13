@@ -81,3 +81,11 @@ def test_drinks_setter_for_rebuild(rs, rx):
     rx.drinks = ["pdrink_02-3-010"]
     assert rx.drinks == ["pdrink_02-3-010"]
     assert {tuple(a) for a in rx.clone().legal_actions() if a[0] == "drink"} == {("drink", 0)}
+
+
+def test_set_card_upgrade_adjusts_support_part(rs, rx):
+    g = rx.zone("hand")[0]
+    cid, up, _ = rx.card_info(g)
+    assert rx.set_card_upgrade(g, up + 1) and rx.card_info(g)[1] == up + 1
+    assert rx.set_card_upgrade(g, up) and rx.card_info(g)[1] == up
+    assert not rx.set_card_upgrade(g, up)  # 没变化

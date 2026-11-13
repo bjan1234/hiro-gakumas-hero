@@ -325,6 +325,29 @@ mod py {
                 })
                 .collect()
         }
+        /// 卡的总强化次数按画面设（模拟器跟踪对齐用：考试中的支援强化是随机的，引擎掷的和实机不同，画面的「+」数才是真的）。
+        /// 只调支援强化那一块（多了去掉、少了补上）；支援强化减到 0 还多时再减考试中强化，不动基础强化。返回改没改。
+        fn set_card_upgrade(&mut self, guid: &str, total: i64) -> bool {
+            let Some(c) = self.find(guid) else { return false };
+            let k = &mut self.ex.cards[c];
+            let mut delta = total - k.upgrade();
+            if delta == 0 {
+                return false;
+            }
+            while delta > 0 {
+                k.support_upgrades.push(sym::NONE);
+                delta -= 1;
+            }
+            while delta < 0 && !k.support_upgrades.is_empty() {
+                k.support_upgrades.pop();
+                delta += 1;
+            }
+            if delta < 0 {
+                k.tmp_upgrade = (k.tmp_upgrade + delta).max(0);
+            }
+            k.invalidate();
+            true
+        }
         fn card_info(&self, guid: &str) -> Option<(String, i64, Vec<i64>)> {
             self.find(guid).map(|c| {
                 let k = &self.ex.cards[c];
