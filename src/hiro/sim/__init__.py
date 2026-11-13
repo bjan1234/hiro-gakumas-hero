@@ -37,4 +37,4 @@ def master_ready() -> bool:
 ROOT = engine_root()
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-FIXTURES = ROOT / "simulator" / "fixtures"
+FIXTURES = ROOT / "data" / "openings"  # 考试开局快照：campus-20261019/r1-opening、r2-opening
