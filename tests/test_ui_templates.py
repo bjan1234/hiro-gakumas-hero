@@ -26,7 +26,9 @@ def test_every_template_loads_and_fits_screen(name):
     assert h > 0 and w > 0
     if t.slice_rect is not None:
         x, y, sw, sh = t.slice_rect
-        assert (sw, sh) == (w, h) and 0 <= x and x + sw <= 720 and 0 <= y and y + sh <= 1280
+        assert (sw, sh) == (w, h)
+        if t.fixed:  # 只在原位找的模板，位置必须在画面内（非 fixed 的 slice_rect 只是记录，KAA 原数据有出界 1 像素的，如 Common.IconButtonCheck）
+            assert 0 <= x and x + sw <= 720 and 0 <= y and y + sh <= 1280
 
 
 def test_found_at_own_position():
