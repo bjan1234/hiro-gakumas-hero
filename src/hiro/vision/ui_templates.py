@@ -17,50 +17,18 @@ import json
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
-from typing import NamedTuple
 
 import numpy as np
+
+from hiro.vision.ocr import Box, Point
 
 PACK = Path(__file__).resolve().parents[3] / "assets" / "pack" / "ui"
 SIZE = (720, 1280)  # 模板和坐标的基准分辨率（宽, 高）
 
 
-class Point(NamedTuple):
-    x: int
-    y: int
-
-
-@dataclass(frozen=True)
-class Rect:
-    x1: int
-    y1: int
-    x2: int
-    y2: int
-
-    @property
-    def w(self) -> int:
-        return self.x2 - self.x1
-
-    @property
-    def h(self) -> int:
-        return self.y2 - self.y1
-
-    @property
-    def xywh(self) -> tuple[int, int, int, int]:
-        return self.x1, self.y1, self.w, self.h
-
-    @property
-    def top_left(self) -> "Point":
-        return Point(self.x1, self.y1)
-
-    @property
-    def center(self) -> Point:  # 有 .x / .y（同 OCR 文字框），也能 click(*center)
-        return Point((self.x1 + self.x2) // 2, (self.y1 + self.y2) // 2)
-
-
 @dataclass(frozen=True)
 class Match:
-    rect: Rect
+    rect: Box
     score: float
 
     @property
@@ -127,7 +95,7 @@ class Template:
             if used[y + th // 2, x + tw // 2]:
                 continue
             used[y : y + th, x : x + tw] = 1
-            out.append(Match(Rect(x + ox, y + oy, x + ox + tw, y + oy + th), float(res[y, x])))
+            out.append(Match(Box(x + ox, y + oy, x + ox + tw, y + oy + th), float(res[y, x])))
         return out
 
     def find(self, img: np.ndarray, *, threshold: float | None = None, region=None) -> Match | None:
@@ -179,9 +147,9 @@ def find_enabled(name: str, img: np.ndarray) -> Match | None:
     return m if m is not None and primary_button_enabled(img, m) else None
 
 
-def box(name: str) -> Rect:
+def box(name: str) -> Box:
     """固定区域（KAA 的 HintBox），(x1, y1, x2, y2)，720x1280。"""
-    return Rect(*_catalog()["boxes"][name])
+    return Box(*_catalog()["boxes"][name])
 
 
 def _crop(img: np.ndarray, m: Match) -> np.ndarray:

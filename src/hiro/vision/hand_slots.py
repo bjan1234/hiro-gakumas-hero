@@ -11,20 +11,21 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from hiro.vision.ui_templates import Point, Rect, box, normalize, tpl
+from hiro.vision.ocr import Box, Point
+from hiro.vision.ui_templates import box, normalize, tpl
 
 CARD_OFFSET = (57, 148)  # 字母框（中心 x，上边 y）到卡面左上角的偏移
 DISABLED_RGB = (0x7A, 0x7D, 0x7D)  # 不可打出时字母框的灰
 COLOR_THRESHOLD = 0.95  # 同 KAA color.find 缺省：相似度 ≥ 0.95
 
 
-def card_letters(img: np.ndarray) -> list[Rect]:
+def card_letters(img: np.ndarray) -> list[Box]:
     """手牌字母框（720x1280 坐标），A / M / T 依次找，不排序（同 KAA）。"""
     region = box("InProduce.BoxCardLetter").xywh
     return [m.rect for name in ("InProduce.A", "InProduce.M", "InProduce.T") for m in tpl(name).find_all(img, region=region)]
 
 
-def has_color(img: np.ndarray, rect: Rect, rgb: tuple[int, int, int], threshold: float = COLOR_THRESHOLD) -> bool:
+def has_color(img: np.ndarray, rect: Box, rgb: tuple[int, int, int], threshold: float = COLOR_THRESHOLD) -> bool:
     """rect 里有没有接近 rgb 的像素：HLS 空间加权距离（H 环形、权重 2），≤ 1 - threshold 算接近（同 KAA color.find）。"""
     import cv2
 
@@ -41,8 +42,8 @@ def has_color(img: np.ndarray, rect: Rect, rgb: tuple[int, int, int], threshold:
 
 @dataclass(frozen=True)
 class HandSlot:
-    rect: Rect  # 卡面左半边（点这里出牌）
-    letter: Rect
+    rect: Box  # 卡面左半边（点这里出牌）
+    letter: Box
     available: bool
 
     @property
@@ -56,5 +57,5 @@ def hand_slots(img: np.ndarray) -> list[HandSlot]:
     out = []
     for letter in card_letters(img):
         x2, y2 = letter.center.x, letter.y1
-        out.append(HandSlot(Rect(x2 - CARD_OFFSET[0], y2 - CARD_OFFSET[1], x2, y2), letter, not has_color(img, letter, DISABLED_RGB)))
+        out.append(HandSlot(Box(x2 - CARD_OFFSET[0], y2 - CARD_OFFSET[1], x2, y2), letter, not has_color(img, letter, DISABLED_RGB)))
     return sorted(out, key=lambda s: s.rect.x1)

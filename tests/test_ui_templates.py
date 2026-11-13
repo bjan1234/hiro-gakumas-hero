@@ -62,9 +62,10 @@ def test_boxes():
 
 
 def test_button_and_checkbox_state():
-    from hiro.vision.ui_templates import Match, Rect
+    from hiro.vision.ocr import Box
+    from hiro.vision.ui_templates import Match
 
-    m = Match(Rect(0, 0, 40, 20), 1.0)
+    m = Match(Box(0, 0, 40, 20), 1.0)
     on = np.zeros((1280, 720, 3), np.uint8)
     on[:20, :40] = (40, 120, 250)  # BGR：红通道 250 → 第 5 箱，亮
     off = on.copy()

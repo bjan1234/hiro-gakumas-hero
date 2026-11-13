@@ -320,6 +320,10 @@ class Box(NamedTuple):
     def xywh(self) -> tuple[int, int, int, int]:
         return self.x1, self.y1, self.w, self.h
 
+    @property
+    def top_left(self) -> Point:
+        return Point(self.x1, self.y1)
+
 
 class Text(NamedTuple):
     """一段识别出的文字：.text、.rect（Box，整帧坐标）、.conf。"""

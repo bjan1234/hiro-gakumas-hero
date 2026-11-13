@@ -3,11 +3,12 @@
 from types import SimpleNamespace as NS
 
 import hiro.exec.exam as ex
-from hiro.vision.ui_templates import Match, Rect
+from hiro.vision.ocr import Box
+from hiro.vision.ui_templates import Match
 
 
 def _m(x):
-    return Match(Rect(x, 1080, x + 16, 1095), 0.9)
+    return Match(Box(x, 1080, x + 16, 1095), 0.9)
 
 
 def _setup(monkeypatch, dialog_frames: int, letters: dict):

@@ -21,11 +21,11 @@ from hiro.vision.cards import card_summary, card_version
 from hiro.vision.hand_slots import CARD_OFFSET, card_letters, hand_slots
 from hiro.vision.digits import _iou, _scale, _templates, read_dddd, read_int, read_number, read_score
 from hiro.vision.items import read_drink_slots, read_pitems
+from hiro.vision.ocr import Box, ocr, ocr_batch
 from hiro.vision.ocr import engine as ocr_engine
-from hiro.vision.ocr import ocr, ocr_batch
 from hiro.vision.region_cache import RegionCache, cached
 from hiro.vision.status import read_status_column, status_summary
-from hiro.vision.ui_templates import Rect, normalize
+from hiro.vision.ui_templates import normalize
 
 TEMPLATES = Path(__file__).with_name("templates")
 ATTRS = {"ボーカル": "vocal", "ダンス": "dance", "ビジュアル": "visual"}
@@ -539,7 +539,7 @@ AMBIGUOUS_LETTER_V = (140, 210)
 CARD_HALF_W = 90  # 手牌卡面半宽（720x1280）；3 张时卡间距 217 不重叠，4 张时 165 会被下一张盖住右侧
 
 
-def _name_crop(img: MatLike, letter: Rect, next_cx: int | None = None) -> MatLike:
+def _name_crop(img: MatLike, letter: Box, next_cx: int | None = None) -> MatLike:
     """卡名栏。next_cx 为右边下一张卡的中心：后出的卡盖在前一张上，可见区只到下一张卡的左缘。"""
     cx, top = letter.x1 + letter.w // 2, letter.y1
     right = cx + 95 if next_cx is None else min(cx + 95, next_cx - CARD_HALF_W)
@@ -550,7 +550,7 @@ def _clean_name(text: str) -> str:
     return text.replace("＋", "+").replace(" ", "")
 
 
-def _name_bar(img: MatLike, letter: Rect) -> str:
+def _name_bar(img: MatLike, letter: Box) -> str:
     """卡面下方的卡名栏，带强化标记（デイドリーミング+、セルフケアの基本++）。"""
     return _clean_name("".join(t for t, _ in ocr(_name_crop(img, letter))))
 
@@ -608,7 +608,7 @@ def _overlay_on_hand(img: MatLike, letters: list) -> bool:
     return any(lo <= float(img[r.y1 : r.y1 + r.h, r.x1 : r.x1 + r.w].mean()) <= hi for r in letters)
 
 
-def _available(img: MatLike, letter: Rect) -> bool:
+def _available(img: MatLike, letter: Box) -> bool:
     x1, y1, w, h = letter.xywh
     return float(img[y1 : y1 + h, x1 : x1 + w].mean()) > UNAVAILABLE_LETTER_MAX
 
@@ -700,8 +700,8 @@ class HandCard:
     """考试手牌的一张：位置（卡面左半边，点这里出牌）、能不能打、卡面认出的卡（没把握为 None）。
     考试执行器用它取点击位置（替换 KAA locate_cards，属性名同 KAA）；完整读法（强化次数、徽章、卡名核对）见 read_hand。"""
 
-    rect: Rect
-    letter: Rect
+    rect: Box
+    letter: Box
     available: bool
     card: master.Card | None
 
@@ -723,7 +723,7 @@ def hand_cards(img: MatLike, *, cache: RegionCache | None = None) -> list[HandCa
     return out
 
 
-def _read_card(img: MatLike, slot: int, letter: Rect, next_cx: int | None = None) -> dict:
+def _read_card(img: MatLike, slot: int, letter: Box, next_cx: int | None = None) -> dict:
     """一张手牌。卡面相关定卡、卡名栏数「+」定强化次数；卡面没把握（< ART_SURE）时 OCR 卡名栏交叉核对（约 100ms）：
     两者一致 → 置信度 1.0；不一致且卡名唯一对应一张卡 → 以卡名为准（卡面结果记在 art_name）；卡名读不出 → 保留卡面结果。
     两者都定不了卡时 name 为 None（不猜）。"""
@@ -885,7 +885,7 @@ def hand_layout(xs: list[int]) -> str:
     return "shifted"
 
 
-def read_hand(img: MatLike, *, letters: list[Rect] | None = None, cache: RegionCache | None = None) -> tuple[list[dict], int]:
+def read_hand(img: MatLike, *, letters: list[Box] | None = None, cache: RegionCache | None = None) -> tuple[list[dict], int]:
     """手牌：按 KAA 的卡名首字母框定位每张卡，用灰度相关识别卡面（对压暗的不可用卡也有效），卡面没把握时用卡名栏 OCR 核对；
     每张另读左上角预计得分徽章（badge_score）。cache：某张卡（卡面 + 卡名栏 + 首字母框）/ 徽章区与上次相同则复用。"""
     if letters is None:
