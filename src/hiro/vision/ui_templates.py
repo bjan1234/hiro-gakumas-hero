@@ -152,6 +152,11 @@ def box(name: str) -> Box:
     return Box(*_catalog()["boxes"][name])
 
 
+def point(name: str) -> Point:
+    """固定点（KAA 的 HintPoint），720x1280：翻页箭头之类没有模板、按位置点的地方。"""
+    return Point(*_catalog()["points"][name])
+
+
 def _crop(img: np.ndarray, m: Match) -> np.ndarray:
     r = m.rect
     return normalize(img)[r.y1 : r.y2, r.x1 : r.x2]
