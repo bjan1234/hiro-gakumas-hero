@@ -16,7 +16,7 @@ from hiro.vision.textnorm import contains
 import time
 from collections.abc import Callable
 
-from hiro.log import logging
+import logging
 
 from hiro.loop.date_change import DateChanged
 
