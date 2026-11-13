@@ -8,6 +8,7 @@ pub mod exam;
 pub mod io;
 pub mod master;
 pub mod num;
+pub mod search;
 pub mod sig;
 pub mod status;
 pub mod sym;
@@ -336,10 +337,45 @@ mod py {
         super::bench_game(&ex.ex, seed, worlds)
     }
 
+    /// 世界采样（任务 ②）：重排对局随机数、山札（顶部 known_deck_prefix 张保留）、free_turns 这几个回合的属性（互换）
+    #[pyfunction(name = "sample_world")]
+    fn sample_world_py(ex: &PyExam, known_deck_prefix: usize, free_turns: Vec<usize>, seed: u64) -> PyExam {
+        let h = crate::search::Hidden { known_deck_prefix, free_turns };
+        PyExam { ex: crate::search::sample_world(&ex.ex, &h, seed) }
+    }
+
+    /// 实战出牌搜索（任务 ②）：W 个世界并行 GNRPA，第一手投票。返回 dict：
+    /// best（动作元组或 None）、votes [(动作, 票数, 平均终局分)]、worlds [(第一手, 终局分, 续打数, 是否跑完)]、seconds
+    #[pyfunction(name = "search")]
+    #[pyo3(signature = (ex, known_deck_prefix, free_turns, worlds=8, seconds=15.0, threads=0, seed=0, level=2, iterations=60, alpha=1.0, temperature=1.0, end_bias=-1.0))]
+    #[allow(clippy::too_many_arguments)]
+    fn search_py<'py>(py: Python<'py>, ex: &PyExam, known_deck_prefix: usize, free_turns: Vec<usize>, worlds: usize, seconds: f64, threads: usize,
+                      seed: u64, level: u32, iterations: u32, alpha: f64, temperature: f64, end_bias: f64) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+        use pyo3::types::PyDict;
+        let h = crate::search::Hidden { known_deck_prefix, free_turns };
+        let p = crate::search::Params { level, iterations, alpha, temperature, end_bias, ..Default::default() };
+        let ex0 = ex.ex.clone();
+        let r = py.detach(move || crate::search::search(&ex0, &h, worlds, seconds, threads, seed, &p));
+        let tup = |a: Action| -> PyResult<Bound<'py, PyTuple>> {
+            let (k, i) = action_to_tuple(a);
+            if k == "end" { PyTuple::new(py, [k.into_pyobject(py)?.into_any()]) } else { PyTuple::new(py, [k.into_pyobject(py)?.into_any(), i.into_pyobject(py)?.into_any()]) }
+        };
+        let d = PyDict::new(py);
+        d.set_item("best", match r.best { Some(a) => Some(tup(a)?), None => None })?;
+        let votes: PyResult<Vec<_>> = r.votes.iter().map(|&(a, n, m)| Ok((tup(a)?, n, m))).collect();
+        d.set_item("votes", votes?)?;
+        let ws: PyResult<Vec<_>> = r.worlds.iter().map(|w| Ok((match w.first { Some(a) => Some(tup(a)?), None => None }, w.score, w.playouts, w.complete))).collect();
+        d.set_item("worlds", ws?)?;
+        d.set_item("seconds", r.elapsed.as_secs_f64())?;
+        Ok(d)
+    }
+
     #[pymodule]
     fn gakumas_exam_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_class::<PyExam>()?;
         m.add_function(wrap_pyfunction!(bench_game_py, m)?)?;
+        m.add_function(wrap_pyfunction!(sample_world_py, m)?)?;
+        m.add_function(wrap_pyfunction!(search_py, m)?)?;
         Ok(())
     }
 }
