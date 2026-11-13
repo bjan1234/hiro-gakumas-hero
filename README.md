@@ -1,7 +1,7 @@
 # hiro-gakumas-hero · 数字小广
 
 让大模型自己玩《学园偶像大师》（学マス）的 H.I.F 模式：从截图识别、状态推算、决策，到点击执行和逐回合复盘，
-全部自动化。角色是 Campus 模式的篠澤広。能在 macOS（PlayCover）、Windows MuMu 模拟器和 Windows DMM 版上跑。
+全部自动化。角色是 Campus 模式的篠澤広。能在 macOS（带 MaaTools 的 PlayCover 分支）、Windows MuMu 模拟器和 Windows DMM 版上跑。
 
 > 非官方的个人研究项目，与游戏的开发商和运营方无关。仓库的 `assets/pack/` 带了一套识别用的游戏素材（卡面、图标、字体、
 > 界面图、布局），**权利属于游戏的权利人，不属于本仓库的 GPL**，仅供识别游戏画面的研究用途，详见 [assets/pack/README.md](assets/pack/README.md)；
@@ -85,9 +85,12 @@ R1 按社区规则打），代码缺省是 R1、R2 都预演。
 
 作者实机验证过的平台：macOS（Apple Silicon）+ PlayCover，Windows + MuMu 12（22 局 3 次本战夺冠），和 Windows DMM 版
 （`-Device dmm`，要管理员权限、游戏用日文原版）。安卓设备 / 模拟器（ADB）、雷电与 [KAA](https://github.com/XcantloadX/kotones-auto-assistant) 对齐，用 `HIRO_DEVICE` 选择、走 KAA 的设备工厂，
-代码和离线测试都有，但还没有实机打过一局（见 [AGENTS.md](AGENTS.md)「设备」）。macOS 上默认的截图和点击走 [hguandl 的 PlayCover 分支](https://github.com/hguandl/PlayCover)
-里的 MaaTools 服务，需要用这个分支，并在游戏的 PlayCover 设置里打开 `maaTools`（端口 `maaToolsPort`）；用原版 PlayCover 时会退回 Quartz 截图，
-这时游戏窗口要在前台，点击也更不稳。
+代码和离线测试都有，但还没有实机打过一局（见 [AGENTS.md](AGENTS.md)「设备」）。
+
+> **macOS 只支持带 MaaTools 的 PlayCover。** 请安装 [hguandl 的 PlayCover 分支](https://github.com/hguandl/PlayCover)，
+> 并在游戏的 PlayCover 设置里打开 `maaTools`（端口 `maaToolsPort`）。截图和点击都走游戏进程内的 MaaTools 服务，
+> 不要求游戏在前台，也不动鼠标。**原版 PlayCover 不支持**：以前「连不上 MaaTools 就退回 Quartz 截图」的兼容路径已经去掉，
+> 连不上时程序会报错停下，不会换一种方式继续。换装分支版后，第一次要从 PlayCover 界面启动游戏（让它装好 MaaTools 用的插件）。
 
 ```bash
 git clone https://github.com/matto49/hiro-gakumas-hero
@@ -182,8 +185,8 @@ open /tmp/hiro-view/demo-run.html
   本仓库随之采用 **GPL-3.0-or-later**。从 KAA 派生的文件在文件头注明。
 - 截图和点击默认通过 [hguandl 的 PlayCover 分支](https://github.com/hguandl/PlayCover)（GPL-3.0，派生自 PlayCover）里
   [PlayTools](https://github.com/hguandl/PlayTools)（AGPL-3.0）内置的 MaaTools 服务完成：它在游戏进程内开 TCP 服务，进程内截图、注入触摸，
-  不要求游戏在前台，也不动鼠标。本仓库只按它的协议做客户端（`hiro/device.py`），不包含它的代码。连不上时退回 kotonebot 的 Quartz 截图
-  + `CGEventPostToPid` 投递。致谢 MaaTools 的作者们。
+  不要求游戏在前台，也不动鼠标。本仓库只按它的协议做客户端（`hiro/device.py`），不包含它的代码；macOS 上只支持这一种方式。
+  致谢 MaaTools 的作者们。
 - H.I.F 打法整理自社区攻略（seesaawiki、wikiwiki 等），出处写在 `docs/hif-playbook.md` 和 `hiro/brain/hif_rules.py`。
 - 《学園アイドルマスター》及相关名称、图像的权利属于其权利人。`assets/pack/` 里随仓库带的识别素材同样属于权利人，仅供识别研究用途（见 `assets/pack/README.md`）；请遵守游戏的用户协议，
   不要把相关技术用于破坏公平性或损害他人利益的用途。
