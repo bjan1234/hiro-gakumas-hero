@@ -23,7 +23,7 @@ from kaa.game_ui.drinks_overview import locate_all_drinks_in_3_drink_slots
 from kaa.tasks import R
 from kaa.tasks.produce.new.play_cards.ui import locate_cards
 from kaa.tasks.produce.shared.cards import handle_skill_card_move
-from kotonebot import Loop, contains, device, logging, ocr, sleep
+from kotonebot import Loop, device, logging, sleep
 from kotonebot.primitives import Rect
 
 from hiro.brain.battle import BattleBrain
@@ -35,6 +35,7 @@ from hiro.perception.lesson import _read_int
 from hiro.produce import ops
 from hiro.recorder import Recorder
 from hiro.exec import schedule_probe
+from hiro.vision.ocr import Text, find_text, screen_texts
 
 logger = logging.getLogger(__name__)
 
@@ -189,31 +190,18 @@ SELECT_BAND = (1040, 1200)  # 手牌下方「SELECT」标签（实测 y≈1120�
 DIALOG_BAND_BOTTOM = 1240  # 弹窗按钮行实测 y≈1160（定制页「実行する」y≈1081）
 
 
-class _Text:
-    """局部 OCR 的一段文字，接口与 kotonebot OcrResult 相同（.text、.rect.center），坐标是整帧坐标。"""
-
-    __slots__ = ("text", "rect")
-
-    def __init__(self, text: str, rect: Rect):
-        self.text, self.rect = text, rect
-
-    def __repr__(self) -> str:
-        return f"_Text({self.text!r}, {int(self.rect.center.x)}, {int(self.rect.center.y)})"
-
-
-def _roi_texts(img, y1: int, y2: int) -> list[_Text]:
-    """img[y1:y2] 整行宽的 Vision OCR，返回整帧坐标。img 为 None（测试替身）或识别异常时返回空。"""
+def _roi_texts(img, y1: int, y2: int) -> list[Text]:
+    """img[y1:y2] 整行宽的 OCR（hiro.vision.ocr.screen_texts），返回整帧坐标。img 为 None（测试替身）或识别异常时返回空。"""
     if img is None:
         return []
     try:
-        boxes = ops.ocr_boxes(img[y1:y2])
+        return screen_texts(img, (0, y1, img.shape[1], y2 - y1))
     except Exception:  # 识别异常不能打断考试
         logger.warning("局部 OCR 出错（y %d–%d）", y1, y2, exc_info=True)
         return []
-    return [_Text(t, Rect(bx1, y1 + by1, max(1, bx2 - bx1), max(1, by2 - by1))) for t, _, (bx1, by1, bx2, by2) in boxes]
 
 
-def _selects(img) -> list[_Text]:
+def _selects(img) -> list[Text]:
     """手牌下方的「SELECT」标签（只识别条带）。"""
     return [t for t in _roi_texts(img, *SELECT_BAND) if _is_select(t.text)]
 
@@ -242,12 +230,14 @@ def _button_text(t: str, text: str) -> bool:
 
 
 def _ocr_button(text: str, *, min_y: int, boxes=None) -> list[int] | None:
-    """在 OCR 结果（默认整帧 kotonebot OCR）里找按钮文字，找到就点，返回点击位置。"""
-    hit = next((t for t in (ocr.ocr() if boxes is None else boxes) if _button_text(t.text, text) and t.rect.center.y >= min_y), None)
+    """在 OCR 结果（默认现截一帧整帧 OCR）里找按钮文字，找到就点，返回点击位置。"""
+    boxes = screen_texts(device.screenshot()) if boxes is None else boxes
+    hit = next((t for t in boxes if _button_text(t.text, text) and t.rect.center.y >= min_y), None)
     if hit is None:
         return None
-    device.click(hit.rect)
-    return [int(hit.rect.center.x), int(hit.rect.center.y)]
+    x, y = int(hit.rect.center.x), int(hit.rect.center.y)
+    device.click(x, y)
+    return [x, y]
 
 
 # H.I.F 考试中 KAA 模板认不出的确认框：(标题关键字, 要点的按钮, 按钮最小 y)。都是确认已经做出的决策。
@@ -313,7 +303,7 @@ _RETAP: dict = {"pos": None, "n": 0, "t0": 0.0}
 UNPLAYABLE: dict = {"hit": False}  # 再点上限触发：主循环把本次动作本回合禁用
 
 
-def _select_retap(sel: _Text) -> bool:
+def _select_retap(sel: Text) -> bool:
     """卡停在选中态（卡下方「SELECT」）但没打出 → 再点一次这张卡。
     上一帧的 SELECT 可能是卡已打出、手牌重排前的残影（q11 选拔③ seq 39：再点落在重排后的 イメトレ 上，多打一张）。
     等一下重新截图，SELECT 还在原位（±30px）才点。"""
@@ -563,7 +553,7 @@ def _hif_drink_dialogs(*, force: bool = False, boxes=None) -> bool:
         if not force and now - _last_dialog_ocr < DIALOG_OCR_EVERY:
             return False
         _last_dialog_ocr = now
-        boxes = ocr.ocr()
+        boxes = screen_texts(device.screenshot())
     texts = [t.text for t in boxes]
     if any(w in t for t in texts for w in DANGER_WORDS):
         return _confirm_dialog(boxes, texts)
@@ -593,7 +583,7 @@ def _handle_dialogs(img=None, *, slow: bool = False, select: bool = True) -> boo
 
 
 def _usable(f: Frame) -> bool:
-    return f.remaining is not None and (bool(f.cards) or bool(ocr.find(contains("0枚"), rect=R.InProduce.BoxNoSkillCard)))
+    return f.remaining is not None and (bool(f.cards) or find_text(f.img, "0枚", rect=R.InProduce.BoxNoSkillCard) is not None)
 
 
 SIG_FIELDS = ("remaining", "hp", "genki", "hand", "drinks")
@@ -707,9 +697,10 @@ def _confirm_drink_use(retap=None) -> list[int] | None:
         shown, btn = _drink_detail(img)
         seen = seen or shown
         if btn is not None:
-            device.click(btn.rect)
+            x, y = int(btn.rect.center.x), int(btn.rect.center.y)  # btn：KAA 模板结果或 OCR 文字框
+            device.click(x, y)
             _after_use()
-            return [int(btn.rect.center.x), int(btn.rect.center.y)]
+            return [x, y]
         if not shown and not retapped and retap is not None and time.monotonic() - start >= DRINK_RETAP_AFTER:
             retapped = True
             logger.info("点饮料 %.1fs 没出详情框（演出中？）：等画面停稳再点一次", DRINK_RETAP_AFTER)
@@ -770,7 +761,7 @@ def _play_card(x: int, y: int, img=None) -> list[list[int]]:
             device.click(x, y)
             taps.append([x, y])
             t0 = time.monotonic()
-            seen: list[_Text] = []
+            seen: list[Text] = []
             now = None
             while time.monotonic() - t0 < PLAY_CONFIRM_TIMEOUT:
                 sleep(PLAY_POLL)

@@ -3,7 +3,7 @@
 
 - vision：Apple Vision（macOS 系统文字识别）。实测在作者机器上比 KAA 的 RapidOCR 快 2–7 倍且更准（见 README），
   macOS 上默认用它。区域先放大 3 倍再识别，小号描边数字更稳。
-- rapidocr：KAA 自带的 RapidOCR（PaddleOCR 日文 / 英文模型，kotonebot.backend.ocr）。非 macOS（模拟器 / DMM）用它；
+- rapidocr：RapidOCR（rapidocr_onnxruntime + PaddleOCR PP-OCRv3 日文 / 英文识别模型，见 _rapid_model；不经过 kotonebot）。非 macOS（模拟器 / DMM）用它；
   **识别率与速度没有在本项目的回归截图上核对过**，换平台后先用回归截图验一遍（见 docs/assets.md）。
 - winocr：Windows 自带的文字识别（Windows.Media.Ocr，经 winrt 调用；要装了日文 OCR 语言，Windows 设置里加日语即可）。
   Windows 实测单块区域约 0.05 s。它按「词」返回结果，日文是一字一词：这里按间隙把一行拆成段、段内拼回文字（见 _split_words / _join_words）。
@@ -19,7 +19,10 @@ from __future__ import annotations
 import os
 import re
 import sys
+import unicodedata
+from collections.abc import Callable
 from pathlib import Path
+from typing import NamedTuple
 
 import cv2
 from cv2.typing import MatLike
@@ -71,19 +74,58 @@ def _vision_raw(img: MatLike, w: int, h: int, languages) -> list[tuple[str, floa
     return out
 
 
-def _rapid_raw(img: MatLike, scale: float, languages) -> list[tuple[str, float, tuple[int, int, int, int]]]:
-    """img 已放大；框除以 scale 换回原图坐标。只要英文时用英文模型（数字），否则日文模型。"""
-    from kotonebot.backend import ocr as kocr
-    from kotonebot.primitives.geometry import Rect
+RAPID_DIR = Path(__file__).resolve().parents[3] / "cache" / "rapidocr"
+RAPID_MODELS = {"ja": "japan_PP-OCRv3_rec_infer.onnx", "en": "en_PP-OCRv3_rec_infer.onnx"}  # 识别模型；检测用 rapidocr_onnxruntime 自带的
+RAPID_PAD = 631  # 小图居中补白到 631×631 再识别（PaddleOCR 模型图太小准确率低；与原先经 kotonebot 调用时一致）
+_rapid: dict = {}
 
-    eng = kocr.en() if tuple(languages) == ("en-US",) else kocr.jp()
+
+def _rapid_model(tag: str) -> Path:
+    """识别模型路径：RAPID_DIR（cache/rapidocr）里有就用；没有就用已安装的 kaa 包里随带的同名文件
+    （只按路径找数据文件，不 import kaa）。PaddleOCR PP-OCRv3 日文 / 英文模型，ModelScope 上没有 v3 的公开地址。"""
+    import importlib.util
+
+    name = RAPID_MODELS[tag]
+    own = RAPID_DIR / name
+    if own.exists():
+        return own
+    spec = importlib.util.find_spec("kaa")
+    for d in (spec.submodule_search_locations or []) if spec else []:
+        if (f := Path(d) / "res" / "models" / name).exists():
+            return f
+    raise RuntimeError(f"HIRO_OCR=rapidocr 要的模型 {name} 不在 {own.parent}，也没装 kaa 包")
+
+
+def _rapid_engine(languages):
+    from rapidocr_onnxruntime import RapidOCR
+
+    tag = "en" if tuple(languages) == ("en-US",) else "ja"  # 只要英文时用英文模型（数字），否则日文模型
+    if tag not in _rapid:
+        _rapid[tag] = RapidOCR(rec_model_path=str(_rapid_model(tag)), use_det=True, use_cls=False, use_rec=True)
+    return _rapid[tag]
+
+
+def _pad_to(img: MatLike, size: int) -> tuple[MatLike, int, int]:
+    """居中补白到至少 size×size，返回 (新图, x 偏移, y 偏移)。"""
     h, w = img.shape[:2]
-    # 传整图 rect：kotonebot 不传 rect 时返回的是补白后画布上的坐标，传了才会减掉补白偏移（original_rect）
-    res = eng.ocr(img if img.ndim == 3 else cv2.cvtColor(img, cv2.COLOR_GRAY2BGR), rect=Rect(xywh=(0, 0, w, h)))
+    ph, pw = max(0, size - h), max(0, size - w)
+    if not ph and not pw:
+        return img, 0, 0
+    top, left = ph // 2, pw // 2
+    return cv2.copyMakeBorder(img, top, ph - top, left, pw - left, cv2.BORDER_CONSTANT, value=(255, 255, 255)), left, top
+
+
+def _rapid_raw(img: MatLike, scale: float, languages) -> list[tuple[str, float, tuple[int, int, int, int]]]:
+    """img 已放大；四点框取外接矩形、减去补白偏移、除以 scale 换回原图坐标；文字做 sanitize（全角转半角）。"""
+    if img.ndim == 2:
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    padded, ox, oy = _pad_to(img, RAPID_PAD)
+    res, _ = _rapid_engine(languages)(padded)
     out = []
-    for r in res:
-        x, y, rw, rh = r.original_rect.xywh
-        out.append((r.text, float(r.confidence), (round(x / scale), round(y / scale), round((x + rw) / scale), round((y + rh) / scale))))
+    for box, text, conf in res or []:
+        xs, ys = [int(p[0]) - ox for p in box], [int(p[1]) - oy for p in box]
+        out.append((sanitize(text), float(conf),
+                    (round(min(xs) / scale), round(min(ys) / scale), round(max(xs) / scale), round(max(ys) / scale))))
     return out
 
 
@@ -235,6 +277,84 @@ def ocr_boxes(img: MatLike, *, scale: float = 3.0, languages=("ja-JP", "en-US"))
 
 def ocr(img: MatLike, *, scale: float = 3.0, languages=("ja-JP", "en-US")) -> list[tuple[str, float]]:
     return [(t, c) for t, c, _ in ocr_boxes(img, scale=scale, languages=languages)]
+
+
+# ---------------------------------------------------------------- 整帧 / 区域文字（页面判定、找按钮）
+
+_CHAR_FIX = {"ó": "6", "ą": "a"}  # RapidOCR 日文模型的常见误读
+
+
+def sanitize(text: str) -> str:
+    """NFKC 规整（全角英数 / 括号转半角）+ 常见误读修正。整帧文字都过一遍，匹配时不用再管全角半角。"""
+    text = unicodedata.normalize("NFKC", text)
+    for k, v in _CHAR_FIX.items():
+        text = text.replace(k, v)
+    return text
+
+
+class Point(NamedTuple):
+    x: int
+    y: int
+
+
+class Box(NamedTuple):
+    """整帧坐标的外接框 (x1, y1, x2, y2)。点它用 device.click(*box.center)。"""
+
+    x1: int
+    y1: int
+    x2: int
+    y2: int
+
+    @property
+    def w(self) -> int:
+        return self.x2 - self.x1
+
+    @property
+    def h(self) -> int:
+        return self.y2 - self.y1
+
+    @property
+    def center(self) -> Point:
+        return Point(self.x1 + self.w // 2, self.y1 + self.h // 2)
+
+    @property
+    def xywh(self) -> tuple[int, int, int, int]:
+        return self.x1, self.y1, self.w, self.h
+
+
+class Text(NamedTuple):
+    """一段识别出的文字：.text、.rect（Box，整帧坐标）、.conf。"""
+
+    text: str
+    rect: Box
+    conf: float = 1.0
+
+
+SCREEN_SCALE = 1.5  # 整帧放大倍数（Vision 整帧约 0.5s；3 倍太慢，1 倍小字读不全）
+
+
+def _xywh(rect) -> tuple[int, int, int, int]:
+    return tuple(int(v) for v in (rect.xywh if hasattr(rect, "xywh") else rect))  # type: ignore[return-value]
+
+
+def screen_texts(img: MatLike | None, rect=None, *, scale: float = SCREEN_SCALE) -> list[Text]:
+    """img 整帧（或 rect=(x, y, w, h) / 带 .xywh 的区域）里的文字，坐标是整帧坐标，自上而下、同行从左到右。
+    img 为 None（测试替身）时返回空；识别出错由调用方处理。"""
+    if img is None:
+        return []
+    ox = oy = 0
+    if rect is not None:
+        ox, oy, w, h = _xywh(rect)
+        img = img[oy : oy + h, ox : ox + w]
+    out = [Text(sanitize(t), Box(ox + x1, oy + y1, ox + max(x2, x1 + 1), oy + max(y2, y1 + 1)), c)
+           for t, c, (x1, y1, x2, y2) in ocr_boxes(img, scale=scale)]  # fmt: skip
+    return sorted(out, key=lambda b: (b.rect.center.y // 12, b.rect.center.x))
+
+
+def find_text(img: MatLike | None, match: str | Callable[[str], bool], rect=None) -> Text | None:
+    """screen_texts 里第一段匹配的文字：match 是字符串时要求包含它，是函数时按函数判。"""
+    pred = (lambda t: match in t) if isinstance(match, str) else match
+    return next((t for t in screen_texts(img, rect) if pred(t.text)), None)
 
 
 def digits_image(img: MatLike, *, white_min: int = 200) -> MatLike:

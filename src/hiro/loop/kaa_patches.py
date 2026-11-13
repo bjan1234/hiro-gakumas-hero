@@ -25,6 +25,7 @@ from collections.abc import Callable
 from kotonebot import device, logging
 from kotonebot.primitives import Rect
 from hiro import imgio
+from hiro.vision.ocr import screen_texts
 
 logger = logging.getLogger(__name__)
 
@@ -839,16 +840,16 @@ MEMORY_PAGE_READS = 3
 
 
 def _memory_missing_on_page(*, shoot=None, texts=None, sleep=time.sleep) -> list:
-    """开始确认页读选中回忆的属性，最多读 MEMORY_PAGE_READS 次（页面刚出来时数字可能还没画完）；返回没读到的那几项。"""
-    if shoot is None or texts is None:
-        from kotonebot import device as _d, ocr as _o
+    """开始确认页读选中回忆的属性，最多读 MEMORY_PAGE_READS 次（页面刚出来时数字可能还没画完）；返回没读到的那几项。
+    shoot() → 帧，texts(帧) → 文字列表。"""
+    if shoot is None:
+        from kotonebot import device as _d
 
-        shoot = shoot or _d.screenshot
-        texts = texts or (lambda: [t.text for t in _o.ocr()])
+        shoot = _d.screenshot
+    texts = texts or (lambda img: [t.text for t in screen_texts(img)])
     missing = list(EXPECT_MEMORY)
     for i in range(MEMORY_PAGE_READS):
-        shoot()
-        got = "".join(texts()).replace(",", "")
+        got = "".join(texts(shoot())).replace(",", "")
         missing = [v for v in EXPECT_MEMORY if not memory_value_seen(v, got)]
         if not missing:
             return []
@@ -1160,15 +1161,12 @@ def _snap_step3(orig):
         try:
             from pathlib import Path
 
-            import cv2
-            from kotonebot import ocr
-
             img = device.screenshot()
             d = Path("reports/live/rental")
             d.mkdir(parents=True, exist_ok=True)
             p = d / f"step3-memory-{time.strftime('%Y%m%d-%H%M%S')}.png"
             imgio.imwrite(str(p), img)
-            texts = [t.text for t in ocr.ocr()]
+            texts = [t.text for t in screen_texts(img)]
             hit = [t for t in texts if "レンタル" in t]
             logger.info("第 3 步回忆选择：截图 %s；租借字样 %s", p, hit or "无")
         except Exception as e:  # noqa: BLE001  只是观察，不能影响开局

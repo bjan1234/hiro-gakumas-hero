@@ -47,9 +47,11 @@ def _hook(monkeypatch, *, cancel_btn, decision):
     from hiro.produce import hif
 
     clicks, stops, records = [], [], []
-    texts = [NS(text="キャンセル", rect=NS(center=NS(y=1160)))] if cancel_btn else [NS(text="強化", rect=NS(center=NS(y=1160)))]
-    monkeypatch.setattr(hif, "ocr", NS(ocr=lambda: texts))
-    monkeypatch.setattr(hif, "device", NS(click=lambda *r: clicks.append(r[0] if len(r) == 1 else r)))
+    from hiro.vision.ocr import Box, Text
+
+    texts = [Text("キャンセル" if cancel_btn else "強化", Box(155, 1150, 175, 1170))]
+    monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: texts)
+    monkeypatch.setattr(hif, "device", NS(click=lambda *r: clicks.append(r), screenshot=lambda: None))
     monkeypatch.setattr("hiro.loop.kaa_patches.CARD_OP_REGION", {"enhance": None, "remove": None})
     st = GameState(page_fields={"cards": [{"card_id": "x"}]})
     s = NS(state=st, observe=lambda **k: "obs", verify=lambda a, **k: ExecutionResult(action=a, ok=True), record=lambda *a, **k: records.append(k))

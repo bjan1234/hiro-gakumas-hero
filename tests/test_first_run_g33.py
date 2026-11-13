@@ -67,10 +67,12 @@ def test_support_event_dialog_real_frame(monkeypatch):
 
     raw = _boxes("4-support-event")
     assert ss.read(raw) is None  # 不归 skip_settings，归 _first_run_settings
-    boxes = [NS(text=t, rect=((b[0] + b[2]) // 2, (b[1] + b[3]) // 2, 1, 1)) for t, _, b in raw]
+    from hiro.vision.ocr import Box, Text
+
+    boxes = [Text(t, Box(*b)) for t, _, b in raw]
     clicks = []
-    monkeypatch.setitem(sys.modules, "kotonebot", NS(device=NS(click=lambda r: clicks.append(r[:2]), screenshot=lambda: None),
-                                                     ocr=NS(ocr=lambda: boxes)))  # fmt: skip
+    monkeypatch.setitem(sys.modules, "kotonebot", NS(device=NS(click=lambda *r: clicks.append(r), screenshot=lambda: None)))
+    monkeypatch.setattr("hiro.loop.controller.screen_texts", lambda *a, **k: boxes)
     monkeypatch.setattr("hiro.loop.controller.time.sleep", lambda s: None)
     c = HiroController.__new__(HiroController)
     c._texts = [b.text for b in boxes]

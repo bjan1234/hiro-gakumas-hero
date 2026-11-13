@@ -1,6 +1,7 @@
 # 来源：digital-hiro tests/test_hook_takeover.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """用户规则 3a / 3f：KAA 的每个策略钩子都由 HiroHifStrategy 自己接管；没接管 / 读不出 / 决策不合法时停下（UnhandledPage），不落到 KAA 默认的 commit(0)。"""
 
+from hiro.vision.ocr import Box, Text
 import inspect
 
 import pytest
@@ -155,21 +156,19 @@ def test_retry_cancels_when_jewel(monkeypatch):
     """再挑戦确认框出现ジュエル：点キャンセル，返回 None；出现券：确认，记 ticket。"""
     import hiro.produce.hif as hif
 
-    class T:
-        def __init__(self, text, y=1100):
-            self.text = text
-            self.rect = type("R", (), {"center": type("C", (), {"y": y, "x": 300})()})()
+    def T(text, y=1100):
+        return Text(text, Box(300 - 10, y - 10, 300 + 10, y + 10))
 
     clicks = []
     monkeypatch.setattr(hif, "device", type("D", (), {"click": staticmethod(lambda *a: clicks.append(a)), "screenshot": staticmethod(lambda: None)}))
     monkeypatch.setattr(hif, "sleep", lambda s: None)
     st = _strategy()
     st._retries_so_far = lambda label: 0
-    monkeypatch.setattr(hif, "ocr", type("O", (), {"ocr": staticmethod(lambda *a, **k: [T("ジュエルを消費して再挑戦"), T("キャンセル")])}))
+    monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [T("ジュエルを消費して再挑戦"), T("キャンセル")])
     assert st._click_retry("r2", T("再挑戦"), []) is None
     n0 = len(clicks)  # 确认框在第一次点确认后关掉（点过确认、确认框没了才算完成）
-    monkeypatch.setattr(hif, "ocr", type("O", (), {"ocr": staticmethod(lambda *a, **k: [] if len(clicks) > n0 + 1 else
-                                                                         [T("再挑戦券を1枚使用"), T(hif.HiroHifStrategy.RETRY_CONFIRM[0])])}))  # fmt: skip
+    monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [] if len(clicks) > n0 + 1 else
+                                                                         [T("再挑戦券を1枚使用"), T(hif.HiroHifStrategy.RETRY_CONFIRM[0])])  # fmt: skip
     assert st._click_retry("r2", T("再挑戦"), []) == "ticket"
 
 
@@ -178,10 +177,8 @@ def test_retry_confirm_reclicks_until_closed(monkeypatch):
     关了才返回；按钮读成「く決定」也认。"""
     import hiro.produce.hif as hif
 
-    class T:
-        def __init__(self, text, y=1160):
-            self.text = text
-            self.rect = type("R", (), {"center": type("C", (), {"y": y, "x": 500})()})()
+    def T(text, y=1160):
+        return Text(text, Box(500 - 10, y - 10, 500 + 10, y + 10))
 
     t = {"now": 0.0}
     clicks = []
@@ -190,7 +187,7 @@ def test_retry_confirm_reclicks_until_closed(monkeypatch):
     monkeypatch.setattr(hif.time, "monotonic", lambda: t["now"])
     dialog = [T("再挑戦確認", 400), T("再挑戦チケットを消費して、試験に再挑戦しますか？", 650), T("メキャンセル"), T("く決定")]
     # 第 1 次点「決定」没响应（淡入中），第 2 次才关
-    monkeypatch.setattr(hif, "ocr", type("O", (), {"ocr": staticmethod(lambda *a, **k: dialog if len(clicks) < 3 else [])}))
+    monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: dialog if len(clicks) < 3 else [])
     st = _strategy()
     st._retries_so_far = lambda label: 0
     assert st._click_retry("r2", T("再挑戦", 1000), []) in ("free", "ticket")
@@ -226,10 +223,8 @@ def test_retry_records_ticket_use_and_left(monkeypatch):
     """记账：确认框「所持 260 → 259」→ 返回 ticket，note 写明用了券、还剩 259 张。"""
     import hiro.produce.hif as hif
 
-    class T:
-        def __init__(self, text, x=300, y=1160):
-            self.text = text
-            self.rect = type("R", (), {"center": type("C", (), {"y": y, "x": x})()})()
+    def T(text, x=300, y=1160):
+        return Text(text, Box(x - 10, y - 10, x + 10, y + 10))
 
     t = {"now": 0.0}
     clicks = []
@@ -237,7 +232,7 @@ def test_retry_records_ticket_use_and_left(monkeypatch):
     monkeypatch.setattr(hif, "sleep", lambda s: t.__setitem__("now", t["now"] + s))
     monkeypatch.setattr(hif.time, "monotonic", lambda: t["now"])
     dialog = [T("再挑戦確認", 200, 400), T("所持", 134, 995), T("260", 323, 992), T("→", 421, 990), T("259", 509, 992), T("決定", 500, 1160)]
-    monkeypatch.setattr(hif, "ocr", type("O", (), {"ocr": staticmethod(lambda *a, **k: dialog if len(clicks) < 2 else [])}))
+    monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: dialog if len(clicks) < 2 else [])
     st = _strategy()
     st._retries_so_far = lambda label: 0
     notes = []
@@ -349,10 +344,8 @@ def test_finals_hopeless_and_stop_loss_cancels_ticket(monkeypatch):
     close = {"score": 1000000, "round_score": 500000, "entries": [{"score": 1080000}, {"score": 1000000}]}
     assert hif.finals_hopeless(close) is None  # 只差 8 万：值得再打
 
-    class T:
-        def __init__(self, text, y=1100):
-            self.text = text
-            self.rect = type("R", (), {"center": type("C", (), {"y": y, "x": 300})()})()
+    def T(text, y=1100):
+        return Text(text, Box(300 - 10, y - 10, 300 + 10, y + 10))
 
     clicks = []
     monkeypatch.setattr(hif, "device", type("D", (), {"click": staticmethod(lambda *a: clicks.append(a)), "screenshot": staticmethod(lambda: None)}))
@@ -360,7 +353,7 @@ def test_finals_hopeless_and_stop_loss_cancels_ticket(monkeypatch):
     st = _strategy()
     st._retries_so_far = lambda label: 0
     cancel = T("キャンセル")
-    monkeypatch.setattr(hif, "ocr", type("O", (), {"ocr": staticmethod(lambda *a, **k: [T("再挑戦券を1枚使用"), cancel,
-                                                                                          T(hif.HiroHifStrategy.RETRY_CONFIRM[0])])}))  # fmt: skip
+    monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [T("再挑戦券を1枚使用"), cancel,
+                                                                                          T(hif.HiroHifStrategy.RETRY_CONFIRM[0])])  # fmt: skip
     assert st._click_retry("r2", T("再挑戦"), [], allow_ticket=False) is None
-    assert clicks[-1] == (cancel.rect,)  # 最后点的是キャンセル，不是確定
+    assert clicks[-1] == tuple(cancel.rect.center)  # 最后点的是キャンセル，不是確定
