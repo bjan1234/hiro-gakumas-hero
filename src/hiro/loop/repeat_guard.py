@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import time
 from collections.abc import Callable
 
@@ -31,7 +30,7 @@ from hiro.loop.errors import ResumeBlocked
 logger = logging.getLogger(__name__)
 
 REPEAT_MAX = 3
-STALL_S = float(os.environ.get("HIRO_STALL_S") or 180.0)
+STALL_S = 180.0  # 画面这么久没变化（扣掉暂停）就停机
 SCREEN_EVERY = 5.0  # 看门狗采样间隔
 SCREEN_DIFF = 8.0  # 90×160 灰度缩图平均差 ≥ 这个 = 画面变了（选中框、SELECT 字样这类小变化不算）
 # 局面签名不看的字段：位置 / 置信度 / 计时 / 每帧都可能读得不一样的展示值
