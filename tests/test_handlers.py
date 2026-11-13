@@ -21,6 +21,7 @@ class FakeCore:
     on_skill_card_enhance = _hook("enhance")
     on_skill_card_removal = _hook("removal")
     on_pdrink_max_confirm = _hook("pdrink_max_confirm")
+    on_select_pitem = _hook("select_pitem")
     on_practice_entered = _hook("practice")
 
     def on_exam_entered(self, ctx):

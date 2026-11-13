@@ -2,8 +2,8 @@
 
     rt = Runtime(raw_device=dev, classify=hiro.vision.classify.classify, handlers=make_handlers(core), ...)
 
-这里只登记已经不依赖 KAA 上下文的页面；还要 KAA ctx 的（选行动、选卡、选饮料、授業 / 外出、活動支給、换卡、轮间、培育结束、
-P 道具、PDRINK_MAX）换成自有执行后再加进来。没登记的页面 Runtime 交给 advance。
+这里只登记已经不依赖 KAA 上下文的页面；还要 KAA ctx 的（选行动、选卡、选饮料、授業 / 外出、换卡、轮间、PDRINK_MAX）换成自有执行后
+再加进来；活動支給、培育结束由 hiro.runtime.finish 提供（协调在做）。没登记的页面 Runtime 交给 advance。
 
 考试入口：KAA 的 _dispatch 只在「上一页不是考试」时调 on_exam_entered；新主循环每拍都会调处理器，考试打完（run_exam 返回）后
 残留的考试帧会让它再进一次（场次重复计数、重复记录）。所以考试打完以后关门，直到处理过一个非考试页才重新开门；
@@ -44,6 +44,7 @@ def make_handlers(core) -> dict[str, Callable]:
         "SKILL_CARD_ENHANCE": page(core.on_skill_card_enhance),
         "SKILL_CARD_REMOVAL": page(core.on_skill_card_removal),
         "PDRINK_MAX_CONFIRM": page(core.on_pdrink_max_confirm),
+        "SELECT_PITEM": page(core.on_select_pitem),
         "PRACTICE": page(core.on_practice_entered),  # H.I.F 不该出现练习课：停机
     }
     for name in EXAM_PAGES:

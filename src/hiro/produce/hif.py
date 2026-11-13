@@ -547,7 +547,9 @@ class HifCore:
         if not 0 <= i < n:  # 认不出 / 没模板：停下，不选第一个（用户规则 3c）
             self._stop("SELECT_PITEM", f"决策没给出合法的 P 道具（{d.action}，来源 {d.source}）", obs=obs, decision=d)
         logger.info("P 道具 第 %d 个 ← %s：%s", i, d.source, d.reason)
-        result = self._act(lambda: ctx.commit(i), Action.activate_effect(i), page_before="SELECT_PITEM", taps=[])
+        from hiro.produce.card_ops import pitem_commit
+
+        result = self._act(lambda: pitem_commit(None, i), Action.activate_effect(i), page_before="SELECT_PITEM", taps=[])  # 同 KAA 打过补丁的 ctx.commit
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
     DRINK_FULL_SOURCES = ("rule", "sim")
