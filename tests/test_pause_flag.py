@@ -142,10 +142,8 @@ def test_finish_loop_stops_at_checkpoint_and_timeout_excludes_pause(monkeypatch)
     monkeypatch.setattr("kotonebot.device", NS(screenshot=screenshot, click=lambda *a: None, click_center=lambda: None), raising=False)
     monkeypatch.setattr(rs, "at_home", lambda: len(shots) >= 5)
     monkeypatch.setattr(rs, "screen_texts", lambda *a, **k: [])
-    monkeypatch.setattr(rs, "R", NS(InProduce=NS(End=NS(ButtonGenerate=NS(try_click=lambda: False)), ButtonNextNoIcon=NS(try_click=lambda: False)),
-                                   Produce=NS(SaveMemoPic=NS(Title=NS(exists=lambda: False))),
-                                   Common=NS(ButtonIconClose=NS(try_click=lambda: False), ButtonNext=NS(try_click=lambda: False), ButtonHome=NS(try_click=lambda: False)),
-                                   ))  # fmt: skip
+    monkeypatch.setattr(rs, "tap", lambda name, img, click: False)  # 画面上什么模板都没有
+    monkeypatch.setattr(rs, "tpl", lambda name: NS(exists=lambda img: False))
     monkeypatch.setattr(rs.time, "sleep", lambda s: t.__setitem__(0, t[0] + s))
     assert rs.finish_produce_end(timeout=180.0) is True  # 墙钟过了 300s 以上，但暂停不计，没超时
 

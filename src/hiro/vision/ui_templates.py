@@ -146,6 +146,15 @@ def tpl(name: str) -> Template:
                     _tuple(e.get("region")), e.get("source", ""))  # fmt: skip
 
 
+def tap(name: str, img: np.ndarray, click) -> bool:
+    """在 img 上找模板，找到就 click(x, y) 点中心（同 KAA 的 try_click）；返回是否点了。"""
+    m = tpl(name).find(img)
+    if m is None:
+        return False
+    click(*m.center)
+    return True
+
+
 def box(name: str) -> Rect:
     """固定区域（KAA 的 HintBox），(x1, y1, x2, y2)，720x1280。"""
     return Rect(*_catalog()["boxes"][name])

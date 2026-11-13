@@ -10,7 +10,6 @@ import time
 
 from kaa.config.const import HifScenario
 from kaa.kaa_context import init_produce_session
-from kaa.tasks import R
 from kaa.tasks.actions.scenes import at_home
 from kaa.tasks.produce.session import ProduceSession
 from kotonebot import device, logging
@@ -27,11 +26,12 @@ ENTER_TIMEOUT = 40.0
 from hiro.loop.errors import ResumeBlocked  # noqa: E402,F401  定义挪到 hiro.loop.errors（不依赖 KAA）
 from hiro import imgio
 from hiro.vision.ocr import find_text, screen_texts
+from hiro.vision.ui_templates import box, tap, tpl
 
 
 def _discard_dialog_visible(img) -> bool:
     """「プロデュースデータの破棄」（其他端末有进行中的培育）。KAA 的 do_produce 会直接按「開始する」破弃，这里绝不这么做。"""
-    return bool(R.Produce.BreakProduceDialog.Title.exists() or find_text(img, "データの破棄"))
+    return bool(tpl("Produce.BreakProduceDialog.Title").exists(img) or find_text(img, "データの破棄"))
 
 
 def guard_new(*, timeout: float = 15.0) -> None:
@@ -40,7 +40,7 @@ def guard_new(*, timeout: float = 15.0) -> None:
     device.screenshot()
     if not at_home():
         return  # 不在首页：交给 do_produce 自己导航；它遇到破弃对话框时 kaa_patches.NeverConfirmDiscard 只点キャンセル 并抛 ResumeBlocked
-    device.click(R.Produce.BoxProduceOngoing)
+    device.click(*box("Produce.BoxProduceOngoing").center)
     deadline = active_clock() + timeout  # 录屏暂停期间不计时（hiro.loop.pause_flag）
     while active_clock() < deadline:
         time.sleep(1)
@@ -48,9 +48,9 @@ def guard_new(*, timeout: float = 15.0) -> None:
         if _discard_dialog_visible(img):
             device.click(*CANCEL_BUTTON)
             raise ResumeBlocked(f"游戏提示「{DISCARD_TITLE}」：其他端末有进行中的培育，新开会把它破弃。已点「キャンセル」，不自动新开；是否破弃由用户决定。")
-        if R.Produce.ButtonResume.exists():
+        if tpl("Produce.ButtonResume").exists(img):
             raise ResumeBlocked("本机有进行中的培育（看到「再開する」），请用 `run_hif resume` 继续，而不是新开。")
-        if R.Produce.LogoHajime.exists() or R.Produce.LogoNia.exists() or R.Produce.LogoHif.exists():
+        if any(tpl(f"Produce.{logo}").exists(img) for logo in ("LogoHajime", "LogoNia", "LogoHif")):
             return
     raise TimeoutError("点「プロデュース中」后既没有再開对话框也没有剧本选择页")
 
@@ -123,19 +123,17 @@ def enter_produce(*, timeout: float = ENTER_TIMEOUT) -> str:
                 f"游戏提示「{DISCARD_TITLE}」：进行中的培育在其他端末。已点「キャンセル」。"
                 "请在原端末「保存して中断」后再运行，或由用户决定是否破弃并新开。"
             )
-        if R.Produce.ButtonResume.exists():
+        if tap("Produce.ButtonResume", img, device.click):
             logger.info("点「再開する」")
-            R.Produce.ButtonResume.try_click()
             time.sleep(3)
-            device.screenshot()
-            if not R.Produce.ButtonResume.exists() and not at_home():
+            if not tpl("Produce.ButtonResume").exists(device.screenshot()) and not at_home():
                 return "resumed"
             continue
         if _click_resume_by_ocr(img):
             return "resumed"
         if at_home() and not clicked_ongoing:
             logger.info("点「プロデュース中」")
-            device.click(R.Produce.BoxProduceOngoing)
+            device.click(*box("Produce.BoxProduceOngoing").center)
             clicked_ongoing = True
             time.sleep(2)
             continue
@@ -221,7 +219,7 @@ def finish_produce_end(*, timeout: float = 180.0, go_home: bool = False) -> bool
             continue
         if go_home and any("開始確認" in t or "本戦へ" in t for t in texts):
             # run_hif new：要从首页走 KAA 的开局流程，这里自己回首页（不点「本戦へ」，开局由 KAA 走带回忆核对的 step4）
-            if not R.Common.ButtonHome.try_click():
+            if not tap("Common.ButtonHome", img, dev.click):
                 dev.click(85, 1185)  # 左下角首页图标
             time.sleep(1.0)
             continue
@@ -243,24 +241,24 @@ def finish_produce_end(*, timeout: float = 180.0, go_home: bool = False) -> bool
             logger.info("回忆照片确认：点「決定」")
             time.sleep(1.5)
             continue
-        if go_home and R.Common.ButtonHome.try_click():
+        if go_home and tap("Common.ButtonHome", img, dev.click):
             # 不在结算画面、而在带底栏的普通页面（第二十局开局：每日跑完停在サークル页，下面的点中央 / 次へ 都没用，空等 180s）：直接点首页
             logger.info("开局前不在首页（%s）：点底栏首页", " / ".join(texts[:2]))
             time.sleep(1.5)
             continue
-        if R.InProduce.End.ButtonGenerate.try_click():
+        if tap("InProduce.End.ButtonGenerate", img, dev.click):
             logger.info("生成回忆")
-        elif R.Produce.SaveMemoPic.Title.exists():
-            R.Produce.SaveMemoPic.ButtonConfirm.try_click()
-        elif R.Common.ButtonIconClose.try_click() or R.InProduce.ButtonNextNoIcon.try_click() or R.Common.ButtonNext.try_click():
+        elif tpl("Produce.SaveMemoPic.Title").exists(img):
+            tap("Produce.SaveMemoPic.ButtonConfirm", img, dev.click)
+        elif any(tap(n, img, dev.click) for n in ("Common.ButtonIconClose", "InProduce.ButtonNextNoIcon", "Common.ButtonNext")):
             pass
         else:
             hit = next((t for t in boxes if t.text.strip() in END_BUTTON_TEXTS and t.rect.center.y > 700), None)  # 同一帧（模板点击不换帧）
             if hit is not None:
                 dev.click(*hit.rect.center)
-            elif (tap := reward_tap(boxes)) is not None:
-                logger.info("登录奖励 / 获得画面（%s）：点底部空白 %s", " / ".join(texts[:3]), tap)
-                dev.click(*tap)
+            elif (spot := reward_tap(boxes)) is not None:
+                logger.info("登录奖励 / 获得画面（%s）：点底部空白 %s", " / ".join(texts[:3]), spot)
+                dev.click(*spot)
             elif _assist_step(assist, img, boxes):
                 pass  # 快速判页认出并点了 / LLM 兜底执行了一个受限动作
             else:
