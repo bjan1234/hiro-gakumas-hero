@@ -883,6 +883,215 @@
    ],
    "source": "KAA 7b5c8883-a1f9-4ce9-bd84-26668577dfc6_template.png",
    "fixed": true
+  },
+  "Daily.Presents.ButtonClaimAllNoIcon": {
+   "file": "Daily.Presents.ButtonClaimAllNoIcon.png",
+   "slice_rect": [
+    252,
+    1063,
+    194,
+    41
+   ],
+   "source": "KAA 27911887-4d0a-4c4e-9194-b8774d78fa3d_template.png",
+   "fixed": true
+  },
+  "Daily.ButtonPresentsPartial": {
+   "file": "Daily.ButtonPresentsPartial.png",
+   "slice_rect": [
+    631,
+    448,
+    38,
+    23
+   ],
+   "source": "KAA 3b5d6ff0-e89e-497b-9cf5-16a6dde88246_template.png",
+   "fixed": true
+  },
+  "Common.ButtonClose": {
+   "file": "Common.ButtonClose.png",
+   "slice_rect": null,
+   "source": "KAA 43893046-57b3-494b-884c-8f3d3bced828.png"
+  },
+  "Daily.ActivityFunds.DialogTitle": {
+   "file": "Daily.ActivityFunds.DialogTitle.png",
+   "slice_rect": [
+    54,
+    742,
+    108,
+    51
+   ],
+   "source": "KAA 278bc176-c8d4-4420-9511-92edf87b2c46_template.png",
+   "fixed": true
+  },
+  "Common.IconButtonCross": {
+   "file": "Common.IconButtonCross.png",
+   "slice_rect": [
+    390,
+    577,
+    44,
+    47
+   ],
+   "source": "KAA bc7155ac-18c9-4335-9ec2-c8762d37a057_template.png"
+  },
+  "Daily.MissonRewards.TitleIcon": {
+   "file": "Daily.MissonRewards.TitleIcon.png",
+   "slice_rect": [
+    9,
+    34,
+    55,
+    40
+   ],
+   "source": "KAA 5751d9f6-e1eb-4023-9ac7-5f9209be36a6_template.png",
+   "fixed": true
+  },
+  "Daily.MissonRewards.ButtonClaim": {
+   "file": "Daily.MissonRewards.ButtonClaim.png",
+   "slice_rect": [
+    247,
+    1058,
+    55,
+    51
+   ],
+   "source": "KAA f095b899-3a3e-4223-a668-91c1ea820193_template.png",
+   "fixed": true
+  },
+  "Daily.ButtonMission": {
+   "file": "Daily.ButtonMission.png",
+   "slice_rect": [
+    629,
+    560,
+    43,
+    23
+   ],
+   "source": "KAA 03179dd4-9ee0-403f-ba34-5d983216afb3_template.png",
+   "fixed": true
+  },
+  "Daily.ButtonPass": {
+   "file": "Daily.ButtonPass.png",
+   "slice_rect": [
+    582,
+    776,
+    39,
+    28
+   ],
+   "source": "KAA 0e51af90-42af-4f11-89b8-6d7b60035bbd_template.png",
+   "fixed": true
+  },
+  "Daily.PassRewards.IconTitle": {
+   "file": "Daily.PassRewards.IconTitle.png",
+   "slice_rect": [
+    8,
+    33,
+    56,
+    43
+   ],
+   "source": "KAA a037a1d5-b801-4683-901f-d94cc5552add_template.png",
+   "fixed": true
+  },
+  "Daily.PassRewards.ButtonClaim": {
+   "file": "Daily.PassRewards.ButtonClaim.png",
+   "slice_rect": [
+    42,
+    610,
+    69,
+    35
+   ],
+   "source": "KAA 4ce15e96-9699-4e80-ae1a-d51d2c0c4a1d_template.png",
+   "region": [
+    17,
+    293,
+    120,
+    685
+   ]
+  },
+  "Daily.Club.TitleIcon": {
+   "file": "Daily.Club.TitleIcon.png",
+   "slice_rect": [
+    11,
+    32,
+    49,
+    44
+   ],
+   "source": "KAA c5d0fd9d-eba8-443e-bc41-b659025ef3bb_template.png",
+   "fixed": true
+  },
+  "Daily.Club.ButtonRequest": {
+   "file": "Daily.Club.ButtonRequest.png",
+   "slice_rect": [
+    308,
+    1066,
+    148,
+    40
+   ],
+   "source": "KAA fba79f21-a20f-4746-9c84-f568712dfe54_template.png",
+   "fixed": true
+  },
+  "Daily.Club.ButtonRequestOngoing": {
+   "file": "Daily.Club.ButtonRequestOngoing.png",
+   "slice_rect": [
+    300,
+    1065,
+    167,
+    40
+   ],
+   "source": "KAA d988dcd3-5aa4-4ac0-a85f-276d99432145_template.png",
+   "fixed": true
+  },
+  "Common.ButtonToolbarMenu": {
+   "file": "Common.ButtonToolbarMenu.png",
+   "slice_rect": [
+    635,
+    1196,
+    37,
+    34
+   ],
+   "source": "KAA 234e5c6f-0336-43ec-a880-65e6cd18539d_template.png"
+  },
+  "Daily.IconMenuClub": {
+   "file": "Daily.IconMenuClub.png",
+   "slice_rect": [
+    561,
+    354,
+    88,
+    112
+   ],
+   "source": "KAA 113cabff-65a1-4aee-8a98-6763de196115_template.png",
+   "fixed": true
+  },
+  "Common.ButtonConfirm": {
+   "file": "Common.ButtonConfirm.png",
+   "slice_rect": null,
+   "source": "KAA 23d441fe-98fb-4e8f-ae1c-c22be68e54da.png"
+  },
+  "Shop.ItemAnomalyNoteVisual": {
+   "file": "Shop.ItemAnomalyNoteVisual.png",
+   "slice_rect": [
+    72,
+    611,
+    66,
+    82
+   ],
+   "source": "KAA 9340b854-025c-40da-9387-385d38433bef_template.png"
+  },
+  "Daily.ButtonClubSendGift": {
+   "file": "Daily.ButtonClubSendGift.png",
+   "slice_rect": [
+    493,
+    926,
+    143,
+    38
+   ],
+   "source": "KAA 6cbe56c3-d1e4-40f1-aa0c-7c2a95b544c5_template.png",
+   "fixed": true
+  },
+  "Daily.ButtonClubSendGiftNext": {
+   "file": "Daily.ButtonClubSendGiftNext.png",
+   "slice_rect": [
+    659,
+    826,
+    47,
+    61
+   ],
+   "source": "KAA 724d15c9-149d-41a2-beb7-51fffe813172_template.png"
   }
  },
  "boxes": {
@@ -957,6 +1166,12 @@
    651,
    139,
    686
+  ],
+  "Daily.ActivityFunds.EntryArea": [
+   30,
+   528,
+   108,
+   605
   ]
  },
  "points": {
@@ -975,6 +1190,14 @@
   "Produce.PointProducePrevSet": [
    14,
    832
+  ],
+  "Daily.MissonRewards.PointDaily": [
+   91,
+   981
+  ],
+  "Daily.MissonRewards.PointWeekly": [
+   223,
+   979
   ]
  }
 }
