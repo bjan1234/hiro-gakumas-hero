@@ -410,24 +410,27 @@ class HifCore:
     SELECT_RETRY_WAIT = 0.5
     PDRINK_DECIDE_RETRIES = 2  # 饮料溢出页决策没给出 DiscardDrink（异常兜底成 Wait）时重新观测再决策几次
 
-    def on_select_card(self, ctx: "CardSelectContext"):
+    def on_select_card(self, ctx=None):
+        """三选一选卡：候选位置 / 卡 / おすすめ 用 hiro.vision.card_select（替换 KAA CardSelectContext），提交用 card_ops.card_select_commit。"""
+        from hiro.produce.card_ops import card_select_commit
+        from hiro.vision.card_select import recommended_index, select_card_options
         from hiro.vision.extract import extract
 
         t0 = time.monotonic()
         img = device.screenshot()
-        options = ctx.fetch_cards()
-        for _ in range(3):  # 弹窗入场动画中 KAA 可能一张都找不到（IDLE 补判进来时尤其常见）
+        options = select_card_options(img)
+        for _ in range(3):  # 弹窗入场动画中可能一张都找不到（IDLE 补判进来时尤其常见）
             if options:
                 break
             sleep(1)
             img = device.screenshot()
-            options = ctx.fetch_cards()
+            options = select_card_options(img)
         if not options:
-            self.s.recover("missing_fields", "三选一页 KAA 没找到候选卡，回主循环重新观测")
+            self.s.recover("missing_fields", "三选一页没找到候选卡，回主循环重新观测")
             logger.warning("三选一页没找到候选卡，跳过本次，等下一轮")
             return
-        recommend = ctx.fetch_recommend_card()
-        rec_index = next((i for i, o in enumerate(options) if recommend and o.rect == recommend.rect), None)
+        rec_index = recommended_index(img, options)
+        recommend = options[rec_index] if rec_index is not None else None
         raw, _ = extract("SELECT_CARD", img)
 
         def known(r) -> int:  # extract 给的是 options（candidates 是换算后的观测字段，以前查错了键，每次都白等 4 轮）
@@ -441,7 +444,7 @@ class HifCore:
                 break
             sleep(self.SELECT_RETRY_WAIT)
             frame = device.screenshot()
-            options = ctx.fetch_cards() or options
+            options = select_card_options(frame) or options
             again, _ = extract("SELECT_CARD", frame)
             if known(again) > best[0]:
                 best = (known(again), again, frame)
@@ -495,7 +498,7 @@ class HifCore:
         def commit():
             # 先走快速提交（点卡 → 等「受け取る」亮 → 点 → 等消失），亮不起来才退回 KAA commit + 补点
             if not ops.fast_acquire((int(choice.rect.center.x), int(choice.rect.center.y))):
-                ctx.commit(choice)
+                card_select_commit(choice.rect)
                 self._confirm_acquire()
 
         result = self._act(commit, Action.activate_effect(i), page_before="SELECT_CARD",

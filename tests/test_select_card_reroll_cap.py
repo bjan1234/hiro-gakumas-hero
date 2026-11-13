@@ -23,7 +23,8 @@ def test_reroll_blocked_redecides(monkeypatch):
         return Decision(Action.activate_effect(2), "刷新用完：拿第 2 张", "rule", 0.9)
 
     opts = [NS(rect=NS(center=NS(x=150 + 200 * i, y=700)), card=None) for i in range(3)]
-    ctx = NS(fetch_cards=lambda: opts, fetch_recommend_card=lambda: None)
+    monkeypatch.setattr("hiro.vision.card_select.select_card_options", lambda img: opts)
+    monkeypatch.setattr("hiro.vision.card_select.recommended_index", lambda img, options: None)
     h = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
     h.s = NS(state=state, observe=lambda **k: NS(fields={}), record=lambda *a, **k: None)
     h.deciders = NS(decide=decide)
@@ -33,7 +34,7 @@ def test_reroll_blocked_redecides(monkeypatch):
     h._act = lambda commit, action, **k: acted.append(action) or NS(ok=True)
     monkeypatch.setattr(hif, "device", NS(screenshot=lambda: None))
     monkeypatch.setattr("hiro.vision.extract.extract", lambda page, img: ({"options": cands}, 0.0))
-    h.on_select_card(ctx)
+    h.on_select_card()
     assert seen == [1, 0] and acted == [Action.activate_effect(2)]
 
 
@@ -59,6 +60,8 @@ def test_select_card_rereads_until_recognized(monkeypatch):
     monkeypatch.setattr(hif, "device", NS(screenshot=lambda: None))
     monkeypatch.setattr(hif, "sleep", slept.append)
     monkeypatch.setattr("hiro.vision.extract.extract", extract)
-    h.on_select_card(NS(fetch_cards=lambda: opts, fetch_recommend_card=lambda: None))
+    monkeypatch.setattr("hiro.vision.card_select.select_card_options", lambda img: opts)
+    monkeypatch.setattr("hiro.vision.card_select.recommended_index", lambda img, options: None)
+    h.on_select_card()
     assert len(calls) == 3 and len(slept) == 2  # 第 3 次全认出就停
     assert [o["card_id"] for o in observed[0]["options"]] == ["a", "b", "c"]

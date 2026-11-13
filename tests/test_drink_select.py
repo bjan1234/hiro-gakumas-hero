@@ -43,3 +43,18 @@ def test_pick_gives_up_after_max_tries(monkeypatch):
     assert len(clicks) == 2 * card_ops.DRINK_SELECT_MAX_TRIES
     with pytest.raises(ValueError):
         card_ops.drink_select_commit(3, sleep=lambda s: None)
+
+
+def test_card_select_commit_taps_letter_then_acquire(monkeypatch):
+    clicks = _setup(monkeypatch, {"InProduce.AcquireBtnDisabled": [_m(360, 1080)]})
+    assert card_ops.card_select_commit(Box(200, 940, 216, 955), sleep=lambda s: None) is True
+    assert clicks == [(208, 947), (360, 1080), (208, 947)]
+
+
+def test_badge_match_below_and_within():
+    from hiro.vision.card_select import badge_match
+
+    cards = [Box(100, 900, 120, 920), Box(300, 900, 320, 920)]
+    badges = [Box(290, 960, 330, 980), Box(95, 960, 125, 980), Box(500, 960, 520, 980)]  # 第 3 个不在任何卡下面
+    assert badge_match(cards, badges) == [Box(95, 960, 125, 980), Box(290, 960, 330, 980)]
+    assert badge_match(cards, [Box(100, 880, 120, 890)]) == [None, None]  # 在上面不算

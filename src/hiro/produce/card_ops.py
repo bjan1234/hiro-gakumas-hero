@@ -698,3 +698,25 @@ def drink_select_commit(index: int | None, *, sleep=None) -> bool:
         sleep(2)
     logger.warning("选饮料：点第 %d 瓶 %d 轮「受け取る」还是灰的，交回主循环", index, DRINK_SELECT_MAX_TRIES)
     return False
+
+
+# ---------------------------------------------------------------- 三选一选卡的提交（替换 KAA CardSelectContext.commit）
+CARD_SELECT_MAX_TRIES = 8  # KAA 的循环没有上限
+
+
+def card_select_commit(rect, *, sleep=None) -> bool:
+    """点卡（字母框中心），「受け取る」还灰就点它再等 2 秒，直到按钮不再是灰的（同 KAA CardSelectContext.commit）。返回是否做完。"""
+    from hiro.devices.active import sleep as _sleep
+    from hiro.vision.ui_templates import tpl
+
+    sleep = sleep or _sleep
+    for _ in range(CARD_SELECT_MAX_TRIES):
+        device.click(*rect.center)
+        btn = tpl("InProduce.AcquireBtnDisabled").find(device.screenshot())
+        if btn is None:
+            return True
+        sleep(0.5)
+        device.click(*btn.center)
+        sleep(2)
+    logger.warning("选卡：点卡 %d 轮「受け取る」还是灰的，交回主循环", CARD_SELECT_MAX_TRIES)
+    return False
