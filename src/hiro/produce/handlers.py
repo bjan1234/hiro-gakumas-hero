@@ -3,7 +3,7 @@
     rt = Runtime(raw_device=dev, classify=hiro.vision.classify.classify, handlers=make_handlers(core), ...)
 
 这里只登记已经不依赖 KAA 上下文的页面；还要 KAA ctx 的（选行动、选卡、选饮料、轮间、PDRINK_MAX）换成自有执行后
-再加进来；活動支給、培育结束由 hiro.runtime.finish 提供（协调在做）。没登记的页面 Runtime 交给 advance。
+再加进来；活動支給、培育结束的执行在 hiro.runtime.finish（这里只先记观测）。没登记的页面 Runtime 交给 advance。
 
 考试入口：KAA 的 _dispatch 只在「上一页不是考试」时调 on_exam_entered；新主循环每拍都会调处理器，考试打完（run_exam 返回）后
 残留的考试帧会让它再进一次（场次重复计数、重复记录）。所以考试打完以后关门，直到处理过一个非考试页才重新开门；
@@ -39,7 +39,27 @@ def make_handlers(core) -> dict[str, Callable]:
         gate["exam_done"] = not getattr(core, "exam_restarted", False)
         return DONE
 
+    def produce_end(rt, frame, hit) -> Outcome:
+        """培育结算：同 HifCore.on_produce_end 先存帧记一笔，点完回首页交给 hiro.runtime.finish（返回 END，这一局结束）。"""
+        from hiro.runtime import finish
+
+        gate["exam_done"] = False
+        core.s.record(core.s.observe(scene="PRODUCE_END", fields=False, save_frame=True))
+        return finish.on_produce_end(rt, frame, hit)
+
+    def allowance(rt, frame, hit) -> Outcome:
+        """活動支給：观测记一笔，领取交给 hiro.runtime.finish.on_allowance（之后的选饮料 / 选卡由各自的处理器决策）。"""
+        from hiro.runtime import finish
+
+        gate["exam_done"] = False
+        obs = core.s.observe(scene="ALLOWANCE")
+        out = finish.on_allowance(rt, frame, hit)
+        core.s.record(obs)
+        return out
+
     handlers: dict[str, Callable] = {
+        "PRODUCE_END": produce_end,
+        "ALLOWANCE": allowance,
         "CONSULT": page(core.on_consult),
         "SKILL_CARD_ENHANCE": page(core.on_skill_card_enhance),
         "SKILL_CARD_REMOVAL": page(core.on_skill_card_removal),

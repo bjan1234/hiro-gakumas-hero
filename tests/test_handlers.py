@@ -88,3 +88,19 @@ def test_event_commit_double_clicks_and_confirms_outing_ap_dialog(monkeypatch):
     assert clicks == [(360, 860)] and taps == ["InProduce.OutingApMaxOutDialog.ButtonConfirm"]
     with pytest.raises(ValueError):
         core._event_commit(5, outing=False)
+
+
+def test_produce_end_and_allowance_record_then_delegate(monkeypatch):
+    from types import SimpleNamespace as NS
+
+    from hiro.runtime import finish
+
+    seen = []
+    core = FakeCore()
+    core.s = NS(observe=lambda **kw: seen.append(("observe", kw["scene"])) or kw["scene"], record=lambda obs, **kw: seen.append(("record", obs)))
+    monkeypatch.setattr(finish, "on_produce_end", lambda rt, f, hit: seen.append("finish_end") or finish.END)
+    monkeypatch.setattr(finish, "on_allowance", lambda rt, f, hit: seen.append("claim") or DONE)
+    h = make_handlers(core)
+    assert h["ALLOWANCE"](None, None, None) is DONE
+    assert h["PRODUCE_END"](None, None, None) is finish.END
+    assert seen == [("observe", "ALLOWANCE"), "claim", ("record", "ALLOWANCE"), ("observe", "PRODUCE_END"), ("record", "PRODUCE_END"), "finish_end"]
