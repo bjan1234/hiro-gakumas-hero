@@ -226,12 +226,12 @@ def _recover(r: Run, info: dict | None, target_hp: int | None = None) -> Executi
 
 
 def _upgrade(r: Run, card_index: int, info: dict | None, card_id: str | None = None, choose_card=None, deck_size: int | None = None) -> ExecutionResult:
-    """轮间「強化」：打开牌组选卡页 → 有 card_id / choose_card 时走 kaa_patches._card_op（按 card_id 定位、核对、确认、
+    """轮间「強化」：打开牌组选卡页 → 有 card_id / choose_card 时走 card_ops._card_op（按 card_id 定位、核对、确认、
     认不出就取消）；都没有时按 card_index 点网格（旧路径）。"""
     if (info or {}).get("available") is False:
         return r.result(False, "「強化」不可用（识别为灰色）")
     if card_id or choose_card is not None:
-        from hiro.loop.kaa_patches import _card_op
+        from hiro.produce.card_ops import _card_op
 
         r.tap(UPGRADE_TAP)
         ok, img = r.until(shop.cancel_visible, DECK_TIMEOUT)

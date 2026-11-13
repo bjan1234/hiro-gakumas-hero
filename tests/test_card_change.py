@@ -76,7 +76,7 @@ def test_choose_card_to_change():
 
 
 def test_protected_list_has_gamushara_and_core():
-    from hiro.loop.kaa_patches import protected_card_ids
+    from hiro.produce.card_ops import protected_card_ids
 
     ids = protected_card_ids()
     assert {"p_card-02-act-1_071", DAYDREAM, TODOITE} <= ids and HIGH not in ids

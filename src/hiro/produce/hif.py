@@ -522,7 +522,7 @@ class HifCore:
         return out
 
     def on_select_pitem(self, ctx):
-        """H.I.F P 道具三选一：识别 pitems（颜色）→ 决策器（社区：黄 > 緑 > 赤）→ kaa_patches.pitem_commit 点包 + 受け取る。"""
+        """H.I.F P 道具三选一：识别 pitems（颜色）→ 决策器（社区：黄 > 緑 > 赤）→ card_ops.pitem_commit 点包 + 受け取る。"""
         from hiro.vision.extract import extract
 
         t0 = time.monotonic()
@@ -1004,7 +1004,7 @@ class HifCore:
     def _card_event(self, page: str, ctx, executor_name: str):
         """强化 / 删卡事件：观测卡格 → 决策 → 按 card_id 执行（游戏执行-06）→ 记录。决策器或执行器还没有、读不出、决策取消执行失败 → 停下。"""
         from hiro.brain import deciders as deciders_mod
-        from hiro.loop import kaa_patches
+        from hiro.produce import card_ops
 
         t0 = time.monotonic()
         if page not in deciders_mod.PAGES:
@@ -1019,7 +1019,7 @@ class HifCore:
                 if self.s.state.page_fields.get("cards"):
                     break
                 time.sleep(0.5)
-            self._scan_change_deck(kaa_patches.CARD_OP_REGION[kind], page)  # 一屏放不下时读整副交给决策（执行按 card_id 翻屏找）
+            self._scan_change_deck(card_ops.CARD_OP_REGION[kind], page)  # 一屏放不下时读整副交给决策（执行按 card_id 翻屏找）
             pf = self.s.state.page_fields
             cards = [c for c in pf.get("cards") or [] if c.get("card_id") not in failed] if failed else pf.get("cards")
             # cancelable 以识别填的为准（识屏 e226c6b：底部按钮判据）；识别没给（None）时用这里看到的「キャンセル」补
@@ -1055,7 +1055,7 @@ class HifCore:
             self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
             logger.info("%s：%s → 点キャンセル 退回", page, d.reason)
             return
-        execute = getattr(kaa_patches, executor_name, None)
+        execute = getattr(card_ops, executor_name, None)
         if execute is None:
             self._stop(page, f"执行器 {executor_name} 还没有（游戏执行-06）", obs=obs, decision=d)
         done = execute(ctx, card_id)
@@ -1102,7 +1102,7 @@ class HifCore:
     def _stage1_column(self, pick: int, d: Decision) -> int:
         """决策的 pick_index 是识别 candidates 的序号；执行侧 change_stage1 按「第几列」点。用候选卡面中心 x 换算成列
         （qualify6 r2 实机：识别多读了一张重复卡，决策选 #3 せのびの魔法，执行去找第 3 列，超时空转）。"""
-        from hiro.loop.kaa_patches import CHANGE1_MARK_X
+        from hiro.produce.card_ops import CHANGE1_MARK_X
 
         cands = self.s.state.page_fields.get("candidates") or []
         c = next((c for c in cands if c.get("index") == pick), None)
@@ -1117,10 +1117,10 @@ class HifCore:
     CHANGE_EMPTY_REREADS = 3  # 换卡阶段 2 卡格读成空时再读几次（每次隔 1s）
 
     def _scan_change_deck(self, region=None, page: str = "换卡阶段 2") -> bool:
-        """换卡阶段 2：牌组一屏放不下时往下滑读整副（kaa_patches.scan_dialog_deck，拼完滑回顶部），整副交给决策。
+        """换卡阶段 2：牌组一屏放不下时往下滑读整副（card_ops.scan_dialog_deck，拼完滑回顶部），整副交给决策。
         决策 da6c8e5：第十八、十九局对话框只读到一屏 12 张（牌组 22 张），只能在可见的牌里选。返回是否用了多屏整副。
         拼接不可信时不替换（保留这一屏），在 page_fields 标 deck_complete=False / deck_screens，决策据此当「张数不可信」。"""
-        from hiro.loop.kaa_patches import CHANGE2_CARD_AREA, scan_dialog_deck
+        from hiro.produce.card_ops import CHANGE2_CARD_AREA, scan_dialog_deck
 
         pf = self.s.state.page_fields
         if not pf.get("cards"):
@@ -1146,7 +1146,7 @@ class HifCore:
 
     def on_skill_card_change(self, ctx):
         """换卡：阶段 1 按决策选换入候选（候选未识别时选第 0 张），阶段 2 按决策的 card_id 换出；决策取消时点キャンセル。
-        执行在 kaa_patches.change_stage1 / change_stage2（核心卡保护、认不出就取消）。KAA 原版固定换第 0 张，第 4 局因此丢了 デイドリーミング。"""
+        执行在 card_ops.change_stage1 / change_stage2（核心卡保护、认不出就取消）。KAA 原版固定换第 0 张，第 4 局因此丢了 デイドリーミング。"""
         cancel = False
         if ctx.stage == 1:
             t0 = time.monotonic()
@@ -1192,7 +1192,7 @@ class HifCore:
         if not self.s.state.page_fields.get("cards"):
             # 卡格读成空：可能是上一次点「チェンジ」后晚弹出来的确认框挡着（第二十局 03:21:58：读成 [] → 判不换 → 点了确认框的キャンセル，
             # 多花约 80 秒）。是我们自己的换卡确认框就点「決定」（换哪张上一次已按决策选好）；否则再重读几次，不直接取消
-            from hiro.loop.kaa_patches import confirm_change_dialog
+            from hiro.produce.card_ops import confirm_change_dialog
 
             try:
                 late = confirm_change_dialog(device.screenshot())
@@ -1237,7 +1237,7 @@ class HifCore:
         changed = ctx.commit_stage2(0, card_id=card_id, cancel=cancel, remove_index=None if cancel or scanned else args.get("remove_index"),
                                     remove_upgrade=None if cancel else args.get("remove_upgrade"))  # 自带确认框处理；取消 / 不符时点キャンセル 返回 False  # fmt: skip
         result = self.s.verify(d.action, page_before="SKILL_CARD_CHANGE_2", taps=[], retries=0)
-        result = replace(result, ok=bool(changed) or cancel, error=None if changed or cancel else "换卡未完成（见 kaa_patches 日志与 stage2 帧）")
+        result = replace(result, ok=bool(changed) or cancel, error=None if changed or cancel else "换卡未完成（见 card_ops 日志与 stage2 帧）")
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
     def _end_page(self, page: str, commit):

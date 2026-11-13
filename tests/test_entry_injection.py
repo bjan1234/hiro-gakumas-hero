@@ -28,17 +28,17 @@ def test_load_strategy_rejects_non_strategy():
 
 
 def test_protected_provider_overrides_knowledge(monkeypatch):
-    from hiro.loop import kaa_patches
+    from hiro.produce import card_ops
 
-    monkeypatch.setattr(kaa_patches, "PROTECTED_PROVIDER", None)
-    kaa_patches.set_protected_provider(lambda: {"p_card-x"})
+    monkeypatch.setattr(card_ops, "PROTECTED_PROVIDER", None)
+    card_ops.set_protected_provider(lambda: {"p_card-x"})
     try:
-        assert kaa_patches.protected_card_ids() == {"p_card-x"}
+        assert card_ops.protected_card_ids() == {"p_card-x"}
         cards = [{"card_id": "p_card-x", "name": "x"}, {"card_id": "p_card-y", "name": "y"}]
-        assert kaa_patches.pick_change_target(cards)[0]["card_id"] == "p_card-y"
+        assert card_ops.pick_change_target(cards)[0]["card_id"] == "p_card-y"
     finally:
-        kaa_patches.set_protected_provider(None)
-    assert kaa_patches.PROTECTED_PROVIDER is None
+        card_ops.set_protected_provider(None)
+    assert card_ops.PROTECTED_PROVIDER is None
 
 
 def test_play_game_command(monkeypatch):
