@@ -85,11 +85,13 @@ def parse_memory_img(img, boxes, ocr) -> tuple[int, int, int] | None:
 
 def read_memory() -> tuple[int, int, int] | None:
     sys.path.insert(0, str(ROOT / "src"))
-    import hiro  # noqa: F401
-    from hiro.device import connect
-    from hiro.produce.ops import ocr_boxes
+    from hiro.tool_device import open_tool_device
+    from hiro.vision.ocr import ocr_boxes as _ocr
 
-    d = connect()
+    def ocr_boxes(img):
+        return _ocr(img, scale=1.5)  # 和 hiro.produce.ops.ocr_boxes 一样（那个模块要 import kotonebot）
+
+    d = open_tool_device()  # 只截图，不点
     votes: list[tuple[int, int, int]] = []
     for _ in range(8):
         img = d.screenshot()

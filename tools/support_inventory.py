@@ -1,4 +1,3 @@
-# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """支援卡库存（用户 2026-11-02：支援卡不再用おまかせ）→ reports/live/support-inventory.json，给决策的支援卡选择系统用。
 
 两种来源（hiro.vision.support_screens）：
@@ -79,10 +78,10 @@ def aggregate_list(screens: list[dict]) -> dict:
 
 def list_scan() -> list[dict]:
     """实机：「選択」列表从第 1 页顶部开始，每页滚到底（连续两屏没有新卡 = 到底），翻到最后一页，最后点キャンセル。"""
-    from hiro.device import connect
+    from hiro.tool_device import LIST_HOLD_S, open_tool_device
     from hiro.vision.support_screens import read_support_list
 
-    d = connect()
+    d = open_tool_device()
     screens, seen = [], set()
     r = read_support_list(d.screenshot())
     if r is None:
@@ -102,13 +101,13 @@ def list_scan() -> list[dict]:
             idle = idle + 1 if not new else 0
             if idle >= 2:
                 break
-            d.swipe(*LIST_SWIPE, duration=1.0)
+            d.swipe(*LIST_SWIPE, duration=1.0, hold=LIST_HOLD_S)  # 终点停住再松手：不带惯性
             time.sleep(LIST_SETTLE)
         if page < pages:
-            d.click(*r["controls"]["next"])
+            d.tap(*r["controls"]["next"])
             time.sleep(2.0)
     if r is not None:
-        d.click(*r["controls"]["cancel"])  # 只读：不点決定
+        d.tap(*r["controls"]["cancel"])  # 只读：不点決定
     return screens
 
 
@@ -124,10 +123,10 @@ def offline(paths: list[str]) -> list[dict]:
 
 
 def live(n: int) -> list[dict]:
-    from hiro.device import connect
+    from hiro.tool_device import open_tool_device
     from hiro.vision.support_screens import read_support_formation
 
-    d = connect()
+    d = open_tool_device()
     out, seen = [], set()
     for _ in range(n):
         r = read_support_formation(d.screenshot())
@@ -139,7 +138,7 @@ def live(n: int) -> list[dict]:
         seen.add(r["number"])
         out.append(r)
         print(r["number"], r["name"], [(s["name"], s["level"], s["breaks"]) for s in r["slots"]], flush=True)
-        d.click(*r["arrows"]["next"])
+        d.tap(*r["arrows"]["next"])
         time.sleep(1.5)
     return out
 
@@ -154,8 +153,6 @@ def main() -> None:
     ap.add_argument("--formations", type=int, default=20)
     ap.add_argument("--out", default="reports/live/support-inventory.json")
     a = ap.parse_args()
-    import hiro  # noqa: F401
-
     if a.list or a.list_offline:
         from hiro.vision.support_screens import read_support_list
 
