@@ -361,6 +361,16 @@
     30
    ],
    "source": "KAA a48324ae-7c1a-489e-b3c4-93d12267f88d_template.png"
+  },
+  "Common.IconButtonCheck": {
+   "file": "Common.IconButtonCheck.png",
+   "slice_rect": [
+    666,
+    576,
+    55,
+    48
+   ],
+   "source": "KAA fad5eec2-5fd5-412f-9abb-987a3087dc54_template.png"
   }
  },
  "boxes": {

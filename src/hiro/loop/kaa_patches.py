@@ -1233,21 +1233,6 @@ def patch_character_suffix() -> None:
 
     # KAA 只认它列出的角色后缀，新角色（-hmsz）的卡图变体被当成另一张卡、票数被拆开（三选一 / 卡牌详情的 match_card_region 同受影响）
     scs.strip_character_suffix = base_asset
-    from kaa.db.skill_card import SkillCard
-
-    if not getattr(SkillCard.from_asset_id, "_hiro_base", False):
-        # 考试手牌识别（play_cards.ui）自己遍历 CharacterId 去后缀，-hmsz 变体查不到卡（DMM 一局 68 次「no database match」）：
-        # 查不到时去掉任意角色后缀再查一次
-        orig = SkillCard.from_asset_id.__func__
-
-        def from_asset_id(cls, asset_id: str):
-            card = orig(cls, asset_id)
-            if card is None and (base := base_asset(asset_id)) != asset_id:
-                card = orig(cls, base)
-            return card
-
-        from_asset_id._hiro_base = True
-        SkillCard.from_asset_id = classmethod(from_asset_id)
 
 
 def apply() -> None:

@@ -19,7 +19,6 @@ from pathlib import Path
 from collections.abc import Callable
 
 from hiro import master
-from kaa.tasks.produce.shared.cards import handle_skill_card_move
 from kotonebot import Loop, device, logging, sleep
 from kotonebot.primitives import Rect
 
@@ -34,7 +33,7 @@ from hiro.recorder import Recorder
 from hiro.exec import schedule_probe
 from hiro.vision.hif import EXAM_CACHE, hand_cards
 from hiro.vision.ocr import Text, find_text, screen_texts
-from hiro.vision.ui_templates import box, tpl
+from hiro.vision.ui_templates import box, tap, tpl
 
 logger = logging.getLogger(__name__)
 
@@ -555,12 +554,48 @@ def _hif_drink_dialogs(*, force: bool = False, boxes=None) -> bool:
     return _confirm_dialog(boxes, texts)
 
 
+MOVE_CLOSED_S = 3.0  # 技能卡移动对话框消失后再看这么久，确认真关了
+
+
+def _skill_card_move() -> bool:
+    """技能卡移动对话框（照 KAA handle_skill_card_move 移植，行为不变）：全屏找卡名首字母框（A、M、T 依次），对话框还在就双击
+    最后一个、点 ✔，直到对话框消失 MOVE_CLOSED_S 秒。没找到卡返回 False；处理完和 KAA 一样返回 None（调用方照旧往下查别的弹窗）。
+    注意：选哪张是盲选（沿用 KAA，取找到的最后一张），出牌决策没有接管这个对话框。"""
+
+    def letters(img):
+        return [m for name in ("InProduce.A", "InProduce.M", "InProduce.T") for m in tpl(name).find_all(img)]
+
+    cards = letters(device.screenshot())
+    if not cards:
+        logger.info("技能卡移动：没找到卡")
+        return False
+    closed_at = None
+    for _ in Loop():
+        img = device.screenshot()
+        if not tpl("InProduce.IconTitleSkillCardMove").exists(img):
+            closed_at = closed_at if closed_at is not None else time.monotonic()
+            if time.monotonic() - closed_at >= MOVE_CLOSED_S:
+                logger.info("技能卡移动：对话框已关闭")
+                break
+            continue
+        closed_at = None
+        if not cards:
+            cards = letters(img)
+            if not cards:
+                continue  # KAA 这里会对空列表 pop 抛异常；这里等下一帧
+        card = cards.pop()
+        device.double_click(*card.center)
+        sleep(1)
+        tap("Common.IconButtonCheck", device.screenshot(), device.click)
+    return None
+
+
 def _handle_dialogs(img=None, *, slow: bool = False, select: bool = True) -> bool:
     """处理出牌过程中会弹出的对话框（读最近一次截图 img）。返回是否处理了什么。
     处理后等弹窗区域变化 / 画面稳定再返回，不固定睡 2s。"""
     img = img if img is not None else device.screenshot()
     if tpl("InProduce.IconTitleSkillCardMove").exists(img):
-        if handle_skill_card_move():
+        if _skill_card_move():
             ops.wait_stable(timeout=DIALOG_SETTLE)
             return True
     if _exam_dialogs(img, slow=slow, select=select):

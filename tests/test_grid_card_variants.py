@@ -21,18 +21,14 @@ def test_main_consult_shelf_complete():
     assert [c["price"] for c in r["shelf"]] == [53, 70, 105, 70, 35, 100, 75, 100]
 
 
-def test_kaa_patch_resolves_unknown_character_suffix(monkeypatch):
-    """KAA 考试手牌识别自己遍历 CharacterId 去后缀：-hmsz 变体以前查不到卡（DMM 一局 68 次「no database match」）。"""
+def test_kaa_patch_strips_any_character_suffix(monkeypatch):
+    """KAA 三选一 / 卡牌详情认卡（match_card_region）只认它列出的角色后缀：新角色（-hmsz）的卡图变体会被当成另一张卡。
+    考试手牌已经不走 KAA（hiro.vision.hif.hand_cards），原来给 SkillCard.from_asset_id 打的补丁删了。"""
     import kaa.game_ui.skill_card_select as scs
-    from kaa.db.skill_card import SkillCard
 
     from hiro.loop.kaa_patches import patch_character_suffix
 
-    monkeypatch.setattr(SkillCard, "from_asset_id", SkillCard.__dict__["from_asset_id"])  # 测完还原（classmethod 本身）
     monkeypatch.setattr(scs, "strip_character_suffix", scs.strip_character_suffix)
-    assert SkillCard.from_asset_id("img_general_skillcard_men-2_008-hmsz") is None
     patch_character_suffix()
     patch_character_suffix()  # 重复调用不叠加
-    assert SkillCard.from_asset_id("img_general_skillcard_men-2_008-hmsz")._id == "p_card-02-men-2_008"
-    assert SkillCard.from_asset_id("img_general_skillcard_men-2_008")._id == "p_card-02-men-2_008"
     assert scs.strip_character_suffix("img_general_skillcard_men-3_041-hmsz") == "img_general_skillcard_men-3_041"
