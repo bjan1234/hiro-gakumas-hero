@@ -1175,11 +1175,14 @@ class HifCore:
     CHANGE1_DECIDE_RETRIES = 3  # 换卡阶段 1 拿不到换卡决策时再读几帧（等页面提交进状态），之后才退回第 0 张
     CHANGE1_DECIDE_WAIT = 0.4
 
-    def on_skill_card_change(self, ctx):
+    def on_skill_card_change(self, ctx=None, *, stage: int | None = None):
         """换卡：阶段 1 按决策选换入候选（候选未识别时选第 0 张），阶段 2 按决策的 card_id 换出；决策取消时点キャンセル。
         执行在 card_ops.change_stage1 / change_stage2（核心卡保护、认不出就取消）。KAA 原版固定换第 0 张，第 4 局因此丢了 デイドリーミング。"""
+        from hiro.produce.card_ops import change_stage1, change_stage2  # KAA 的 ctx.commit_stage1 / 2 也被补丁换成它们
+
+        stage = stage if stage is not None else ctx.stage  # 新主循环按判页给（SKILL_CARD_CHANGE_1 / 2），KAA 主循环在 ctx 上
         cancel = False
-        if ctx.stage == 1:
+        if stage == 1:
             t0 = time.monotonic()
             # 换卡页刚出现的第一帧：识别已经认出候选，但页面要连续两帧才提交进状态，状态里还是上一页（获得饮料 / 饮料已满）的字段，
             # 决策器读不到候选只能回 Wait，下面就会盲换第 0 张（Windows 第二局两次、Mac A5b 一次，2026-11-06）。再读几帧等状态提交。
@@ -1197,7 +1200,7 @@ class HifCore:
             if d.action.kind is not ActionKind.CHANGE_CARD:
                 d.warnings.append("候选未识别，换入第 0 张（阶段 2 仍按决策换出 / 取消）")
             pick = self._stage1_column(pick, d)
-            ok = ctx.commit_stage1(pick)  # 自带轮询到阶段 2；不走 _act 的重复点击
+            ok = change_stage1(None, pick)  # 自带轮询到阶段 2；不走 _act 的重复点击
             result = self.s.verify(d.action, page_before="SKILL_CARD_CHANGE_1", taps=[], retries=0)
             if ok is False:
                 result = replace(result, ok=False, error="阶段 1 超时没进入阶段 2")
@@ -1265,7 +1268,7 @@ class HifCore:
             self._change_cancels = 0
         card_id = None if cancel else args.get("remove_card_id")
         # 整副扫描过（多屏）时 remove_index 是牌组序号、不是这一屏的格子号：只按 card_id + 强化次数找（翻屏）
-        changed = ctx.commit_stage2(0, card_id=card_id, cancel=cancel, remove_index=None if cancel or scanned else args.get("remove_index"),
+        changed = change_stage2(None, 0, card_id=card_id, cancel=cancel, remove_index=None if cancel or scanned else args.get("remove_index"),
                                     remove_upgrade=None if cancel else args.get("remove_upgrade"))  # 自带确认框处理；取消 / 不符时点キャンセル 返回 False  # fmt: skip
         result = self.s.verify(d.action, page_before="SKILL_CARD_CHANGE_2", taps=[], retries=0)
         result = replace(result, ok=bool(changed) or cancel, error=None if changed or cancel else "换卡未完成（见 card_ops 日志与 stage2 帧）")
