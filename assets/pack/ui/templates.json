@@ -576,6 +576,313 @@
     28
    ],
    "source": "KAA f1f21925-3e22-4dd1-b53b-bb52bcf26c2b_template.png"
+  },
+  "Common.ButtonConfirmNoIcon": {
+   "file": "Common.ButtonConfirmNoIcon.png",
+   "slice_rect": null,
+   "source": "KAA 43928065-788d-4859-aaf1-ea978d34700a.png"
+  },
+  "InProduce.ButtonCancel": {
+   "file": "InProduce.ButtonCancel.png",
+   "slice_rect": null,
+   "source": "KAA d771ac58-6de8-401d-9078-6673efa70a46.png"
+  },
+  "Produce.BreakProduceDialog.ButtonConfirm": {
+   "file": "Produce.BreakProduceDialog.ButtonConfirm.png",
+   "slice_rect": [
+    387,
+    1134,
+    192,
+    55
+   ],
+   "source": "KAA 631a8a70-b5b2-400a-a56c-e9413a5f32cb_template.png",
+   "fixed": true
+  },
+  "Produce.ButtonAutoSet": {
+   "file": "Produce.ButtonAutoSet.png",
+   "slice_rect": [
+    569,
+    982,
+    93,
+    24
+   ],
+   "source": "KAA 17b0fd62-2c70-49db-a7d0-4a5b7db652c3_template.png",
+   "fixed": true
+  },
+  "Produce.ButtonPIdolOverview": {
+   "file": "Produce.ButtonPIdolOverview.png",
+   "slice_rect": [
+    26,
+    732,
+    97,
+    31
+   ],
+   "source": "KAA e88c9ad1-ec37-4fcd-b086-862e1e7ce8fd_template.png"
+  },
+  "Produce.ButtonRefillAP": {
+   "file": "Produce.ButtonRefillAP.png",
+   "slice_rect": [
+    389,
+    1140,
+    196,
+    45
+   ],
+   "source": "KAA eaba6ebe-f0df-4918-aee5-ef4e3ffedcf0_template.png",
+   "fixed": true
+  },
+  "Produce.ButtonUse": {
+   "file": "Produce.ButtonUse.png",
+   "slice_rect": [
+    546,
+    929,
+    49,
+    25
+   ],
+   "source": "KAA cfc9c8e8-cbe1-49f0-9afa-ead7f9455a2e_template.png",
+   "fixed": true
+  },
+  "Produce.IdolOverview.ButtonConfirm": {
+   "file": "Produce.IdolOverview.ButtonConfirm.png",
+   "slice_rect": [
+    275,
+    1071,
+    162,
+    58
+   ],
+   "source": "KAA f0040cf2-f17f-4ff1-bd73-0e56ea7f18bf_template.png",
+   "fixed": true
+  },
+  "Produce.RadioTextSkipCommu": {
+   "file": "Produce.RadioTextSkipCommu.png",
+   "slice_rect": [
+    99,
+    793,
+    233,
+    44
+   ],
+   "source": "KAA dc02dc5e-40d7-4ce8-8e36-798f5ffaf854_template.png",
+   "fixed": true
+  },
+  "Produce.RentAvailableConfirmButton": {
+   "file": "Produce.RentAvailableConfirmButton.png",
+   "slice_rect": [
+    390,
+    1130,
+    194,
+    54
+   ],
+   "source": "KAA c065edca-a72e-468c-83e5-bd77c5193b53_template.png",
+   "fixed": true
+  },
+  "Produce.Step1.ButtonNext": {
+   "file": "Produce.Step1.ButtonNext.png",
+   "slice_rect": [
+    250,
+    1066,
+    206,
+    54
+   ],
+   "source": "KAA 8b70832d-9cbf-43f2-b8c0-cdf791ad1a2f_template.png",
+   "fixed": true
+  },
+  "Produce.Step2.AutoSet.ConfirmButton": {
+   "file": "Produce.Step2.AutoSet.ConfirmButton.png",
+   "slice_rect": [
+    391,
+    1134,
+    190,
+    53
+   ],
+   "source": "KAA 46ae67b1-97ce-436b-93a0-5759c0ce4bfe_template.png",
+   "fixed": true
+  },
+  "Produce.Step2.AutoSet.ConfirmTitle": {
+   "file": "Produce.Step2.AutoSet.ConfirmTitle.png",
+   "slice_rect": [
+    58,
+    914,
+    192,
+    48
+   ],
+   "source": "KAA b47ab9d2-2644-4b27-8691-dfe64262632e_template.png",
+   "fixed": true
+  },
+  "Produce.Step2.EmptySupportCardSlot": {
+   "file": "Produce.Step2.EmptySupportCardSlot.png",
+   "slice_rect": [
+    481,
+    844,
+    211,
+    118
+   ],
+   "source": "KAA 76947045-7625-470a-bff7-7c31f4be4ef5_template.png",
+   "fixed": true
+  },
+  "Produce.Step2.Rent.ConfirmButton": {
+   "file": "Produce.Step2.Rent.ConfirmButton.png",
+   "slice_rect": [
+    395,
+    1134,
+    185,
+    56
+   ],
+   "source": "KAA e93b3d7e-bdd4-4742-bf1c-09ccd1e69479_template.png",
+   "fixed": true
+  },
+  "Produce.Step3.AutoSet.ConfirmButton": {
+   "file": "Produce.Step3.AutoSet.ConfirmButton.png",
+   "slice_rect": [
+    391,
+    1134,
+    190,
+    53
+   ],
+   "source": "KAA 37cd1d4c-20b3-4989-823d-31e64444a70a_template.png",
+   "fixed": true
+  },
+  "Produce.Step3.AutoSet.ConfirmTitle": {
+   "file": "Produce.Step3.AutoSet.ConfirmTitle.png",
+   "slice_rect": [
+    58,
+    788,
+    192,
+    48
+   ],
+   "source": "KAA 92ac3014-3b47-40e6-a5c0-e56d5c580d9f_template.png",
+   "fixed": true
+  },
+  "Produce.Step3.ButtonNext": {
+   "file": "Produce.Step3.ButtonNext.png",
+   "slice_rect": [
+    250,
+    1066,
+    206,
+    54
+   ],
+   "source": "KAA ce0739da-a78c-4d06-8b5f-2fe05827cc47_template.png",
+   "fixed": true
+  },
+  "Produce.Step4.ButtonProduceStart": {
+   "file": "Produce.Step4.ButtonProduceStart.png",
+   "slice_rect": [
+    250,
+    1060,
+    223,
+    36
+   ],
+   "source": "KAA da684cc4-e5db-4857-b1f2-eb8a22e16336_template.png",
+   "fixed": true
+  },
+  "Produce.Step4.CheckboxNoteBoost": {
+   "file": "Produce.Step4.CheckboxNoteBoost.png",
+   "slice_rect": [
+    519,
+    1014,
+    27,
+    26
+   ],
+   "source": "KAA 3d3582aa-551d-4bbd-8029-6f1bf4b46417_template.png",
+   "region": [
+    507,
+    930,
+    85,
+    201
+   ]
+  },
+  "Produce.Step4.CheckboxPtBoost": {
+   "file": "Produce.Step4.CheckboxPtBoost.png",
+   "slice_rect": [
+    607,
+    1014,
+    27,
+    26
+   ],
+   "source": "KAA e234b430-9b8a-48e7-bdd1-daa76800b27e_template.png",
+   "region": [
+    594,
+    932,
+    104,
+    197
+   ]
+  },
+  "Produce.TextAPInsufficient": {
+   "file": "Produce.TextAPInsufficient.png",
+   "slice_rect": [
+    50,
+    952,
+    129,
+    44
+   ],
+   "source": "KAA 4883c564-f950-4a29-9f5f-6f924123cd22_template.png",
+   "fixed": true
+  },
+  "Produce.TextAnotherIdolAvailableDialog": {
+   "file": "Produce.TextAnotherIdolAvailableDialog.png",
+   "slice_rect": [
+    54,
+    568,
+    396,
+    47
+   ],
+   "source": "KAA cbf4ce9c-f8d8-4fb7-a197-15bb9847df04_template.png"
+  },
+  "Produce.TextRentAvailable": {
+   "file": "Produce.TextRentAvailable.png",
+   "slice_rect": [
+    53,
+    848,
+    203,
+    39
+   ],
+   "source": "KAA 74ec3510-583d-4a76-ac69-38480fbf1387_template.png",
+   "fixed": true
+  },
+  "Produce.TextStepIndicator1": {
+   "file": "Produce.TextStepIndicator1.png",
+   "slice_rect": [
+    18,
+    32,
+    150,
+    34
+   ],
+   "source": "KAA 44ba8515-4a60-42c9-8878-b42e4e34ee15_template.png"
+  },
+  "Produce.TextStepIndicator3": {
+   "file": "Produce.TextStepIndicator3.png",
+   "slice_rect": [
+    98,
+    34,
+    150,
+    27
+   ],
+   "source": "KAA f43c313b-8a7b-467b-8442-fc5bcb8b4388_template.png"
+  },
+  "Produce.TextStepIndicator4Or2": {
+   "file": "Produce.TextStepIndicator4Or2.png",
+   "slice_rect": [
+    160,
+    35,
+    84,
+    28
+   ],
+   "source": "KAA b62bf889-da3c-495a-8707-f3bde73efe92_template.png",
+   "region": [
+    6,
+    17,
+    302,
+    61
+   ]
+  },
+  "Common.ButtonToolbarHome": {
+   "file": "Common.ButtonToolbarHome.png",
+   "slice_rect": [
+    60,
+    1186,
+    50,
+    51
+   ],
+   "source": "KAA 7b5c8883-a1f9-4ce9-bd84-26668577dfc6_template.png",
+   "fixed": true
   }
  },
  "boxes": {
@@ -638,6 +945,36 @@
    926,
    637,
    948
+  ],
+  "Produce.BoxSelectedIdol": [
+   149,
+   783,
+   317,
+   1006
+  ],
+  "Produce.BoxSetCountIndicator": [
+   66,
+   651,
+   139,
+   686
+  ]
+ },
+ "points": {
+  "Produce.PointNext": [
+   680,
+   592
+  ],
+  "Produce.PointPrev": [
+   34,
+   596
+  ],
+  "Produce.PointProduceNextSet": [
+   702,
+   832
+  ],
+  "Produce.PointProducePrevSet": [
+   14,
+   832
   ]
  }
 }

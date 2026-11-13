@@ -109,6 +109,18 @@ class Runtime:
                 return False, f
             self.sleep(every)
 
+    def drive(self, step: Callable[[Frame], object], timeout: float, what: str, *, every: float = TICK):
+        """多步流程的一段：每拍过检查点和中断层后调 step(帧)（可以点），返回非 None 就结束并返回它；
+        超时抛 ResumeBlocked（what 写进原因）。开局 / 续跑这类「看画面 → 点 → 等下一页」的步骤都用它。"""
+        t0 = self.clock()
+        while True:
+            f, done = self.tick()
+            if done is None and (r := step(f)) is not None:
+                return r
+            if self.clock() - t0 >= timeout:
+                raise ResumeBlocked(f"{what}：{timeout:.0f}s 没完成")
+            self.sleep(every)
+
     # ---------------------------------------------------------------- 主循环
     def step(self) -> Outcome:
         """主循环一拍。stop 时抛 ResumeBlocked。"""

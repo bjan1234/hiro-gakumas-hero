@@ -4,7 +4,7 @@ usage: python tools/assets/ui_from_kaa.py --kaa <KAA 仓库> InProduce.TextPItem
 
 KAA 的模板定义在它生成的 kaa/tasks/R.py（TemplateMatchPrefab：template = ImageSlice(file_path=sprite_path("<id>.png"),
 slice_rect=Rect(...) | None)、fixed、region），图在 kaa/sprites/<id>.png（已经是切好的模板）；固定区域是 HintBox(x1, y1, x2, y2)，
-写进 templates.json 的 boxes。名字沿用 R 的路径，
+写进 templates.json 的 boxes；固定点是 HintPoint(x, y)，写进 points。名字沿用 R 的路径，
 InPurodyuusu 写成 InProduce（KAA 的别名，ui_templates 里一直这么叫）。已有的条目不改，只加新的。
 """
 
@@ -31,10 +31,12 @@ def _name(path: list[str]) -> str:
     return ".".join([ALIAS.get(path[0], path[0]), *path[1:]])
 
 
-def prefabs(r_py: Path) -> tuple[dict[str, dict], dict[str, list[int]]]:
-    """R.py → ({"InProduce.TextPItem": {file_id, slice_rect, fixed, region}}, {"InProduce.BoxExamTop": [x1, y1, x2, y2]})。"""
+def prefabs(r_py: Path) -> tuple[dict[str, dict], dict[str, list[int]], dict[str, list[int]]]:
+    """R.py → ({"InProduce.TextPItem": {file_id, slice_rect, fixed, region}}, {"InProduce.BoxExamTop": [x1, y1, x2, y2]},
+    {"Produce.PointPrev": [x, y]})。"""
     out: dict[str, dict] = {}
     boxes: dict[str, list[int]] = {}
+    points: dict[str, list[int]] = {}
 
     def walk(cls: ast.ClassDef, path: list[str]) -> None:
         entry: dict = {}
@@ -46,6 +48,9 @@ def prefabs(r_py: Path) -> tuple[dict[str, dict], dict[str, list[int]]]:
                 if isinstance(v, ast.Call) and getattr(v.func, "id", None) == "HintBox":
                     kw = {a.arg: ast.literal_eval(a.value) for a in v.keywords}
                     boxes[_name(path + [k])] = [round(kw[c]) for c in ("x1", "y1", "x2", "y2")]
+                elif isinstance(v, ast.Call) and getattr(v.func, "id", None) == "HintPoint":
+                    kw = {a.arg: ast.literal_eval(a.value) for a in v.keywords}
+                    points[_name(path + [k])] = [round(kw["x"]), round(kw["y"])]
                 elif k == "template" and isinstance(v, ast.Call):
                     kw = {a.arg: a.value for a in v.keywords}
                     fp = kw.get("file_path")
@@ -62,7 +67,7 @@ def prefabs(r_py: Path) -> tuple[dict[str, dict], dict[str, list[int]]]:
     for node in ast.parse(r_py.read_text(encoding="utf-8")).body:
         if isinstance(node, ast.ClassDef):
             walk(node, [node.name])
-    return out, boxes
+    return out, boxes, points
 
 
 def main() -> None:
@@ -71,13 +76,18 @@ def main() -> None:
     ap.add_argument("names", nargs="+")
     args = ap.parse_args()
     kaa = Path(args.kaa)
-    defs, boxes = prefabs(kaa / "kaa" / "tasks" / "R.py")
+    defs, boxes, points = prefabs(kaa / "kaa" / "tasks" / "R.py")
     cat_path = PACK / "templates.json"
     cat = json.loads(cat_path.read_text(encoding="utf-8"))
-    missing = [n for n in args.names if n not in defs and n not in boxes]
+    missing = [n for n in args.names if n not in defs and n not in boxes and n not in points]
     if missing:
         sys.exit(f"R.py 里没有：{missing}")
     for name in args.names:
+        if name in points:
+            if name not in cat.setdefault("points", {}):
+                cat["points"][name] = points[name]
+                print("加点", name, points[name])
+            continue
         if name in boxes:
             if name not in cat["boxes"]:
                 cat["boxes"][name] = boxes[name]
