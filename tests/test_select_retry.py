@@ -6,6 +6,7 @@ from types import SimpleNamespace as NS
 import pytest
 
 import hiro.produce.hif as hif
+from hiro.produce import ops
 from hiro.contracts import Action, ActionKind, Decision, ExecutionResult, GameState
 from hiro.produce.hif import HiroHifStrategy, UnhandledPage
 
@@ -52,8 +53,12 @@ def _run(monkeypatch, frames):
     st._confirm_acquire = lambda: None
     committed = []
     st._act = lambda commit, act, **kw: (commit(), ExecutionResult(action=act, ok=True))[1]
-    ctx = NS(fetch_select_drink=lambda: NS(drinks=["a", "b", "c"], can_skip=False), commit=lambda data, drink: committed.append(drink))
-    return st, ctx, seen, committed
+    from hiro.produce import card_ops
+
+    monkeypatch.setattr(card_ops, "drink_select_can_skip", lambda img: False)
+    monkeypatch.setattr(card_ops, "drink_select_commit", lambda drink: committed.append("abc"[drink]))
+    monkeypatch.setattr(ops, "fast_acquire", lambda c: False)  # 走慢提交，记下选了哪瓶
+    return st, None, seen, committed
 
 
 def test_empty_first_frame_then_candidates(monkeypatch):

@@ -651,3 +651,50 @@ def pitem_commit(self, index: int, *, shoot=None, click=None, clock=time.monoton
         logger.info("P 道具：点「受け取る」后 %.1fs 按钮没消失（第 %d 次）", w.waited_s, attempt + 1)
     logger.warning("P 道具：%d 次都没拿到第 %d 个背包，交回主循环", PITEM_TRIES, index)
     return False
+
+
+# ---------------------------------------------------------------- 选饮料（差し入れ / 活動支給 等三选一，替换 KAA DrinkSelectContext）
+DRINK_SELECT_BOXES = ((157, 820, 285, 948), (296, 820, 424, 948), (435, 820, 563, 948))  # 三瓶的位置（同 KAA POSTIONS，x1 y1 x2 y2）
+DRINK_SELECT_MAX_TRIES = 8  # KAA 的提交循环没有上限；这里点这么多轮还是灰的「受け取る」就交回主循环
+
+
+def drink_select_can_skip(img) -> bool:
+    """有没有「受け取らない」（可以不拿）。同 KAA fetch_select_drink 的 can_skip。"""
+    from hiro.vision.ui_templates import tpl
+
+    return tpl("InProduce.TextDontClaim").exists(img)
+
+
+def drink_select_commit(index: int | None, *, sleep=None) -> bool:
+    """选第 index 瓶并「受け取る」；index=None 不拿（点「受け取らない」再点按钮）。同 KAA DrinkSelectContext.commit。返回是否做完。"""
+    from hiro.devices.active import sleep as _sleep
+    from hiro.vision.ocr import Box
+    from hiro.vision.ui_templates import tpl
+
+    sleep = sleep or _sleep
+    if index is None:
+        img = device.screenshot()
+        skip = tpl("InProduce.TextDontClaim").find(img)
+        if skip is None:
+            raise ValueError("不能不拿：没有「受け取らない」")
+        device.click(*skip.center)
+        sleep(0.5)
+        img = device.screenshot()
+        btn = tpl("InProduce.ButtonDontClaim").find(img) or tpl("InProduce.AcquireBtnDisabled").find(img)
+        if btn is not None:
+            device.click(*btn.center)
+        logger.debug("选饮料：不拿")
+        return True
+    if not 0 <= index < len(DRINK_SELECT_BOXES):
+        raise ValueError(f"饮料下标 {index} 不对")
+    target = Box(*DRINK_SELECT_BOXES[index])
+    for _ in range(DRINK_SELECT_MAX_TRIES):
+        device.click(*target.center)
+        btn = tpl("InProduce.AcquireBtnDisabled").find(device.screenshot())
+        if btn is None:
+            return True
+        sleep(0.5)
+        device.click(*btn.center)
+        sleep(2)
+    logger.warning("选饮料：点第 %d 瓶 %d 轮「受け取る」还是灰的，交回主循环", index, DRINK_SELECT_MAX_TRIES)
+    return False

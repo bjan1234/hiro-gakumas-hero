@@ -1118,6 +1118,26 @@
     55
    ],
    "source": "KAA a6a7efa2-cf6b-47f8-99b8-d42428c22c3b_template.png"
+  },
+  "InProduce.TextDontClaim": {
+   "file": "InProduce.TextDontClaim.png",
+   "slice_rect": [
+    281,
+    989,
+    156,
+    34
+   ],
+   "source": "KAA e4683def-8d1d-472b-a5ab-bb3885c0c98e_template.png"
+  },
+  "InProduce.ButtonDontClaim": {
+   "file": "InProduce.ButtonDontClaim.png",
+   "slice_rect": [
+    263,
+    1072,
+    188,
+    49
+   ],
+   "source": "KAA 447d0e44-5d87-4b7c-8e60-edb111fe1639_template.png"
   }
  },
  "boxes": {

@@ -10,21 +10,15 @@ class FakeCore:
     def __init__(self, restart_times: int = 0):
         self.calls, self.restart_times = [], restart_times
 
-    def _hook(name):
-        def f(self, ctx):
+    def __getattr__(self, name):  # 其余 on_* 页面方法：记一笔名字（去掉 on_ 前缀）
+        if not name.startswith("on_"):
+            raise AttributeError(name)
+
+        def hook(ctx):
             assert ctx is None  # 新主循环不给 KAA 上下文
-            self.calls.append(name)
+            self.calls.append(name.removeprefix("on_"))
 
-        return f
-
-    on_consult = _hook("consult")
-    on_skill_card_enhance = _hook("enhance")
-    on_skill_card_removal = _hook("removal")
-    on_pdrink_max_confirm = _hook("pdrink_max_confirm")
-    on_select_pitem = _hook("select_pitem")
-    on_study = _hook("study")
-    on_outing = _hook("outing")
-    on_practice_entered = _hook("practice")
+        return hook
 
     def on_exam_entered(self, ctx):
         self.calls.append("exam")
@@ -41,7 +35,7 @@ def test_pages_call_core_methods():
     core = FakeCore()
     h = make_handlers(core)
     assert _run(h, "CONSULT") is DONE and _run(h, "SKILL_CARD_REMOVAL") is DONE and _run(h, "PDRINK_MAX_CONFIRM") is DONE
-    assert core.calls == ["consult", "removal", "pdrink_max_confirm"]
+    assert core.calls == ["consult", "skill_card_removal", "pdrink_max_confirm"]
     assert "ACTION_SELECT" not in h  # 还要 KAA ctx 的页没登记，交给 advance
 
 

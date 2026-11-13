@@ -795,11 +795,14 @@ class HifCore:
         self.s.state = replace(self.s.state, page_fields={**pf, "held": marked})
         self.s.note(f"PDRINK_MAX：已有饮料只看得到前 {visible_rows} 行，其余标为点不到")
 
-    def on_select_drink(self, ctx: "DrinkSelectContext"):
+    def on_select_drink(self, ctx=None):
+        """选饮料三选一（差し入れ / 活動支給 等）：识别 → 决策 → 选第 i 瓶或不拿（card_ops.drink_select_*，替换 KAA DrinkSelectContext）。"""
+        from hiro.produce.card_ops import DRINK_SELECT_BOXES, drink_select_can_skip, drink_select_commit
+
         if self._drink_full_skip():
             return
         t0 = time.monotonic()
-        data = ctx.fetch_select_drink()
+        can_skip = drink_select_can_skip(device.screenshot())
         obs = self.s.observe(scene="SELECT_DRINK")
         for _ in range(self.SELECT_RETRIES):
             # 弹窗淡入时读的帧候选为空（第十八局选拔第 1 天差し入れ：读到空 → 决策 Wait → 停机；同一画面稍后三瓶都认得出）：等一下重读。
@@ -807,32 +810,29 @@ class HifCore:
             if self.s.state.page_fields.get("candidates"):
                 break
             sleep(self.SELECT_RETRY_WAIT)
-            device.screenshot()
-            data = ctx.fetch_select_drink()
+            can_skip = drink_select_can_skip(device.screenshot())
             obs = self.s.observe(scene="SELECT_DRINK")
         if not self.s.state.page_fields.get("candidates"):
             self.s.recover("missing_fields", f"SELECT_DRINK 重读 {self.SELECT_RETRIES} 次候选仍为空（或页面防抖未结束）")
-        d = self.deciders.decide("SELECT_DRINK", self.s.state, can_skip=bool(data.can_skip), n_options=len(data.drinks))
+        n = len(DRINK_SELECT_BOXES)
+        d = self.deciders.decide("SELECT_DRINK", self.s.state, can_skip=can_skip, n_options=n)
         self._note_fallback("SELECT_DRINK", d)
-        if d.action.kind is ActionKind.ACTIVATE_EFFECT and data.drinks:
-            i = min(int(d.action.args["pick_indexes"][0]), len(data.drinks) - 1)
-            drink, act = data.drinks[i], Action.activate_effect(i)
-        elif data.can_skip:
+        if d.action.kind is ActionKind.ACTIVATE_EFFECT:
+            i = min(int(d.action.args["pick_indexes"][0]), n - 1)
+            drink, act = i, Action.activate_effect(i)
+        elif can_skip:
             drink, act = None, d.action
             self._skip_incoming_drink = True  # 决策不拿：随后的「報酬スキップ」确认是这一步的结果（main8 实机误停）
         else:  # 不能跳过、决策也没选：不默认拿第 1 瓶（用户规则 3c），停下
             self._stop("SELECT_DRINK", f"不能跳过，但决策没选饮料（{d.action}，来源 {d.source}）", obs=obs, decision=d)
         def commit():
             if drink is not None:
-                # 快速提交（点饮料 → 等「受け取る」亮 → 点 → 等消失），亮不起来才退回 KAA commit（固定 sleep 0.5 + 2s 再循环）
-                from kaa.tasks.produce.new.page import POSTIONS
-
-                idx = getattr(drink, "index", None)
-                r = POSTIONS[idx] if isinstance(idx, int) and 0 <= idx < len(POSTIONS) else None
-                if r is not None and ops.fast_acquire((int(r.center.x), int(r.center.y))):
+                # 快速提交（点饮料 → 等「受け取る」亮 → 点 → 等消失），亮不起来才退回慢提交（同 KAA：固定 sleep 0.5 + 2s 再循环）
+                x1, y1, x2, y2 = DRINK_SELECT_BOXES[drink]
+                if ops.fast_acquire(((x1 + x2) // 2, (y1 + y2) // 2)):
                     self._confirm_acquire()  # 万一按钮还在（没关掉）再补点
                     return
-            ctx.commit(data, drink)
+            drink_select_commit(drink)
             if drink is not None:
                 self._confirm_acquire()
 
