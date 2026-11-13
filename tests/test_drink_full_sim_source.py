@@ -10,6 +10,7 @@ import hiro.produce.drink_swap as ds
 import hiro.produce.hif as hif
 from hiro.contracts import Action, ActionKind, Decision, GameState
 from hiro.produce.hif import HiroHifStrategy, UnhandledPage
+from hiro.vision.ocr import Box, Text
 
 CANDS = [{"slot": 0, "drink_id": "pdrink_kampo", "name": "パワフル漢方ドリンク"}, {"slot": 1, "drink_id": "pdrink_blend", "name": "厳選初星ブレンド"},
          {"slot": 2, "drink_id": "pdrink_aojiru", "name": "初星スペシャル青汁"}]  # fmt: skip
@@ -18,7 +19,8 @@ HELD = [{"index": i, "drink_id": d, "name": n} for i, (d, n) in enumerate([("pdr
 
 
 def _st(monkeypatch, source):
-    monkeypatch.setattr(hif, "ocr", NS(ocr=lambda: [NS(text="Pドリンク所持上限", rect=NS(center=NS(y=1180)))]))
+    monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [Text("Pドリンク所持上限", Box(350, 1170, 370, 1190))])
+    monkeypatch.setattr(hif, "device", NS(screenshot=lambda: None, click=lambda *a: None))
     monkeypatch.setattr(hif.dk if hasattr(hif, "dk") else __import__("hiro.brain.drinks", fromlist=["x"]), "best_incoming", lambda cands, held, stage, cap: CANDS[1])
     st = HiroHifStrategy.__new__(HiroHifStrategy)
     st.s = NS(state=GameState(page_fields={"candidates": CANDS, "held": HELD}), observe=lambda **k: NS(fields={}), record=lambda *a, **k: None,

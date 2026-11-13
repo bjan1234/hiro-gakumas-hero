@@ -69,8 +69,10 @@ def test_strategy_sets_flag_on_finals_retry(monkeypatch):
     st.s = NS(note=lambda *a: None)
     st.rec = NS(log=lambda *a, **k: None)
     monkeypatch.setattr(pages, "classify_page", lambda img: ("HIF_FINALS_RANKING", {"kind": "final", "rank": 2, "outcome": "敗退"}))
-    btn = NS(text="再挑戦", rect=NS(center=NS(y=1100)))
-    monkeypatch.setattr(hif, "ocr", NS(ocr=lambda: [btn]))
+    from hiro.vision.ocr import Box, Text
+
+    btn = Text("再挑戦", Box(290, 1090, 310, 1110))
+    monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [btn])
     st._click_retry = lambda label, b, texts, **kw: "free"
     assert st._finals_retry(None, "r2") is True and st.exam_restarted is True
 
@@ -88,8 +90,10 @@ def test_declined_retry_not_reopened_on_same_page(monkeypatch):
     st.rec = NS(log=lambda *a, **k: None)
     page = {"kind": "final", "rank": 3, "outcome": "敗退", "score": 756342, "round_score": 158038}
     monkeypatch.setattr(pages, "classify_page", lambda img: ("HIF_FINALS_RANKING", page))
-    btn = NS(text="再挑戦", rect=NS(center=NS(y=1100)))
-    monkeypatch.setattr(hif, "ocr", NS(ocr=lambda: [btn]))
+    from hiro.vision.ocr import Box, Text
+
+    btn = Text("再挑戦", Box(290, 1090, 310, 1110))
+    monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [btn])
     calls = []
     st._click_retry = lambda label, b, texts, **kw: calls.append(kw) or None
     assert st._finals_retry(None, "r2") is False and st._finals_retry(None, "r2") is False and len(calls) == 1
@@ -120,8 +124,10 @@ def test_comm_error_after_retry_not_counted(monkeypatch):
     st._retries_so_far = lambda label: 0
     monkeypatch.setattr(hif, "device", NS(click=lambda *a: None, screenshot=lambda: None))
     monkeypatch.setattr(hif, "sleep", lambda s: None)
-    monkeypatch.setattr(hif, "ocr", NS(ocr=lambda: [NS(text="通信エラー"), NS(text="リトライしますか?"), NS(text="はい")]))
-    btn = NS(text="再挑戦", rect=NS(center=NS(y=1100)))
+    monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [NS(text="通信エラー"), NS(text="リトライしますか?"), NS(text="はい")])
+    from hiro.vision.ocr import Box, Text
+
+    btn = Text("再挑戦", Box(290, 1090, 310, 1110))
     assert st._click_retry("r2", btn, [btn]) is None and any("通信エラー" in n for n in notes)
 
 
@@ -196,5 +202,7 @@ def test_fourth_finals_retry_refused_without_screen_count(tmp_path, monkeypatch)
     st = _finals_strategy(tmp_path, {"main-x": notes})
     clicks = []
     monkeypatch.setattr(hif, "device", NS(click=lambda *a: clicks.append(a)))
-    btn = NS(text="再挑戦", rect=NS(center=NS(y=1100)))
+    from hiro.vision.ocr import Box, Text
+
+    btn = Text("再挑戦", Box(290, 1090, 310, 1110))
     assert st._click_retry("lesson-3", btn, [btn]) is None and clicks == []

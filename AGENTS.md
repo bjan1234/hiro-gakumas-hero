@@ -100,7 +100,9 @@
      MuMu 缺省开后台模式（按游戏包名截它所在的显示；MuMu 6 把应用放在单独的显示里，不开时截到的是模拟器桌面），
      `HIRO_MUMU_BACKGROUND=0` 关掉。组合不合法时开局前就报错（用 KAA 自己的配置校验）。
    - 非 PlayCover 后端不做 PlayCover 专用的退路（横屏 LIVE 黑屏时切全屏、MaaTools 点了没反应时用真实鼠标再点）。
-   - 文字识别（`HIRO_OCR`）：macOS 缺省用 Apple Vision，其他系统自动改用 KAA 自带的 RapidOCR（日文 / 英文模型）。
+   - 文字识别（`HIRO_OCR`）：macOS 缺省用 Apple Vision，其他系统自动改用 RapidOCR（`rapidocr_onnxruntime` + PaddleOCR PP-OCRv3 日文 / 英文识别模型，
+     模型先找 `cache/rapidocr/`，没有就用已装 kaa 包里随带的那份）。页面判定、找按钮的整帧文字统一走 `hiro.vision.ocr.screen_texts`，
+     不再调 kotonebot 的 `ocr`。
      RapidOCR 在作者的回归截图上的准确率与速度见 `docs/assets.md`；换平台后先用自己的截图验一遍。
    - Windows 用 PowerShell 版安装脚本：`powershell -NoProfile -ExecutionPolicy Bypass -File scripts\setup.ps1`（步骤与 `setup.sh` 相同）。
      作者的 Windows 台式机上实测过安装、自检和全套离线测试，以及 `HIRO_DEVICE=mumu`（MuMu 6.8，截图 / 点击 `adb`）

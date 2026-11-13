@@ -19,9 +19,10 @@ from kaa.config.const import HifScenario, ProduceAction
 from kaa.kaa_context import produce_solution
 from kaa.tasks import R
 from kaa.tasks.produce.new.strategies.hif_grind import HifGrindStrategy
-from kotonebot import Loop, contains, device, logging, ocr, sleep
+from kotonebot import Loop, device, logging, sleep
 
 from hiro.brain.battle import BattleBrain
+from hiro.vision.ocr import find_text, screen_texts
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.llm import from_spec
 from hiro.brain.state import profile_for
@@ -393,7 +394,7 @@ class HiroHifStrategy(HifGrindStrategy):
             d.warnings.append("刷新次数已用完（识别为 0），改为拿卡")
             return False
         img = device.screenshot()
-        btn = next((t for t in ocr.ocr() if ("抽選" in t.text or "再抽" in t.text) and t.rect.center.y > 900 and t.rect.center.x > 360), None)
+        btn = next((t for t in screen_texts(img) if ("抽選" in t.text or "再抽" in t.text) and t.rect.center.y > 900 and t.rect.center.x > 360), None)
         if btn is not None:
             pos = (int(btn.rect.center.x), int(btn.rect.center.y))
         elif left:  # OCR 常读不出这个按钮：识别到还有次数时按实测位置点（与左侧「カード除去」(133,1096) 对称）
@@ -405,10 +406,9 @@ class HiroHifStrategy(HifGrindStrategy):
         end = time.monotonic() + 4.0
         while time.monotonic() < end:
             sleep(0.8)
-            device.screenshot()
-            hit = next((t for t in ocr.ocr() if t.text.strip() in self.REROLL_CONFIRM and t.rect.center.y > 600), None)
+            hit = next((t for t in screen_texts(device.screenshot()) if t.text.strip() in self.REROLL_CONFIRM and t.rect.center.y > 600), None)
             if hit:
-                device.click(hit.rect)
+                device.click(*hit.rect.center)
                 break
         sleep(1.5)
         self._rerolls_this_page += 1
@@ -536,8 +536,7 @@ class HiroHifStrategy(HifGrindStrategy):
         for i, x in enumerate(self.PITEM_SLOTS_X):
             device.click(x, 880)
             sleep(0.9)
-            device.screenshot()
-            name = next((m.group(0).replace("(", "（").replace(")", "）") for t in ocr.ocr() if (m := self._DECO_TITLE.search(t.text))), None)
+            name = next((m.group(0).replace("(", "（").replace(")", "）") for t in screen_texts(device.screenshot()) if (m := self._DECO_TITLE.search(t.text))), None)
             base = options[i] if i < len(options) else {"slot": i}
             out.append({**base, "slot": i, "name": name})
         logger.info("定制候选（装饰）：%s", [o["name"] for o in out])
@@ -574,7 +573,7 @@ class HiroHifStrategy(HifGrindStrategy):
         raw, _ = extract("SELECT_PITEM", img)
         raw = dict(raw or {})
         # 识别给颜色、决策器按名称解析：选拔①后的背包阶段补上名称（定制阶段的道具名待识别提供）
-        texts = [t.text for t in ocr.ocr()]
+        texts = [t.text for t in screen_texts(img)]
         if any(self._PLUSH_TITLE.search(t) for t in texts):  # 选拔③后第二段定制（装饰）：逐格点开读名称
             raw["options"] = self._deco_options(raw.get("options") or [])
         elif any("カスタム" in t for t in texts):  # 选拔②后第一段定制：按毛绒颜色认种类（识别正式支持前的最小实现）
@@ -600,7 +599,7 @@ class HiroHifStrategy(HifGrindStrategy):
 
     def _drink_full_skip(self) -> bool:
         """饮料已满（「Pドリンク所持上限」，「受け取る」不可点）：勾「受け取らない」再按按钮。返回是否走了这条路。"""
-        boxes = ocr.ocr()
+        boxes = screen_texts(device.screenshot())
         if not any("所持上限" in t.text for t in boxes):
             return False
         t0 = time.monotonic()
@@ -635,11 +634,11 @@ class HiroHifStrategy(HifGrindStrategy):
             return True
         box = next((t for t in boxes if "受け取らない" in t.text), None)
         if box is not None:
-            device.click(box.rect)
+            device.click(*box.rect.center)
             sleep(0.8)
-        btn = next((t for t in ocr.ocr() if t.text.strip() in ("受け取る", "決定", "受け取らない") and t.rect.center.y > 1050), None)
+        btn = next((t for t in screen_texts(device.screenshot()) if t.text.strip() in ("受け取る", "決定", "受け取らない") and t.rect.center.y > 1050), None)
         if btn is not None:
-            device.click(btn.rect)
+            device.click(*btn.rect.center)
         sleep(1.5)
         result = ExecutionResult(action=d.action, ok=True, taps=[], waited_s=0.0, page_before="SELECT_DRINK", page_after=None,
                                  expected_transition=True, retries=0, error=None, seconds=round(time.monotonic() - t0, 3))  # fmt: skip
@@ -947,7 +946,7 @@ class HiroHifStrategy(HifGrindStrategy):
         from hiro.produce.deck_review import review_deck
 
         def ocr_texts(img):
-            return [(t.text, (int(t.rect.center.x), int(t.rect.center.y))) for t in ocr.ocr()]
+            return [(t.text, tuple(t.rect.center)) for t in screen_texts(img)]
 
         from hiro.produce import deck_review
 
@@ -1094,7 +1093,7 @@ class HiroHifStrategy(HifGrindStrategy):
             # D42 第三十三局本战：决策说没有值得操作的卡 → 点「キャンセル」退回（相談 / 上一页），不停机
             btn = self._card_op_cancel()
             if btn is not None:
-                device.click(btn)
+                device.click(*btn)
             else:  # 识别说有、这一帧 OCR 没读到：按固定位置点（识屏：11 个样本都在 x≈165、y≈1148）
                 device.click(*self.CARD_OP_CANCEL_XY)
             result = self.s.verify(d.action, page_before=page, taps=[], retries=0)
@@ -1114,9 +1113,9 @@ class HiroHifStrategy(HifGrindStrategy):
                 self.s.recover("tap_no_effect", f"{executor_name}({card_id}) 没完成，本局不再选它，重新决策")
                 return self._card_event(page, ctx, executor_name)
             # 连续做不成（相談的強化 / 削除对话框，识别读不出「+」时会把满级卡逐张试一遍）：有「キャンセル」就退回，不停机
-            cancel = next((t for t in ocr.ocr() if "キャンセル" in t.text and t.rect.center.y > 1050), None)
+            cancel = next((t for t in screen_texts(device.screenshot()) if "キャンセル" in t.text and t.rect.center.y > 1050), None)
             if cancel is not None:
-                device.click(cancel.rect)
+                device.click(*cancel.rect.center)
                 self.s.recover("tap_no_effect", f"{executor_name} 连续 {len(failed)} 张做不成，点キャンセル 退回（{sorted(failed)}）")
                 logger.warning("%s 连续做不成，点キャンセル 退回", executor_name)
                 return
@@ -1129,9 +1128,9 @@ class HiroHifStrategy(HifGrindStrategy):
 
     @staticmethod
     def _card_op_cancel():
-        """强化 / 删卡对话框底部的「キャンセル」（y > 1050）；没有（礼物强化等必须选一张）或读不了返回 None。"""
+        """强化 / 删卡对话框底部的「キャンセル」中心 (x, y)（y > 1050）；没有（礼物强化等必须选一张）或读不了返回 None。"""
         try:
-            return next((t.rect for t in ocr.ocr() if "キャンセル" in t.text and t.rect.center.y > 1050), None)
+            return next((t.rect.center for t in screen_texts(device.screenshot()) if "キャンセル" in t.text and t.rect.center.y > 1050), None)
         except Exception as e:  # noqa: BLE001  OCR 出错当没看到
             logger.warning("找「キャンセル」时 OCR 出错：%r", e)
             return None
@@ -1589,7 +1588,7 @@ class HiroHifStrategy(HifGrindStrategy):
         self.s.observe(scene="HIF_EXAM_RESULT", img=img, fields=res)
         if res.get("passed") is not False:
             return False
-        texts = ocr.ocr()
+        texts = screen_texts(img)
         btn = next((t for t in texts if button_text(t.text, "再挑戦") and t.rect.center.y > 900), None)
         if btn is None:
             self.s.note(f"{label} 敗退（{res.get('score')} Pt），没有再挑戦按钮，结束培育")
@@ -1653,15 +1652,14 @@ class HiroHifStrategy(HifGrindStrategy):
             logger.warning("%s 已再挑戦 %d 次（上限 %d），不再挑戦", label, used, self.MAX_RETRIES_PER_EXAM)
             return None
         free_hint = any("無料" in t.text for t in texts)
-        device.click(btn.rect)
+        device.click(*btn.rect.center)
         # 确认框可能晚弹（第二十局 04:06 日期切换后：6 秒窗口过了才弹，没点「決定」就当成已再挑戦，主循环 UNKNOWN 60 秒）
         end = time.monotonic() + self.RETRY_CONFIRM_WAIT
         kind = "free" if free_hint else None
         clicks, last, tickets = 0, -1e9, None
         while time.monotonic() < end:
             sleep(0.8)
-            device.screenshot()
-            boxes = ocr.ocr()
+            boxes = screen_texts(device.screenshot())
             words = " ".join(t.text for t in boxes)
             if "通信" in words and ("エラー" in words or "リトライ" in words):
                 # 点了再挑戦却弹出通信エラー（Windows 第七局 ERR_AM_IDTOKEN_FAIL）：这次没开始，不记账；弹窗交给 comm_error 处理
@@ -1672,7 +1670,7 @@ class HiroHifStrategy(HifGrindStrategy):
             if any(j in words for j in self.RETRY_JEWEL):
                 cancel = next((t for t in boxes if "キャンセル" in t.text), None)
                 if cancel is not None:
-                    device.click(cancel.rect)
+                    device.click(*cancel.rect.center)
                 self.s.note(f"{label} 再挑戦要消耗ジュエル：已取消（用户规则：不用ジュエル）")
                 logger.warning("%s 再挑戦要消耗ジュエル，已取消", label)
                 return None
@@ -1687,7 +1685,7 @@ class HiroHifStrategy(HifGrindStrategy):
                 # 止损（RETRY_STOP_LOSS）：翻不了盘时不用券，点キャンセル（免费的照常用）
                 cancel = next((t for t in boxes if "キャンセル" in t.text), None)
                 if cancel is not None:
-                    device.click(cancel.rect)
+                    device.click(*cancel.rect.center)
                 self.s.note(f"{label} 再挑戦要用再挑戦チケット，但差距翻不了盘：已取消（RETRY_STOP_LOSS）")
                 logger.warning("%s 再挑戦要用券，差距翻不了盘，已取消（RETRY_STOP_LOSS）", label)
                 return None
@@ -1699,7 +1697,7 @@ class HiroHifStrategy(HifGrindStrategy):
             # 第二十五局 R2：确认框淡入时点了「決定」没响应，以前点一下就当完成，确认框挂 46s。还在就隔一会儿再点（最多 3 次）
             if clicks >= self.RETRY_CONFIRM_TAPS or time.monotonic() - last < 1.5:
                 continue
-            device.click(hit.rect)
+            device.click(*hit.rect.center)
             clicks, last = clicks + 1, time.monotonic()
             if clicks > 1:
                 logger.info("%s 再挑戦确认框点了「%s」还在，再点一次（第 %d 次）", label, hit.text.strip(), clicks)
@@ -1728,7 +1726,7 @@ class HiroHifStrategy(HifGrindStrategy):
         page_key = (label, f.get("score"), f.get("round_score"))
         if page_key == self._retry_declined:
             return False  # 这张结算页已经决定不再挑戦：别再点开确认框，让调用方点「次へ」收尾
-        texts = ocr.ocr()
+        texts = screen_texts(img)
         btn = next((t for t in texts if button_text(t.text, "再挑戦") and t.rect.center.y > 900), None)
         if btn is None:
             return False
@@ -1776,7 +1774,7 @@ class HiroHifStrategy(HifGrindStrategy):
 
         def ended() -> bool:
             # 先看「次へ」按钮模板（约 60ms），有了才 OCR 顶栏（约 1s）：考试中每轮都要判，第十六局本战每轮都先 OCR 了一次
-            return bool(R.Common.ButtonNext.find() and not ocr.find(contains("残りターン"), rect=R.InProduce.BoxExamTop))
+            return bool(R.Common.ButtonNext.find() and find_text(device.screenshot(), "残りターン", rect=R.InProduce.BoxExamTop) is None)
 
         run_exam(self.brain, label, self.rec, ended, session=self.s, advisor=self.advisor)
         self.rec.log("exam_end", image=device.screenshot(), exam=label)

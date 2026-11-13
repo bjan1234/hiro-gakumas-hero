@@ -18,7 +18,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from kotonebot import contains, device, logging, ocr
+from kotonebot import device, logging
 from kotonebot.primitives import Rect
 
 from hiro.contracts import Action, ExecutionResult
