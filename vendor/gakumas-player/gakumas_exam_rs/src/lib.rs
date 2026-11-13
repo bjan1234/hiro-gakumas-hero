@@ -274,6 +274,11 @@ mod py {
         fn drinks(&self) -> Vec<String> {
             self.ex.drinks.iter().map(|d| sym::name(*d)).collect()
         }
+        /// 饮料栏按画面设（模拟器跟踪按画面重建时用：任务 ② 验证 2，喝掉的饮料重建后还留在引擎里）
+        #[setter]
+        fn set_drinks(&mut self, v: Vec<String>) {
+            self.ex.drinks = v.iter().map(|d| sym::intern(d)).collect();
+        }
         #[getter]
         fn playing(&self) -> Option<String> {
             self.ex.playing.map(|c| self.ex.cards[c].guid.to_string())

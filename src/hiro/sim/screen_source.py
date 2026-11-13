@@ -277,6 +277,13 @@ class SimScreenExamStateSource(ScreenExamStateSource):
                 setattr(env, attr, v)
         if env.actions <= 0 and any(c.available for c in state.hand):
             env.actions = 1
+        # 饮料栏按画面（画面每格都认出时）：重建从上一次对上的局面出发，中间喝掉的那瓶原来会一直留在引擎里（任务 ② 验证 2）
+        screen_drinks = [getattr(d, "drink_id", None) for d in state.drinks or []]
+        if all(screen_drinks) and sorted(env.drinks.values()) != sorted(screen_drinks):
+            rx = getattr(env, "rx", None)
+            if rx is not None and hasattr(type(rx), "drinks") and getattr(type(rx).drinks, "__set__", None):
+                notes.append(f"饮料按画面：{sorted(env.drinks.values())} → {screen_drinks}")
+                rx.drinks = screen_drinks
         _order_hand(env, want, notes)
         game = SimGame(env, self.label, self.profile)
         game.memory, game.meta = self.tracker.game.memory, self.meta

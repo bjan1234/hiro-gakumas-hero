@@ -36,3 +36,11 @@ def test_run_loadout_replaces_template():
     items, sups = _ids(_env(items=("pitem_02-3-062-0", "customize_pitem-02-04-3-003_00-04-2-003_02-02-1-001_00-04-4-001"), supports=sup, skills=()))
     assert items == ["pitem_02-3-062-0", "customize_pitem-02-04-3-003_00-04-2-003_02-02-1-001_00-04-4-001"]
     assert sups == ["s_card-3-0029"]
+
+
+def test_custom_item_reactions_use_master_cap():
+    from hiro.sim import interval as iv
+
+    # リボンくま（赤）：「以降の試験開始時、好印象+3・やる気+3（プロデュース中2回）」→ 本战时按触发满 2 次叠层（验证 2 真值）
+    assert iv._custom_reactions("customize_pitem-02-04-3-001_00-04-2-001_02-02-1-001_00-04-4-002") == 2
+    assert iv._custom_reactions("pitem_02-3-062-0") == 0

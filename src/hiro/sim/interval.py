@@ -81,11 +81,28 @@ def ouenbou_fill(deck: list) -> list:
     return out
 
 
+@lru_cache(maxsize=None)
+def _custom_reactions(item_id: str) -> int:
+    """定制 P 道具育成中的触发次数（_reactionCount，永久附魔按它叠层）：画面读不到，按主数据的上限（produceEffectTriggerCount）算——
+    到本战时一般已触发满（验证 2：リボンくま 「以降の試験開始時 好印象+3・やる気+3（プロデュース中2回）」真值叠 2 层）。非定制道具 0。"""
+    if not str(item_id).startswith("customize_pitem-"):
+        return 0
+    try:
+        from gakumas_exam.master import shared
+
+        from hiro.sim.engine import master_commit
+
+        row = next((r for r in shared(master_commit()).table("ProduceCustomizeItem") if r["id"] == item_id), None)
+        return max(1, int((row or {}).get("produceEffectTriggerCount") or 1))
+    except Exception:  # noqa: BLE001
+        return 1
+
+
 def loadout_into(o: dict, *, items=None, supports=None, skills=None) -> None:
     """把开考快照里的 P 道具 / 支援卡 / 回忆附魔换成给定的（None = 不动，沿用模板）。
     episode_from_observation 只读 items 的 _id / _reactionCount、supports 原样、active_statuses 里 TriggerEffect 的 _startEnchantOriginId。"""
     if items is not None:
-        o["items"] = [{"_id": i, "_fireCount": 0, "_reactionCount": 0, "_itemType": 2 if str(i).startswith("customize_pitem-") else 1,
+        o["items"] = [{"_id": i, "_fireCount": 0, "_reactionCount": _custom_reactions(i), "_itemType": 2 if str(i).startswith("customize_pitem-") else 1,
                        "_parentCustomItemIds": []} for i in items]  # fmt: skip
     if supports is not None:
         o["supports"] = [dict(x) for x in supports]

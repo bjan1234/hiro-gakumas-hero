@@ -75,3 +75,9 @@ def test_search_returns_legal_first_move_within_budget(rs, rx):
 def test_search_on_ended_exam_has_no_move(rs, rx):
     rx.random_rollout(1)
     assert rs.search(rx, 0, [], worlds=2, seconds=0.2)["best"] is None
+
+
+def test_drinks_setter_for_rebuild(rs, rx):
+    rx.drinks = ["pdrink_02-3-010"]
+    assert rx.drinks == ["pdrink_02-3-010"]
+    assert {tuple(a) for a in rx.clone().legal_actions() if a[0] == "drink"} == {("drink", 0)}
