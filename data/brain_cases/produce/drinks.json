@@ -1,0 +1,2041 @@
+[
+ {
+  "id": "drink-qualifydmmw1-174",
+  "decider": "SELECT_DRINK",
+  "source": "实机 qualifydmmw1-20261111-193326-r1 seq174",
+  "note": "模拟：初星水 比社区默认 烏龍茶 +489 ± 803，噪声内；两瓶都是 3 档。おしゃれハーブティー 是好印象系，和广的打法冲突（第十八局跨档拿错的教训），不能拿",
+  "accept": [
+   "pick:0",
+   "pick:2"
+  ],
+  "forbid": [
+   "pick:1"
+  ],
+  "state": {
+   "mode": "produce",
+   "page": {
+    "name": "SELECT_DRINK",
+    "area": "produce",
+    "since_seq": 172,
+    "stable": true,
+    "frames": 3
+   },
+   "produce": {
+    "mode": "produce-007",
+    "step": 8,
+    "stamina": 19,
+    "max_stamina": 33,
+    "produce_point": 470,
+    "params": {
+     "Vo": 639,
+     "Da": 902,
+     "Vi": 399
+    },
+    "growth_permil": {
+     "Vo": 1455,
+     "Da": 1359,
+     "Vi": 1413
+    },
+    "star": 285,
+    "param_cap": 3000,
+    "drinks": [],
+    "drink_capacity": 4,
+    "deck": [
+     {
+      "card_id": "p_card-02-ido-3_105",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_037",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-0_037",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-act-0_038",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-2_004",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-1_031",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-0_039",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-0_039",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-0_039",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-0_041",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-2_111",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-sup-3_094",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-2_062",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-2_054",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-3_186",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_052",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-3_002",
+      "upgrade": 1
+     }
+    ],
+    "deck_size": 10
+   },
+   "exam": {
+    "attr_permil": {
+     "Vo": 14130,
+     "Da": 14540,
+     "Vi": 9000
+    },
+    "multiplier_permil": 14130,
+    "remaining_turns": 1,
+    "hp": 19,
+    "genki": 327,
+    "score": 32627,
+    "hand": [
+     {
+      "slot": 0,
+      "name": "距離感の基本",
+      "card_id": "p_card-02-men-0_039",
+      "upgrade": 0,
+      "available": true,
+      "category": "mental",
+      "cost": 2,
+      "hp_cost": 0,
+      "extra_cost": null,
+      "text": "元気+4やる気+2レッスン中1回",
+      "tags": {
+       "once": true
+      },
+      "badge_score": null
+     },
+     {
+      "slot": 1,
+      "name": "きらきら紙吹雪+",
+      "card_id": "p_card-02-act-2_062",
+      "upgrade": 1,
+      "available": true,
+      "category": "active",
+      "cost": 0,
+      "hp_cost": 0,
+      "extra_cost": {
+       "type": "ExamCostType_ExamCardPlayAggressive",
+       "value": 2
+      },
+      "text": "やる気消費2元気の110%分パラメータ上昇次のターン、スキルカードを2枚引く 重複不可",
+      "tags": {
+       "draws": 2,
+       "genki_score_pct": 110
+      },
+      "badge_score": 8139
+     }
+    ],
+    "drinks": [],
+    "buffs": {},
+    "motivation": 42,
+    "impression": 0,
+    "pitem_charges": 3,
+    "rank_line": 64,
+    "participants": 128,
+    "pitems": [],
+    "unrecognized_cards": 0,
+    "npc_scores": [
+     5287,
+     2206,
+     2194,
+     1934
+    ],
+    "my_rank_index": 1,
+    "drink_slots": [
+     {
+      "slot": 0,
+      "state": "empty",
+      "drink_id": null,
+      "asset": null,
+      "name": null,
+      "rect": [
+       34,
+       1172,
+       56,
+       56
+      ],
+      "center": [
+       62,
+       1200
+      ],
+      "available": null,
+      "score": 0.164,
+      "margin": 0.021,
+      "confidence": 0.836
+     },
+     {
+      "slot": 1,
+      "state": "empty",
+      "drink_id": null,
+      "asset": null,
+      "name": null,
+      "rect": [
+       119,
+       1172,
+       56,
+       56
+      ],
+      "center": [
+       147,
+       1200
+      ],
+      "available": null,
+      "score": 0.156,
+      "margin": 0.002,
+      "confidence": 0.844
+     },
+     {
+      "slot": 2,
+      "state": "empty",
+      "drink_id": null,
+      "asset": null,
+      "name": null,
+      "rect": [
+       205,
+       1172,
+       56,
+       56
+      ],
+      "center": [
+       233,
+       1200
+      ],
+      "available": null,
+      "score": 0.138,
+      "margin": 0.008,
+      "confidence": 0.862
+     },
+     {
+      "slot": 3,
+      "state": "empty",
+      "drink_id": null,
+      "asset": null,
+      "name": null,
+      "rect": [
+       290,
+       1172,
+       56,
+       56
+      ],
+      "center": [
+       318,
+       1200
+      ],
+      "available": null,
+      "score": 0.153,
+      "margin": 0.005,
+      "confidence": 0.847
+     }
+    ],
+    "finals": false,
+    "attr": "Vo",
+    "multiplier_pct": 1413,
+    "statuses": [
+     {
+      "type": "ProduceExamEffectType_ExamCardPlayAggressive",
+      "name": "やる気",
+      "value": 42,
+      "unit": "stack"
+     }
+    ]
+   },
+   "exam_session": {
+    "label": "qualify-1",
+    "turn": 10,
+    "last_remaining": 1,
+    "brief_permil": null
+   },
+   "page_fields": {
+    "candidates": [
+     {
+      "slot": 0,
+      "drink_id": "pdrink_00-1-001",
+      "name": "初星水",
+      "score": 0.51
+     },
+     {
+      "slot": 1,
+      "drink_id": "pdrink_02-2-006",
+      "name": "おしゃれハーブティー",
+      "score": 0.736
+     },
+     {
+      "slot": 2,
+      "drink_id": "pdrink_00-1-004",
+      "name": "烏龍茶",
+      "score": 0.687
+     }
+    ],
+    "held": [],
+    "full": false
+   },
+   "sources": {
+    "produce.mode": {
+     "origin": "screen",
+     "seq": 168
+    },
+    "produce.step": {
+     "origin": "screen",
+     "seq": 168
+    },
+    "produce.stamina": {
+     "origin": "screen",
+     "seq": 168
+    },
+    "produce.max_stamina": {
+     "origin": "screen",
+     "seq": 168
+    },
+    "produce.produce_point": {
+     "origin": "screen",
+     "seq": 168
+    },
+    "produce.params": {
+     "origin": "screen",
+     "seq": 168
+    },
+    "produce.growth_permil": {
+     "origin": "screen",
+     "seq": 168
+    },
+    "produce.star": {
+     "origin": "screen",
+     "seq": 168
+    },
+    "produce.param_cap": {
+     "origin": "screen",
+     "seq": 168
+    },
+    "produce.drinks": {
+     "origin": "screen",
+     "seq": 168
+    },
+    "produce.drink_capacity": {
+     "origin": "screen",
+     "seq": 168
+    },
+    "produce.deck": {
+     "origin": "infer",
+     "seq": 60
+    },
+    "produce.deck_size": {
+     "origin": "infer",
+     "seq": 60
+    },
+    "exam.remaining_turns": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.hp": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.genki": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.score": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.hand": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.drinks": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.buffs": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.motivation": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.impression": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.pitem_charges": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.rank_line": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.participants": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.pitems": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.unrecognized_cards": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.npc_scores": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.my_rank_index": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.drink_slots": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.finals": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.attr": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.multiplier_pct": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.multiplier_permil": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.statuses": {
+     "origin": "screen",
+     "seq": 146
+    }
+   },
+   "seq": 174,
+   "pending_page": null,
+   "conflicts": [
+    "seq 84: ACQUIRE → SKILL_CARD_ENHANCE 不在转移图里，连续 3 帧后接受",
+    "考试手牌：识别与执行器不一致 ['2:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['2:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "seq 128: exam.npc_scores 读数 [0, 0, 10, 0] 违反 rank_consistency（参考 '按名次不增'），丢弃",
+    "考试手牌：识别与执行器不一致 ['1:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "seq 130: exam.npc_scores 读数 [491, 267, 1216, 108] 违反 rank_consistency（参考 '按名次不增'），丢弃",
+    "考试手牌：识别与执行器不一致 ['0:ひなたぼっこ≠メリクリで～す♪']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['0:ひなたぼっこ≠メリクリで～す♪', '2:仕切り直し++≠交わる感情']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['2:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['1:きらきら紙吹雪+≠クライマックス']，采用识别（执行器只用于点击位置）",
+    "seq 135: exam.npc_scores 读数 [1967, 996, 1820, 485] 违反 rank_consistency（参考 '按名次不增'），丢弃",
+    "seq 136: exam.npc_scores 读数 [1967, 996, 1820, 485] 违反 rank_consistency（参考 '按名次不增'），丢弃",
+    "考试手牌：识别与执行器不一致 ['1:きらきら紙吹雪++≠クライマックス']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['1:ひなたぼっこ≠メリクリで～す♪']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['0:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['0:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['1:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['1:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['0:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "seq 152: 离开考试，produce.drinks 按考试饮料栏更新 ['pdrink_00-2-008', 'pdrink_00-2-008', 'pdrink_00-3-005', 'pdrink_02-3-006'] → []"
+   ],
+   "field_status": {
+    "produce.mode": "observed",
+    "produce.step": "observed",
+    "produce.stamina": "observed",
+    "produce.max_stamina": "observed",
+    "produce.produce_point": "observed",
+    "produce.params.Vo": "verified",
+    "produce.params.Da": "verified",
+    "produce.params.Vi": "verified",
+    "produce.growth_permil": "observed",
+    "produce.star": "pending",
+    "produce.param_cap": "observed",
+    "produce.advice": "observed",
+    "produce.drinks": "pending",
+    "produce.drink_capacity": "observed",
+    "produce.options": "observed",
+    "produce.complete": "observed",
+    "produce.deck": "predicted",
+    "produce.deck_size": "predicted",
+    "exam.remaining_turns": "observed",
+    "exam.hp": "observed",
+    "exam.genki": "observed",
+    "exam.score": "observed",
+    "exam.hand": "observed",
+    "exam.drinks": "observed",
+    "exam.buffs": "observed",
+    "exam.motivation": "observed",
+    "exam.impression": "observed",
+    "exam.pitem_charges": "observed",
+    "exam.rank_line": "observed",
+    "exam.participants": "observed",
+    "exam.pitems": "observed",
+    "exam.unrecognized_cards": "observed",
+    "exam.npc_scores": "observed",
+    "exam.my_rank_index": "observed",
+    "exam.drink_slots": "observed",
+    "exam.finals": "observed",
+    "exam.attr": "observed",
+    "exam.multiplier_pct": "observed",
+    "exam.multiplier_permil": "observed",
+    "exam.statuses": "observed"
+   },
+   "pending_review": [
+    "produce.drinks",
+    "produce.star"
+   ],
+   "ledger": [
+    {
+     "seq": 22,
+     "kind": "CARD_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "card_id": "p_card-02-sup-3_094",
+      "upgrade": 1
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 22,
+      "screenshot": "frames/00022.jpg",
+      "page": "ACQUIRE"
+     },
+     "confidence": 0.8,
+     "note": "缩略图没认出，只按名称栏",
+     "version": "1.2"
+    },
+    {
+     "seq": 23,
+     "kind": "WAPPEN_TRIGGER",
+     "origin": "observed",
+     "args": {
+      "star_gain": 15
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 23,
+      "screenshot": "frames/00023.jpg",
+      "page": "STAR_GAIN"
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 29,
+     "kind": "CARD_ACQUIRE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-02-act-2_062",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 29
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 64,
+     "kind": "DRINK_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "drink_id": "pdrink_00-2-008"
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 64,
+      "screenshot": null,
+      "page": "ACQUIRE"
+     },
+     "confidence": 1.0,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 66,
+     "kind": "CARD_REROLL",
+     "origin": "action",
+     "args": {},
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 66
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 68,
+     "kind": "CARD_REROLL",
+     "origin": "action",
+     "args": {},
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 68
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 70,
+     "kind": "CARD_REROLL",
+     "origin": "action",
+     "args": {},
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 70
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 72,
+     "kind": "CARD_REROLL",
+     "origin": "action",
+     "args": {},
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 72
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 74,
+     "kind": "CARD_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "card_id": "p_card-02-men-2_054",
+      "upgrade": 1
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 74,
+      "screenshot": "frames/00074.jpg",
+      "page": "ACQUIRE"
+     },
+     "confidence": 0.8,
+     "note": "缩略图没认出，只按名称栏",
+     "version": "1.2"
+    },
+    {
+     "seq": 76,
+     "kind": "CARD_REROLL",
+     "origin": "action",
+     "args": {},
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 76
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 78,
+     "kind": "CARD_ACQUIRE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-02-act-3_186",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 78
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 84,
+     "kind": "CARD_UPGRADE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-02-act-3_186",
+      "upgrade": 0,
+      "source": "event"
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 84
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 87,
+     "kind": "DRINK_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "drink_id": "pdrink_00-2-010",
+      "overflow": true,
+      "held": null
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "observation_seq": 87,
+      "screenshot": "frames/00087.jpg",
+      "page": "PDRINK_MAX"
+     },
+     "confidence": 1.0,
+     "note": "饮料已满：之后的 DRINK_DISCARD（动作）或報酬スキップ 决定结果",
+     "version": "1.2"
+    },
+    {
+     "seq": 104,
+     "kind": "CARD_ACQUIRE",
+     "origin": "action",
+     "args": {
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 104
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 106,
+     "kind": "CARD_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "card_id": "p_card-02-men-2_052",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 106,
+      "screenshot": "frames/00106.jpg",
+      "page": "ACQUIRE"
+     },
+     "confidence": 0.8,
+     "note": "缩略图没认出，只按名称栏",
+     "version": "1.2"
+    },
+    {
+     "seq": 109,
+     "kind": "DRINK_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "drink_id": "pdrink_02-2-006",
+      "overflow": true,
+      "held": null
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "observation_seq": 109,
+      "screenshot": "frames/00109.jpg",
+      "page": "PDRINK_MAX"
+     },
+     "confidence": 1.0,
+     "note": "饮料已满：之后的 DRINK_DISCARD（动作）或報酬スキップ 决定结果",
+     "version": "1.2"
+    },
+    {
+     "seq": 147,
+     "kind": "EXAM_RESULT",
+     "origin": "observed",
+     "args": {
+      "exam": 1,
+      "score": 41402,
+      "rank": 1,
+      "passed": true
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 147,
+      "screenshot": "frames/00147.jpg",
+      "page": "HIF_EXAM_RESULT"
+     },
+     "confidence": 1.0,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 151,
+     "kind": "WAPPEN_TRIGGER",
+     "origin": "observed",
+     "args": {
+      "star_gain": 60
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 151,
+      "screenshot": "frames/00151.jpg",
+      "page": "STAR_GAIN"
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 152,
+     "kind": "CARD_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "card_id": "p_card-02-men-3_002",
+      "upgrade": 1
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 152,
+      "screenshot": "frames/00152.jpg",
+      "page": "ACQUIRE"
+     },
+     "confidence": 0.8,
+     "note": "缩略图没认出，只按名称栏",
+     "version": "1.2"
+    },
+    {
+     "seq": 154,
+     "kind": "WAPPEN_TRIGGER",
+     "origin": "observed",
+     "args": {
+      "star_gain": 15
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 154,
+      "screenshot": "frames/00154.jpg",
+      "page": "STAR_GAIN"
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    }
+   ],
+   "version": "1.2"
+  }
+ },
+ {
+  "id": "consult-qualifydmmw1-254",
+  "decider": "CONSULT",
+  "source": "实机 qualifydmmw1-20261111-193326-r1 seq254",
+  "note": "选拔③ 前最后一次相談、事故（缺复制）：模拟 初星スペシャル青汁 比社区默认 パワフル漢方ドリンク +2,358 ± 4,976，噪声内。第二瓶 烏龍茶 只是重复的 3 档元気",
+  "forbid": [
+   "buy:5"
+  ],
+  "state": {
+   "mode": "produce",
+   "page": {
+    "name": "CONSULT",
+    "area": "produce",
+    "since_seq": 253,
+    "stable": true,
+    "frames": 2
+   },
+   "produce": {
+    "mode": "produce-007",
+    "step": 12,
+    "stamina": 20,
+    "max_stamina": 33,
+    "produce_point": 480,
+    "params": {
+     "Vo": 789,
+     "Da": 1272,
+     "Vi": 540
+    },
+    "growth_permil": {
+     "Vo": 1455,
+     "Da": 1359,
+     "Vi": 1413
+    },
+    "star": 390,
+    "param_cap": 3000,
+    "drinks": [
+     "pdrink_00-1-004",
+     "pdrink_00-2-010",
+     "pdrink_00-2-008"
+    ],
+    "drink_capacity": 4,
+    "deck": [
+     {
+      "card_id": "p_card-02-ido-3_105",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_037",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-0_037",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-act-0_038",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-2_004",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-1_031",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-0_039",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-0_039",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-0_039",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-0_041",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-2_111",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-sup-3_094",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-2_062",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-act-3_186",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_052",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-men-3_002",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_071",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-2_056",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-act-1_071",
+      "upgrade": 0
+     }
+    ],
+    "deck_size": 10
+   },
+   "exam": {
+    "attr_permil": {
+     "Vo": 14130,
+     "Da": 14540,
+     "Vi": 9000
+    },
+    "multiplier_permil": 14130,
+    "remaining_turns": 1,
+    "hp": 19,
+    "genki": 327,
+    "score": 32627,
+    "hand": [
+     {
+      "slot": 0,
+      "name": "距離感の基本",
+      "card_id": "p_card-02-men-0_039",
+      "upgrade": 0,
+      "available": true,
+      "category": "mental",
+      "cost": 2,
+      "hp_cost": 0,
+      "extra_cost": null,
+      "text": "元気+4やる気+2レッスン中1回",
+      "tags": {
+       "once": true
+      },
+      "badge_score": null
+     },
+     {
+      "slot": 1,
+      "name": "きらきら紙吹雪+",
+      "card_id": "p_card-02-act-2_062",
+      "upgrade": 1,
+      "available": true,
+      "category": "active",
+      "cost": 0,
+      "hp_cost": 0,
+      "extra_cost": {
+       "type": "ExamCostType_ExamCardPlayAggressive",
+       "value": 2
+      },
+      "text": "やる気消費2元気の110%分パラメータ上昇次のターン、スキルカードを2枚引く 重複不可",
+      "tags": {
+       "draws": 2,
+       "genki_score_pct": 110
+      },
+      "badge_score": 8139
+     }
+    ],
+    "drinks": [],
+    "buffs": {},
+    "motivation": 42,
+    "impression": 0,
+    "pitem_charges": 3,
+    "rank_line": 64,
+    "participants": 128,
+    "pitems": [],
+    "unrecognized_cards": 0,
+    "npc_scores": [
+     5287,
+     2206,
+     2194,
+     1934
+    ],
+    "my_rank_index": 1,
+    "drink_slots": [
+     {
+      "slot": 0,
+      "state": "empty",
+      "drink_id": null,
+      "asset": null,
+      "name": null,
+      "rect": [
+       34,
+       1172,
+       56,
+       56
+      ],
+      "center": [
+       62,
+       1200
+      ],
+      "available": null,
+      "score": 0.164,
+      "margin": 0.021,
+      "confidence": 0.836
+     },
+     {
+      "slot": 1,
+      "state": "empty",
+      "drink_id": null,
+      "asset": null,
+      "name": null,
+      "rect": [
+       119,
+       1172,
+       56,
+       56
+      ],
+      "center": [
+       147,
+       1200
+      ],
+      "available": null,
+      "score": 0.156,
+      "margin": 0.002,
+      "confidence": 0.844
+     },
+     {
+      "slot": 2,
+      "state": "empty",
+      "drink_id": null,
+      "asset": null,
+      "name": null,
+      "rect": [
+       205,
+       1172,
+       56,
+       56
+      ],
+      "center": [
+       233,
+       1200
+      ],
+      "available": null,
+      "score": 0.138,
+      "margin": 0.008,
+      "confidence": 0.862
+     },
+     {
+      "slot": 3,
+      "state": "empty",
+      "drink_id": null,
+      "asset": null,
+      "name": null,
+      "rect": [
+       290,
+       1172,
+       56,
+       56
+      ],
+      "center": [
+       318,
+       1200
+      ],
+      "available": null,
+      "score": 0.153,
+      "margin": 0.005,
+      "confidence": 0.847
+     }
+    ],
+    "finals": false,
+    "attr": "Vo",
+    "multiplier_pct": 1413,
+    "statuses": [
+     {
+      "type": "ProduceExamEffectType_ExamCardPlayAggressive",
+      "name": "やる気",
+      "value": 42,
+      "unit": "stack"
+     }
+    ]
+   },
+   "exam_session": {
+    "label": "qualify-1",
+    "turn": 10,
+    "last_remaining": 1,
+    "brief_permil": null
+   },
+   "page_fields": {
+    "shelf": [
+     {
+      "index": 0,
+      "kind": "card",
+      "card_id": "p_card-02-men-2_100",
+      "name": "気まぐれハート",
+      "upgrade": 0,
+      "price": 24,
+      "sale": true,
+      "purchased": false,
+      "center": [
+       127,
+       544
+      ]
+     },
+     {
+      "index": 1,
+      "kind": "card",
+      "card_id": "p_card-02-act-3_045",
+      "name": "あのときの約束",
+      "upgrade": 0,
+      "price": 70,
+      "sale": false,
+      "purchased": false,
+      "center": [
+       282,
+       544
+      ]
+     },
+     {
+      "index": 2,
+      "kind": "card",
+      "card_id": "p_card-02-act-1_004",
+      "name": "元気な挨拶+",
+      "upgrade": 1,
+      "price": 70,
+      "sale": false,
+      "purchased": false,
+      "center": [
+       437,
+       544
+      ]
+     },
+     {
+      "index": 3,
+      "kind": "card",
+      "card_id": "p_card-02-men-2_057",
+      "name": "ゆめみごこち+",
+      "upgrade": 1,
+      "price": 77,
+      "sale": false,
+      "purchased": false,
+      "center": [
+       592,
+       544
+      ]
+     },
+     {
+      "index": 4,
+      "kind": "drink",
+      "drink_id": "pdrink_00-2-001",
+      "name": "ミックススムージー",
+      "confidence": 0.618,
+      "margin": 0.424,
+      "price": 52,
+      "sale": true,
+      "purchased": false,
+      "center": [
+       127,
+       730
+      ]
+     },
+     {
+      "index": 5,
+      "kind": "drink",
+      "drink_id": "pdrink_00-1-004",
+      "name": "烏龍茶",
+      "confidence": 0.721,
+      "margin": 0.371,
+      "price": 50,
+      "sale": false,
+      "purchased": false,
+      "center": [
+       282,
+       730
+      ]
+     },
+     {
+      "index": 6,
+      "kind": "drink",
+      "drink_id": "pdrink_00-3-005",
+      "name": "初星スペシャル青汁",
+      "confidence": 0.846,
+      "margin": 0.473,
+      "price": 100,
+      "sale": false,
+      "purchased": false,
+      "center": [
+       437,
+       730
+      ]
+     },
+     {
+      "index": 7,
+      "kind": "drink",
+      "drink_id": "pdrink_00-2-009",
+      "name": "パワフル漢方ドリンク",
+      "confidence": 0.834,
+      "margin": 0.778,
+      "price": 15,
+      "sale": false,
+      "purchased": false,
+      "center": [
+       592,
+       730
+      ]
+     }
+    ],
+    "services": {
+     "upgrade": {
+      "price": 100,
+      "available": true
+     },
+     "delete": {
+      "price": 100,
+      "available": true
+     }
+    },
+    "rerolls_left": 1,
+    "complete": true,
+    "drinks": [
+     "pdrink_00-1-004",
+     "pdrink_00-2-010",
+     "pdrink_00-2-008"
+    ],
+    "drink_capacity": 4,
+    "stamina": 20,
+    "max_stamina": 33,
+    "produce_point": 480
+   },
+   "sources": {
+    "produce.mode": {
+     "origin": "screen",
+     "seq": 251
+    },
+    "produce.step": {
+     "origin": "screen",
+     "seq": 251
+    },
+    "produce.stamina": {
+     "origin": "screen",
+     "seq": 254
+    },
+    "produce.max_stamina": {
+     "origin": "screen",
+     "seq": 254
+    },
+    "produce.produce_point": {
+     "origin": "screen",
+     "seq": 254
+    },
+    "produce.params": {
+     "origin": "screen",
+     "seq": 251
+    },
+    "produce.growth_permil": {
+     "origin": "screen",
+     "seq": 251
+    },
+    "produce.star": {
+     "origin": "screen",
+     "seq": 251
+    },
+    "produce.param_cap": {
+     "origin": "screen",
+     "seq": 251
+    },
+    "produce.drinks": {
+     "origin": "screen",
+     "seq": 254
+    },
+    "produce.drink_capacity": {
+     "origin": "screen",
+     "seq": 254
+    },
+    "produce.deck": {
+     "origin": "infer",
+     "seq": 60
+    },
+    "produce.deck_size": {
+     "origin": "infer",
+     "seq": 60
+    },
+    "exam.remaining_turns": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.hp": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.genki": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.score": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.hand": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.drinks": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.buffs": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.motivation": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.impression": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.pitem_charges": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.rank_line": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.participants": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.pitems": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.unrecognized_cards": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.npc_scores": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.my_rank_index": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.drink_slots": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.finals": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.attr": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.multiplier_pct": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.multiplier_permil": {
+     "origin": "screen",
+     "seq": 146
+    },
+    "exam.statuses": {
+     "origin": "screen",
+     "seq": 146
+    }
+   },
+   "seq": 254,
+   "pending_page": null,
+   "conflicts": [
+    "考试手牌：识别与执行器不一致 ['2:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['2:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "seq 128: exam.npc_scores 读数 [0, 0, 10, 0] 违反 rank_consistency（参考 '按名次不增'），丢弃",
+    "考试手牌：识别与执行器不一致 ['1:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "seq 130: exam.npc_scores 读数 [491, 267, 1216, 108] 违反 rank_consistency（参考 '按名次不增'），丢弃",
+    "考试手牌：识别与执行器不一致 ['0:ひなたぼっこ≠メリクリで～す♪']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['0:ひなたぼっこ≠メリクリで～す♪', '2:仕切り直し++≠交わる感情']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['2:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['1:きらきら紙吹雪+≠クライマックス']，采用识别（执行器只用于点击位置）",
+    "seq 135: exam.npc_scores 读数 [1967, 996, 1820, 485] 违反 rank_consistency（参考 '按名次不增'），丢弃",
+    "seq 136: exam.npc_scores 读数 [1967, 996, 1820, 485] 违反 rank_consistency（参考 '按名次不增'），丢弃",
+    "考试手牌：识别与执行器不一致 ['1:きらきら紙吹雪++≠クライマックス']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['1:ひなたぼっこ≠メリクリで～す♪']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['0:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['0:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['1:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['1:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "考试手牌：识别与执行器不一致 ['0:距離感の基本≠愛情レインボー']，采用识别（执行器只用于点击位置）",
+    "seq 152: 离开考试，produce.drinks 按考试饮料栏更新 ['pdrink_00-2-008', 'pdrink_00-2-008', 'pdrink_00-3-005', 'pdrink_02-3-006'] → []",
+    "seq 198: ACQUIRE → SKILL_CARD_ENHANCE 不在转移图里，连续 3 帧后接受"
+   ],
+   "field_status": {
+    "produce.mode": "observed",
+    "produce.step": "observed",
+    "produce.stamina": "observed",
+    "produce.max_stamina": "observed",
+    "produce.produce_point": "observed",
+    "produce.params.Vo": "verified",
+    "produce.params.Da": "verified",
+    "produce.params.Vi": "verified",
+    "produce.growth_permil": "observed",
+    "produce.star": "pending",
+    "produce.param_cap": "observed",
+    "produce.advice": "observed",
+    "produce.drinks": "verified",
+    "produce.drink_capacity": "observed",
+    "produce.options": "observed",
+    "produce.complete": "observed",
+    "produce.deck": "predicted",
+    "produce.deck_size": "predicted",
+    "exam.remaining_turns": "observed",
+    "exam.hp": "observed",
+    "exam.genki": "observed",
+    "exam.score": "observed",
+    "exam.hand": "observed",
+    "exam.drinks": "observed",
+    "exam.buffs": "observed",
+    "exam.motivation": "observed",
+    "exam.impression": "observed",
+    "exam.pitem_charges": "observed",
+    "exam.rank_line": "observed",
+    "exam.participants": "observed",
+    "exam.pitems": "observed",
+    "exam.unrecognized_cards": "observed",
+    "exam.npc_scores": "observed",
+    "exam.my_rank_index": "observed",
+    "exam.drink_slots": "observed",
+    "exam.finals": "observed",
+    "exam.attr": "observed",
+    "exam.multiplier_pct": "observed",
+    "exam.multiplier_permil": "observed",
+    "exam.statuses": "observed",
+    "produce.excluded": "predicted"
+   },
+   "pending_review": [
+    "produce.drinks",
+    "produce.star"
+   ],
+   "ledger": [
+    {
+     "seq": 22,
+     "kind": "CARD_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "card_id": "p_card-02-sup-3_094",
+      "upgrade": 1
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 22,
+      "screenshot": "frames/00022.jpg",
+      "page": "ACQUIRE"
+     },
+     "confidence": 0.8,
+     "note": "缩略图没认出，只按名称栏",
+     "version": "1.2"
+    },
+    {
+     "seq": 23,
+     "kind": "WAPPEN_TRIGGER",
+     "origin": "observed",
+     "args": {
+      "star_gain": 15
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 23,
+      "screenshot": "frames/00023.jpg",
+      "page": "STAR_GAIN"
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 29,
+     "kind": "CARD_ACQUIRE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-02-act-2_062",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 29
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 64,
+     "kind": "DRINK_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "drink_id": "pdrink_00-2-008"
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 64,
+      "screenshot": null,
+      "page": "ACQUIRE"
+     },
+     "confidence": 1.0,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 66,
+     "kind": "CARD_REROLL",
+     "origin": "action",
+     "args": {},
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 66
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 68,
+     "kind": "CARD_REROLL",
+     "origin": "action",
+     "args": {},
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 68
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 70,
+     "kind": "CARD_REROLL",
+     "origin": "action",
+     "args": {},
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 70
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 72,
+     "kind": "CARD_REROLL",
+     "origin": "action",
+     "args": {},
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 72
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 74,
+     "kind": "CARD_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "card_id": "p_card-02-men-2_054",
+      "upgrade": 1
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 74,
+      "screenshot": "frames/00074.jpg",
+      "page": "ACQUIRE"
+     },
+     "confidence": 0.8,
+     "note": "缩略图没认出，只按名称栏",
+     "version": "1.2"
+    },
+    {
+     "seq": 76,
+     "kind": "CARD_REROLL",
+     "origin": "action",
+     "args": {},
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 76
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 78,
+     "kind": "CARD_ACQUIRE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-02-act-3_186",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 78
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 84,
+     "kind": "CARD_UPGRADE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-02-act-3_186",
+      "upgrade": 0,
+      "source": "event"
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 84
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 87,
+     "kind": "DRINK_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "drink_id": "pdrink_00-2-010",
+      "overflow": true,
+      "held": null
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "observation_seq": 87,
+      "screenshot": "frames/00087.jpg",
+      "page": "PDRINK_MAX"
+     },
+     "confidence": 1.0,
+     "note": "饮料已满：之后的 DRINK_DISCARD（动作）或報酬スキップ 决定结果",
+     "version": "1.2"
+    },
+    {
+     "seq": 104,
+     "kind": "CARD_ACQUIRE",
+     "origin": "action",
+     "args": {
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 104
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 106,
+     "kind": "CARD_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "card_id": "p_card-02-men-2_052",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 106,
+      "screenshot": "frames/00106.jpg",
+      "page": "ACQUIRE"
+     },
+     "confidence": 0.8,
+     "note": "缩略图没认出，只按名称栏",
+     "version": "1.2"
+    },
+    {
+     "seq": 109,
+     "kind": "DRINK_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "drink_id": "pdrink_02-2-006",
+      "overflow": true,
+      "held": null
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "observation_seq": 109,
+      "screenshot": "frames/00109.jpg",
+      "page": "PDRINK_MAX"
+     },
+     "confidence": 1.0,
+     "note": "饮料已满：之后的 DRINK_DISCARD（动作）或報酬スキップ 决定结果",
+     "version": "1.2"
+    },
+    {
+     "seq": 147,
+     "kind": "EXAM_RESULT",
+     "origin": "observed",
+     "args": {
+      "exam": 1,
+      "score": 41402,
+      "rank": 1,
+      "passed": true
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 147,
+      "screenshot": "frames/00147.jpg",
+      "page": "HIF_EXAM_RESULT"
+     },
+     "confidence": 1.0,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 151,
+     "kind": "WAPPEN_TRIGGER",
+     "origin": "observed",
+     "args": {
+      "star_gain": 60
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 151,
+      "screenshot": "frames/00151.jpg",
+      "page": "STAR_GAIN"
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 152,
+     "kind": "CARD_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "card_id": "p_card-02-men-3_002",
+      "upgrade": 1
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 152,
+      "screenshot": "frames/00152.jpg",
+      "page": "ACQUIRE"
+     },
+     "confidence": 0.8,
+     "note": "缩略图没认出，只按名称栏",
+     "version": "1.2"
+    },
+    {
+     "seq": 154,
+     "kind": "WAPPEN_TRIGGER",
+     "origin": "observed",
+     "args": {
+      "star_gain": 15
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 154,
+      "screenshot": "frames/00154.jpg",
+      "page": "STAR_GAIN"
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 176,
+     "kind": "DRINK_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "drink_id": "pdrink_00-1-004"
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 176,
+      "screenshot": null,
+      "page": "ACQUIRE"
+     },
+     "confidence": 1.0,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 178,
+     "kind": "CARD_EXCLUDE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-02-men-2_054"
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 178
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 181,
+     "kind": "CARD_EXCLUDE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-02-men-1_006"
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 181
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 184,
+     "kind": "CARD_EXCLUDE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-02-men-1_006"
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 184
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 187,
+     "kind": "CARD_ACQUIRE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-02-act-1_071",
+      "upgrade": 1
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 187
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 191,
+     "kind": "CARD_ACQUIRE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-02-men-2_056",
+      "upgrade": 1
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 191
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 198,
+     "kind": "CARD_UPGRADE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-02-men-2_004",
+      "upgrade": 0,
+      "source": "event"
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 198
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 208,
+     "kind": "DRINK_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "drink_id": "pdrink_00-2-010"
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 208,
+      "screenshot": "frames/00208.jpg",
+      "page": "ACQUIRE"
+     },
+     "confidence": 1.0,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 225,
+     "kind": "CARD_CHANGE",
+     "origin": "action",
+     "args": {
+      "remove_card_id": "p_card-02-men-2_054",
+      "remove_upgrade": 1,
+      "card_id": "p_card-02-act-1_071",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 225
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 244,
+     "kind": "DRINK_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "drink_id": "pdrink_00-2-008"
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 244,
+      "screenshot": "frames/00244.jpg",
+      "page": "ACQUIRE"
+     },
+     "confidence": 1.0,
+     "note": null,
+     "version": "1.2"
+    }
+   ],
+   "version": "1.2"
+  }
+ }
+]

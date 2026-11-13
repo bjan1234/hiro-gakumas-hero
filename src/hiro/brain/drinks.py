@@ -96,14 +96,16 @@ class Option:
 
 
 def choose(options: list[Option], stage: str, capacity: int, *, sim_context: dict | None = None, seeds=range(100), where: str = "") -> dict:
-    """规则默认 + 模拟。返回 {pick: Option, rule: Option, rows: [...], why: str, sim: bool, deviation: dict | None}。
-    sim_context：{deck, hp, max_hp, permil, exam}（hiro.sim.resource.setup_for 的参数）；None 或 SIM=False 时只按规则。"""
+    """规则默认 + 模拟。返回 {pick: Option, rule: Option, rows: [...], why: str, sim: bool, deviation: dict | None, unsure: str | None}。
+    sim_context：{deck, hp, max_hp, permil, exam}（hiro.sim.resource.setup_for 的参数）；None 或 SIM=False 时只按规则。
+    unsure：规则 / 模拟拿不准的原因（决策点补全：交 LLM 在候选里选）——没有模拟时同档打平、模拟失败、模拟偏向别的候选但在噪声内
+    或输入是参考值不许跨档；社区默认明显最好（别的候选都不如它 / 不同档且没有模拟）时为 None。"""
     keyed = [(holding_key(o.drinks, stage, capacity), i, o) for i, o in enumerate(options)]
     keyed.sort(key=lambda x: (x[0], x[2].key not in NOOP, x[1]))  # 组合打平时不动（不收 / 不拿 / 不买）
     best_key, _, rule = keyed[0]
     tiers_txt = lambda k: "/".join(f"{t:g}" for t in tiers_of(k))  # noqa: E731
     rows = [{"key": o.key, "label": o.label, "tiers": tiers_txt(k), "rule_rank": n + 1, "cost": o.cost} for n, (k, _, o) in enumerate(keyed)]
-    out = {"pick": rule, "rule": rule, "rows": rows, "sim": False, "deviation": None, "why": f"社区默认：{rule.label}（档位 {tiers_txt(best_key)}）"}
+    out = {"pick": rule, "rule": rule, "rows": rows, "sim": False, "deviation": None, "unsure": None, "why": f"社区默认：{rule.label}（档位 {tiers_txt(best_key)}）"}
     seen, others = {tuple(sorted(d for d in rule.drinks if d))}, []
     for k, _, o in keyed[1:]:
         sig = tuple(sorted(d for d in o.drinks if d))
@@ -111,7 +113,11 @@ def choose(options: list[Option], stage: str, capacity: int, *, sim_context: dic
             seen.add(sig)
             others.append((k, o))
     others = others[:MAX_SIM_OPTIONS]
-    if not others or not SIM or sim_context is None:
+    if not others:
+        return out
+    if not SIM or sim_context is None:
+        if tiers_of(others[0][0]) == tiers_of(best_key):
+            out["unsure"] = f"{others[0][1].label} 和社区默认同档（{tiers_txt(best_key)}），没有模拟分开"
         return out
     try:
         from hiro.sim import interval as iv
@@ -126,12 +132,13 @@ def choose(options: list[Option], stage: str, capacity: int, *, sim_context: dic
             others = [(k, o) for k, o in others if tiers_of(k) == tiers_of(best_key)]
             if not others:
                 out["why"] += f"；{'、'.join(notes)}：不跨档偏离，同档没有别的候选，不模拟"
-                return out
+                return out  # 别的候选都不同档：按社区档位就能定
         setups = [base] + [iv._with(base, drinks=[d for d in o.drinks if d]) for _, o in others]
         res = rv.adaptive_eval(setups, threshold=OVERRIDE_SE, workers=4)
     except Exception as e:  # 模拟器不支持本场牌组等：按规则
         logger.warning("饮料模拟失败，按社区默认：%s", e)
         out["why"] += f"；模拟失败（{e}），按社区默认"
+        out["unsure"] = f"模拟失败（{e}）"
         return out
     out["sim"] = True
     by_key = {rule.key: res[0]} | {o.key: r for (_, o), r in zip(others, res[1:])}
@@ -145,6 +152,8 @@ def choose(options: list[Option], stage: str, capacity: int, *, sim_context: dic
     if cross and notes:
         # 牌组 / 倍率用的是参考值（第十八局本战 22:20：「牌组没记账：用参考牌组」却跨档拿了 おしゃれハーブティー）：输入是假的，不允许跨档偏离
         out["why"] += f"；模拟里 {o.label} 比它 {r['gain']:+,} ± {r['gain_se']:,}，但{('、'.join(notes))}，不跨档偏离{note}"
+        if r["gain"] > 0:
+            out["unsure"] = f"模拟偏向 {o.label}（{r['gain']:+,} ± {r['gain_se']:,}），但{'、'.join(notes)}，输入是参考值"
         return out
     if r["gain"] > OVERRIDE_SE * max(r["gain_se"], 1):
         out["pick"] = o
@@ -156,6 +165,8 @@ def choose(options: list[Option], stage: str, capacity: int, *, sim_context: dic
         log_deviation(out["deviation"])
     else:
         out["why"] += f"；模拟里最好的其他候选 {o.label} 比它 {r['gain']:+,} ± {r['gain_se']:,}，不到 {OVERRIDE_SE:g} 个标准误，不改{note}"
+        if r["gain"] > 0:
+            out["unsure"] = f"模拟里 {o.label} 比社区默认 {r['gain']:+,} ± {r['gain_se']:,}，在噪声内"
     return out
 
 
