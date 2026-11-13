@@ -2588,9 +2588,9 @@ def _impression_role(card_id: str) -> tuple[bool, bool]:
     """(好印象来源, 消耗好印象)：卡面「好印象+N」/ 费用类型 ExamCostType_ExamReview（私がスター、ゆめみごこち、手書きのメッセージ）。"""
     try:
         from hiro.brain.cards import card_view
-        from hiro.brain.cards import kaa_cards as _kaa_cards
+        from hiro import master
 
-        kaa = _kaa_cards().get((card_id, 0))
+        kaa = master.card(card_id)
         if kaa is None:
             return False, False
         v = card_view(0, kaa, available=True)
@@ -2612,9 +2612,9 @@ def is_pure_impression(card_id: str | None) -> bool:
         import re
 
         from hiro.brain.cards import card_view
-        from hiro.brain.cards import kaa_cards as _kaa_cards
+        from hiro import master
 
-        kaa = _kaa_cards().get((card_id, 0))
+        kaa = master.card(card_id)
         text = card_view(0, kaa, available=True).text if kaa else ""
     except Exception:
         return False

@@ -32,21 +32,17 @@ def fast_apply(env, action: dict) -> None:
 
 
 @lru_cache(maxsize=None)
-def _kaa_cards() -> dict:
-    import hiro  # noqa: F401  KAA 兼容层
-    import hiro.vision  # noqa: F401  开源版：让 KAA 读 HIRO_KAA_GAME_DATA（不在当前目录 resources/ 时）
-    from kaa.db.skill_card import SkillCard
+def _cards() -> dict:
+    from hiro import master
 
-    return {(c._id, c.upgrade_count or 0): c for c in SkillCard.all()}
+    return {(c._id, c.upgrade_count): c for c in master.cards()}
 
 
 @lru_cache(maxsize=None)
-def _kaa_drinks() -> dict:
-    import hiro  # noqa: F401
-    import hiro.vision  # noqa: F401
-    from kaa.db.drink import Drink
+def _drinks() -> dict:
+    from hiro import master
 
-    return {d.id: d for d in Drink.all()}
+    return {d.id: d for d in master.drinks()}
 
 
 def _pct(permil: int) -> str:
@@ -121,9 +117,9 @@ def sim_card_view(slot: int, definition: dict, *, available: bool) -> CardView:
     src = definition.get("provenance") or {}
     card_id, upgrade = src.get("card_id"), src.get("upgrade", 0)
     customized = bool((src.get("customization") or {}).get("customizations"))
-    kaa = _kaa_cards().get((card_id, upgrade))
-    if kaa is not None and not customized:
-        v = card_view(slot, kaa, available=available)
+    card = _cards().get((card_id, upgrade))
+    if card is not None and not customized:
+        v = card_view(slot, card, available=available)
     else:
         name = definition["name"] + ("（定制）" if customized else "")
         text = render_effects(definition["effects"]) + (" / レッスン中1回" if definition.get("once") else "")
@@ -142,9 +138,9 @@ def sim_drink_view(slot: int, definition: dict) -> DrinkView:
     did = src.get("drink_id")
     from hiro.brain.cards import drink_view
 
-    kaa = _kaa_drinks().get(did)
-    if kaa is not None:
-        return drink_view(slot, kaa)
+    drink = _drinks().get(did)
+    if drink is not None:
+        return drink_view(slot, drink)
     return DrinkView(slot, definition["name"], did, render_effects(definition["effects"]))
 
 

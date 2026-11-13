@@ -11,7 +11,7 @@ from functools import lru_cache
 import cv2
 import numpy as np
 from cv2.typing import MatLike
-from kaa.db.drink import Drink
+from hiro import master
 from kaa.game_data.paths import sprites_path
 
 SCALES = (1.05, 1.15, 1.25, 1.35)
@@ -51,7 +51,7 @@ def match_drink(slot: MatLike) -> tuple[str | None, float, float]:
 def drink_info(asset_id: str | None) -> dict | None:
     if asset_id is None:
         return None
-    d = Drink.from_asset_id(asset_id)
+    d = master.drink_by_asset(asset_id)
     if d is None:
         return {"asset_id": asset_id}
     return {"asset_id": asset_id, "name": d.name, "effect": getattr(d, "description", None) or getattr(d, "effect_display_text", None)}

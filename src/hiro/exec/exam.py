@@ -18,7 +18,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from collections.abc import Callable
 
-from kaa.db.drink import Drink
+from hiro import master
 from kaa.game_ui.drinks_overview import locate_all_drinks_in_3_drink_slots
 from kaa.tasks import R
 from kaa.tasks.produce.new.play_cards.ui import locate_cards
@@ -67,8 +67,8 @@ def _hud_int(img, box, kaa_box) -> int | None:
 _DRINK_CACHE = None  # 饮料栏区域缓存（考试中饮料栏很少变，命中时约 1ms）
 
 
-def _drinks(img) -> list[tuple[Drink, tuple]]:
-    """饮料栏 → [(Drink, (x, y, w, h))]，从左到右。用识别层的素材包原版图标（hiro.vision.items.read_drink_slots，带区域缓存）；
+def _drinks(img) -> list[tuple[master.Drink, tuple]]:
+    """饮料栏 → [(master.Drink, (x, y, w, h))]，从左到右。用识别层的素材包原版图标（hiro.vision.items.read_drink_slots，带区域缓存）；
     只有识别层有没把握的格（state=unknown）且一瓶都没认出时才退回 KAA。实机（2026-10-31 选拔①）KAA 认不出 H.I.F 饮料。
     四格都读成空槽时不退回：第十六局本战 144 步里 113 步饮料栏是空的，KAA 每帧还要再匹配 0.2–0.4s，
     并把空槽认成「Mismatched drink: ビタミンドリンク」，结果也是空。"""
@@ -85,7 +85,7 @@ def _drinks(img) -> list[tuple[Drink, tuple]]:
         for d in slots:
             if d["state"] != "drink":
                 continue
-            drink = Drink.from_asset_id(d["asset"])
+            drink = master.drink_by_asset(d["asset"])
             if drink is None:
                 unsure = True
                 continue
@@ -121,7 +121,7 @@ class Frame:
         self.hp = _hud_int(img, hif.BOX_HP, boxes.BoxHp)
         self.genki = _hud_int(img, hif.BOX_GENKI, boxes.BoxGenki)
         self.cards = [c for c in locate_cards(img)]  # KAA 定位：只用来取点击位置
-        self.drinks: list[tuple[Drink, tuple]] = _drinks(img)
+        self.drinks: list[tuple[master.Drink, tuple]] = _drinks(img)
         self._hand: list[dict] | None | bool = False  # 识别层手牌，按需读（见 hand）
 
     @property

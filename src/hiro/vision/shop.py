@@ -75,7 +75,7 @@ def _card(img: MatLike, x: int, y: int = CARD_Y) -> dict:
 
 
 def _drink(img: MatLike, x: int, y: int = DRINK_Y) -> dict:
-    from kaa.db.drink import Drink
+    from hiro import master
 
     lib = _library("pdrink", MATCH_SIZE)
     cx, cy, h = x + CELL // 2, y + CELL // 2, DRINK_SIZE // 2
@@ -83,7 +83,7 @@ def _drink(img: MatLike, x: int, y: int = DRINK_Y) -> dict:
                         interpolation=cv2.INTER_AREA) for dx in (-6, 0, 6) for dy in (-6, 0, 6)]  # fmt: skip
     (score, asset), (second, _) = max(lib.match_many(crops), key=lambda t: t[0][0])
     ok = score >= DRINK_MIN and score - second >= DRINK_MARGIN
-    drink = Drink.from_asset_id(asset) if ok else None
+    drink = master.drink_by_asset(asset) if ok else None
     return {"kind": "drink", "drink_id": drink.id if drink else None, "name": (lib.names.get(asset) or (drink.name if drink else None)) if ok else None,
             "confidence": round(score, 3), "margin": round(score - second, 3)}  # fmt: skip
 

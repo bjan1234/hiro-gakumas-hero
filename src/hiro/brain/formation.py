@@ -106,9 +106,9 @@ def _swaps_hand(card_id: str | None) -> bool:
         return False
     try:
         from hiro.brain.cards import card_view
-        from hiro.brain.cards import kaa_cards as _kaa_cards
+        from hiro import master
 
-        kaa = _kaa_cards().get((card_id, 0))
+        kaa = master.card(card_id)
         return bool(kaa) and "手札をすべて入れ替える" in card_view(0, kaa, available=True).text
     except Exception:
         return False

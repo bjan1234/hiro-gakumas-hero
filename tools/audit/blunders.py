@@ -727,7 +727,7 @@ def _drink_name(drink_id: str) -> str:
 
         import hiro  # noqa: F401  先装兼容层，再读 KAA 数据库
 
-        drinks = importlib.import_module("kaa.db.drink").Drink.all()
+        drinks = importlib.import_module("hiro.master").drinks()
         return next((d.name for d in drinks if d.id == drink_id), drink_id)
     except Exception:  # noqa: BLE001  离线没有 KAA 数据库时用编号
         return drink_id

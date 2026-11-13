@@ -353,10 +353,10 @@ DETAIL_BOX = (170, 95, 720, 160)  # 顶部详情栏第一行（卡名）
 @cache
 def _cards_by_full_name() -> dict[str, list[tuple[str, int]]]:
     """主数据卡名（带「+」，如 距離感の基本+）→ [(card_id, upgrade)]。"""
-    from kaa.db.skill_card import SkillCard
+    from hiro import master
 
     out: dict[str, list[tuple[str, int]]] = {}
-    for c in SkillCard.all():
+    for c in master.cards():
         out.setdefault(c.name, []).append((c._id, int(c.upgrade_count)))
     return out
 
@@ -598,9 +598,9 @@ def confirm_kind(img: MatLike) -> str | None:
 
 @cache
 def _drinks_by_name() -> dict[str, str]:
-    from kaa.db.drink import Drink
+    from hiro import master
 
-    return {d.name: d.id for d in Drink.all()}
+    return {d.name: d.id for d in master.drinks()}
 
 
 def read_confirm_dialog(img: MatLike) -> dict | None:
@@ -654,10 +654,10 @@ ACQUIRE_CENTER_X, ACQUIRE_CENTER_TOL = 370, 25
 
 @cache
 def _pitems_by_name() -> dict[str, list[str]]:
-    from kaa.db.sqlite import select_many
+    from hiro import master
 
     out: dict[str, list[str]] = {}
-    for row in select_many("SELECT id, name FROM ProduceItem;"):
+    for row in master.rows("SELECT id, name FROM ProduceItem;"):
         out.setdefault(row["name"], []).append(row["id"])
     return out
 
@@ -864,7 +864,7 @@ def match_grid_card(crop):
     """卡格缩略图认卡：KAA 票数（match_card_region 同一套图库）为主，票数临界（≤3 票或并列）时用卡图相关核对。
     Windows 上同一帧票数常比 Mac 少 1：仕草の基本 2:2:2 平票、定制过的 えいえいおー+ 2:2（Mac 3:2 却认成 アイドル魂，卡图完全不像）。
     改前改后逐帧对比见私有仓库 .temp/platforms/w3-windows/卡格认卡改前改后.md。"""
-    from kaa.db.skill_card import SkillCard
+    from hiro import master
     from kaa.game_ui import skill_card_select as scs
 
     db = scs.dialog_cards_db()
@@ -881,19 +881,19 @@ def match_grid_card(crop):
     top = votes[ranked[0]]
     second = votes[ranked[1]] if len(ranked) > 1 else 0
     if top >= GRID_SURE_VOTES and top > second:
-        return SkillCard.from_asset_id(ranked[0])
+        return master.card_by_asset(ranked[0])
     art = grid_art_scores(crop)
     if len(art) >= 2 and art[0][1] >= GRID_ART_MIN and art[0][1] - art[1][1] >= GRID_ART_MARGIN:
-        return SkillCard.from_asset_id(art[0][0])
+        return master.card_by_asset(art[0][0])
     tied = [b for b in ranked if votes[b] == top]
     if top >= 2 and len(art) >= 2 and art[0][0] in tied and art[0][1] >= GRID_AGREE_MIN and art[0][1] - art[1][1] >= GRID_ART_MARGIN:
         # 票数不够、但卡图第一正是并列最高票里的一张且明显领先：两路独立证据一致（DMM 本战相談 アイドル宣言+：
         # Windows 2:2 平票，卡图 0.472 领先 0.144；Mac 同一帧 3 票直接认对）
-        return SkillCard.from_asset_id(art[0][0])
+        return master.card_by_asset(art[0][0])
     if top < scs.MIN_VOTES:
         return None
     if not art:  # 没有卡图素材：按 KAA 原规则（并列时按特征距离排第一的）
-        return SkillCard.from_asset_id(ranked[0])
+        return master.card_by_asset(ranked[0])
     corr = dict(art)
     best = max(tied, key=lambda b: corr.get(b, -1.0))
-    return SkillCard.from_asset_id(best) if corr.get(best, -1.0) >= GRID_KAA_ART_MIN else None
+    return master.card_by_asset(best) if corr.get(best, -1.0) >= GRID_KAA_ART_MIN else None

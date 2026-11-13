@@ -17,7 +17,7 @@ from functools import lru_cache
 import cv2
 import numpy as np
 from cv2.typing import MatLike
-from kaa.db.skill_card import SkillCard
+from hiro import master
 
 from hiro.vision import assets
 from hiro.vision.region_cache import RegionCache, cached
@@ -145,9 +145,9 @@ def match_enchant_card(img: MatLike, k: int) -> tuple[float, str]:
     return float(scores[i, j]), keys[i]
 
 
-def _card_from_asset(key: str) -> SkillCard | None:
+def _card_from_asset(key: str) -> master.Card | None:
     base = "-".join(key.removeprefix("img_general_skillcard_").split("-")[:2])
-    return SkillCard.from_asset_id("img_general_skillcard_" + base) or SkillCard.from_asset_id(key)
+    return master.card_by_asset("img_general_skillcard_" + base) or master.card_by_asset(key)
 
 
 # 槽位存在性：菱形四条斜边上都有清晰边缘。只看左上/右上/左下三条（右下角有数值文字），取覆盖率最低的一条。

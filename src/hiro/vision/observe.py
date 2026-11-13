@@ -109,9 +109,9 @@ def battle_observation(exam: dict) -> dict:
     for d in exam.get("drinks") or []:
         if d is None:
             continue
-        from kaa.db.drink import Drink
+        from hiro import master
 
-        drink = Drink.from_asset_id(d["asset"])
+        drink = master.drink_by_asset(d["asset"])
         if drink is not None:
             drinks.append(drink_view(d["slot"], drink))
     obs = {
@@ -145,11 +145,11 @@ def _select_card_observation(fields: dict) -> dict:
 
 
 def _select_drink_observation(fields: dict) -> dict:
-    from kaa.db.drink import Drink
+    from hiro import master
 
     cands = []
     for o in fields.get("options") or []:
-        drink = Drink.from_asset_id(o["asset_id"]) if o.get("asset_id") else None
+        drink = master.drink_by_asset(o["asset_id"]) if o.get("asset_id") else None
         cands.append({"slot": o.get("slot"), "drink_id": drink.id if drink else None, "name": o.get("name"), "score": o.get("score")})
     # held：底栏已有饮料（饮料满时先丢一瓶再领：点 held[i].center → 捨てる）；full：「Pドリンク所持上限」
     held = [{k: d.get(k) for k in ("index", "drink_id", "name", "center", "method")} for d in fields["held"]] if "held" in fields else None
@@ -166,9 +166,9 @@ def _jsonable_battle(obs: dict) -> dict:
 @lru_cache(maxsize=1)
 def _effect_types() -> dict[str, str]:
     """图标键（小写）→ ProduceExamEffectType_*。素材包 index 缺名的 H.I.F 新类型，用 KAA game.db 的 effectType 补。"""
-    from kaa.db.sqlite import select_many
+    from hiro import master
 
-    rows = select_many("SELECT DISTINCT effectType FROM ProduceExamEffect;")
+    rows = master.rows("SELECT DISTINCT effectType FROM ProduceExamEffect;")
     return {r[0].removeprefix("ProduceExamEffectType_").lower(): r[0] for r in rows if r[0]}
 
 

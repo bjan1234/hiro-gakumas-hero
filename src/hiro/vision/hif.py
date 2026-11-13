@@ -13,7 +13,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 from cv2.typing import MatLike
-from kaa.db.skill_card import SkillCard
+from hiro import master
 from kaa.tasks.produce.new.play_cards import ui as kaa_ui
 from kaa.tasks.produce.new.play_cards.ui import _locate_letters
 from kotonebot.primitives import Rect
@@ -522,12 +522,12 @@ def read_ranking(img: MatLike) -> dict:
 ART_MIN_SCORE = 0.55
 
 
-def _asset_to_card(key: str) -> SkillCard | None:
+def _asset_to_card(key: str) -> master.Card | None:
     asset = key.removeprefix("img_general_skillcard_")
     base = asset.split("-")
     # 角色专属插图带 -角色 后缀（如 men-2_111-shro），数据库 assetId 不带
     asset_id = "img_general_skillcard_" + "-".join(base[:2])
-    return SkillCard.from_asset_id(asset_id) or SkillCard.from_asset_id(key)
+    return master.card_by_asset(asset_id) or master.card_by_asset(key)
 
 
 UNAVAILABLE_LETTER_MAX = 170  # 卡名首字母框平均亮度：可用约 225，不可用（压暗）约 115
@@ -568,16 +568,16 @@ def _fold(name: str) -> str:
 
 
 @lru_cache(maxsize=1)
-def _base_names() -> dict[str, list[SkillCard]]:
+def _base_names() -> dict[str, list[master.Card]]:
     """归一化后的基础卡名（不带「+」）→ 未强化版本的卡（同名多张时有多项）。"""
-    out: dict[str, list[SkillCard]] = {}
-    for card in SkillCard.all():
+    out: dict[str, list[master.Card]] = {}
+    for card in master.cards():
         if not card.upgrade_count:
             out.setdefault(_fold(card.name.rstrip("+")), []).append(card)
     return out
 
 
-def _card_from_name(text: str, art_top: list[tuple[str, float]]) -> tuple[SkillCard | None, bool]:
+def _card_from_name(text: str, art_top: list[tuple[str, float]]) -> tuple[master.Card | None, bool]:
     """卡名栏 OCR 文字 → (未强化版本的卡, 是否完整卡名精确命中)。
 
     精确命中归一化后的基础卡名直接定卡；否则卡名可能被下一张卡盖住或末字读错：从末尾去掉 0–2 个字，

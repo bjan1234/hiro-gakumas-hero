@@ -12,11 +12,12 @@ from dataclasses import asdict, dataclass, field
 from functools import lru_cache
 
 def select(sql: str, *args):
-    """主数据单行查询，走插件 AssetSource.master_db()（经 hiro.state.catalog）；拿不到主数据时返回 None。"""
-    from hiro.state.catalog import CatalogUnavailable, catalog
+    """主数据单行查询（hiro.master.rows）；拿不到主数据时返回 None。"""
+    from hiro import master
+    from hiro.state.catalog import CatalogUnavailable
 
     try:
-        return catalog().db.execute(sql, args).fetchone()
+        return next(iter(master.rows(sql, *args)), None)
     except CatalogUnavailable:
         return None
 
@@ -129,7 +130,7 @@ _CATEGORY = {
 
 
 def card_view(slot: int, card, *, available: bool) -> CardView:
-    """KAA SkillCard → CardView。card 为 None 时返回未识别占位。"""
+    """卡（hiro.master.Card，或考试手牌 / 选卡页里 KAA 给的 SkillCard，属性同名）→ CardView。card 为 None 时返回未识别占位。"""
     if card is None:
         return CardView(slot, "（未识别）", None, 0, available, "unknown", 0, 0, None, "")
     text = description_text(card.produce_descriptions) or (card.effect_display_text or "")
@@ -177,30 +178,5 @@ def _drink_text(drink_id: str) -> str:
 
 
 def drink_view(slot: int, drink) -> DrinkView:
-    """KAA Drink → DrinkView。"""
+    """饮料（hiro.master.Drink）→ DrinkView。"""
     return DrinkView(slot, drink.name, drink.id, _drink_text(drink.id))
-
-
-class _MasterCards:
-    """(卡 id, 强化次数) → 卡对象（card_view 需要的那些属性），从主数据目录现查；查不到 / 没有主数据时 get 返回 None。"""
-
-    def get(self, key, default=None):
-        from types import SimpleNamespace
-
-        from hiro.state.catalog import CatalogUnavailable, catalog
-
-        card_id, upgrade = key
-        try:
-            r = catalog().card(card_id, upgrade or 0)
-        except (CatalogUnavailable, KeyError):
-            return default
-        return SimpleNamespace(_id=r.get("id"), name=r.get("name"), upgrade_count=r.get("upgradeCount") or 0,
-                               produce_descriptions=r.get("produceDescriptions"), effect_display_text="",
-                               play_move_position_type=r.get("playMovePositionType"), cost_type=r.get("costType"),
-                               cost_value=r.get("costValue"), category=r.get("category"), stamina=r.get("stamina"),
-                               force_stamina=r.get("forceStamina"))  # fmt: skip
-
-
-def kaa_cards() -> _MasterCards:
-    """兼容主仓库的名字：卡对象从公开主数据（AssetSource.master_db）现查，不依赖 KAA。"""
-    return _MasterCards()

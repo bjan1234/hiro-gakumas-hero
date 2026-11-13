@@ -483,9 +483,9 @@ def _row_name(boxes, score_box) -> str | None:
 
 @cache
 def _idol_names() -> tuple[str, ...]:
-    from kaa.db.sqlite import select_many
+    from hiro import master
 
-    return tuple(r["lastName"] + r["firstName"] for r in select_many("SELECT lastName, firstName FROM Character"))
+    return tuple(r["lastName"] + r["firstName"] for r in master.rows("SELECT lastName, firstName FROM Character"))
 
 
 def _idol_name(text: str) -> str | None:
