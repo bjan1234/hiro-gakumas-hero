@@ -50,7 +50,7 @@ class _Flow:
 
 @dataclass(frozen=True)
 class Outcome:
-    kind: str  # done（已离开本页）/ stay（还在本页，下一拍再来）/ stop（停机）
+    kind: str  # done（已离开本页）/ stay（还在本页，下一拍再来）/ stop（停机）/ end（这一局打完了，run 正常结束）
     reason: str = ""
 
 
@@ -164,8 +164,9 @@ class Runtime:
         n = 0
         try:
             while not until() and (max_steps is None or n < max_steps):
-                self.step()
                 n += 1
+                if self.step().kind == "end":  # 处理器报这一局打完了（培育结束）
+                    break
         finally:
             watcher.stop()
         return n

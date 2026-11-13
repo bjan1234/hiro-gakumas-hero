@@ -1092,6 +1092,11 @@
     61
    ],
    "source": "KAA 724d15c9-149d-41a2-beb7-51fffe813172_template.png"
+  },
+  "InProduce.LootboxSliverLock": {
+   "file": "InProduce.LootboxSliverLock.png",
+   "slice_rect": null,
+   "source": "KAA af2eb9a8-641a-4f12-80d4-c926720b3e02.png"
   }
  },
  "boxes": {
