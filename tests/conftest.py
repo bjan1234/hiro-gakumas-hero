@@ -310,6 +310,8 @@ def _sim_test_defaults(request, monkeypatch):
     """同主仓库：测试默认关掉培育里的饮料模拟（drinks.SIM）、轮间刷新估值的续打（drink_gains）；要测的用例自己打开 / monkeypatch。
     引用了 hiro.sim 的测试文件：决策器的「模拟器可用」按引擎能导入算（用例自己 monkeypatch 了方案 / 增益表，不需要主数据）；
     标了 sim_master 的用例要真跑模拟，没构建主数据（vendor/gakumas-player/scripts/fetch_master.py）时跳过。"""
+    # 决策点补全的 LLM 路径缺省全开（用户 11-14）；别的用例给了 MockLLM 也只验原来的规则 / LLM 调用，这里统一关，要测的用例自己 setenv
+    monkeypatch.setenv("HIRO_PRODUCE_LLM", "off")
     try:
         from hiro.brain import deciders, drinks
         from hiro.sim import interval as iv

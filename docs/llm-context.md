@@ -191,6 +191,25 @@ P 点、体力、饮料栏、牌组仍从 `GameState.produce` 取（`produce_poi
   （`source="fallback"`、带 warnings）：授業 → STUDY_LAYOUT 的本人档；外出 → 第 5 天眠気档 / P≥150 付费档 / 免费档；饮料 → DRINK_PRIORITY > 本计划 > 稀有度；
   三选一 → 社区评级；P 道具 → 背包颜色 黄 > 緑 > 赤；删卡 / 强化 → 取消。没有模板可用时输出 `Wait`（主循环记 recover），**不选第 0 项**。
 
+### EVENT_CHOICE（事件选项页：随机事件 / 支援事件 / 开局二选一等多选项按钮页）
+
+用户 11-14（去 KAA 设计稿 §8-2）：不按攻略写死规则，按整局培育（参数 / 体力 / 路线计划 / 后面的考试）来选，算法 → LLM → 兜底。
+新主循环只负责把事件页和选项读出来、交给 `ProduceDeciders.decide("EVENT_CHOICE", state)`，页面层不写选择规则。
+
+```json
+{"title": "事件标题（可空）", "kind": "random | support | start …（可空，只给 LLM 看）",
+ "choices": [{"index": 0, "text": "选项文字", "effect": "选中后弹出的效果说明（可空）",
+              "cost_hp": 5, "cost_p": 50, "trouble": false}]}
+```
+
+- `choices` 按画面从上到下；`index` 是执行时点第几个（`EventSelect {"select": index}`）。`effect` 读得到就给，算法和 LLM 都靠它。
+  代价角标（体力 / P / トラブル）有结构化值就给 `cost_hp` / `cost_p` / `trouble`，没有时写进 `text` / `effect` 也行。
+- 局面照常放 `state.produce`（体力、P、参数、成长率、日程…）。
+- 输出：`EventSelect {"select": index}`，`source` = `rule`（某项在参数 / 体力 / P / 获得卡 / 饮料 / 眠気上都不差于其他项）/
+  `llm`（交 LLM，开关 `HIRO_PRODUCE_LLM` 的 `event_choice`）/ `fallback`（LLM 被关掉（`HIRO_PRODUCE_LLM=off`，缺省是开的）或失败：粗估分最高的项；新主循环见到 fallback 也停机）。
+  选项不到 2 个、或有选项效果没解析出来而 LLM 没给出答案时输出 `Wait`：停机等人（同现在的做法）。
+- 实现：`hiro/brain/event_choice.py`（效果解析、严格占优、粗估分），`ProduceDeciders.event_choice`。
+
 ### SKILL_CARD_CHANGE_1 / _2（授業セレクトチェンジ 换卡）
 
 第 4 局本战两次授業选了セレクトチェンジ档，KAA 固定换第 0 张，换走了 デイドリーミング、がむしゃら（reports/analysis/q4-daydreaming-missing-exec.md）。

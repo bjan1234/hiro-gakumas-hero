@@ -1,5 +1,5 @@
 """决策点补全（总控 11-13）：规则 / 模拟拿得准的照旧直接给；拿不准的交 LLM；LLM 不可用或输出非法再兜底。
-每条新的 LLM 路径一个开关、默认关（HIRO_PRODUCE_LLM=换卡2,删卡… 或 all 打开）。"""
+HIRO_PRODUCE_LLM 缺省全开（用户 11-14），off 全关，写名字只开这几条。用例默认在 off 下跑（conftest），要测的自己 setenv。"""
 
 import pytest
 
@@ -26,11 +26,15 @@ def _change2(cards, deck=None):
 
 @pytest.fixture(autouse=True)
 def _paths_off(monkeypatch):
-    monkeypatch.delenv("HIRO_PRODUCE_LLM", raising=False)
+    monkeypatch.setenv("HIRO_PRODUCE_LLM", "off")
 
 
-def test_switch_names_and_default_off(monkeypatch):
-    assert not dc.llm_path_on("change_remove")
+def test_switch_names_and_default_on(monkeypatch):
+    assert not dc.llm_path_on("change_remove")  # off
+    monkeypatch.delenv("HIRO_PRODUCE_LLM")
+    assert all(dc.llm_path_on(p) for p in dc.LLM_PATHS)  # 缺省全开
+    monkeypatch.setenv("HIRO_PRODUCE_LLM", "")
+    assert dc.llm_path_on("event_choice")
     monkeypatch.setenv("HIRO_PRODUCE_LLM", "change_remove")
     assert dc.llm_path_on("change_remove") and not dc.llm_path_on("remove_card")
     monkeypatch.setenv("HIRO_PRODUCE_LLM", "all")
@@ -239,3 +243,57 @@ def test_interval_unsure_off_or_sure_keeps_rule_plan(monkeypatch):
     monkeypatch.setenv("HIRO_PRODUCE_LLM", "interval")
     d = ProduceDeciders(CAMPUS_HIRO, llm).decide("HIF_ROUND_INTERVAL", _interval_setup(monkeypatch, unsure=False))
     assert d.source == "rule" and d.action.args == {"index": 6} and not llm.calls
+
+
+# ---- P 道具
+def _pitems(*names, colors=None):
+    return GameState(page_fields={"pitems": [{"slot": i, "name": n, "color": (colors or ["yellow"] * 3)[i]} for i, n in enumerate(names)]})
+
+
+def test_pitem_identical_candidates_marked_fallback(monkeypatch):
+    monkeypatch.setenv("HIRO_PRODUCE_LLM", "all")
+    llm = MockLLM(replies=[{"choice": 1}])
+    d = ProduceDeciders(CAMPUS_HIRO, llm).decide("SELECT_PITEM", _pitems("ロボ（黄）", "ロボ（黄）", "ロボ（黄）"))
+    assert d.source == "fallback" and d.action.args["pick_indexes"] == [0] and not llm.calls
+    assert any("装饰没认出" in w for w in d.warnings)
+
+
+def test_pitem_clear_rule_and_unknown_slot(monkeypatch):
+    monkeypatch.setenv("HIRO_PRODUCE_LLM", "select_pitem")
+    llm = MockLLM(replies=[{"choice": 1, "reason": "未识别的那个可能是ロボ"}])
+    d = ProduceDeciders(CAMPUS_HIRO, llm).decide("SELECT_PITEM", _pitems("ロボ（黄）", None, "インコ（黄）"))
+    assert d.source == "rule" and d.action.args["pick_indexes"] == [0] and not llm.calls  # ロボ 是这一段最好的：没认出的也不会更好
+    d = ProduceDeciders(CAMPUS_HIRO, llm).decide("SELECT_PITEM", _pitems("うさぎ（黄）", None, "インコ（黄）"))
+    assert d.source == "llm" and llm.calls and d.action.args["pick_indexes"] == [0]  # 候选按 [规则的选择 インコ(2), 0, 1]：选 1 = うさぎ
+
+
+# ---- 特別指導：优先表做完、还有付得起的表外定制时问 LLM 做不做
+def _guidance(p=200):
+    opts = [{"id": "p_card_custom-040_070-g_effect-block_add-4-g_effect-block_add-13", "price": 40, "available": True},
+            {"id": "p_card_custom-070-g_effect-effect_add-e_effect-exam_lesson_depend_exam_card_play_aggressive-1100-01", "price": 70, "available": True}]
+    return GameState(page_fields={"produce_point": p, "cards": [{"index": 3, "card_id": OK_A, "upgrade": 1, "customizations": opts}]})
+
+
+def test_guidance_off_table_ends_by_rule(monkeypatch):
+    llm = MockLLM(replies=[{"choice": 1}])
+    d = ProduceDeciders(CAMPUS_HIRO, llm).decide("SPECIAL_GUIDANCE", _guidance())
+    assert d.action.kind.name == "CUSTOMIZE_END" and d.source == "rule" and not llm.calls
+
+
+def test_guidance_off_table_llm_can_customize_once(monkeypatch):
+    monkeypatch.setenv("HIRO_PRODUCE_LLM", "special_guidance")
+    llm = MockLLM(replies=[{"choice": 1, "reason": "便宜，加点防"}])
+    dec = ProduceDeciders(CAMPUS_HIRO, llm)
+    d = dec.decide("SPECIAL_GUIDANCE", _guidance())
+    assert d.source == "llm" and d.action.kind.name == "CUSTOMIZE_CARD" and d.action.args["card_index"] == 3
+    names = [o["名字"] for o in __import__("json").loads(llm.calls[0][1])["候选"]]
+    assert names[0].startswith("结束") and len(names) == 3
+    d2 = dec.decide("SPECIAL_GUIDANCE", _guidance(160))  # 定制完回到这页：这张做过了，不再问，结束
+    assert d2.action.kind.name == "CUSTOMIZE_END" and len(llm.calls) == 1
+    d3 = dec.decide("SPECIAL_GUIDANCE", _guidance())  # 下一次特別指導重新计
+    assert len(llm.calls) == 2 or d3.action.kind.name == "CUSTOMIZE_END"
+
+
+def test_pitem_color_only_slot_not_scored_as_pouch():
+    d = ProduceDeciders(CAMPUS_HIRO, None).decide("SELECT_PITEM", _pitems("うさぎ（黄）", None, "インコ（黄）"))
+    assert d.action.args["pick_indexes"] == [2]  # インコ；没认出的格子原来按「背包 黄」3 分被选中
