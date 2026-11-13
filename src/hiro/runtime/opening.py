@@ -9,8 +9,9 @@
 - AP 不足只喝 APドリンク（hiro.loop.ap_refill；确认框有ジュエル就取消）。
 - 「プロデュース開始」只在 new 流程里点（使用者放行开局后才会跑 new）。
 
-已有：回首页 → 培育入口 → 翻到 H.I.F → 选拔 / 本战 → AP → 第 1 步选偶像 → 开始 → 跳过交流。
-第 2–4 步（支援卡和租借 / 回忆 / 加成）现在由 kaa_patches 包着 KAA 的 prepare，迁过来之前 new 流程不走这里。
+new_produce：培育入口 → 翻到 H.I.F → 选拔 / 本战（AP）→ 编成第 1–4 步（选偶像 / 支援卡和租借 / 回忆 / 加成；本战核对选拔回忆）
+→ プロデュース開始 → 跳过交流。选偶像、翻编成号、核对、租借、回忆选择都用 hiro.produce 里不依赖 KAA 的实现。
+还没有调用方：run_hif 的 HIRO_RUNTIME=own 接线由平台模块做。
 """
 
 from __future__ import annotations
@@ -207,7 +208,7 @@ def step1(rt, skin_id: str) -> None:
 
 # ---------------------------------------------------------------- 第 2 步：支援卡编成 + 租借（同 kaa_patches._rent_step2）
 class _RentalDevice:
-    """hiro.produce.rental / formation_writer 要的设备形状（screenshot / click / swipe(…, duration)），转到 runtime 的设备上。"""
+    """formation_writer / memory_picker 要的设备形状（screenshot / click / swipe(…, duration)），转到 runtime 的设备上。"""
 
     def __init__(self, rt):
         self.rt = rt
@@ -231,7 +232,7 @@ def _next_enabled(f, name: str):
 def step2(rt, *, set_no: int | None, plan: dict | None = None, rental_attr: str | None = None, main_attr: str | None = None) -> None:
     """第 2 步：翻到支援卡编成 set_no → 按方案自动改（HIRO_FORMATION_AUTOFIX=1）→ 核对 → 租借格空着就挑一张租借 → 次へ。
     编成号翻不到 / 核对不过 / 挑不到租借 都停（FormationMismatch / ResumeBlocked），不交给おまかせ。"""
-    from hiro.produce import formation_steps, prep_steps, rental
+    from hiro.produce import formation_steps, prep_steps
     from hiro.produce.formation_writer import Device as WriterDevice
 
     rt.drive(lambda f: True if nav.find(f, "Produce.TextStepIndicator2") is not None else None, STEP_TIMEOUT, "等第 2 步")
@@ -243,9 +244,9 @@ def step2(rt, *, set_no: int | None, plan: dict | None = None, rental_attr: str 
     formation_steps.autofix_support(WriterDevice(shoot=dev.screenshot, click=dev.click, swipe=dev.swipe, sleep=rt.sleep), plan)
     formation_steps.check_support(rt.screen.shot().img, plan, set_no)
     if _next_enabled(rt.screen.shot(), "Produce.Step2.ButtonNext") is None:
-        with rental.use(dev):
-            picked = formation_steps.rental_pick(plan, rental_attr, main_attr)
-        if not picked:
+        # 租借（hiro.produce.rental）走「当前设备」门面 hiro.devices.active（平台模块 feat_matto_handlers）：run_hif 在新主循环里
+        # active.use(rt) 后它点的就是带拦截的 rt.device
+        if not formation_steps.rental_pick(plan, rental_attr, main_attr):
             raise ResumeBlocked(f"支援卡编成 {set_no} 的租借格挑不到合适的卡，停下（不让おまかせ确认第一张）")
 
     def next_step(f):
@@ -256,3 +257,107 @@ def step2(rt, *, set_no: int | None, plan: dict | None = None, rental_attr: str 
         return None
 
     rt.drive(next_step, STEP_TIMEOUT, "第 2 步点次へ")
+
+
+# ---------------------------------------------------------------- 第 3 步：回忆编成（同 KAA prepare.step3 + kaa_patches._snap_step3）
+def step3(rt, *, set_no: int | None, plan: dict | None = None) -> None:
+    """第 3 步：翻到回忆编成 set_no → 按方案自动改（HIRO_FORMATION_AUTOFIX=1）→ 核对编成号和回忆卡 → 次へ（中途「有可用租借次数」
+    提示点确认），到第 4 步。"""
+    from hiro.produce import formation_steps, prep_steps
+    from hiro.produce.formation_writer import Device as WriterDevice
+    from hiro.produce.memory_picker import SWIPE_DURATION, SWIPE_HOLD, Picker
+
+    rt.drive(lambda f: True if nav.find(f, "Produce.TextStepIndicator3") is not None else None, STEP_TIMEOUT, "等第 3 步")
+    if set_no is None:
+        raise ResumeBlocked("没有回忆编成号（HIRO_MEMORY_SET / 开局编成方案），不开局")
+    if not prep_steps.select_set(set_no, shoot=lambda: rt.screen.shot().img, tap=rt.device.tap, sleep=rt.sleep, clock=rt.clock):
+        raise ResumeBlocked(f"回忆编成翻不到 {set_no} 号")
+    dev = _RentalDevice(rt)
+
+    def make_picker():  # 回忆列表慢滑 + 终点停住，不带惯性
+        return Picker(dev.screenshot, dev.click,
+                      lambda x1, y1, x2, y2: rt.device.swipe(x1, y1, x2, y2, duration=SWIPE_DURATION, hold=SWIPE_HOLD))  # fmt: skip
+
+    formation_steps.autofix_memory(WriterDevice(shoot=dev.screenshot, click=dev.click, swipe=dev.swipe, sleep=rt.sleep), plan, make_picker)
+    formation_steps.check_memory_set(rt.screen.shot().img, plan, set_no)
+
+    def next_step(f):
+        if nav.find(f, "Produce.TextStepIndicator4Or2") is not None:
+            return True
+        if nav.find(f, "Produce.TextRentAvailable") is not None:
+            if (m := nav.find(f, "Produce.RentAvailableConfirmButton")) is not None:
+                nav.tap_match(rt, m)
+        elif (m := nav.find(f, "Produce.Step3.ButtonNext")) is not None:
+            nav.tap_match(rt, m)
+        return None
+
+    rt.drive(next_step, STEP_TIMEOUT, "第 3 步点次へ")
+
+
+# ---------------------------------------------------------------- 第 4 步：加成 / 本战开局前的选拔回忆
+def _set_checkbox(rt, name: str, want: bool) -> None:
+    from hiro.vision.ui_templates import checkbox_checked
+
+    f = rt.screen.shot()
+    if (m := nav.find(f, name, threshold=0.6)) is None:
+        return
+    if (state := checkbox_checked(f.img, m)) is not None and state != want:
+        nav.tap_match(rt, m)
+        rt.sleep(1.0)
+
+
+def step4(rt, *, note_boost: bool = False, pt_boost: bool = False) -> None:
+    """第 4 步（本战是「2.開始確認」）：按设置勾 / 不勾两个加成（同 KAA step4）。"""
+    rt.drive(lambda f: True if nav.find(f, "Produce.TextStepIndicator4Or2") is not None else None, STEP_TIMEOUT, "等第 4 步")
+    _set_checkbox(rt, "Produce.Step4.CheckboxNoteBoost", note_boost)
+    _set_checkbox(rt, "Produce.Step4.CheckboxPtBoost", pt_boost)
+
+
+def check_main_memory(rt, expect: tuple[str, ...]) -> None:
+    """本战开局前：开始确认页上必须是指定的那份选拔回忆（属性数字）；不是就去回忆列表选，选完再核，还不对抛 MemoryMismatch。"""
+    if not expect:
+        return
+    from hiro.produce import memory_select
+
+    shoot = lambda: rt.screen.shot().img  # noqa: E731
+    missing = memory_select.memory_missing_on_page(expect, shoot=shoot, sleep=rt.sleep)
+    if missing:
+        memory_select.select_memory(expect, shoot=shoot, click=rt.device.tap, sleep=rt.sleep,
+                                    swipe=lambda x1, y1, x2, y2, d=0.3: rt.device.swipe(x1, y1, x2, y2, duration=d))  # fmt: skip
+        missing = memory_select.memory_missing_on_page(expect, shoot=shoot, sleep=rt.sleep)  # 已选中的那份不在「変更」列表里，关掉列表后再核
+    if missing:
+        raise memory_select.MemoryMismatch(f"选拔回忆不符：页面上找不到 {missing}")
+    logger.info("本战开局：选拔回忆核对通过（%s）", "/".join(expect))
+
+
+# ---------------------------------------------------------------- 串起来
+def prepare(rt, mode: str, *, idol: str, support_set: int | None = None, memory_set: int | None = None, plan: dict | None = None,
+            rental_attr: str | None = None, main_attr: str | None = None, expect_memory: tuple[str, ...] = (),
+            note_boost: bool = False, pt_boost: bool = False) -> None:  # fmt: skip
+    """编成第 1–4 步。选拔：选偶像 → 支援卡 + 租借 → 回忆 → 加成；本战：第 1 步直接次へ到「2.開始確認」→ 核对选拔回忆 → 加成
+    （同 KAA prepare / prepare_hif_main）。"""
+    if mode == "qualify":
+        step1(rt, idol)
+        step2(rt, set_no=support_set, plan=plan, rental_attr=rental_attr, main_attr=main_attr)
+        step3(rt, set_no=memory_set, plan=plan)
+    else:
+        def to_confirm(f):
+            if nav.find(f, "Produce.TextStepIndicator4Or2") is not None:
+                return True
+            if (m := nav.find(f, "Produce.Step1.ButtonNext")) is not None:
+                nav.tap_match(rt, m)
+            return None
+
+        rt.drive(to_confirm, STEP_TIMEOUT, "本战第 1 步点次へ")
+        check_main_memory(rt, expect_memory)
+    step4(rt, note_boost=note_boost, pt_boost=pt_boost)
+
+
+def new_produce(rt, mode: str, **prep) -> None:
+    """新开一局（使用者放行开局后才跑）：培育入口 → H.I.F → 选拔 / 本战（AP）→ 编成第 1–4 步 → プロデュース開始 → 跳过交流。"""
+    if enter_produce(rt, new=True) != "new":
+        raise ResumeBlocked("没进到剧本选择页")
+    select_hif(rt)
+    choose_mode(rt, mode)
+    prepare(rt, mode, **prep)
+    start(rt)
