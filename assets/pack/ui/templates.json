@@ -371,6 +371,190 @@
     48
    ],
    "source": "KAA fad5eec2-5fd5-412f-9abb-987a3087dc54_template.png"
+  },
+  "InProduce.TextOutingStaminaMax": {
+   "file": "InProduce.TextOutingStaminaMax.png",
+   "slice_rect": [
+    50,
+    1000,
+    490,
+    70
+   ],
+   "source": "KAA b95b45be-f1f9-4e20-a430-5dcf386ffb53_template.png"
+  },
+  "InProduce.TextPDrinkMax": {
+   "file": "InProduce.TextPDrinkMax.png",
+   "slice_rect": null,
+   "source": "KAA f0fcfbe1-de95-447d-829c-4ea47cf5f697.png"
+  },
+  "InProduce.TextPDrinkMaxConfirmTitle": {
+   "file": "InProduce.TextPDrinkMaxConfirmTitle.png",
+   "slice_rect": [
+    46,
+    829,
+    224,
+    47
+   ],
+   "source": "KAA 582d36c0-0916-4706-9833-4fbc026701f5_template.png"
+  },
+  "InProduce.TextSkillCardSelectGuideDialogTitle": {
+   "file": "InProduce.TextSkillCardSelectGuideDialogTitle.png",
+   "slice_rect": [
+    51,
+    698,
+    303,
+    42
+   ],
+   "source": "KAA 3f637e86-6b74-4693-9131-1fe411fc21e5_template.png"
+  },
+  "InProduce.ProduceScore.TitleText": {
+   "file": "InProduce.ProduceScore.TitleText.png",
+   "slice_rect": [
+    92,
+    161,
+    534,
+    66
+   ],
+   "source": "KAA 61e74180-bc2b-4482-bfb6-65f1be2206f4_template.png",
+   "fixed": true
+  },
+  "InProduce.TextPItem": {
+   "file": "InProduce.TextPItem.png",
+   "slice_rect": [
+    247,
+    613,
+    107,
+    32
+   ],
+   "source": "KAA 0c0627be-4a09-4450-a078-1858d3ace532_template.png"
+  },
+  "InProduce.IconTitleSkillCardEnhance": {
+   "file": "InProduce.IconTitleSkillCardEnhance.png",
+   "slice_rect": [
+    25,
+    37,
+    32,
+    35
+   ],
+   "source": "KAA 79abd239-5eed-4195-9fa8-d729daa874ca_template.png",
+   "fixed": true
+  },
+  "InProduce.IconTitleSkillCardRemoval": {
+   "file": "InProduce.IconTitleSkillCardRemoval.png",
+   "slice_rect": [
+    19,
+    36,
+    39,
+    43
+   ],
+   "source": "KAA bab6c393-692c-4681-ac0d-76c0d9dabea6_template.png"
+  },
+  "InProduce.TextReviewCriteria": {
+   "file": "InProduce.TextReviewCriteria.png",
+   "slice_rect": [
+    560,
+    32,
+    92,
+    30
+   ],
+   "source": "KAA aa827983-7f27-4763-bcd6-4316e1b8e459_template.png"
+  },
+  "InProduce.TextPDiary": {
+   "file": "InProduce.TextPDiary.png",
+   "slice_rect": [
+    615,
+    709,
+    51,
+    19
+   ],
+   "source": "KAA 5224dfd7-8e69-4fda-bfa1-ebdd1513c815_template.png"
+  },
+  "InProduce.ButtonFinalPracticeVisual": {
+   "file": "InProduce.ButtonFinalPracticeVisual.png",
+   "slice_rect": [
+    128,
+    887,
+    310,
+    29
+   ],
+   "source": "KAA 00ecdb7a-8a58-4d81-8da6-af312cbcc88e_template.png"
+  },
+  "InProduce.IconTitleStudy": {
+   "file": "InProduce.IconTitleStudy.png",
+   "slice_rect": [
+    81,
+    88,
+    62,
+    43
+   ],
+   "source": "KAA 4af07e4a-45a3-4cb5-b1cb-38e557da6ac4_template.png"
+  },
+  "InProduce.TitleIconOuting": {
+   "file": "InProduce.TitleIconOuting.png",
+   "slice_rect": [
+    77,
+    78,
+    70,
+    61
+   ],
+   "source": "KAA ee4e512b-4982-49b6-9c71-31984b58e1d0_template.png"
+  },
+  "InProduce.IconTitleConsult": {
+   "file": "InProduce.IconTitleConsult.png",
+   "slice_rect": [
+    74,
+    79,
+    76,
+    66
+   ],
+   "source": "KAA 23d88465-65d9-4718-8725-8dbf0a98a5a4_template.png"
+  },
+  "InProduce.IconTitleAllowance": {
+   "file": "InProduce.IconTitleAllowance.png",
+   "slice_rect": [
+    88,
+    68,
+    48,
+    56
+   ],
+   "source": "KAA 1e3e1cf7-a60d-4807-be37-91be24724205_template.png"
+  },
+  "InProduce.TextClearUntil": {
+   "file": "InProduce.TextClearUntil.png",
+   "slice_rect": null,
+   "source": "KAA a017ee04-9ea3-4a16-afec-414dfb70c157.png"
+  },
+  "InProduce.TextPerfectUntil": {
+   "file": "InProduce.TextPerfectUntil.png",
+   "slice_rect": [
+    296,
+    99,
+    127,
+    17
+   ],
+   "source": "KAA 06f1573e-7a3b-401e-98c9-e7b5721e971b_template.png"
+  },
+  "InProduce.TextExamRankSmallFirst": {
+   "file": "InProduce.TextExamRankSmallFirst.png",
+   "slice_rect": [
+    225,
+    11,
+    40,
+    25
+   ],
+   "source": "KAA 5c61b817-d39e-4f8a-bcb3-bbc953d73790_template.png",
+   "fixed": true
+  },
+  "InProduce.TextExamRankLargeFirst": {
+   "file": "InProduce.TextExamRankLargeFirst.png",
+   "slice_rect": [
+    225,
+    10,
+    68,
+    39
+   ],
+   "source": "KAA 2d10f3c4-00cc-48c8-abd2-01d45bd659c7_template.png",
+   "fixed": true
   }
  },
  "boxes": {
