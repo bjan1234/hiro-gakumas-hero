@@ -160,6 +160,17 @@ def events_from_step(page: str | None, action: dict, ok: bool, page_fields: dict
         E("CARD_DELETE", card_id=args["card_id"], upgrade=args.get("upgrade"), source="event")
     elif page == "SKILL_CARD_ENHANCE" and args.get("card_id"):
         E("CARD_UPGRADE", card_id=args["card_id"], upgrade=args.get("upgrade"), source="event")
+    elif page == "SELECT_PITEM" and kind == "ActivateEffect":
+        # 定制 P 道具（背包 → 毛绒 → 装饰）：选中的那一项拼成 master ID，替换上一段（任务 ②：搜索起点要带这一局的 P 道具）
+        from hiro.brain import pitem
+
+        items = page_fields.get("pitems") or []
+        i = next(iter(args.get("pick_indexes") or []), None)
+        p = pitem.parse(items[int(i)]) if isinstance(i, int) and 0 <= i < len(items) else None
+        new = pitem.custom_id(p) if p else None
+        if new:
+            old = next((x for x in (produce or {}).get("items") or [] if str(x).startswith("customize_pitem-")), None)
+            E("PITEM_CUSTOMIZE", item_id=new, replaces=old)
     elif page == "PDRINK_MAX" and kind == "DiscardDrink" and args.get("receive") and args.get("discard"):
         E("DRINK_DISCARD", index=args["discard"][0])
     return ev

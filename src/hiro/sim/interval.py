@@ -52,10 +52,16 @@ class R2Setup:
     star: int | None = None
     template: str = TEMPLATE  # 开局模板：R2 用 r2-opening（12 回合），R1 可用 campus-20261019/r1-opening（9 回合）
     fill: bool = True  # R2 模板时按応援棒补到 22 张（借 R2 模板模拟选拔考试时关掉）
+    # 这一局的编成（任务 ②：搜索起点不能带模板那一局的 P 道具 / 支援卡 / 回忆附魔）。None = 沿用模板（评估类用途照旧）。
+    items: tuple | None = None  # P 道具 master ID
+    supports: tuple | None = None  # 支援卡 supportCardList 项（dict：_supportCardId / _filterParameterType / _cardSearchId / _produceCardUpgradePermil）
+    skills: tuple | None = None  # 开考附魔的回忆技能 p_memory_skill-…
 
     def key(self) -> tuple:
         deck = tuple(sorted(tuple(tuple(x) if isinstance(x, list) else x for x in c) for c in self.deck))
-        return (deck, tuple(sorted(self.drinks)), self.hp, self.max_hp, tuple(sorted(self.permil.items())), self.template, self.fill)
+        sup = None if self.supports is None else tuple(tuple(sorted(x.items())) for x in self.supports)
+        return (deck, tuple(sorted(self.drinks)), self.hp, self.max_hp, tuple(sorted(self.permil.items())), self.template, self.fill,
+                None if self.items is None else tuple(sorted(self.items)), sup, None if self.skills is None else tuple(sorted(self.skills)))
 
 
 # H.I.F応援棒（R1 结束后获得）：R2 开考时山札不满 22 张，用名字含「基本」的随机卡补到 22 张 [wiki][もなみ][いおん ep07]。
@@ -75,6 +81,19 @@ def ouenbou_fill(deck: list) -> list:
     return out
 
 
+def loadout_into(o: dict, *, items=None, supports=None, skills=None) -> None:
+    """把开考快照里的 P 道具 / 支援卡 / 回忆附魔换成给定的（None = 不动，沿用模板）。
+    episode_from_observation 只读 items 的 _id / _reactionCount、supports 原样、active_statuses 里 TriggerEffect 的 _startEnchantOriginId。"""
+    if items is not None:
+        o["items"] = [{"_id": i, "_fireCount": 0, "_reactionCount": 0, "_itemType": 2 if str(i).startswith("customize_pitem-") else 1,
+                       "_parentCustomItemIds": []} for i in items]  # fmt: skip
+    if supports is not None:
+        o["supports"] = [dict(x) for x in supports]
+    if skills is not None:
+        keep = [st for st in o.get("active_statuses") or [] if not (st.get("data") or {}).get("_startEnchantOriginId")]
+        o["active_statuses"] = keep + [{"type": {"class": "TriggerEffectStatusEffect"}, "data": {"_startEnchantOriginId": sk}} for sk in skills]
+
+
 def r2_opening(setup: R2Setup) -> dict:
     o = copy.deepcopy(_template(setup.template))
     tmpl = next(iter(o["cards"].values()))
@@ -91,6 +110,7 @@ def r2_opening(setup: R2Setup) -> dict:
         o["cards"][inst] = c
         o["zones"]["deck"].append(inst)
     o["drinks"] = [{"_id": d} for d in setup.drinks]
+    loadout_into(o, items=setup.items, supports=setup.supports, skills=setup.skills)
     s = o["scalars"]
     s.update(stamina=min(setup.hp, setup.max_hp), maxStamina=setup.max_hp, vocalBonusPermil=setup.permil["Vo"],
              danceBonusPermil=setup.permil["Da"], visualBonusPermil=setup.permil["Vi"])  # fmt: skip
@@ -421,7 +441,8 @@ def options(shelf: dict, setup: R2Setup, p: int, *, wappen_left: int = 2, junk: 
 
 
 def _with(s: R2Setup, **kw) -> R2Setup:
-    d = dict(deck=list(s.deck), drinks=list(s.drinks), hp=s.hp, max_hp=s.max_hp, permil=dict(s.permil), star=s.star, template=s.template, fill=s.fill)
+    d = dict(deck=list(s.deck), drinks=list(s.drinks), hp=s.hp, max_hp=s.max_hp, permil=dict(s.permil), star=s.star, template=s.template, fill=s.fill,
+             items=s.items, supports=s.supports, skills=s.skills)
     d.update(kw)
     return R2Setup(**d)
 
