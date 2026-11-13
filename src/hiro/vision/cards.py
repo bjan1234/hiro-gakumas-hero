@@ -13,8 +13,7 @@ from functools import lru_cache
 import cv2
 import numpy as np
 from cv2.typing import MatLike
-from kaa.db.skill_card import PRODUCE_CARD_SELECT, SkillCard, _load_exam_effects_from_rows
-from kaa.db.sqlite import select
+from hiro import master
 from kotonebot.primitives import Rect
 
 UPGRADE_RED_MIN = 20  # 实测：强化 55–62，未强化 0–1
@@ -56,14 +55,11 @@ def _upgraded(img: MatLike, box: tuple[slice, slice]) -> tuple[bool, int]:
 
 
 @lru_cache(maxsize=512)
-def card_version(card_id: str, upgrade_count: int) -> SkillCard | None:
-    row = select(f"{PRODUCE_CARD_SELECT} WHERE id = ? AND upgradeCount = ?;", card_id, upgrade_count)
-    if row is None:
-        return None
-    return SkillCard._from_row(row, _load_exam_effects_from_rows([row]))
+def card_version(card_id: str, upgrade_count: int) -> master.Card | None:
+    return master.card(card_id, upgrade_count)
 
 
-def full_text(card: SkillCard) -> str:
+def full_text(card: master.Card) -> str:
     """卡牌完整描述（含使用条件、开局入手、レッスン中1回等），与游戏内卡牌详情一致。
 
     KAA 的 effect_display_text 只拼接各出牌效果的说明，会丢掉卡牌级的条件与属性。
@@ -107,7 +103,7 @@ def full_text(card: SkillCard) -> str:
     return "\n".join(line.strip() for line in lines if line.strip()) or card.effect_display_text
 
 
-def card_summary(card: SkillCard | None, *, upgraded: bool | None = None) -> dict | None:
+def card_summary(card: master.Card | None, *, upgraded: bool | None = None) -> dict | None:
     """卡牌字段；upgraded=True 时换成 +1 版本（选卡/手牌里看不出 ++ 以上，按 +1 处理）。"""
     if card is None:
         return None

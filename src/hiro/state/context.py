@@ -559,14 +559,14 @@ def preview_card_pick(state: ProduceState, candidates: list[dict], *, change: bo
     """三选一：candidates = [{card_id, upgrade}]；change=True 为セレクトチェンジ（不算获得，不触发ワッペン）。
     unknown 里的字段（禁用 / 刷新次数、ワッペン、牌组）显示为「未识别」，不按默认值 0 推理。"""
     from hiro.brain.cards import card_view
-    from hiro.brain.cards import kaa_cards as _kaa_cards
+    from hiro import master
 
     wappen = _scale(10, state.star_permil) if (("wappen_left" in unknown or state.wappen_left) and not change) else 0
     owned = [c.card_id for c in state.deck]
     rows = []
     for i, c in enumerate(candidates):
         row = catalog().card(c["card_id"], c.get("upgrade", 0))
-        kaa = _kaa_cards().get((c["card_id"], c.get("upgrade", 0)))
+        kaa = master.card(c["card_id"], c.get("upgrade", 0))
         v = card_view(i, kaa, available=True) if kaa else None
         know = YARUKI_CARDS.get(c["card_id"])
         entry = {

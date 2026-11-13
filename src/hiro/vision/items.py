@@ -142,7 +142,7 @@ def read_drink_slots(img: MatLike, *, cache: RegionCache | None = None) -> list[
 
 def _read_drink_slots(img: MatLike) -> list[dict]:
     """考试页与培育页的饮料栏高度不同：两行都比一次，取 4 格最高分之和大的那行（空槽两行都低，不影响）。"""
-    from kaa.db.drink import Drink
+    from hiro import master
 
     lib = _library("pdrink", DRINK_SIZE)
     half = DRINK_SIZE // 2
@@ -162,7 +162,7 @@ def _read_drink_slots(img: MatLike) -> list[dict]:
                  "rect": [cx - half, cy - half, DRINK_SIZE, DRINK_SIZE], "center": [cx, cy], "available": None,
                  "score": round(score, 3), "margin": round(score - second, 3), "confidence": None}  # fmt: skip
         if (score >= MIN_SCORE and score - second >= MIN_MARGIN) or (score >= LOW_SCORE and score - second >= LOW_MARGIN):
-            drink = Drink.from_asset_id(asset)
+            drink = master.drink_by_asset(asset)
             sat = float(cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)[:, :, 1].mean())
             entry.update(state="drink", drink_id=drink.id if drink else None, asset=asset, name=lib.names.get(asset) or (drink.name if drink else None),  # KAA 图库没有名称表：按主数据取
                          available=sat >= GREY_SAT_MAX, confidence=round(score, 3))  # fmt: skip
@@ -258,10 +258,10 @@ def _drink_effects() -> dict[str, tuple[str, str]]:
     """drink_id → (名称, 规范化的效果说明)。"""
     import json
 
-    from kaa.db.sqlite import select_many
+    from hiro import master
 
     out = {}
-    for r in select_many("SELECT id, name, produceDescriptions FROM ProduceDrink;"):
+    for r in master.rows("SELECT id, name, produceDescriptions FROM ProduceDrink;"):
         try:
             parts = json.loads(r["produceDescriptions"] or "[]")
         except ValueError:
@@ -341,7 +341,7 @@ def read_pdrink_max(img: MatLike) -> dict | None:
     complete=False：列表没滚到底，下面可能还有没看到的已有饮料（index 只对看到的行有效）。格式见 docs/llm-context.md「PDRINK_MAX」。"""
     import re
 
-    from kaa.db.drink import Drink
+    from hiro import master
 
     from hiro.vision.ocr import ocr_boxes
 
@@ -373,7 +373,7 @@ def read_pdrink_max(img: MatLike) -> dict | None:
                  "center": [OVERFLOW_ICON_X, int(y)], "method": "effect" if did else None, "score": round(sim, 3), "margin": round(margin, 3)}  # fmt: skip
         if did is None:
             score, second, asset = _match_drink_icon(img, OVERFLOW_ICON_X, y)
-            drink = Drink.from_asset_id(asset) if score >= OVERFLOW_MIN and score - second >= OVERFLOW_MARGIN else None
+            drink = master.drink_by_asset(asset) if score >= OVERFLOW_MIN and score - second >= OVERFLOW_MARGIN else None
             if drink is not None:
                 entry.update(drink_id=drink.id, name=lib.names.get(asset) or drink.name, method="icon", score=round(score, 3), margin=round(score - second, 3))
         return entry
