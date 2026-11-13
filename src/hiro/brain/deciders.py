@@ -31,17 +31,21 @@ from hiro.state.produce import ATTRS, ProduceState
 logger = logging.getLogger(__name__)
 TIER_RANK = {"S": 3, "A": 2, "B": 1}
 PAGES = ("ACTION_SELECT", "SELECT_CARD", "SELECT_DRINK", "CONSULT", "STUDY", "OUTING", "HIF_ROUND_INTERVAL", "SELECT_PITEM", "PDRINK_MAX", "SPECIAL_GUIDANCE", "FORMATION", "QUALIFY_MEMORY",
-         "SKILL_CARD_CHANGE_1", "SKILL_CARD_CHANGE_2", "SKILL_CARD_REMOVAL", "SKILL_CARD_ENHANCE", "PDRINK_MAX_CONFIRM")
+         "SKILL_CARD_CHANGE_1", "SKILL_CARD_CHANGE_2", "SKILL_CARD_REMOVAL", "SKILL_CARD_ENHANCE", "PDRINK_MAX_CONFIRM", "EVENT_CHOICE")
 
 
-# 决策点补全（总控 2026-11-13）：规则 / 模拟拿不准的局面交 LLM，LLM 不可用或输出非法再兜底。每条新 LLM 路径一个开关、默认关；
-# HIRO_PRODUCE_LLM=change_remove,remove_card,…（或 all）打开。选行动 / 抓卡三选一原来就问 LLM，不受这个开关管。
-LLM_PATHS = ("change_remove", "remove_card", "select_drink", "consult", "interval", "drink_overflow", "select_pitem", "special_guidance")
+# 决策点补全（总控 2026-11-13）：规则 / 模拟拿不准的局面交 LLM，LLM 不可用或输出非法再兜底。用户 11-14：默认全开（「我们先默认都模型兜底」）。
+# HIRO_PRODUCE_LLM 不设 / all = 全开；off = 全关；change_remove,remove_card,… = 只开这几条。选行动 / 抓卡三选一原来就问 LLM，不受这个开关管。
+LLM_PATHS = ("change_remove", "remove_card", "select_drink", "consult", "interval", "drink_overflow", "select_pitem", "special_guidance", "event_choice")
 
 
 def llm_path_on(name: str) -> bool:
-    parts = {x.strip() for x in os.environ.get("HIRO_PRODUCE_LLM", "").split(",") if x.strip()}
-    return "all" in parts or name in parts
+    parts = {x.strip().lower() for x in os.environ.get("HIRO_PRODUCE_LLM", "").split(",") if x.strip()}
+    if not parts or "all" in parts:
+        return True
+    if parts & {"off", "0", "none"}:
+        return False
+    return name in parts
 
 
 def action_key(a: Action) -> str:
@@ -108,7 +112,7 @@ class ProduceDeciders:
         不回退到第 0 项（决策-08，用户：所有页面由我们的逻辑处理，不能落到 KAA 默认的 commit(0)）。"""
         fn = {"ACTION_SELECT": self.action_select, "SELECT_CARD": self.select_card, "SELECT_DRINK": self.select_drink,
               "CONSULT": self.consult, "STUDY": self.study, "OUTING": self.outing,
-              "HIF_ROUND_INTERVAL": self.interval, "SELECT_PITEM": self.select_pitem, "PDRINK_MAX": self.drink_overflow,
+              "HIF_ROUND_INTERVAL": self.interval, "SELECT_PITEM": self.select_pitem, "EVENT_CHOICE": self.event_choice, "PDRINK_MAX": self.drink_overflow,
               "SPECIAL_GUIDANCE": self.special_guidance, "FORMATION": self.formation,
               "QUALIFY_MEMORY": self.qualify_memory, "SKILL_CARD_CHANGE_1": self.change_pick,
               "SKILL_CARD_CHANGE_2": self.change_remove, "SKILL_CARD_REMOVAL": self.remove_card,
@@ -180,7 +184,7 @@ class ProduceDeciders:
         if page == "SELECT_PITEM":
             items = state.page_fields.get("pitems") or []
             order = {"yellow": 0, "green": 1, "red": 2}
-            colored = [(order[it["color"]], i) for i, it in enumerate(items) if it.get("color") in order and (n is None or i < n)]
+            colored = [(order[it["color"]], i) for i, it in enumerate(items) if it.get("color") in order and not it.get("custom") and (n is None or i < n)]
             if colored:
                 i = min(colored)[1]
                 return Decision(Action.activate_effect(items[i].get("index", i)), "P 道具兜底：按背包颜色 黄 > 緑 > 赤", "fallback", 0.4,
@@ -840,8 +844,26 @@ class ProduceDeciders:
                             return Decision(Action(ActionKind.CUSTOMIZE_CARD, args),
                                             f"定制 {name}：{why}（{'+'.join(map(str, (opt.get('levels') or [price] * n)[:n]))}P，{n} 级）{'；已定制过，升级' if card.get('customized') else ''}", "rule", 0.8, cands,
                                             warnings=warn, decider="special_guidance")  # fmt: skip
+        rule = Decision(end, f"社区优先表里没有能定制的卡（P {p}）", "rule", 0.6, cands, warnings=warn, decider="special_guidance")
+        # 决策点补全：优先表做完了，但还有付得起的表外定制 → 拿不准做不做，交 LLM（结束是规则的选择）。只问一次：选了某项照做，下一帧再到这里不重复问
+        extra = [] if getattr(self, "_guidance_asked", False) else [
+            (card, opt) for card in cards if (card.get("index"), card.get("card_id")) not in done_here
+            for opt in card.get("customizations") or [] if opt.get("available") is not False and p is not None and opt.get("price") and opt["price"] <= p]
+        if extra and llm_path_on("special_guidance") and self.llm is not None:
+            self._guidance_asked = True
+            extra.sort(key=lambda co: -card_value(co[0].get("card_id"), co[0].get("upgrade") or 0))
+            options = [(end, {"名字": "结束（剩下的 P 留着）"})] + [
+                (Action(ActionKind.CUSTOMIZE_CARD, dict(_customize_args(card, opt), levels=1)),
+                 {"名字": f"定制 {_card_label(card)}：{_customize_desc(opt['id'])}", "花 P": opt["price"]}) for card, opt in extra[:4]]  # fmt: skip
+            d = self._ask_choice("special_guidance", rule, options, "特別指導（技能卡定制）：剩下的 P 还要不要定制一张（一级）",
+                                 f"社区优先表里的都做完了，还剩 {p}P，有 {len(extra)} 项表外定制付得起", state)  # fmt: skip
+            if d.action.kind is ActionKind.CUSTOMIZE_CARD:
+                self._customized_here = done_here | {(d.action.args["card_index"], d.action.args["card_id"])}
+                return d
+            rule = d
         self._customized_here = set()  # 离开特別指導：下一次重新计
-        return Decision(end, f"社区优先表里没有能定制的卡（P {p}）", "rule", 0.6, cands, warnings=warn, decider="special_guidance")
+        self._guidance_asked = False
+        return rule
 
     def formation(self, state: GameState, *, support_sets: list[dict] | None = None, memory_sets: list[dict] | None = None) -> Decision:
         """开局编成：从预存的支援卡 / 记忆编成里选第几号（brain/formation.py，社区规则）。选中的支援卡编成决定主属性，
@@ -1777,7 +1799,11 @@ class ProduceDeciders:
         from hiro.brain import pitem
 
         items = state.page_fields.get("pitems") or []
-        parsed = [pitem.parse(it) for it in items]
+        parsed = [None if it.get("custom") and not (it.get("name") or it.get("item_id") or it.get("id")) else pitem.parse(it) for it in items]
+        if any(q and q["stage"] != "pouch" for q in parsed):
+            # 同一页别的候选已是玩偶 / 装饰段：只有颜色（名字没认出）的格子不是背包，按没认出算（原来当「背包 黄」3 分，压过 インコ / うさぎ）
+            parsed = [None if q and q["stage"] == "pouch" and not (it.get("name") or it.get("item_id") or it.get("id")) else q
+                      for it, q in zip(items, parsed)]  # fmt: skip
         idx = [it.get("index", it.get("slot", i)) for i, it in enumerate(items)]
         cands = [Candidate(Action.activate_effect(idx[i]), note=it.get("name") or it.get("item_id"),
                            preview={"名称": it.get("name"), "阶段": p and p["stage"], "社区": p and pitem.reason(p)} if p else None)
@@ -1788,8 +1814,72 @@ class ProduceDeciders:
             return Decision(Action.ui(ActionKind.WAIT, why="P 道具候选未识别"), "P 道具候选名称未识别", "fallback", 0.2, cands,
                             warnings=["识别未提供 pitems 或无法解析"], decider="select_pitem")  # fmt: skip
         best = max(known, key=lambda i: (pitem.score(parsed[i]), -i))
-        return Decision(Action.activate_effect(idx[best]), pitem.reason(parsed[best]), "rule", 0.9 if pitem.score(parsed[best]) >= 3 else 0.6,
+        rule = Decision(Action.activate_effect(idx[best]), pitem.reason(parsed[best]), "rule", 0.9 if pitem.score(parsed[best]) >= 3 else 0.6,
                         cands, decider="select_pitem")  # fmt: skip
+        if len(known) > 1 and all(parsed[i] == parsed[known[0]] for i in known):
+            # 实机 dmmt1 / dmmt2 / dmmw1 第二段定制：三个候选都读成「ロボ（黄）」——识别只认出玩偶颜色，没认出装饰（ロボ 是 花 / リボン / 羽 三选一），
+            # 规则只能按第 1 个选。LLM 也看不到装饰，不问；记成兜底，报告里能数出来
+            return replace(rule, source="fallback", confidence=0.3,
+                           warnings=[f"P 道具 {len(known)} 个候选识别成一样的（{items[known[0]].get('name')}）：多半是第二段装饰没认出，按第 1 个选"])
+        top = pitem.score(parsed[best])
+        ties = {str(sorted(parsed[i].items())) for i in known if pitem.score(parsed[i]) == top}
+        unknown_n = len(items) - len(known)
+        stage_max = max({"pouch": pitem.POUCH_RANK, "plush": pitem.PLUSH_RANK, "deco": pitem.DECO_RANK}[parsed[best]["stage"]].values())
+        why = (f"{len(ties)} 个不同的候选社区排序打平" if len(ties) > 1 else
+               f"{unknown_n} 个候选没认出，认出的最好只是 {items[best].get('name')}" if unknown_n and top < stage_max else None)  # fmt: skip
+        if why is None:
+            return rule
+        order = [best] + [i for i in range(len(items)) if i != best]
+        options = [(Action.activate_effect(idx[i]), {"名字": items[i].get("name") or "未识别", "颜色": items[i].get("color"),
+                                                    "社区": pitem.reason(parsed[i]) if parsed[i] else "未识别"}) for i in order]  # fmt: skip
+        return self._ask_choice("select_pitem", rule, options, "P 道具（カスタムPアイテム）三选一", why, state)
+
+    def event_choice(self, state: GameState) -> Decision:
+        """事件选项页（随机事件 / 支援事件 / 开局二选一等多选项按钮页；去 KAA 设计稿 §8-2，用户 11-14：按整局培育来选，算法 → LLM → 兜底）。
+
+        page_fields（平台模块的新主循环读出来交给这里，页面层不写选择规则）：
+          title：事件标题（可空）；kind：random / support / start …（可空，只给 LLM 看）；
+          choices：[{index, text, effect?（选中后弹出的效果说明）, cost_hp?, cost_p?, trouble?}]，按画面从上到下。
+        输出 EventSelect {"select": index}；source = rule（严格占优）/ llm / fallback（粗估分）；读不出选项、或有选项效果没解析出来
+        而 LLM 给不出答案时 WAIT（停机等人，同现在的做法）。LLM 路径开关 event_choice（HIRO_PRODUCE_LLM）。"""
+        from hiro.brain import event_choice as ev
+
+        pf = state.page_fields
+        choices = sorted(pf.get("choices") or [], key=lambda c: c.get("index", 0))
+        title = pf.get("title") or ""
+        stop = lambda why, w: Decision(Action.ui(ActionKind.WAIT, why=why), why, "fallback", 0.1, warnings=w, decider="event_choice")  # noqa: E731
+        if len(choices) < 2:
+            return stop("事件选项没读出来（少于 2 个）：停下等人", ["EVENT_CHOICE choices 缺失"])
+        ps = self.produce_state(state)
+        parsed = [ev.parse(c) for c in choices]
+        vecs = [v for v, _ in parsed]
+        unparsed = {i for i, (_, ok) in enumerate(parsed) if not ok}  # choices 里的位置
+        raw = state.produce or {}  # 局面不全（ProduceState 构造不出）时体力 / 成长率直接读原始字段
+        kw = dict(stamina=ps.stamina if ps else raw.get("stamina"), max_stamina=ps.max_stamina if ps else raw.get("max_stamina"),
+                  growth=ps.growth_permil if ps else raw.get("growth_permil"), main_attr=(ps.main_attr if ps else raw.get("main_attr")) or self.main_attr)  # fmt: skip
+        scores = [ev.score(v, **kw) for v in vecs]
+        cands = [Candidate(Action.event_select(c["index"]), preview={"选项": c.get("text"), "效果": ev.describe(v), "粗估分": round(sc, 1)},
+                           expected=sc, note=c.get("text")) for c, v, sc in zip(choices, vecs, scores)]  # fmt: skip
+        head = f"事件「{title}」：" if title else "事件："
+        if not unparsed and (k := ev.dominant(vecs)) is not None:
+            return Decision(Action.event_select(choices[k]["index"]), f"{head}{choices[k].get('text')}（{ev.describe(vecs[k])}）在每一项上都不差于其他选项",
+                            "rule", 0.9, cands, decider="event_choice")  # fmt: skip
+        order = sorted(range(len(choices)), key=lambda i: (i in unparsed, -scores[i]))
+        best = order[0]
+        rule = Decision(Action.event_select(choices[best]["index"]),
+                        f"{head}没有哪个选项全面更好，按粗估分选 {choices[best].get('text')}（{ev.describe(vecs[best])}，{scores[best]:.0f}）",
+                        "fallback", 0.4, cands, warnings=[f"事件选项有 {len(unparsed)} 个效果没解析出来"] if unparsed else [], decider="event_choice")  # fmt: skip
+        options = [(Action.event_select(choices[i]["index"]),
+                    {"名字": choices[i].get("text") or f"第 {i + 1} 项", "效果说明": choices[i].get("effect"),
+                     "解析出的变化": ev.describe(vecs[i]) if i not in unparsed else "没解析出来，看效果说明",
+                     "代价": {k: choices[i][k] for k in ("cost_hp", "cost_p", "trouble") if choices[i].get(k)} or None,
+                     "粗估分": round(scores[i], 1) if scores[i] != float("-inf") else "体力不够付"}) for i in order]  # fmt: skip
+        why = "没有哪个选项全面更好" + (f"，{len(unparsed)} 个选项效果没解析出来" if unparsed else "")
+        d = self._ask_choice("event_choice", rule, options, f"培育中的事件选项（{pf.get('kind') or '事件'}「{title or '标题未识别'}」）：选哪一项",
+                             why, state, {"粗估分说明": "参数按成长率加权；体力低于一半时更值钱；只作参考"})  # fmt: skip
+        if d.source != "llm" and (unparsed or scores[best] == float("-inf")):
+            return stop(f"{head}有选项效果没解析出来 / 都付不起，LLM 没给出答案：停下等人", d.warnings + rule.warnings)
+        return d
 
     def interval(self, state: GameState) -> Decision:
         """轮间（R1 与 R2 之间），一次一个动作。page_fields["interval"] 格式见 docs/llm-context.md「商店字段」。
@@ -2958,6 +3048,17 @@ def _customize_text(customize_id: str) -> str:
     except Exception:
         rows = []
     return "|".join([customize_id] + [g for r in rows for g in r["produceCardGrowEffectIds"]])
+
+
+def _customize_desc(customize_id: str) -> str:
+    """定制项给人看的说明（master ProduceCardCustomize.description，第 1 级）。"""
+    from hiro.state.context import catalog
+
+    try:
+        rows = sorted(catalog().by_id("ProduceCardCustomize", customize_id), key=lambda r: r["customizeCount"])
+        return str(rows[0]["description"] or customize_id) if rows else customize_id
+    except Exception:
+        return customize_id
 
 
 def _customize_cost(card_id: str, keys: list, levels: int) -> int | None:

@@ -511,7 +511,8 @@ class HiroHifStrategy(HifGrindStrategy):
 
         pouch = self.s.state.page_fields.get("pouch_color") or next((o.get("color") for o in options if o.get("color")), "yellow")
         names = custom_names(img, self.POUCH_KANJI.get(pouch, "黄"))
-        out = [{**(options[i] if i < len(options) else {}), "slot": i, "name": name} for i, name in enumerate(names)]
+        # custom：定制页的候选，名字没认出时决策器不按背包颜色当成「背包」打分（三格都没认出时原来按「背包 黄」0.9 选第 1 个）
+        out = [{**(options[i] if i < len(options) else {}), "slot": i, "name": name, "custom": True} for i, name in enumerate(names)]
         logger.info("定制候选：%s", names)
         return out
 
