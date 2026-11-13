@@ -1,6 +1,7 @@
 """hiro.tool_device：工具脚本用的设备（统一接口 + 危险点击拦截），以及改过来的工具不再碰 kotonebot / KAA。"""
 
 import re
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -116,5 +117,6 @@ def test_tool_device_does_not_import_kaa():
         "bad = sorted(m for m in sys.modules if m.split('.')[0] in ('kotonebot', 'kaa'));"
         "print(bad); sys.exit(1 if bad else 0)"
     )
-    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False)
+    env = {k: v for k, v in os.environ.items() if k != "HIRO_KAA_GAME_DATA"}  # 设了它 hiro.vision 会给 KAA 指主数据目录（KAA 还在时要）
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False, env=env)
     assert r.returncode == 0, r.stdout + r.stderr
