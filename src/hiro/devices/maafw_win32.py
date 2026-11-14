@@ -32,9 +32,7 @@ from hiro.device_maafw import (
     screencap_flags,
 )
 
-from .base import DeviceGone, DeviceUnavailable, LogicalScreen, check_aspect
-
-RESIZE_SETTLE_S = 3.0  # 截到的画面宽高比不对（横竖屏切换时窗口正在改尺寸）：最多重截这么久
+from .base import DeviceGone, DeviceUnavailable, LogicalScreen, settled_frame
 
 
 class MaaFwWin32Device:
@@ -101,7 +99,8 @@ class MaaFwWin32Device:
         if not image.any():  # DXGI 窗口方式在这台机器上截出来全黑：换截图方式
             self._ctrl = None
             raise DeviceUnavailable(f"截图方式 {self.screencap} 截出来全黑，换 HIRO_MAAFW_SCREENCAP（GDI / FramePool）")
-        self.screen.frame(image)
+        first = [image]
+        settled_frame(lambda: first.pop() if first else self._grab(), self.screen)  # 连上那一刻正在横竖屏切换也等一下
 
     def close(self) -> None:
         self._ctrl = None
@@ -134,19 +133,8 @@ class MaaFwWin32Device:
         return np.ascontiguousarray(image)  # BGR
 
     def screenshot(self) -> np.ndarray:
-        """截图 → 逻辑分辨率。宽高比和 9:16 差太多时多半是窗口正在横竖屏切换（DMM 11-14：选拔③结束进 LIVE 时截到 540x572），
-        每 0.2 秒重截，RESIZE_SETTLE_S 内恢复就用新的那张；一直不对再报 DeviceUnavailable。"""
-        deadline = time.monotonic() + RESIZE_SETTLE_S
-        while True:
-            image = self._grab()
-            try:
-                check_aspect(image.shape[1], image.shape[0])
-            except DeviceUnavailable:
-                if time.monotonic() >= deadline:
-                    raise
-                time.sleep(0.2)
-                continue
-            return self.screen.frame(image)
+        """截图 → 逻辑分辨率；窗口正在横竖屏切换时重截（base.settled_frame）。"""
+        return settled_frame(self._grab, self.screen)
 
     # -- 点击 / 滑动（坐标先换成框架截图的像素）
     def _native(self, x: float, y: float) -> tuple[int, int]:

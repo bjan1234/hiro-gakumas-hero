@@ -22,7 +22,7 @@ import subprocess
 
 import numpy as np
 
-from .base import DeviceGone, DeviceUnavailable, LogicalScreen
+from .base import DeviceGone, DeviceUnavailable, LogicalScreen, settled_frame
 
 PACKAGE = "com.bandainamcoent.idolmaster_gakuen"
 DEFAULT_SERIAL = "127.0.0.1:5555"
@@ -129,7 +129,8 @@ class AdbDevice:
 
     # -- 截图 / 输入
     def screenshot(self) -> np.ndarray:
-        return self.screen.frame(parse_screencap(self._cmd("exec-out", "screencap")))
+        """截图 → 逻辑分辨率；进 LIVE 横竖屏切换时重截（base.settled_frame）。"""
+        return settled_frame(lambda: parse_screencap(self._cmd("exec-out", "screencap")), self.screen)
 
     def _native(self, x: float, y: float) -> tuple[int, int]:
         if self.screen.native is None:

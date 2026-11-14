@@ -17,6 +17,8 @@ DMM 客户区 1081x1921 不是严格 9:16，各自换算和截图的拉伸严格
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
 import numpy as np
@@ -66,6 +68,31 @@ def check_aspect(width: int, height: int) -> None:
     long_side, short_side = max(width, height), min(width, height)
     if width <= 0 or height <= 0 or abs(long_side / short_side - max(lw, lh) / min(lw, lh)) > ASPECT_TOLERANCE:
         raise DeviceUnavailable(f"画面尺寸 {width}x{height} 和 9:16 差太多，不能缩放到 {lw}x{lh}")
+
+
+RESIZE_SETTLE_S = 3.0  # 截到的画面宽高比不对（横竖屏切换时窗口正在改尺寸）：最多重截这么久
+RESIZE_RETRY_S = 0.2
+
+
+def settled_frame(grab: Callable[[], np.ndarray], screen: LogicalScreen, *, settle_s: float | None = None,
+                  sleep: Callable[[float], None] | None = None, clock: Callable[[], float] | None = None) -> np.ndarray:  # fmt: skip
+    """截图 → 逻辑分辨率，三个设备共用。宽高比和 9:16 差太多时多半是窗口正在横竖屏切换（DMM 11-14：选拔③结束进 LIVE 时
+    截到 540x572；Mac / MuMu 进 LIVE 也会转），每 RESIZE_RETRY_S 秒重截，settle_s（缺省 RESIZE_SETTLE_S）内恢复就用新的那张；
+    一直不对再报 DeviceUnavailable。比例对的截图第一张就返回，不多等。"""
+    sleep, clock = sleep or time.sleep, clock or time.monotonic
+    deadline = clock() + (RESIZE_SETTLE_S if settle_s is None else settle_s)
+    while True:
+        image = grab()
+        shape = getattr(image, "shape", None)
+        if shape is not None and len(shape) >= 2:
+            try:
+                check_aspect(shape[1], shape[0])
+            except DeviceUnavailable:
+                if clock() >= deadline:
+                    raise
+                sleep(RESIZE_RETRY_S)
+                continue
+        return screen.frame(image)
 
 
 class LogicalScreen:

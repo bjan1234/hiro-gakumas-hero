@@ -289,10 +289,10 @@ def test_maafw_device_screenshot_tap_swipe(tmp_path, monkeypatch):
 
 def test_maafw_device_retries_while_window_resizes(tmp_path, monkeypatch):
     """横竖屏切换时窗口正在改尺寸（DMM 11-14 截到 540x572）：重截到比例对了再用；一直不对才报错。"""
-    import hiro.devices.maafw_win32 as mw
+    from hiro.devices import base
 
     monkeypatch.setenv("HIRO_MAAFW_LOG", str(tmp_path))
-    monkeypatch.setattr(mw.time, "sleep", lambda s: None)
+    monkeypatch.setattr(base.time, "sleep", lambda s: None)
     frames = iter([bgr(541, 961), bgr(540, 572), bgr(540, 572), bgr(961, 541)])
     api, st = fake_maa(image=None)
     dev = MaaFwWin32Device(api=api)
@@ -300,7 +300,7 @@ def test_maafw_device_retries_while_window_resizes(tmp_path, monkeypatch):
     assert dev.screenshot().shape == (1280, 720, 3)
     assert dev.screenshot().shape == (720, 1280, 3)  # 两张 540x572 跳过，用上切好的横屏
     monkeypatch.setattr(dev, "_grab", lambda: bgr(540, 572))
-    monkeypatch.setattr(mw, "RESIZE_SETTLE_S", 0.0)
+    monkeypatch.setattr(base, "RESIZE_SETTLE_S", 0.0)
     with pytest.raises(DeviceUnavailable):
         dev.screenshot()
 
@@ -452,3 +452,31 @@ def test_adb_shell_feeds_game_app_foreground():
     out = dev.shell("dumpsys window | grep mCurrentFocus")
     assert fake.cmds[-1] == ["shell", "dumpsys window | grep mCurrentFocus"]
     assert focus_package(out) == "com.bandainamcoent.idolmaster_gakuen"
+
+
+def test_settled_frame_shared_by_all_devices():
+    """重截挪进 base 三个设备共用（平台 bb66f22 原来只在 MaaFW 上）：比例对的第一张直接用，不对的在时限内重截。"""
+    from hiro.devices.base import settled_frame
+
+    t = {"now": 0.0}
+    slept = []
+
+    def sleep(s):
+        slept.append(s)
+        t["now"] += s
+
+    frames = iter([bgr(540, 572), bgr(540, 572), bgr(961, 541)])
+    out = settled_frame(lambda: next(frames), LogicalScreen(), sleep=sleep, clock=lambda: t["now"])
+    assert out.shape == (720, 1280, 3) and len(slept) == 2
+    assert settled_frame(lambda: bgr(541, 961), LogicalScreen(), sleep=sleep, clock=lambda: t["now"]).shape == (1280, 720, 3)
+    with pytest.raises(DeviceUnavailable):
+        settled_frame(lambda: bgr(540, 572), LogicalScreen(), settle_s=1.0, sleep=sleep, clock=lambda: t["now"])
+
+
+@pytest.mark.parametrize("module", ["maatools", "adb", "maafw_win32"])
+def test_every_device_screenshot_goes_through_settled_frame(module):
+    import importlib
+    import inspect
+
+    src = inspect.getsource(importlib.import_module(f"hiro.devices.{module}"))
+    assert "settled_frame(" in src and "self.screen.frame(" not in src

@@ -15,7 +15,7 @@ import time
 
 import numpy as np
 
-from .base import DeviceGone, DeviceUnavailable, LogicalScreen
+from .base import DeviceGone, DeviceUnavailable, LogicalScreen, settled_frame
 
 CLICK_HOLD_SECONDS = 0.06
 SWIPE_FPS = 60
@@ -222,14 +222,17 @@ class MaaToolsDevice:
     def close(self) -> None:
         self.client.stop()
 
-    def screenshot(self) -> np.ndarray:
+    def _grab(self) -> np.ndarray:
         try:
-            image = self.client.screenshot()
+            return self.client.screenshot()
         except OSError as e:  # ConnectionError 也是 OSError：重连等到超时还连不上
             raise DeviceGone(f"MaaTools 断开：{e}") from e
         except RuntimeError as e:  # 空帧
             raise DeviceUnavailable(str(e)) from e
-        return self.screen.frame(image)
+
+    def screenshot(self) -> np.ndarray:
+        """截图 → 逻辑分辨率；进 LIVE 横竖屏切换时重截（base.settled_frame）。"""
+        return settled_frame(self._grab, self.screen)
 
     def _native(self, x: float, y: float) -> tuple[int, int]:
         if self.screen.native is None:
