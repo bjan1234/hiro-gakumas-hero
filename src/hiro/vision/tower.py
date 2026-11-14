@@ -127,6 +127,11 @@ def _formation_fields(boxes) -> dict:
     pcts = sorted(((_center(b)[1], int(m.group(1))) for t, b in boxes if (m := re.fullmatch(r"\D?(\d{2,5})%", t)) and _center(b)[0] > 560), key=lambda x: x[0])
     if len(pcts) == 3:
         out["score_bonus_permils"] = [p * 10 for _, p in pcts]
+        # 同一行左边的属性值（「2348」「•1701」「A611」：前面的评价记号 OCR 常读成杂字，只取数字）
+        params = [next((v for t, b in boxes if 480 <= _center(b)[0] <= 600 and abs(_center(b)[1] - y) <= 20
+                        and (v := _int(t)) is not None and v >= 10), None) for y, _ in pcts]  # fmt: skip
+        if all(v is not None for v in params):
+            out["params"] = params
     hp = _find(boxes, "体力", (500, 600))
     if hp is not None:
         out["max_stamina"] = next((int(t) for t, b in boxes if t.isdigit() and abs(_center(b)[0] - _center(hp)[0]) < 30 and 15 <= _center(b)[1] - _center(hp)[1] <= 50), None)
