@@ -93,8 +93,51 @@ def customize_confirm(frame, rt) -> str | None:
     return f"P 道具定制确认「{d['title']}」：点「決定」"
 
 
+# 教程框（新账号 / 新赛季第一次进 H.I.F 弹，「H.I.F開幕!」「3回の選抜試験を突破しよう」「スター性を獲得しよう」…）：
+# 白底大卡片（x 27–693）+ 卡片下面一排页码点（当前页是橙色菱形，y≈1068）+ 底部正中只有一个按钮「次へ」/「閉じる」（y≈1160）。
+# 没有橙黄标题条，走不到 has_dialog：先看像素（左右两条白边、页码点那一带白底里有少量橙色），对上了才 OCR 底部按钮。
+TUTORIAL_EDGE_WHITE = 0.98  # 卡片左右白边（x 32–60 / 662–688，y 160–1100）白色比例：教程框 0.995–1.0；声音设置页 0.976、其他全屏页更低
+TUTORIAL_DOT_ORANGE = (30, 200)  # 页码点那一带（y 1040–1100）的橙色像素：教程框 81–84；声音设置页的橙色滑条 379
+TUTORIAL_BAND_WHITE = 0.97  # 同一带的白色比例：教程框 0.993；声音设置页 0.929
+TUTORIAL_BUTTONS = ("次へ", "閉じる")
+
+
+def _tutorial_card(img) -> bool:
+    import cv2
+    import numpy as np
+
+    if img is None or img.shape[:2] != (1280, 720):
+        return False
+    hsv = cv2.cvtColor(img[150:1110], cv2.COLOR_BGR2HSV)
+
+    def white(x1, x2, y1, y2):
+        b = hsv[y1 - 150 : y2 - 150, x1:x2]
+        return float(((b[..., 1] < 25) & (b[..., 2] > 235)).mean())
+
+    if white(32, 60, 160, 1100) < TUTORIAL_EDGE_WHITE or white(662, 688, 160, 1100) < TUTORIAL_EDGE_WHITE:
+        return False
+    band = hsv[1040 - 150 : 1100 - 150, 70:650]
+    orange = int(np.count_nonzero((band[..., 0] >= 5) & (band[..., 0] <= 22) & (band[..., 1] > 120) & (band[..., 2] > 200)))
+    return TUTORIAL_DOT_ORANGE[0] <= orange <= TUTORIAL_DOT_ORANGE[1] and white(70, 650, 1030, 1100) >= TUTORIAL_BAND_WHITE
+
+
+def tutorial(frame, rt) -> str | None:
+    """教程框：点底部唯一的按钮（次へ / 閉じる）。底部那一带读到的不是正好一个、或者不是这两个字，不点（交给判页 / 看门狗）。"""
+    import re
+
+    if not _tutorial_card(frame.img):
+        return None
+    # 按钮左边的「→」「×」图标会被读成单独的一个框：只数带假名 / 汉字的
+    bottom = [(w, t) for t in frame.texts if 1120 <= t.rect.center.y <= 1200 and (w := re.sub(r"[^\u3040-\u30ff\u4e00-\u9fff]", "", t.text))]
+    if len(bottom) != 1 or bottom[0][0] not in TUTORIAL_BUTTONS:
+        return None
+    word, btn = bottom[0]
+    rt.device.tap(*btn.rect.center)
+    return f"教程框：点「{word}」"
+
+
 Interrupt = Callable[[object, object], "str | None"]
-DEFAULT: tuple[Interrupt, ...] = (red_line, comm, stop_notice, date_changed, settings, customize_confirm)
+DEFAULT: tuple[Interrupt, ...] = (red_line, comm, stop_notice, date_changed, settings, customize_confirm, tutorial)
 
 
 def check(frame, rt, interrupts: tuple[Interrupt, ...] = DEFAULT) -> str | None:
