@@ -15,7 +15,15 @@ from hiro.loop.errors import ResumeBlocked
 logger = logging.getLogger(__name__)
 
 MAX_DATE_CHANGES = 2
-ADVANCE_PAGES = ("unknown", "IDLE", "TRANSITION", "LOADING", "commu", "LIVE")  # 只在这些页上安全连点
+# 只在这些页上安全连点。后一行是只展示结果、点一下就过的页（自有判页认得出、但不用决策）：旧主循环里 KAA 判不出它们，
+# 走的也是这条连点（2026-11-14 DMM 实机：外出拿到「眠気」的获得演出盖在剧情上，181 秒没人点被看门狗停机）
+ADVANCE_PAGES = ("unknown", "IDLE", "TRANSITION", "LOADING", "commu", "LIVE",
+                 "ACQUIRE", "STAR_GAIN", "UPGRADE_RESULT", "DELETE_RESULT", "CUSTOMIZE_RESULT")  # fmt: skip
+# 快速判页（hiro.vision.quick）认出的「点一下就过」的页（获得演出、结果气泡、TAP 提示、礼物箱…）带 tap 直接点；
+# 不点的页（读取 / 闪屏 / 考前说明演出）同一种连续 QUICK_WAIT_TAP_S 秒没过就点一下兜底（同旧主循环 HiroController._quick_page）
+QUICK_WAIT_TAP_S = 15.0
+QUICK_WAIT_TAP_BY_KIND = {"gift_effect": 1.0, "day_countdown": 4.0}
+QUICK_WAIT_TAP_POS = {"day_countdown": "safe"}  # 倒计时下面就是选行动页，(12,12) 会点进左上框：改点安全空白
 
 
 def advance(rt, frame, hit) -> bool:
@@ -24,6 +32,8 @@ def advance(rt, frame, hit) -> bool:
     from hiro.runtime import scenes
     from hiro.vision.pages import dialog_header
 
+    if (q := (getattr(hit, "fields", None) or {}).get("_quick")) is not None and q.get("dispatch") is None:
+        return _quick_tap(rt, q, frame.t)
     if scenes.live_start(rt, frame):
         return True
     if frame.img is not None and frame.img.shape[1] > frame.img.shape[0]:
@@ -35,6 +45,30 @@ def advance(rt, frame, hit) -> bool:
     n = adv.burst([t.text for t in frame.texts], shoot=lambda: rt.screen.shot().img, click=rt.device.tap, sleep=rt.sleep,
                   in_live=lambda img: img is not None and img.shape[1] > img.shape[0], header=dialog_header)  # fmt: skip
     return n > 0
+
+
+def _quick_tap(rt, q: dict, now: float) -> bool:
+    """快速判页带 tap 的页直接点；不带 tap 的页同一种等太久点兜底位置。返回是否点了。"""
+    from hiro.vision.quick import SAFE_BLANK_TAP
+
+    if q.get("tap") is not None:
+        rt._quick_wait = None
+        rt.device.tap(*q["tap"])
+        logger.info("快速判页 %s %s：点 %s", q["page"], (q.get("fields") or {}).get("text") or (q.get("fields") or {}).get("name") or "", q["tap"])
+        return True
+    kind = (q.get("fields") or {}).get("kind")
+    key = (q["page"], kind)
+    wait = getattr(rt, "_quick_wait", None)
+    if wait is None or wait[0] != key:
+        rt._quick_wait = (key, now)
+        return False
+    if now - wait[1] < QUICK_WAIT_TAP_BY_KIND.get(kind, QUICK_WAIT_TAP_S):
+        return False
+    pos = SAFE_BLANK_TAP if QUICK_WAIT_TAP_POS.get(kind) == "safe" else (12, 12)
+    logger.info("快速判页 %s 已等 %.0f 秒，点 %s", key, now - wait[1], pos)
+    rt._quick_wait = (key, now)
+    rt.device.tap(*pos)
+    return True
 
 
 def build(args, session, device):
@@ -51,8 +85,23 @@ def build(args, session, device):
     return core, Runtime(raw_device=device, classify=classify, handlers=make_handlers(core), advance=advance, session=session)
 
 
+def recover_date_change(rt, session) -> None:
+    """游戏日切换（「日付変更」框，点任何要联网的按钮都可能弹）：タイトルへ → TAP TO START → 登录奖励 → 首页
+    （hiro.loop.date_change.recover_to_home，首页按自有判页认）。回不到首页就停机。"""
+    from hiro.loop.date_change import recover_to_home
+    from hiro.produce.ops import ocr_boxes
+    from hiro.vision.classify import classify
+
+    session.recover("date_change", "游戏日切换「日付変更」：回标题再进首页")
+    ok = recover_to_home(lambda: rt.screen.shot().img, rt.device.tap, ocr_boxes, lambda img: classify(img).name == "home")
+    if not ok:
+        raise ResumeBlocked("日切换后没回到首页，停机")
+
+
 def run(args, session) -> int:
-    """跑一段：new = 开局后打到结束；resume = 续跑到结束。返回退出码（0 正常，3 停机交给人）。"""
+    """跑一段：new = 开局后打到结束；resume = 续跑到结束。返回退出码（0 正常，3 停机交给人）。
+    日切换在开局或打的过程中都可能出现：回首页后，开局没开成就重新开局，已经在培育里就续跑；一段最多 MAX_DATE_CHANGES 次。
+    （开局已经点了开始、正在开场剧情时日切换：重新开局会被「本机有进行中的培育」拦住停机，交给人，不盲目破弃。）"""
     from hiro import kaa_env
     from hiro.devices import active, open_device
     from hiro.loop.date_change import DateChanged
@@ -66,25 +115,26 @@ def run(args, session) -> int:
     device.connect()
     core, rt = build(args, session, device)
     active.use(rt)
+    started = args.command != "new"  # resume：本来就在培育里
     try:
-        if args.command == "new":
-            finish.finish_produce_end(rt, go_home=True)  # 上一局停在结算 / 开始确认页时先回首页（开始确认页不点）
-            opening.new_produce(rt, args.mode, idol=args.idol, support_set=kaa_env.SUPPORT_SET, memory_set=kaa_env.MEMORY_SET,
-                                plan=kaa_env.ACTIVE_PLAN, rental_attr=args.main_attr, main_attr=args.main_attr,
-                                expect_memory=tuple(v.strip() for v in args.expect_memory.split(",") if v.strip()))  # fmt: skip
-        else:
-            finish.resume_produce(rt)
         for attempt in range(MAX_DATE_CHANGES + 1):
             try:
+                if not started:
+                    finish.finish_produce_end(rt, go_home=True)  # 上一局停在结算 / 开始确认页时先回首页（开始确认页不点）
+                    opening.new_produce(rt, args.mode, idol=args.idol, support_set=kaa_env.SUPPORT_SET, memory_set=kaa_env.MEMORY_SET,
+                                        plan=kaa_env.ACTIVE_PLAN, rental_attr=args.main_attr, main_attr=args.main_attr,
+                                        expect_memory=tuple(v.strip() for v in args.expect_memory.split(",") if v.strip()))  # fmt: skip
+                    started = True
+                elif attempt or args.command == "resume":
+                    finish.resume_produce(rt)
                 rt.run(until=lambda: False)
                 return 0
             except DateChanged:
                 if attempt >= MAX_DATE_CHANGES:
-                    raise
-                logger.warning("日切换：回首页后续跑（第 %d 次）", attempt + 1)
-                session.recover("crash_restart", "日切换「日付変更」：回首页后续跑")
-                finish.finish_produce_end(rt, go_home=True)
-                finish.resume_produce(rt)
+                    raise ResumeBlocked(f"一段里日切换超过 {MAX_DATE_CHANGES} 次，停机") from None
+                logger.warning("日切换（第 %d 次，%s）：回首页后%s", attempt + 1, "已开局" if started else "还没开局",
+                               "续跑" if started else "重新开局")  # fmt: skip
+                recover_date_change(rt, session)
     except ResumeBlocked as e:
         logger.error("%s", e)
         print(str(e))

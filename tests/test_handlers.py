@@ -137,7 +137,8 @@ def test_handlers_and_core_import_no_kaa():
     import subprocess
     import sys
 
-    code = ("import sys, hiro.produce.handlers, hiro.produce.hif, hiro.produce.card_ops, hiro.produce.action_select; "
+    code = ("import sys, hiro.produce.handlers, hiro.produce.hif, hiro.produce.card_ops, hiro.produce.action_select, "
+            "hiro.vision.scene, hiro.loop.session; "
             "print([m for m in sys.modules if m.split('.')[0] in ('kaa', 'kotonebot')])")  # fmt: skip
     env = {k: v for k, v in os.environ.items() if k != "HIRO_KAA_GAME_DATA"}
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True, env=env).stdout.strip()

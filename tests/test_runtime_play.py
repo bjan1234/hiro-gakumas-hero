@@ -62,7 +62,9 @@ def test_advance_only_bursts_on_safe_pages(monkeypatch):
     assert play.advance(rt, frame([]), NS(name="unknown")) is True
     assert play.advance(rt, frame([]), NS(name="HIF_FINALS_RANKING")) is False  # 认得出、但没处理器的页：不乱点
     assert play.advance(rt, frame([], landscape=True), NS(name="LIVE")) is False  # 横屏演出中：不点
-    assert len(calls) == 1
+    assert play.advance(rt, frame([]), NS(name="ACQUIRE", fields={"kind": "card", "name": "眠気"})) is True  # 判页认出的获得演出（不带快速判页）：连点
+    assert play.advance(rt, frame([]), NS(name="DIALOG", fields={})) is False  # 弹窗交给中断层 / 处理器
+    assert len(calls) == 2
 
 
 def test_run_hif_own_branch_skips_kaa_init(monkeypatch, tmp_path):
@@ -80,3 +82,80 @@ def test_run_hif_own_branch_skips_kaa_init(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "argv", ["run_hif", "resume", "--mode", "main", "--trace", "t-own"])
     assert rh.main() == 0
     assert called == {"play": "resume", "report": "t-own"}
+
+
+def _run_with(monkeypatch, new_effects, run_effects, command="new"):
+    """play.run 的外壳：设备 / Runtime / 开局 / 续跑 / 主循环都换成替身，按给定顺序抛 DateChanged 或正常返回。"""
+    from hiro import kaa_env
+    from hiro.devices import active
+    from hiro.loop.date_change import DateChanged
+    from hiro.runtime import finish, opening
+
+    calls = []
+
+    def effect(seq, name):
+        def f(*a, **k):
+            calls.append(name)
+            if seq and seq.pop(0) == "date":
+                raise DateChanged("日付変更")
+        return f
+
+    monkeypatch.setattr(kaa_env, "apply_formation_plan", lambda idol: None)
+    monkeypatch.setattr(kaa_env, "SUPPORT_SET", 4)
+    monkeypatch.setattr(kaa_env, "MEMORY_SET", 5)
+    monkeypatch.setattr("hiro.devices.open_device", lambda: NS(connect=lambda: None, close=lambda: calls.append("close")))
+    rt = NS(run=effect(list(run_effects), "run"))
+    monkeypatch.setattr(play, "build", lambda args, session, device: (None, rt))
+    monkeypatch.setattr(active, "use", lambda r: None)
+    monkeypatch.setattr(opening, "new_produce", effect(list(new_effects), "new"))
+    monkeypatch.setattr(finish, "finish_produce_end", lambda rt, go_home=False: None)
+    monkeypatch.setattr(finish, "resume_produce", lambda rt: calls.append("resume"))
+    monkeypatch.setattr(play, "recover_date_change", lambda rt, session: calls.append("recover"))
+    args = NS(command=command, idol="i", mode="qualify", main_attr="Da", expect_memory="")
+    return play.run(args, NS()), calls
+
+
+def test_date_change_during_opening_reopens(monkeypatch):
+    code, calls = _run_with(monkeypatch, ["date", "ok"], ["ok"])
+    assert code == 0 and calls == ["new", "recover", "new", "run", "close"]
+
+
+def test_date_change_during_play_resumes(monkeypatch):
+    code, calls = _run_with(monkeypatch, ["ok"], ["date", "ok"])
+    assert code == 0 and calls == ["new", "run", "recover", "resume", "run", "close"]
+
+
+def test_too_many_date_changes_stop(monkeypatch):
+    code, calls = _run_with(monkeypatch, ["ok"], ["date", "date", "date"])
+    assert code == 3 and calls.count("recover") == play.MAX_DATE_CHANGES and calls[-1] == "close"
+
+
+def test_quick_pages_tap_through_or_wait(monkeypatch):
+    """快速判页认出的页：带 tap 直接点（ACQUIRE 获得演出：实机 own 第一局卡了 181 秒停机）；不带 tap 的等够了点兜底。"""
+    rt = FakeRt()
+    hit = NS(name="ACQUIRE", fields={"_quick": {"page": "ACQUIRE", "tap": (360, 1100), "dispatch": None, "fields": {}}})
+    assert play.advance(rt, NS(img=np.zeros((1280, 720, 3), np.uint8), texts=[], t=0.0), hit) and rt.taps == [(360, 1100)]
+    load = NS(name="LOADING", fields={"_quick": {"page": "LOADING", "tap": None, "dispatch": None, "fields": {"kind": None}}})
+    f = lambda t: NS(img=np.zeros((1280, 720, 3), np.uint8), texts=[], t=t)  # noqa: E731
+    assert not play.advance(rt, f(1.0), load) and not play.advance(rt, f(10.0), load)  # 读取页：等
+    assert play.advance(rt, f(17.0), load) and rt.taps[-1] == (12, 12)  # 等了 16 秒：点兜底
+    pitem = NS(name="SELECT_PITEM", fields={"_quick": {"page": "SELECT_PITEM", "tap": None, "dispatch": "SELECT_PITEM", "fields": {}}})
+    monkeypatch.setattr(scenes, "commu_skip", lambda rt, fr: False)
+    monkeypatch.setattr(scenes, "first_run_settings", lambda rt, fr: False)
+    assert not play.advance(rt, f(20.0), pitem)  # 要决策的页（dispatch）不在这里点
+
+
+def test_session_classify_uses_runtime_device_under_own(monkeypatch):
+    """新主循环下 Session.verify / HifCore 的判页（scene.classify_current）从 Runtime 截图，不碰 kotonebot（实机：选完行动核对时崩）。"""
+    from hiro.devices import active
+    from hiro.vision import scene
+
+    rt, seen = FakeRt(), []
+    monkeypatch.setattr(scene, "classify_scene", lambda img: seen.append(img.shape) or NS(name="LIVE", area="produce"))
+    monkeypatch.setattr(active, "_kb", lambda: (_ for _ in ()).throw(AssertionError("不该走 kotonebot")))
+    active.use(rt)
+    try:
+        r = scene.classify_current()
+    finally:
+        active.use(None)
+    assert seen == [(1280, 720, 3)] and r.scene == "unknown" and r.area == "unknown"
