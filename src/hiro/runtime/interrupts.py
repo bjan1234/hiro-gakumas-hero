@@ -78,8 +78,23 @@ def settings(frame, rt) -> str | None:
     return f"设置框 {r['kind']}" if r else None
 
 
+def customize_confirm(frame, rt) -> str | None:
+    """P 道具定制三选一选完、点了「受け取る」后游戏弹的「カスタマイズ確認」（「以下のPアイテムにカスタマイズを実行します」）：点右下「決定」。
+    选哪个已经由 SELECT_PITEM 的决策定了，这里只是确认（旧主循环由 KAA 自动确认；框上勾了「次回以降表示しない」就不再弹）。
+    只认 P 道具定制（正文带「Pアイテム」），特別指導的「カスタマイズ実行確認」由它自己的执行器处理。读不到「決定」停机。"""
+    if not frame.has_dialog or (d := frame.dialog) is None or d["kind"] != "customize_confirm":
+        return None
+    if not any("Pアイテム" in t.text for t in frame.texts):
+        return None
+    btn = next((t for t in frame.texts if t.text.strip() == "決定" and t.rect.center.x > 360 and t.rect.center.y > 1000), None)
+    if btn is None:
+        raise ResumeBlocked(f"P 道具定制确认框「{d['title']}」：没读到「決定」，不点，停机")
+    rt.device.tap(*btn.rect.center)
+    return f"P 道具定制确认「{d['title']}」：点「決定」"
+
+
 Interrupt = Callable[[object, object], "str | None"]
-DEFAULT: tuple[Interrupt, ...] = (red_line, comm, stop_notice, date_changed, settings)
+DEFAULT: tuple[Interrupt, ...] = (red_line, comm, stop_notice, date_changed, settings, customize_confirm)
 
 
 def check(frame, rt, interrupts: tuple[Interrupt, ...] = DEFAULT) -> str | None:

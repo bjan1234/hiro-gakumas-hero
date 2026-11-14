@@ -195,6 +195,19 @@ def test_comm_error_only_retry():
     assert rt.raw_device.taps == [(500, 1160)]
 
 
+def test_pitem_customize_confirm_taps_decide():
+    """P 道具定制确认框（DMM 实机 11-14：新主循环没处理，181 秒停机）：点「決定」；不是 P 道具的定制框不管；读不到「決定」停机。"""
+    custom = {"kind": "customize_confirm", "title": "カスタマイズ確認", "danger": False, "y": 469}
+    texts = [T("以下のPアイテムにカスタマイズを実行します", 330, 540), T("キャンセル", 240, 1160), T("決定", 524, 1160)]
+    rt, _ = runtime([frame(texts, custom)])
+    assert "決定" in interrupts.check(rt.screen.shot(), rt) and rt.raw_device.taps == [(524, 1160)]
+    rt, _ = runtime([frame([T("スキルカードをカスタマイズします", 330, 540), T("実行する", 500, 1160)], custom)])
+    assert interrupts.customize_confirm(rt.screen.shot(), rt) is None and rt.raw_device.taps == []  # 特別指導的定制框：不归这里
+    rt, _ = runtime([frame(texts[:2], custom)])
+    with pytest.raises(ResumeBlocked, match="没读到"):
+        interrupts.customize_confirm(rt.screen.shot(), rt)
+
+
 def test_no_dialog_skips_ocr():
     f = frame()
     f.__dict__.pop("texts")  # 碰 texts 就会真去 OCR：没弹窗时中断层不该碰
