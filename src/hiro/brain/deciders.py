@@ -1015,7 +1015,12 @@ class ProduceDeciders:
 
         if not ok:
             return False
-        run = self.TOWER_EVAL or tw.evaluate
+        run = self.TOWER_EVAL
+        if run is None:
+            # 缺省：Rust 引擎 + GNRPA 评估（用户 11-14：不绑死 uinet / GKMS）；没有带 plan_many 的 Rust 包时退回 bench 中转层（GKMS + uinet）
+            from hiro.search import tower as st
+
+            run = st.evaluate_rust if st.rust_available() else tw.evaluate
         alive, done = list(ok), 0
         for upto, keep in tf.ROUNDS:
             left = self.TOWER_BUDGET_S - (time.monotonic() - t0)

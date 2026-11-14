@@ -83,3 +83,49 @@ def objective(lo: dict, rivals: list | None = None) -> dict:
         elif c.get("field") == "debuffs" and c.get("op") == ">=":
             out["debuffs_min"] = int(c["value"])
     return out
+
+
+EVAL_SECONDS = 1.0  # 编成评估：每个世界搜多少秒（协调 11-14 同意：16 个世界 × GNRPA）
+
+
+def rust_available() -> bool:
+    try:
+        import gakumas_exam_rs as rs
+    except ImportError:
+        return False
+    return hasattr(rs, "plan_many")
+
+
+def evaluate_rust(loadouts: list[dict], seeds: list[int], *, budget_s: float | None = None, detail: bool = True, workers: int | None = None,
+                  seconds: float | None = None, **_) -> list[list]:  # fmt: skip
+    """编成评估（接口同 hiro.bench_bridge.tower.evaluate）：每个编成按每个种子开一局，plan_many 在每个世界里从开局搜一整局
+    （世界内牌序当真，偏乐观但对所有编成一样）。detail=True 时每局 {score, first, stars, conditions}，否则终局分。
+    不依赖 GKMS（用户 11-14：编成评估不绑死 uinet / GKMS）。budget_s 不够跑完时，按时间缩每个世界的秒数。"""
+    import gakumas_exam_rs as rs
+
+    secs = EVAL_SECONDS if seconds is None else float(seconds)
+    n = max(1, len(loadouts) * len(seeds))
+    threads = 0 if not workers else int(workers)
+    if budget_s is not None:
+        import os
+
+        cores = max(1, (os.cpu_count() or 2) - 1) if not threads else threads
+        secs = max(0.1, min(secs, float(budget_s) * cores / n * 0.9))
+    out = []
+    for lo in loadouts:
+        lo = complete_loadout(lo)
+        obj = objective(lo, lo.get("rivals"))
+        rxs = [tower_env(lo, int(s)).rx for s in seeds]
+        res = rs.plan_many(rxs, seconds=secs, threads=threads, seed=int(seeds[0]) if seeds else 0, **obj)
+        top = max(obj["rivals"]) if obj["rivals"] else None
+        has_cond = obj["lost_ssr_max"] is not None or obj["debuffs_min"] is not None
+        row = []
+        for _value, raw, stars in res:
+            if not detail:
+                row.append(int(raw))
+                continue
+            first = top is not None and raw > top
+            conds = [{"text": "通关条件", "field": None, "got": None, "ok": (stars >= 3) if first else None}] if has_cond else []
+            row.append({"score": int(raw), "first": bool(first), "stars": int(stars), "conditions": conds})
+        out.append(row)
+    return out
