@@ -126,3 +126,18 @@ def test_date_change_during_play_resumes(monkeypatch):
 def test_too_many_date_changes_stop(monkeypatch):
     code, calls = _run_with(monkeypatch, ["ok"], ["date", "date", "date"])
     assert code == 3 and calls.count("recover") == play.MAX_DATE_CHANGES and calls[-1] == "close"
+
+
+def test_quick_pages_tap_through_or_wait(monkeypatch):
+    """快速判页认出的页：带 tap 直接点（ACQUIRE 获得演出：实机 own 第一局卡了 181 秒停机）；不带 tap 的等够了点兜底。"""
+    rt = FakeRt()
+    hit = NS(name="ACQUIRE", fields={"_quick": {"page": "ACQUIRE", "tap": (360, 1100), "dispatch": None, "fields": {}}})
+    assert play.advance(rt, NS(img=np.zeros((1280, 720, 3), np.uint8), texts=[], t=0.0), hit) and rt.taps == [(360, 1100)]
+    load = NS(name="LOADING", fields={"_quick": {"page": "LOADING", "tap": None, "dispatch": None, "fields": {"kind": None}}})
+    f = lambda t: NS(img=np.zeros((1280, 720, 3), np.uint8), texts=[], t=t)  # noqa: E731
+    assert not play.advance(rt, f(1.0), load) and not play.advance(rt, f(10.0), load)  # 读取页：等
+    assert play.advance(rt, f(17.0), load) and rt.taps[-1] == (12, 12)  # 等了 16 秒：点兜底
+    pitem = NS(name="SELECT_PITEM", fields={"_quick": {"page": "SELECT_PITEM", "tap": None, "dispatch": "SELECT_PITEM", "fields": {}}})
+    monkeypatch.setattr(scenes, "commu_skip", lambda rt, fr: False)
+    monkeypatch.setattr(scenes, "first_run_settings", lambda rt, fr: False)
+    assert not play.advance(rt, f(20.0), pitem)  # 要决策的页（dispatch）不在这里点

@@ -16,6 +16,11 @@ logger = logging.getLogger(__name__)
 
 MAX_DATE_CHANGES = 2
 ADVANCE_PAGES = ("unknown", "IDLE", "TRANSITION", "LOADING", "commu", "LIVE")  # 只在这些页上安全连点
+# 快速判页（hiro.vision.quick）认出的「点一下就过」的页（获得演出、结果气泡、TAP 提示、礼物箱…）带 tap 直接点；
+# 不点的页（读取 / 闪屏 / 考前说明演出）同一种连续 QUICK_WAIT_TAP_S 秒没过就点一下兜底（同旧主循环 HiroController._quick_page）
+QUICK_WAIT_TAP_S = 15.0
+QUICK_WAIT_TAP_BY_KIND = {"gift_effect": 1.0, "day_countdown": 4.0}
+QUICK_WAIT_TAP_POS = {"day_countdown": "safe"}  # 倒计时下面就是选行动页，(12,12) 会点进左上框：改点安全空白
 
 
 def advance(rt, frame, hit) -> bool:
@@ -24,6 +29,8 @@ def advance(rt, frame, hit) -> bool:
     from hiro.runtime import scenes
     from hiro.vision.pages import dialog_header
 
+    if (q := (getattr(hit, "fields", None) or {}).get("_quick")) is not None and q.get("dispatch") is None:
+        return _quick_tap(rt, q, frame.t)
     if scenes.live_start(rt, frame):
         return True
     if frame.img is not None and frame.img.shape[1] > frame.img.shape[0]:
@@ -35,6 +42,30 @@ def advance(rt, frame, hit) -> bool:
     n = adv.burst([t.text for t in frame.texts], shoot=lambda: rt.screen.shot().img, click=rt.device.tap, sleep=rt.sleep,
                   in_live=lambda img: img is not None and img.shape[1] > img.shape[0], header=dialog_header)  # fmt: skip
     return n > 0
+
+
+def _quick_tap(rt, q: dict, now: float) -> bool:
+    """快速判页带 tap 的页直接点；不带 tap 的页同一种等太久点兜底位置。返回是否点了。"""
+    from hiro.vision.quick import SAFE_BLANK_TAP
+
+    if q.get("tap") is not None:
+        rt._quick_wait = None
+        rt.device.tap(*q["tap"])
+        logger.info("快速判页 %s %s：点 %s", q["page"], (q.get("fields") or {}).get("text") or (q.get("fields") or {}).get("name") or "", q["tap"])
+        return True
+    kind = (q.get("fields") or {}).get("kind")
+    key = (q["page"], kind)
+    wait = getattr(rt, "_quick_wait", None)
+    if wait is None or wait[0] != key:
+        rt._quick_wait = (key, now)
+        return False
+    if now - wait[1] < QUICK_WAIT_TAP_BY_KIND.get(kind, QUICK_WAIT_TAP_S):
+        return False
+    pos = SAFE_BLANK_TAP if QUICK_WAIT_TAP_POS.get(kind) == "safe" else (12, 12)
+    logger.info("快速判页 %s 已等 %.0f 秒，点 %s", key, now - wait[1], pos)
+    rt._quick_wait = (key, now)
+    rt.device.tap(*pos)
+    return True
 
 
 def build(args, session, device):
