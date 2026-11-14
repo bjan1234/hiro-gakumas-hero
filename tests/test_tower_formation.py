@@ -125,3 +125,30 @@ def test_retry_rules(monkeypatch):
     assert far["confirm"] and far["pick"]["main"] == 2  # 差得多：换评估排第二的
     stop = dec.decide("TOWER_RETRY", GameState(page_fields={**base, "attempt": 3, "last_score": 480000})).action.args
     assert stop == {"kind": "tower_retry", "confirm": False}
+
+
+def test_condition_rate_breaks_tie_when_uinet_never_gets_three_stars(monkeypatch):
+    """27 层式：UINet 从不刻意满足条件，实测三星都是 0。1 号拿第 1 的概率高但条件从不满足；2 号第 1 少一点但条件一半满足：
+    估计三星率（第 1 × 条件）2 号高，选 2 号。"""
+    from hiro.bench_bridge import tower as tw
+
+    lex = dict(LEX, star_conditions=[{"text": "除外 SSR ≤ 5", "field": "lost_ssr", "op": "<=", "value": 5}])
+    monkeypatch.setattr(tw, "layer_exam", lambda t, l, m=None: dict(lex))
+
+    def run(loadouts, seeds, detail=False, workers=1, **kw):
+        out = []
+        for lo in loadouts:
+            m = lo["produce_cards"][0][-1]
+            row = []
+            for sd in seeds:
+                first = {"1": True, "2": sd % 3 != 0}.get(m, False)
+                lost = {"1": 8, "2": 4 if sd % 2 else 7}.get(m, 9)
+                ok = lost <= 5
+                row.append({"score": 600000 if first else 300000, "first": first, "stars": 2 if first else 1,
+                            "conditions": [{"text": "除外 SSR ≤ 5", "field": "lost_ssr", "got": lost, "ok": ok}]})
+            out.append(row)
+        return out
+
+    monkeypatch.setattr(ProduceDeciders, "TOWER_EVAL", staticmethod(run))
+    d = ProduceDeciders(CAMPUS_HIRO, None).decide("TOWER_FORMATION", _state())
+    assert d.action.args["main"] == 2, d.reason

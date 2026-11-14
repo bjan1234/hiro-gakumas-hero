@@ -944,7 +944,7 @@ class ProduceDeciders:
                 return stop("偶像之路编成：这一层没有一种考试查得到设置（" + "；".join(notes) + "）")
             evaluated = self._tower_rounds([c for c in combos if c["why_not"] is None], notes, time.monotonic())
             for c in combos:
-                c["sim"] = tf.summarize(c["rows"], c["lex"].get("border"))
+                c["sim"] = tf.summarize(c["rows"], c["lex"].get("border"), c["lex"].get("star_conditions"))
                 c["bonus_sum"] = sum(c["loadout"]["score_bonus_permils"] or tf._vec(c["main"]))
             cache[key] = (combos, evaluated, list(notes))
             self._tower_cache = cache
@@ -964,7 +964,7 @@ class ProduceDeciders:
                 sim = f"没模拟（{c['why_not'] or '评估不可用'}）"
             else:
                 parts = [f"三星 {s['p3']:.0%}" if s["p3"] is not None else None, f"第 1 名 {s['first']:.0%}" if s["first"] is not None else None,
-                         f"平均 {s['mean']:,}"]  # fmt: skip
+                         f"条件满足 {s['cond']:.0%}" if s.get("cond") is not None else None, f"平均 {s['mean']:,}"]  # fmt: skip
                 sim = f"模拟 {s['n']} 局：" + "、".join(x for x in parts if x)
             return f"{c['lex']['mechanic']}·主回忆 {c['main'].get('memory_id') or c['main'].get('index')}（副 {[x.get('index') for x in c['subs']]}）：{sim}"
 
@@ -1012,7 +1012,7 @@ class ProduceDeciders:
             for c, rows in zip(alive, res):
                 c["rows"] = c["rows"] + list(rows)
             done = upto
-            alive.sort(key=lambda c: tf.rank_key(tf.summarize(c["rows"], c["lex"].get("border"))), reverse=True)
+            alive.sort(key=lambda c: tf.rank_key(tf.summarize(c["rows"], c["lex"].get("border"), c["lex"].get("star_conditions"))), reverse=True)
             alive = alive[:keep]
         return any(c["rows"] for c in ok)
 

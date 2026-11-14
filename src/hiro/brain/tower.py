@@ -121,12 +121,28 @@ def _rate(k: int, n: int) -> tuple[float, float]:
     return p, math.sqrt(max(p * (1 - p), 1 / n) / n)
 
 
-def summarize(rows: list, border: int | None) -> dict:
-    """K 局结果 → {n, mean, se, p3, p3_se, first, first_se, clear}（出错 / 没跑到的局不算）。
-    rows 是 evaluate(detail=True) 的判定（{score, first, stars, …}），也接只有分数的旧写法（这时按过关线算 first、没有三星）。"""
+def _margin(checks: list, conds: list | None) -> float | None:
+    """一局各条件的余量之和（满足越多越大）：「≤ v」是 v − 局末值，「≥ v」是局末值 − v。读不到的条件不算。"""
+    by_text = {c.get("text"): c for c in conds or []}
+    total, seen = 0.0, False
+    for x in checks or []:
+        c = by_text.get(x.get("text"))
+        if c is None or x.get("got") is None or c.get("value") is None:
+            continue
+        total += (c["value"] - x["got"]) if c.get("op") == "<=" else (x["got"] - c["value"])
+        seen = True
+    return total if seen else None
+
+
+def summarize(rows: list, border: int | None, conds: list | None = None) -> dict:
+    """K 局结果 → {n, mean, se, p3, p3_se, est3, est3_se, first, first_se, cond, margin, clear}（出错 / 没跑到的局不算）。
+    rows 是 evaluate(detail=True) 的判定（{score, first, stars, conditions, …}），也接只有分数的旧写法（这时按过关线算 first、没有三星）。
+    est3 = 拿第 1 的概率 × 通关条件满足率：评估用的 UINet 不会刻意满足条件（27 层「除外 SSR ≤ 5」实测 0/8，8a3a1e7），
+    两样分开估再相乘，才看得出哪份编成更容易满足条件；条件余量 margin 再细分（例如除外区 SSR 平均比上限少几张）。"""
     got = [r for r in rows if r is not None]
     n = len(got)
-    out = {"n": n, "mean": None, "se": None, "p3": None, "p3_se": None, "first": None, "first_se": None, "clear": None}
+    out = {"n": n, "mean": None, "se": None, "p3": None, "p3_se": None, "est3": None, "est3_se": None, "first": None, "first_se": None,
+           "cond": None, "margin": None, "clear": None}  # fmt: skip
     if not n:
         return out
     if isinstance(got[0], dict):
@@ -134,6 +150,15 @@ def summarize(rows: list, border: int | None) -> dict:
         firsts = sum(bool(r.get("first")) for r in got)
         stars = sum(int(r.get("stars") or 0) >= 3 for r in got)
         out["p3"], out["p3_se"] = _rate(stars, n)
+        with_cond = [r for r in got if r.get("conditions")]
+        if with_cond:
+            ok = sum(all(x.get("ok") is True for x in r["conditions"]) for r in with_cond)
+            out["cond"] = ok / len(with_cond)
+            ms = [m for m in (_margin(r["conditions"], conds) for r in with_cond) if m is not None]
+            out["margin"] = statistics.fmean(ms) if ms else None
+        cond = out["cond"] if out["cond"] is not None else 1.0
+        out["est3"] = firsts / n * cond
+        out["est3_se"] = math.sqrt(max(out["est3"] * (1 - out["est3"]), 1 / n) / n)
     else:
         xs = [int(x) for x in got]
         firsts = sum(x >= border for x in xs) if border is not None else None
@@ -145,14 +170,18 @@ def summarize(rows: list, border: int | None) -> dict:
     return out
 
 
+RANK = ("p3", "est3", "first", "margin", "mean")
+
+
 def rank_key(s: dict) -> tuple:
-    """排序键（大的好）：三星概率 → 拿第 1 的概率 → 平均分（用户 11-14：追求三星通关）。不知道的项按最低。"""
-    return tuple(-1.0 if s.get(k) is None else s[k] for k in ("p3", "first", "mean"))
+    """排序键（大的好）：实测三星概率 → 估计三星概率（第 1 × 条件满足）→ 拿第 1 的概率 → 条件余量 → 平均分
+    （用户 11-14：追求三星通关）。不知道的项按最低。"""
+    return tuple(-1e18 if s.get(k) is None else s[k] for k in RANK)
 
 
 def clearly_better(a: dict, b: dict) -> bool:
     """第一名是否明显好过第二名（> 2 个标准误），按 三星概率 → 拿第 1 的概率 → 平均分 依次比：前一项差在噪声内才比下一项。"""
-    for k, kse, floor in (("p3", "p3_se", 1e-9), ("first", "first_se", 1e-9), ("mean", "se", 1.0)):
+    for k, kse, floor in (("p3", "p3_se", 1e-9), ("est3", "est3_se", 1e-9), ("first", "first_se", 1e-9), ("mean", "se", 1.0)):
         if a.get(k) is None or b.get(k) is None:
             continue
         se = math.hypot(a.get(kse) or 0, b.get(kse) or 0)
