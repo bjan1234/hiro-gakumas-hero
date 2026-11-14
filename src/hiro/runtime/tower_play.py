@@ -71,7 +71,12 @@ class TowerPlay:
             raise ResumeBlocked(f"层选择页是「{fields['idol']}」，不是要打的「{self.idol_name}」")
         if fields.get("stage") is None or fields.get("challenge") is None:
             return STAY  # 还没读全：等下一帧
-        self.layer = fields["stage"]  # 第一次实机：只打当前最前沿那一层（页面上「挑戦する」对着的那层）
+        if fields.get("locked"):
+            # 最前沿那层锁着（要先攒星，如手毬 16 层要 45 星）：按 TowerRun 要回头为三星重打已通关的层，层选择页滑动还没接，先停
+            raise ResumeBlocked(f"层选择页居中的第 {fields['stage']} 层锁着（挑戦する是灰的），不点；回头重打已通关的层还没接，停下报告")
+        if (fields.get("stars") or 0) >= 3:
+            raise ResumeBlocked(f"层选择页居中的第 {fields['stage']} 层已经三星，没有要打的；换层（滑动）还没接，停下报告")
+        self.layer = fields["stage"]  # 第一次实机：只打层选择页居中那一层（「挑戦する」对着的那层）
         logger.info("偶像之路：第 %s 层，点挑戦する", self.layer)
         rt.device.tap(*fields["challenge"])
         return DONE

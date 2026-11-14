@@ -83,3 +83,13 @@ def test_retry_confirm_free_only(tmp_path):
 
 def test_idol_code_from_master():
     assert tp.idol_code("月村 手毬") == "ttmr" and tp.idol_code("不存在") is None
+
+
+def test_layers_locked_or_three_stars_stop(tmp_path):
+    p = _play(tmp_path)
+    rt, taps = _rt()
+    with pytest.raises(ResumeBlocked, match="锁着"):
+        p.on_layers(rt, None, NS(fields={"idol": "月村手毬", "stage": 16, "stars": 0, "locked": True, "challenge": [482, 989]}))
+    with pytest.raises(ResumeBlocked, match="三星"):
+        p.on_layers(rt, None, NS(fields={"idol": "月村手毬", "stage": 10, "stars": 3, "locked": False, "challenge": [480, 988]}))
+    assert taps == []

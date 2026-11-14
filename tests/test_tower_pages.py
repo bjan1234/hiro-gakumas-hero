@@ -24,7 +24,12 @@ def test_list_layers_info():
     assert name == "TOWER_LIST" and [(i["stage"], i["name"], i["progress"]) for i in f["idols"][:3]] == [
         (22, "花海咲季", "62/81"), (14, "月村手毬", "37/81"), (25, "藤田ことね", "75/81")]  # fmt: skip
     name, f = _hit("04_idol_layers.png")
-    assert name == "TOWER_LAYERS" and f["idol"] == "月村手毬" and f["stage"] == 15 and f["challenge"]
+    assert name == "TOWER_LAYERS" and f["idol"] == "月村手毬" and f["stage"] == 15 and f["challenge"] and not f["locked"]
+    # 层号取居中放大那层的大数字（左栏「STAGE 15 報酬」滑动后不变）；星数是那层的三颗星；最前沿锁着时挑戦する是灰的
+    for frame, stage, stars, locked in (("21_layers_after_clear.png", 15, 1, False), ("22_layers_scroll_down1.png", 13, 2, False),
+                                        ("23_layers_scroll_down2.png", 10, 3, False), ("26_layers_frontier.png", 16, 0, True)):  # fmt: skip
+        name, f = _hit(frame)
+        assert (name, f["stage"], f["stars"], f["locked"]) == ("TOWER_LAYERS", stage, stars, locked), frame
     name, f = _hit("05_layer_info.png")
     assert name == "TOWER_LAYER_INFO" and [(c["star"], c["text"]) for c in f["conditions"]] == [
         (3, "1位でクリア"), (2, "2位以上でクリア"), (1, "3位以上でクリア")]  # fmt: skip
