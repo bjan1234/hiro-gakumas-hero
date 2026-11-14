@@ -697,6 +697,8 @@ def plus_count(crop: MatLike, *, center_x: int | None = None) -> int | None:
 
 
 ART_SURE = 0.7  # 卡面相关分达到此值不再 OCR 卡名核对（数据集 458 张手牌：≥0.7 的全部正确）；低于此值（含靠前五一致才认的）读卡名交叉核对
+ART_MARGIN = 0.03  # 前五里另一张卡的分数和第一名差不到这么多：卡面分不开，也读卡名核对（偶像之路 r1：準備運動 0.713 对トークタイム 0.711，
+# 灰着的牌面两张 act-1 卡很像，卡面认成準備運動，卡名是トークタイム+，8a3a1e7 11-14）
 NAME_EXACT_CONF = 0.9  # 卡名与卡面不一致、以卡名为准时的置信度（卡名完整精确命中）
 NAME_PREFIX_CONF = 0.7  # 同上，卡名只是前缀命中（被下一张卡盖住）
 
@@ -708,6 +710,13 @@ def _art_card(top: list[tuple[str, float]]) -> tuple[str, float, int, master.Car
     base = lambda k: "-".join(k.removeprefix("img_general_skillcard_").split("-")[:2])  # noqa: E731
     consensus = sum(1 for k, _ in top if base(k) == base(key))
     return key, score, consensus, _asset_to_card(key) if score >= ART_MIN_SCORE or consensus >= 3 else None
+
+
+def _art_margin(top: list[tuple[str, float]]) -> float:
+    """卡面第一名比前五里最好的另一张卡高多少（前五都是同一张卡时为 1）。"""
+    base = lambda k: "-".join(k.removeprefix("img_general_skillcard_").split("-")[:2])  # noqa: E731
+    other = next((sc for k, sc in top if base(k) != base(top[0][0])), None)
+    return 1.0 if other is None else top[0][1] - other
 
 
 @dataclass(frozen=True)
@@ -739,7 +748,7 @@ def hand_cards(img: MatLike, *, cache: RegionCache | None = None) -> list[HandCa
 
 
 def _read_card(img: MatLike, slot: int, letter: Box, next_cx: int | None = None) -> dict:
-    """一张手牌。卡面相关定卡、卡名栏数「+」定强化次数；卡面没把握（< ART_SURE）时 OCR 卡名栏交叉核对（约 100ms）：
+    """一张手牌。卡面相关定卡、卡名栏数「+」定强化次数；卡面没把握（< ART_SURE，或和另一张卡差不到 ART_MARGIN）时 OCR 卡名栏交叉核对（约 100ms）：
     两者一致 → 置信度 1.0；不一致且卡名唯一对应一张卡 → 以卡名为准（卡面结果记在 art_name）；卡名读不出 → 保留卡面结果。
     两者都定不了卡时 name 为 None（不猜）。"""
     x2, y2 = letter.center.x, letter.top_left.y
@@ -747,7 +756,7 @@ def _read_card(img: MatLike, slot: int, letter: Box, next_cx: int | None = None)
     top = _match_shifted(img, x1, y1, x2, y2)
     key, score, consensus, art = _art_card(top)
     name_text, named, exact = None, None, False
-    if art is None or score < ART_SURE:
+    if art is None or score < ART_SURE or _art_margin(top) < ART_MARGIN:
         name_text = _clean_name("".join(t for t, _ in ocr(_name_crop(img, letter, next_cx))))
         named, exact = _card_from_name(name_text, top)
     art_name = None
