@@ -262,3 +262,15 @@ def test_evaluate_plays_every_seed_and_respects_budget(monkeypatch):
     assert T.evaluate([{"k": 1}, {"k": 2}], [1, 2, 3]) == [[10, 20, None], [10, 20, None]]
     assert calls == [(1, 1), (1, 2), (1, 3), (2, 1), (2, 2), (2, 3)]
     assert T.evaluate([{"k": 1}], [1, 2], budget_s=-1) == [[None, None]]
+
+
+def test_evaluate_workers_preflight_explains_native_mismatch(monkeypatch):
+    def broken():
+        raise AssertionError("SearchParams layout")
+
+    fake_engine = SimpleNamespace(native=broken, GKMS_ROOT="/g", NATIVE_LIB="/old.dylib")
+    monkeypatch.setattr(T, "_gkbench", lambda: SimpleNamespace())
+    monkeypatch.setitem(__import__("sys").modules, "gkbench", SimpleNamespace(engine=fake_engine))
+    monkeypatch.setitem(__import__("sys").modules, "gkbench.engine", fake_engine)
+    with pytest.raises(RuntimeError, match="GKMSCLIGPU_LIB"):
+        T.evaluate([{}], [1], workers=2)

@@ -473,6 +473,19 @@ def _play(li: int, si: int, loadout: dict, seed: int, detail: bool, deadline: fl
     return li, si, judge(score, rivals, conds, _end_state(_W.get("ref")))
 
 
+def _preflight() -> None:
+    """多进程前先在主进程把 GKMS 原生核心载一次：子进程初始化失败时进程池只报 BrokenProcessPool、看不到原因
+    （2026-11-14 3940a9：GKMSCLIGPU_LIB 指到规则 55 的旧核心、GKMS_ROOT 是规则 59，子进程一个个退出）。"""
+    _gkbench()
+    from gkbench import engine
+
+    try:
+        engine.native()
+    except Exception as e:
+        raise RuntimeError(f"GKMS 原生核心载不上（{type(e).__name__}: {e}）：GKMSCLIGPU_LIB 要和 GKMS_ROOT 是同一份 GKMS 编出来的"
+                           f"（现在 GKMS_ROOT={engine.GKMS_ROOT}，核心={engine.NATIVE_LIB}）；不设 GKMSCLIGPU_LIB 就用 GKMS_ROOT 自己的") from e  # fmt: skip
+
+
 def evaluate(loadouts: list[dict], seeds: list[int], *, algo: str = "uinet", budget_s: float | None = None,
              step_seconds: float = 5.0, detail: bool = False, workers: int = 1) -> list[list]:  # fmt: skip
     """每个编成（gkms.exam_loadout.v1）在同一批种子上各打一局。
@@ -490,6 +503,8 @@ def evaluate(loadouts: list[dict], seeds: list[int], *, algo: str = "uinet", bud
         return out
     import multiprocessing as mp
     from concurrent.futures import ProcessPoolExecutor, as_completed
+
+    _preflight()
 
     with ProcessPoolExecutor(max_workers=workers, mp_context=mp.get_context("spawn"), initializer=_setup,
                              initargs=(algo, step_seconds)) as pool:  # fmt: skip
