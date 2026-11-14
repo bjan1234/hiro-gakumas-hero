@@ -72,7 +72,7 @@ def _hook(monkeypatch, *, cancel_btn, decision):
 
     h._stop = stop
     monkeypatch.setattr(hif.HiroHifStrategy, "op_failed", {})
-    monkeypatch.setattr(hif.time, "sleep", lambda x: None)
+    monkeypatch.setattr(hif, "sleep", lambda x: None)
     return h, clicks, stops, records, seen
 
 

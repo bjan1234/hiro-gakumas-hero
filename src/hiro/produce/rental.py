@@ -10,10 +10,9 @@
 
 from __future__ import annotations
 
-import time
 
 import logging
-from hiro.devices.active import device
+from hiro.devices.active import device, sleep as _sleep
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +45,7 @@ TOP_LEVEL = 60
 def _to_top():
     for _ in range(MAX_SCREENS):
         device.swipe(360, 640, 360, 1000, 0.5)
-    time.sleep(1.0)
+    _sleep(1.0)
 
 
 def _goto_page(page: int, pager: dict):
@@ -55,16 +54,16 @@ def _goto_page(page: int, pager: dict):
         if cur == page or cur is None:
             return
         device.click(*(pager["next"] if cur < page else pager["prev"]))
-        time.sleep(1.5)
+        _sleep(1.5)
 
 
 def _tap_and_decide(row: dict, ctrl: dict) -> bool:
     c = row["card"]
     logger.info("租借：选 %s（%s Lv%s 突破%s，玩家 %s）", c.get("name"), c.get("attr"), c.get("level"), c.get("breaks"), row.get("player"))
     device.click(*row["center"])
-    time.sleep(1.0)
+    _sleep(1.0)
     device.click(*(ctrl.get("decide") or (497, 1157)))
-    time.sleep(2.5)
+    _sleep(2.5)
     return True
 
 
@@ -77,7 +76,7 @@ def _ensure_plan_fit():
         if (chk := tpl("Produce.Step2.Rent.CheckboxPlan").find(img)) is not None and checkbox_checked(img, chk) is False:
             device.click(*chk.center)
             logger.info("租借：勾上「プラン適正」")
-            time.sleep(1.5)
+            _sleep(1.5)
     except Exception as e:  # noqa: BLE001
         logger.warning("租借：勾「プラン適正」失败（%s），继续，靠决定后的不一致检查兜底", e)
 
@@ -131,7 +130,7 @@ def _pick_once(attr: str, exclude: set, scorer=None) -> str | None:
     """两页都从顶滑到底，记下最好的一张（页、滑动次数、玩家名），回去点它。返回选中的卡名。
     没有 scorer 时遇到满级（Lv60）主属性卡立刻选；有 scorer 时要看完全部再挑价值最高的。"""
     device.click(*RENTAL_SLOT)
-    time.sleep(2.5)
+    _sleep(2.5)
     _ensure_plan_fit()
     first = _rows()
     ctrl, pager = first.get("controls") or {}, first.get("pager") or {}
@@ -170,7 +169,7 @@ def _pick_once(attr: str, exclude: set, scorer=None) -> str | None:
                     if best is None or key > best[:3]:
                         best = (*key, page, screen, row.get("player"))
             device.swipe(*SWIPE)
-            time.sleep(1.2)
+            _sleep(1.2)
     if best is None:
         logger.warning("租借：两页都没读到%s，取消", f" {attr} 卡" if scorer is None else "能补成 4-2 的卡")
         device.click(*(ctrl.get("cancel") or (220, 1157)))
@@ -180,7 +179,7 @@ def _pick_once(attr: str, exclude: set, scorer=None) -> str | None:
     _to_top()
     for _ in range(screen):
         device.swipe(*SWIPE)
-        time.sleep(1.2)
+        _sleep(1.2)
     lst = _rows()
     row = next((r for r in lst["rows"] if r.get("player") == player and r.get("card")), None)
     if row is None:

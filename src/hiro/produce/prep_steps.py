@@ -7,6 +7,7 @@ import re
 import time
 from collections.abc import Callable
 
+from hiro.devices.active import sleep as _sleep
 from hiro.vision.ocr import screen_texts
 from hiro.vision.ui_templates import box, point
 
@@ -23,7 +24,7 @@ def set_number(img) -> int | None:
     return int(m.group()) if m else None
 
 
-def select_set(index: int, *, shoot: Callable, tap: Callable[[int, int], None], sleep: Callable[[float], None] = time.sleep,
+def select_set(index: int, *, shoot: Callable, tap: Callable[[int, int], None], sleep: Callable[[float], None] = _sleep,
                clock: Callable[[], float] = time.monotonic) -> bool:  # fmt: skip
     """翻到第 index 号支援卡 / 回忆编成（同 KAA _select_set：差几号点几下翻页箭头，再读一次核对，最多 RETRIES 轮）。
     读不出编成号（READ_TIMEOUT 内）或翻不到时返回 False（KAA 原版读不出会一直等）。"""

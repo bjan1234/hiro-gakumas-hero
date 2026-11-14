@@ -24,7 +24,7 @@ from collections.abc import Callable
 
 import numpy as np
 import logging
-from hiro.devices.active import device
+from hiro.devices.active import device, sleep as _sleep
 
 from hiro.contracts import Action, ActionKind, ExecutionResult
 from hiro.produce import shop
@@ -301,7 +301,7 @@ def execute_interval(
     shoot: Callable[[], np.ndarray] | None = None,
     click: Callable[[int, int], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
     purchased: Callable[[np.ndarray, list], bool] = shop.ocr_purchased,
     confirm_reader=shop._read_dialog,
     ocr=None,

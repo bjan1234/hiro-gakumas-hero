@@ -20,7 +20,7 @@ from collections.abc import Callable
 
 import numpy as np
 import logging
-from hiro.devices.active import device
+from hiro.devices.active import device, sleep as _sleep
 
 from hiro.contracts import Action, ActionKind, ExecutionResult
 from hiro.produce.ops import Run, button_sv, find_text, orange_lit
@@ -69,7 +69,7 @@ def enter(
     shoot: Callable[[], np.ndarray] | None = None,
     click: Callable[[int, int], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
     ocr=None,
     calib: bool = True,
 ) -> ExecutionResult:
@@ -244,7 +244,7 @@ def leave(
     shoot: Callable[[], np.ndarray] | None = None,
     click: Callable[[int, int], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
     ocr=None,
     calib: bool = True,
 ) -> ExecutionResult:
@@ -264,7 +264,7 @@ def customize(
     shoot: Callable[[], np.ndarray] | None = None,
     click: Callable[[int, int], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
     ocr=None,
     calib: bool = True,
 ) -> ExecutionResult:

@@ -24,6 +24,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from hiro.devices.active import sleep as _sleep
 from hiro.produce.ops import find_text, ocr_boxes, roi_diff
 from hiro import imgio
 
@@ -166,7 +167,7 @@ def read_ability_page(boxes) -> list[dict]:
 class Picker:
     """回忆选择页上的操作。shoot / click / swipe / ocr / clock / sleep 可注入（离线测试）。"""
 
-    def __init__(self, shoot, click, swipe, *, ocr=ocr_boxes, clock=time.monotonic, sleep=time.sleep, calib_dir: Path | None = None):
+    def __init__(self, shoot, click, swipe, *, ocr=ocr_boxes, clock=time.monotonic, sleep=_sleep, calib_dir: Path | None = None):
         self.shoot, self.click, self.swipe, self.ocr, self.clock, self.sleep = shoot, click, swipe, ocr, clock, sleep
         self.calib_dir, self._n = calib_dir, 0
 

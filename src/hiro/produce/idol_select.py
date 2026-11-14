@@ -8,9 +8,9 @@ KAA 自己的 extract_idols 轮廓检测会漏掉部分卡位（2026-10-31 实�
 from __future__ import annotations
 
 import logging
-import time
 from collections.abc import Callable
 
+from hiro.devices.active import sleep as _sleep
 from hiro.vision import idols
 from hiro.vision.ocr import Box
 from hiro.vision.ui_templates import box
@@ -44,7 +44,7 @@ def find_on_page(img, skin_id: str) -> Box | None:
     return None
 
 
-def locate(skin_id: str, *, shoot: Callable, swipe: Callable, sleep: Callable[[float], None] = time.sleep,
+def locate(skin_id: str, *, shoot: Callable, swipe: Callable, sleep: Callable[[float], None] = _sleep,
            progress: Callable[[str], None] = lambda why: None) -> Box | None:  # fmt: skip
     """回到顶部后逐页上滑找 skin_id；找到返回卡位（整帧坐标），翻到底 / 翻满 MAX_PAGES 页仍没有返回 None。
     swipe(x1, y1, x2, y2, duration)。"""
