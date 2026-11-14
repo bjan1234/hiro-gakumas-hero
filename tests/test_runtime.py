@@ -225,6 +225,32 @@ def test_wait_until_hits_and_times_out():
     assert not ok and clock.now == pytest.approx(2.1)
 
 
+def test_drive_does_not_count_interrupt_time():
+    """DMM own 本战开局 11-14：三个设置弹窗各约 6 秒，把「本战第 1 步点次へ」的 20 秒用完，最后一个弹窗处理完当拍就超时。
+    处理中断的那拍不算这一段的时间；中断一直不停也有上限（timeout × INTERRUPT_EXTRA）。"""
+    from hiro.loop.errors import ResumeBlocked
+    from hiro.runtime import loop
+
+    dialogs = {"n": 3}
+
+    def settings_dialog(f, rt):
+        if dialogs["n"] > 0:
+            dialogs["n"] -= 1
+            rt.sleep(6.9)  # 弹窗处理（找选项、点決定、等关闭）
+            return "设置弹窗"
+        return None
+
+    rt, clock = runtime([frame()], interrupts=(settings_dialog,))
+    clock.now = 0.0
+    calls = []
+    assert rt.drive(lambda f: calls.append(clock()) or (True if len(calls) >= 2 else None), 20, "本战第 1 步点次へ") is True
+    assert clock.now > 20  # 弹窗花了 20 多秒，还是走到了下一步
+    rt, clock = runtime([frame()], interrupts=(lambda f, rt: rt.sleep(1.0) or "一直有弹窗",))
+    with pytest.raises(ResumeBlocked, match="没完成"):
+        rt.drive(lambda f: None, 5, "x")
+    assert clock.now <= 5 * (1 + loop.INTERRUPT_EXTRA) + 3
+
+
 def test_step_dispatches_handler_and_stop_raises():
     seen = []
 

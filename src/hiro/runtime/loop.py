@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 TICK = 0.3  # wait_until 两拍之间至少隔这么久
 UNKNOWN_ALERT_S = 30.0  # 认不出的画面连续这么久起报警
+INTERRUPT_EXTRA = 3.0  # drive / wait_until：处理中断（设置弹窗等）花的时间不算超时，最多顺延 timeout 的这么多倍
+# （DMM own 本战开局 11-14：三个设置弹窗各约 6 秒，把「本战第 1 步点次へ」的 20 秒用完，最后一个弹窗处理完当拍就超时停机）
 STALL_S = 180.0  # 页面没变、画面也没变（缩略图差 < repeat_guard.SCREEN_DIFF）这么久就停机；认不出的画面同样适用
 
 
@@ -101,24 +103,30 @@ class Runtime:
 
     def wait_until(self, pred: Callable[[Frame], bool], timeout: float, *, every: float = TICK) -> tuple[bool, Frame]:
         """每拍过检查点和中断层后看 pred(帧)；成立返回 (True, 帧)，超时返回 (False, 最后一帧)。中断处理过的那一拍不算 pred。"""
-        t0 = self.clock()
+        t0, paused = self.clock(), 0.0
         while True:
+            t1 = self.clock()
             f, done = self.tick()
             if done is None and pred(f):
                 return True, f
-            if self.clock() - t0 >= timeout:
+            if done is not None:
+                paused = min(paused + self.clock() - t1 + every, timeout * INTERRUPT_EXTRA)  # 处理中断的那拍不算等待时间
+            if self.clock() - t0 - paused >= timeout:
                 return False, f
             self.sleep(every)
 
     def drive(self, step: Callable[[Frame], object], timeout: float, what: str, *, every: float = TICK):
         """多步流程的一段：每拍过检查点和中断层后调 step(帧)（可以点），返回非 None 就结束并返回它；
         超时抛 ResumeBlocked（what 写进原因）。开局 / 续跑这类「看画面 → 点 → 等下一页」的步骤都用它。"""
-        t0 = self.clock()
+        t0, paused = self.clock(), 0.0
         while True:
+            t1 = self.clock()
             f, done = self.tick()
             if done is None and (r := step(f)) is not None:
                 return r
-            if self.clock() - t0 >= timeout:
+            if done is not None:
+                paused = min(paused + self.clock() - t1 + every, timeout * INTERRUPT_EXTRA)  # 处理中断的那拍不算这一段的时间
+            if self.clock() - t0 - paused >= timeout:
                 raise ResumeBlocked(f"{what}：{timeout:.0f}s 没完成")
             self.sleep(every)
 
