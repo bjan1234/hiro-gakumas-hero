@@ -65,3 +65,46 @@ def test_select_card_rereads_until_recognized(monkeypatch):
     h.on_select_card()
     assert len(calls) == 3 and len(slept) == 2  # 第 3 次全认出就停
     assert [o["card_id"] for o in observed[0]["options"]] == ["a", "b", "c"]
+
+
+def _confirm_env(monkeypatch, texts):
+    from types import SimpleNamespace as NS
+
+    from hiro.contracts import Action, ActionKind, Decision
+    from hiro.produce import hif
+
+    clicks, notes = [], []
+    monkeypatch.setattr(hif, "device", NS(screenshot=lambda: "img", click=lambda x, y: clicks.append((x, y))))
+    monkeypatch.setattr(hif, "sleep", lambda s: None)
+    monkeypatch.setattr(hif, "screen_texts", lambda img: texts)
+    fake = NS(s=NS(note=notes.append), REROLL_CONFIRM=hif.HifCore.REROLL_CONFIRM, REROLL_COST_WORDS=hif.HifCore.REROLL_COST_WORDS)
+    d = Decision(Action(ActionKind.REROLL), "刷新", "rule", 0.8)
+    return hif, fake, d, clicks
+
+
+def test_reroll_confirm_taps_reroll_button_with_arrow(monkeypatch):
+    """第一次刷新弹「スキルカード再抽選確認」：按钮读成「→ 再抽選する」也要认，点它；「次回以降表示しない」不动（协调 11-14）。"""
+    import os
+    from pathlib import Path
+
+    import cv2
+
+    from hiro.vision.ocr import screen_texts
+
+    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "settings" / "reroll-confirm-acct2.png"
+    if not path.exists():
+        pytest.skip("需要实机截图 settings/reroll-confirm-acct2.png")
+    texts = screen_texts(cv2.imread(str(path)))
+    hif, fake, d, clicks = _confirm_env(monkeypatch, texts)
+    assert hif.HifCore._reroll_confirm(fake, d) is True
+    assert len(clicks) == 1 and clicks[0][0] > 380 and abs(clicks[0][1] - 1160) < 15  # 右边的「再抽選する」，不是キャンセル
+
+
+def test_reroll_confirm_with_jewel_cancels(monkeypatch):
+    from hiro.vision.ocr import Box, Text
+
+    texts = [Text("スキルカード再抽選確認", Box(60, 647, 409, 681)), Text("ジュエルを30個消費して再抽選しますか?", Box(63, 733, 612, 759)),
+             Text("キャンセル", Box(158, 1142, 311, 1180)), Text("→ 再抽選する", Box(396, 1142, 590, 1178))]  # fmt: skip
+    hif, fake, d, clicks = _confirm_env(monkeypatch, texts)
+    assert hif.HifCore._reroll_confirm(fake, d) is False
+    assert clicks == [(234, 1161)] and "ジュエル" in d.warnings[-1]
