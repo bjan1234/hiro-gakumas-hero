@@ -51,8 +51,23 @@ def build(args, session, device):
     return core, Runtime(raw_device=device, classify=classify, handlers=make_handlers(core), advance=advance, session=session)
 
 
+def recover_date_change(rt, session) -> None:
+    """游戏日切换（「日付変更」框，点任何要联网的按钮都可能弹）：タイトルへ → TAP TO START → 登录奖励 → 首页
+    （hiro.loop.date_change.recover_to_home，首页按自有判页认）。回不到首页就停机。"""
+    from hiro.loop.date_change import recover_to_home
+    from hiro.produce.ops import ocr_boxes
+    from hiro.vision.classify import classify
+
+    session.recover("date_change", "游戏日切换「日付変更」：回标题再进首页")
+    ok = recover_to_home(lambda: rt.screen.shot().img, rt.device.tap, ocr_boxes, lambda img: classify(img).name == "home")
+    if not ok:
+        raise ResumeBlocked("日切换后没回到首页，停机")
+
+
 def run(args, session) -> int:
-    """跑一段：new = 开局后打到结束；resume = 续跑到结束。返回退出码（0 正常，3 停机交给人）。"""
+    """跑一段：new = 开局后打到结束；resume = 续跑到结束。返回退出码（0 正常，3 停机交给人）。
+    日切换在开局或打的过程中都可能出现：回首页后，开局没开成就重新开局，已经在培育里就续跑；一段最多 MAX_DATE_CHANGES 次。
+    （开局已经点了开始、正在开场剧情时日切换：重新开局会被「本机有进行中的培育」拦住停机，交给人，不盲目破弃。）"""
     from hiro import kaa_env
     from hiro.devices import active, open_device
     from hiro.loop.date_change import DateChanged
@@ -66,25 +81,26 @@ def run(args, session) -> int:
     device.connect()
     core, rt = build(args, session, device)
     active.use(rt)
+    started = args.command != "new"  # resume：本来就在培育里
     try:
-        if args.command == "new":
-            finish.finish_produce_end(rt, go_home=True)  # 上一局停在结算 / 开始确认页时先回首页（开始确认页不点）
-            opening.new_produce(rt, args.mode, idol=args.idol, support_set=kaa_env.SUPPORT_SET, memory_set=kaa_env.MEMORY_SET,
-                                plan=kaa_env.ACTIVE_PLAN, rental_attr=args.main_attr, main_attr=args.main_attr,
-                                expect_memory=tuple(v.strip() for v in args.expect_memory.split(",") if v.strip()))  # fmt: skip
-        else:
-            finish.resume_produce(rt)
         for attempt in range(MAX_DATE_CHANGES + 1):
             try:
+                if not started:
+                    finish.finish_produce_end(rt, go_home=True)  # 上一局停在结算 / 开始确认页时先回首页（开始确认页不点）
+                    opening.new_produce(rt, args.mode, idol=args.idol, support_set=kaa_env.SUPPORT_SET, memory_set=kaa_env.MEMORY_SET,
+                                        plan=kaa_env.ACTIVE_PLAN, rental_attr=args.main_attr, main_attr=args.main_attr,
+                                        expect_memory=tuple(v.strip() for v in args.expect_memory.split(",") if v.strip()))  # fmt: skip
+                    started = True
+                elif attempt or args.command == "resume":
+                    finish.resume_produce(rt)
                 rt.run(until=lambda: False)
                 return 0
             except DateChanged:
                 if attempt >= MAX_DATE_CHANGES:
-                    raise
-                logger.warning("日切换：回首页后续跑（第 %d 次）", attempt + 1)
-                session.recover("crash_restart", "日切换「日付変更」：回首页后续跑")
-                finish.finish_produce_end(rt, go_home=True)
-                finish.resume_produce(rt)
+                    raise ResumeBlocked(f"一段里日切换超过 {MAX_DATE_CHANGES} 次，停机") from None
+                logger.warning("日切换（第 %d 次，%s）：回首页后%s", attempt + 1, "已开局" if started else "还没开局",
+                               "续跑" if started else "重新开局")  # fmt: skip
+                recover_date_change(rt, session)
     except ResumeBlocked as e:
         logger.error("%s", e)
         print(str(e))

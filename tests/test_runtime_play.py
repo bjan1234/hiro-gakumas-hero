@@ -80,3 +80,49 @@ def test_run_hif_own_branch_skips_kaa_init(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "argv", ["run_hif", "resume", "--mode", "main", "--trace", "t-own"])
     assert rh.main() == 0
     assert called == {"play": "resume", "report": "t-own"}
+
+
+def _run_with(monkeypatch, new_effects, run_effects, command="new"):
+    """play.run 的外壳：设备 / Runtime / 开局 / 续跑 / 主循环都换成替身，按给定顺序抛 DateChanged 或正常返回。"""
+    from hiro import kaa_env
+    from hiro.devices import active
+    from hiro.loop.date_change import DateChanged
+    from hiro.runtime import finish, opening
+
+    calls = []
+
+    def effect(seq, name):
+        def f(*a, **k):
+            calls.append(name)
+            if seq and seq.pop(0) == "date":
+                raise DateChanged("日付変更")
+        return f
+
+    monkeypatch.setattr(kaa_env, "apply_formation_plan", lambda idol: None)
+    monkeypatch.setattr(kaa_env, "SUPPORT_SET", 4)
+    monkeypatch.setattr(kaa_env, "MEMORY_SET", 5)
+    monkeypatch.setattr("hiro.devices.open_device", lambda: NS(connect=lambda: None, close=lambda: calls.append("close")))
+    rt = NS(run=effect(list(run_effects), "run"))
+    monkeypatch.setattr(play, "build", lambda args, session, device: (None, rt))
+    monkeypatch.setattr(active, "use", lambda r: None)
+    monkeypatch.setattr(opening, "new_produce", effect(list(new_effects), "new"))
+    monkeypatch.setattr(finish, "finish_produce_end", lambda rt, go_home=False: None)
+    monkeypatch.setattr(finish, "resume_produce", lambda rt: calls.append("resume"))
+    monkeypatch.setattr(play, "recover_date_change", lambda rt, session: calls.append("recover"))
+    args = NS(command=command, idol="i", mode="qualify", main_attr="Da", expect_memory="")
+    return play.run(args, NS()), calls
+
+
+def test_date_change_during_opening_reopens(monkeypatch):
+    code, calls = _run_with(monkeypatch, ["date", "ok"], ["ok"])
+    assert code == 0 and calls == ["new", "recover", "new", "run", "close"]
+
+
+def test_date_change_during_play_resumes(monkeypatch):
+    code, calls = _run_with(monkeypatch, ["ok"], ["date", "ok"])
+    assert code == 0 and calls == ["new", "run", "recover", "resume", "run", "close"]
+
+
+def test_too_many_date_changes_stop(monkeypatch):
+    code, calls = _run_with(monkeypatch, ["ok"], ["date", "date", "date"])
+    assert code == 3 and calls.count("recover") == play.MAX_DATE_CHANGES and calls[-1] == "close"
