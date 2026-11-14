@@ -389,12 +389,15 @@ def test_reroll_confirm_interrupt_cost_cancels():
         return NS(has_dialog=True, dialog={"title": "スキルカード再抽選確認"}, texts=texts)
 
     taps = []
-    rt = NS(device=NS(tap=lambda x, y: taps.append((x, y))))
+
+    def new_rt():  # 每种情况一个新的运行环境（同一个框点过后 TAP_GAP_S 内不再点）
+        return NS(device=NS(tap=lambda x, y: taps.append((x, y))))
+
     cost = [T("ジュエルを30個消費します", 300, 760), T("キャンセル", 234, 1161), T("→ 再抽選する", 493, 1160)]
-    assert "キャンセル" in interrupts.reroll_confirm(fr(cost), rt) and taps == [(234, 1161)]
+    assert "キャンセル" in interrupts.reroll_confirm(fr(cost), new_rt()) and taps == [(234, 1161)]
     with pytest.raises(ResumeBlocked, match="キャンセル"):
-        interrupts.reroll_confirm(fr([T("ジュエルを30個消費します", 300, 760), T("→ 再抽選する", 493, 1160)]), rt)
-    assert interrupts.reroll_confirm(NS(has_dialog=True, dialog={"title": "再挑戦確認"}, texts=[]), rt) is None  # 别的确认框不管
+        interrupts.reroll_confirm(fr([T("ジュエルを30個消費します", 300, 760), T("→ 再抽選する", 493, 1160)]), new_rt())
+    assert interrupts.reroll_confirm(NS(has_dialog=True, dialog={"title": "再挑戦確認"}, texts=[]), new_rt()) is None  # 别的确认框不管
 
 
 def test_empty_crop_does_not_crash_main_loop(monkeypatch):
@@ -501,3 +504,38 @@ def test_drive_step_exception_absorbed_then_stops_after_limit():
     rt, _ = runtime([frame()], session=_fake_session()[0])
     with pytest.raises(ResumeBlocked, match=f"连续 {loop.ERROR_LIMIT} 次"):
         rt.drive(lambda f: (_ for _ in ()).throw(ValueError("坏")), 600, "收尾")
+
+
+def test_confirm_interrupt_taps_once_while_dialog_fades():
+    """カスタマイズ確認 0.5 秒里点了两次「決定」（h10 11-15）：同一个中断点过同一个框后 TAP_GAP_S 内框还在就不再点，过了再点。"""
+    custom = {"kind": "customize_confirm", "title": "カスタマイズ確認", "danger": False, "y": 469}
+    texts = [T("以下のPアイテムにカスタマイズを実行します", 330, 540), T("キャンセル", 240, 1160), T("決定", 524, 1160)]
+    rt, clock = runtime([frame(texts, custom)])
+    assert "点「決定」" in interrupts.customize_confirm(rt.screen.shot(), rt)
+    clock.now += 0.5
+    assert "刚点过" in interrupts.customize_confirm(rt.screen.shot(), rt) and rt.raw_device.taps == [(524, 1160)]
+    clock.now += interrupts.TAP_GAP_S
+    interrupts.customize_confirm(rt.screen.shot(), rt)
+    assert rt.raw_device.taps == [(524, 1160), (524, 1160)]  # 框一直不关：过了间隔再点
+
+
+def test_pitem_customize_done_page_is_tapped_through():
+    """P 道具「カスタマイズ完了」展示页（没有按钮，说明里有「レッスン終了時」，旧的文字过滤不点）：点一下空白（h10 11-15，原来 180 秒停机）。"""
+    import os
+    from pathlib import Path
+    from types import SimpleNamespace as NS
+
+    import cv2
+
+    from hiro.runtime import play
+    from hiro.runtime.frame import Frame
+    from hiro.vision.classify import classify
+
+    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "pitem-customize-done.png"
+    if not path.exists():
+        pytest.skip("需要实机截图 pages/pitem-customize-done.png")
+    img = cv2.imread(str(path))
+    taps = []
+    rt = NS(device=NS(tap=lambda x, y: taps.append((x, y))), sleep=lambda s: None, screen=NS(shot=lambda: Frame(img, 0.0)))
+    hit = classify(img)
+    assert hit.name == "PITEM_CUSTOMIZE_DONE" and play.advance(rt, Frame(img, 0.0), hit) is True and taps == [(12, 12)]

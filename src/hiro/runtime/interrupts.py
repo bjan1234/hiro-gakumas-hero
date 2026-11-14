@@ -21,6 +21,19 @@ from hiro.vision.ocr import screen_texts
 STOP_WORDS = ("メンテナンス中", "メンテナンスを実施", "他の端末でログイン", "別の端末でログイン")
 
 
+TAP_GAP_S = 1.5  # 同一个中断点了同一个框之后，这么久之内框还在就不再点（框淡出要时间：カスタマイズ確認 0.5 秒点了两次「決定」，h10 11-15）
+
+
+def _recently(rt, key: str) -> bool:
+    last = getattr(rt, "_interrupt_tap", None)
+    now = rt.clock() if callable(getattr(rt, "clock", None)) else 0.0
+    return last is not None and last[0] == key and now - last[1] < TAP_GAP_S
+
+
+def _tapped(rt, key: str) -> None:
+    rt._interrupt_tap = (key, rt.clock() if callable(getattr(rt, "clock", None)) else 0.0)
+
+
 def _cancel(frame):
     return next((t for t in frame.texts if "キャンセル" in t.text), None)
 
@@ -86,10 +99,13 @@ def customize_confirm(frame, rt) -> str | None:
         return None
     if not any("Pアイテム" in t.text for t in frame.texts):
         return None
+    if _recently(rt, "customize_confirm"):
+        return f"P 道具定制确认「{d['title']}」：刚点过「決定」，等框关"
     btn = next((t for t in frame.texts if t.text.strip() == "決定" and t.rect.center.x > 360 and t.rect.center.y > 1000), None)
     if btn is None:
         raise ResumeBlocked(f"P 道具定制确认框「{d['title']}」：没读到「決定」，不点，停机")
     rt.device.tap(*btn.rect.center)
+    _tapped(rt, "customize_confirm")
     return f"P 道具定制确认「{d['title']}」：点「決定」"
 
 
@@ -132,7 +148,10 @@ def tutorial(frame, rt) -> str | None:
     if len(bottom) != 1 or bottom[0][0] not in TUTORIAL_BUTTONS:
         return None
     word, btn = bottom[0]
+    if _recently(rt, f"tutorial:{word}"):
+        return f"教程框：刚点过「{word}」，等换页"
     rt.device.tap(*btn.rect.center)
+    _tapped(rt, f"tutorial:{word}")
     return f"教程框：点「{word}」"
 
 
@@ -147,12 +166,16 @@ def reroll_confirm(frame, rt) -> str | None:
     if act is None:
         return None
     kind, hit, cost = act
+    if _recently(rt, "reroll_confirm"):
+        return "再抽選确认框：刚点过，等框关"
     if kind == "cost":
         if hit is None:
             raise ResumeBlocked(f"再抽選确认框上有消耗字样「{cost}」，又没读到キャンセル：不点，停机")
         rt.device.tap(*hit.rect.center)
+        _tapped(rt, "reroll_confirm")
         return f"再抽選确认框有消耗字样「{cost}」：点キャンセル"
     rt.device.tap(*hit.rect.center)
+    _tapped(rt, "reroll_confirm")
     return f"再抽選确认框：点「{hit.text}」"
 
 
