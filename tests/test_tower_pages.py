@@ -41,6 +41,7 @@ def test_formation_reads_loadout_fields():
     assert name == "TOWER_FORMATION"
     assert (f["layer"], f["turns"], f["score_bonus_permils"], f["max_stamina"]) == (15, 15, [23090, 11980, 2600], 46)
     assert f["challenge"] and f["omakase"]  # おまかせ 只记位置，处理器绝不点
+    assert f["memory_ratings"] == [12075, 10773, 9978]  # 主 / サブ1 / サブ2 回忆评价值：编成签名用
 
 
 def test_memory_select_result_retry_exam():
@@ -55,7 +56,7 @@ def test_memory_select_result_retry_exam():
 def test_formation_page2_reads_deck():
     """编成页第 2/2 页：亮着的卡进牌组（「重複」「制限」灰掉的跳过），右上角红「+」是强化；认不出的记 unread。"""
     name, f = _hit("38_formation_page2.png")
-    assert name == "TOWER_FORMATION" and f["page"] == 2
+    assert name == "TOWER_FORMATION" and f["page"] == 2 and f["memory_ratings"] == [12075, 10773, 9978]
     d = f["deck"]
     assert [sum(c["dim"] for c in r) for r in d["rows"]] == [1, 3, 4]
     assert "p_card-01-ido-2_017+1" in d["cards"] and "p_card-00-sup-3_027" in d["cards"] and len(d["cards"]) + d["unread"] == 10
