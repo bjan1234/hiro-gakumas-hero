@@ -67,6 +67,9 @@ class TowerPlay:
         self.deck: dict | None = None  # 编成页第 2 页的牌组（hiro.vision.tower.read_formation_deck）
         self.done_layers = 0
         self.finished = False
+        self.result_handled = False  # 这一次的结果页已经处理过（点了再挑戦 / 一覧に戻る）：等页面换了再处理下一次（实机 r2：同一张结果页处理了两次）
+        if run.tower_id is None and (code := idol_code(idol_name)):
+            run.tower_id = f"{TOWER_NO}-{code}"  # 没经过编成页（从名次页 / 结果页续跑）也有路线
 
     # ---------------------------------------------------------------- 页面
     def on_list(self, rt, f, hit):
@@ -166,6 +169,8 @@ class TowerPlay:
         return DONE
 
     def on_result(self, rt, f, hit):
+        if self.result_handled:
+            return STAY  # 刚点过再挑戦 / 一覧に戻る，确认框 / 下一页还没出来：不再算一次
         fields = hit.fields
         layer = fields.get("layer") or self.layer
         verdict = self.run.after_result(layer, bool(fields.get("cleared")), int(fields.get("stars") or 0))
@@ -176,6 +181,7 @@ class TowerPlay:
             if fields.get("retry") is None:
                 raise ResumeBlocked("结果页没读到「再挑戦」，停下")
             rt.device.tap(*fields["retry"])
+            self.result_handled = True
             return DONE
         self.done_layers += 1
         if self.done_layers >= self.layers:
@@ -184,6 +190,7 @@ class TowerPlay:
             return END  # 停在结果页，不点（一覧に戻る 交给下一段）
         if fields.get("back") is not None:
             rt.device.tap(*fields["back"])
+            self.result_handled = True
         return DONE
 
     def on_ranking(self, rt, f, hit):
@@ -206,9 +213,17 @@ class TowerPlay:
         return DONE
 
     def handlers(self) -> dict:
-        return {"TOWER_LIST": self.on_list, "TOWER_LAYERS": self.on_layers, "TOWER_LAYER_INFO": self.on_layer_info,
+        def reopen(fn):
+            def h(rt, f, hit):
+                self.result_handled = False  # 换到别的页面了：下一次结果页照常处理
+                return fn(rt, f, hit)
+
+            return h
+
+        hs = {"TOWER_LIST": self.on_list, "TOWER_LAYERS": self.on_layers, "TOWER_LAYER_INFO": self.on_layer_info,
                 "TOWER_FORMATION": self.on_formation, "TOWER_MEMORY_SELECT": self.on_memory_select, "TOWER_EXAM": self.on_exam,
                 "TOWER_RANKING": self.on_ranking, "TOWER_RESULT": self.on_result, "TOWER_RETRY_CONFIRM": self.on_retry_confirm}  # fmt: skip
+        return {k: (v if k == "TOWER_RESULT" else reopen(v)) for k, v in hs.items()}
 
 
 def run(args) -> int:

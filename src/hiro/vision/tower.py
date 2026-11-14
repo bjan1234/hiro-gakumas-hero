@@ -301,6 +301,8 @@ def tower_page(img: np.ndarray, boxes) -> tuple[str, dict] | None:
         return "TOWER_MEMORY_SELECT", {"decide": _center(dec) if dec else None}
     if _find(boxes, "次へ", (1080, 1260)) and _find(boxes, "位", (130, 260)) and sum(1 for t, _ in boxes if t.lower().endswith("pt")) >= 3:
         return "TOWER_RANKING", _ranking_fields(boxes)
+    if _find(boxes, "再挑戦確認") or _find(boxes, "ステージを再挑戦"):
+        return None  # 再挑戦确认框正在弹出（标题条还没认出来）：结果页在框后面还看得见，不能当结果页再处理一次（实机 r2）
     if _find(boxes, "CLEAR", (150, 320)) and (_find(boxes, "一覧に戻る", (1080, 1260)) or _find(boxes, "再挑戦", (1080, 1260))):
         return "TOWER_RESULT", _result_fields(img, boxes)
     return None
