@@ -19,7 +19,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import logging
-from hiro.devices.active import device
+from hiro.devices.active import device, sleep as _sleep
 
 from hiro.contracts import Action, ExecutionResult
 from hiro import imgio
@@ -111,7 +111,7 @@ def wait_change(
     use_signature: bool = True,
     shoot: Callable[[], np.ndarray] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
 ) -> Waited:
     """动作下发后轮询，直到出现反馈（见模块说明）或超时。第一帧立即截，不先睡。"""
     shoot = shoot or device.screenshot
@@ -140,7 +140,7 @@ def wait_stable(
     threshold: float = STABLE_THRESHOLD,
     shoot: Callable[[], np.ndarray] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
 ) -> Waited:
     """等相邻两帧在 roi 内几乎不变（转场 / 弹窗动画结束）。超时返回最后一帧，changed=False。"""
     shoot = shoot or device.screenshot
@@ -168,7 +168,7 @@ def tap(
     shoot: Callable[[], np.ndarray] | None = None,
     click: Callable[[int, int], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
 ) -> ExecutionResult:
     """点 target（Rect / (x, y, w, h) / (x, y)），等反馈；没反馈就重点，最多 retries 次。
 
@@ -352,7 +352,7 @@ def confirm_acquire(tries: int = 3, *, timeout: float = 3.0) -> int:
     return clicks
 
 
-def fast_acquire(card_center, *, shoot=None, click=None, sleep=time.sleep, clock=time.monotonic, lit_timeout: float = 1.5,
+def fast_acquire(card_center, *, shoot=None, click=None, sleep=_sleep, clock=time.monotonic, lit_timeout: float = 1.5,
                  close_timeout: float = 3.0) -> bool:  # fmt: skip
     """三选一（卡 / 饮料）：点选项 → 等「受け取る」亮起 → 点 → 等它消失。替代 KAA commit 的固定等待（点后 sleep 0.5 + 2s 再循环一轮，
     第二十一局选拔选卡执行中位 8.5s）。亮不起来（再点一次选项也不行）返回 False，调用方退回 KAA commit。"""

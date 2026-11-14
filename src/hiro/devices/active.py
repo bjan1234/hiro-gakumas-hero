@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Iterator
 
 _RT = None  # 当前 hiro.runtime.loop.Runtime；None = 用 kotonebot
@@ -83,9 +84,15 @@ device = _Device()
 
 
 def sleep(seconds: float) -> None:
-    """睡 seconds 秒；新主循环下每 0.2 秒过一次检查点（暂停 / 日切换），暂停期间不计时。"""
+    """睡 seconds 秒；新主循环下每 0.2 秒过一次检查点（暂停 / 日切换），暂停期间不计时。
+    旧主循环转发 kotonebot.sleep（可暂停 / 中断）；两套主循环都没起（离线工具、测试）就是普通的 time.sleep。"""
     if _RT is None:
-        _kb().sleep(seconds)
+        try:
+            _kb().sleep(seconds)
+        except Exception as e:  # noqa: BLE001  没装 kotonebot、KAA 上下文没初始化（ContextNotInitializedError）
+            if not isinstance(e, ImportError) and type(e).__name__ != "ContextNotInitializedError":
+                raise
+            time.sleep(seconds)
         return
     end = _RT.clock() + seconds
     while True:

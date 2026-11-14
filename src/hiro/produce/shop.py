@@ -17,7 +17,7 @@ from collections.abc import Callable
 import cv2
 import numpy as np
 import logging
-from hiro.devices.active import device
+from hiro.devices.active import device, sleep as _sleep
 
 from hiro.contracts import Action, ActionKind, ExecutionResult
 from hiro.produce.ops import Run, button_sv, find_text, orange_lit, roi_diff
@@ -468,7 +468,7 @@ def execute_shop(
     shoot: Callable[[], np.ndarray] | None = None,
     click: Callable[[int, int], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
     purchased: Callable[[np.ndarray, list], bool] = ocr_purchased,
     ocr=None,
     calib: bool = True,

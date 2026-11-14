@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 import time
 
+from hiro.devices.active import sleep as _sleep
 from hiro import imgio
 from hiro.vision.ocr import screen_texts
 
@@ -56,7 +57,7 @@ def _find_text_center(boxes, word: str, *, exact: bool = False):
     return hits[0] if hits else None
 
 
-def select_memory(expect: tuple[str, ...], *, shoot, click, swipe, texts_of=None, sleep=time.sleep, boxes_of=None) -> bool:
+def select_memory(expect: tuple[str, ...], *, shoot, click, swipe, texts_of=None, sleep=_sleep, boxes_of=None) -> bool:
     """本战开始确认页：点「変更」→ 按「入手」排序 → 逐格点开回忆、读上方属性，找到属性全部吻合的那份 → OK。找不到就关掉列表、返回 False
     （回首页再进开始确认页时游戏会重置为上次用过的回忆，q8 实机，所以只能在这一页当场选）。
     第二十二局：12 页 × 9 格每格「等 1.2s + 整帧 OCR（3 倍放大）」，翻完要 5 分半；排序选项按固定坐标点，总控看到列表按「タグ」排。
@@ -123,7 +124,7 @@ def memory_value_seen(value: str, texts: str) -> bool:
 MEMORY_PAGE_READS = 3
 
 
-def memory_missing_on_page(expect: tuple[str, ...], *, shoot, texts=None, sleep=time.sleep) -> list:
+def memory_missing_on_page(expect: tuple[str, ...], *, shoot, texts=None, sleep=_sleep) -> list:
     """开始确认页读选中回忆的属性，最多读 MEMORY_PAGE_READS 次（页面刚出来时数字可能还没画完）；返回没读到的那几项。
     shoot() → 帧，texts(帧) → 文字列表。"""
     texts = texts or (lambda img: [t.text for t in screen_texts(img)])

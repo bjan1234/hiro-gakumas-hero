@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from hiro.devices.active import sleep as _sleep
 from hiro import imgio
 
 CLOSE_TEXTS = ("閉じる",)
@@ -78,7 +79,7 @@ def _still(shoot, sleep, clock):
 
 
 def review_deck(*, shoot: Callable, click: Callable[[int, int], None], swipe: Callable[[int, int, int, int, float], None],
-                ocr_texts: Callable, sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic) -> dict:  # fmt: skip
+                ocr_texts: Callable, sleep: Callable[[float], None] = _sleep, clock: Callable[[], float] = time.monotonic) -> dict:  # fmt: skip
     """返回 {deck, deck_size, problems, opened, closed}。deck 为 ProduceState.deck 格式或 None。"""
     from hiro.vision.deck import find_deck_button, is_deck_list, merge_deck_pages, read_deck_list
 

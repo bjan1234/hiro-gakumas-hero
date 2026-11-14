@@ -21,7 +21,7 @@ from collections.abc import Callable
 import cv2
 import numpy as np
 import logging
-from hiro.devices.active import device
+from hiro.devices.active import device, sleep as _sleep
 
 from hiro.contracts import Action, ActionKind, ExecutionResult
 from hiro.produce.ops import Run, button_sv, find_text, orange_lit
@@ -165,7 +165,7 @@ def resolve_overflow(
     shoot: Callable[[], np.ndarray] | None = None,
     click: Callable[[int, int], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
     ocr=None,
     calib: bool = True,
     swipe: Callable[[int, int, int, int], None] | None = None,
@@ -375,7 +375,7 @@ def swap_receive(
     shoot: Callable[[], np.ndarray] | None = None,
     click: Callable[[int, int], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
     ocr=None,
     calib: bool = True,
 ) -> ExecutionResult:
@@ -431,7 +431,7 @@ def discard_then_receive(
     shoot: Callable[[], np.ndarray] | None = None,
     click: Callable[[int, int], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
     ocr=None,
     calib: bool = True,
 ) -> ExecutionResult:
@@ -458,7 +458,7 @@ def discard_then_receive(
                         ocr=ocr, calib=calib)  # fmt: skip
 
 
-def skip_incoming(*, sleep_s=time.sleep) -> bool:
+def skip_incoming(*, sleep_s=_sleep) -> bool:
     """饮料满、决策是不要新饮料：「Pドリンク所持上限」标题连认两帧 →「離れる」没亮就先勾一个没勾的选框 → 点亮着的「離れる」
     （替代 KAA ProduceInterrupt._check_pdrink_max；KAA 用彩色直方图找没勾的框，这里灰度找框后按橙色占比判有没有勾，
     同 ui_templates.checkbox_checked）。点了返回 True；随后的「報酬スキップ」确认由 on_pdrink_max_confirm 放行。"""

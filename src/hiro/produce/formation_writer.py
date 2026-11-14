@@ -16,9 +16,10 @@ HIRO_FORMATION_AUTOFIX=1 才启用（默认关，2026-11-06：执行步骤还没
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass, field
 from typing import Callable
+
+from hiro.devices.active import sleep as _sleep
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ class Device:
     click: Callable
     swipe: Callable
     ocr: Callable | None = None
-    sleep: Callable = time.sleep
+    sleep: Callable = _sleep
     calib: Callable | None = None  # calib(img, tag)：存帧（实机排查用）
 
     def snap(self, img, tag: str) -> None:

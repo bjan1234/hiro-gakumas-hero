@@ -10,7 +10,7 @@ import time
 from collections.abc import Callable
 
 from hiro import imgio
-from hiro.devices.active import device
+from hiro.devices.active import device, sleep as _sleep
 from hiro.vision.ocr import screen_texts
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ PITEM_ACQUIRE_TIMEOUT = 5.0  # 点「受け取る」后等按钮消失
 PITEM_TRIES = 2
 
 
-def read_loaded(shoot, region, sleep=time.sleep, img=None, *, clock=time.monotonic, timeout: float = CARD_ART_WAIT_S) -> tuple:
+def read_loaded(shoot, region, sleep=_sleep, img=None, *, clock=time.monotonic, timeout: float = CARD_ART_WAIT_S) -> tuple:
     """read_card_dialog，但有格子认不出（卡图还在加载）时隔 CARD_ART_POLL 秒重截重读：全认出、连续 CARD_ART_STALL 次
     没变好（真认不出的卡）或到 timeout 就停，返回认得最全的那一次 (img, dialog)。"""
     from hiro.vision.deck import read_card_dialog
@@ -94,7 +94,7 @@ def _poll(check, timeout: float):
         result = check(device.screenshot())
         if result or time.monotonic() >= deadline:
             return result
-        time.sleep(CHANGE_POLL)
+        _sleep(CHANGE_POLL)
 
 
 def _stage1_mark(marks: list, index: int):
@@ -126,7 +126,7 @@ def change_stage1(self, index: int = 0, cancel: bool = False) -> bool:
         if (nxt := find_enabled("InProduce.DialogCardChange1.ButtonNext", img)) is not None:
             device.click(*nxt.center)
             logger.info("换卡阶段 1：已点「次へ」")
-            time.sleep(CHANGE_POLL)
+            _sleep(CHANGE_POLL)
             continue
         marks = find_card_marks(img, CHANGE_LETTERS_BOX, CHANGE_LETTER_THRESHOLD)
         target = _stage1_mark(marks, index) if marks else None
@@ -138,7 +138,7 @@ def change_stage1(self, index: int = 0, cancel: bool = False) -> bool:
             logger.info("换卡阶段 1：第 %d 列的候选角标没找到（找到 %d 个），等下一帧", index, len(marks))
         else:
             logger.info("换卡阶段 1：候选卡还没出现，等入场动画")
-        time.sleep(CHANGE_POLL)
+        _sleep(CHANGE_POLL)
     logger.warning("换卡阶段 1：%.0fs 内没进入阶段 2，交回主循环", CHANGE_STAGE_TIMEOUT)
     return False
 
@@ -199,7 +199,7 @@ def pick_change_target(cards: list[dict], index: int = 0, card_id: str | None = 
 
 
 def scan_dialog_deck(region: tuple[int, int, int, int], *, expected: int | None = None, shoot=None, swipe=None,
-                     sleep=time.sleep, max_screens: int | None = None) -> dict:  # fmt: skip
+                     sleep=_sleep, max_screens: int | None = None) -> dict:  # fmt: skip
     """选卡对话框（换卡阶段 2 / 删卡 / 强化）往下滑着读整副牌组，拼完滑回顶部。
     返回 {cards（整副，index = 牌组序号 deck_index）, complete, screens, problems}；一屏放得下时 screens=1、cards 就是这一屏。
     complete=False（拼接对不上 / 张数与记账差太多）时 cards 仍是拼出来的结果，调用方不要当整副用。"""
@@ -264,7 +264,7 @@ def _change_run():
 
     if getattr(_change_run, "run", None) is None or time.monotonic() - _change_run.t > 60:
         _change_run.run = Run(Action(ActionKind.CONTINUE, {"skill_card_change": True}), "SKILL_CARD_CHANGE", device.screenshot,
-                              device.click, time.monotonic, time.sleep, label="换卡", calib=True)  # fmt: skip
+                              device.click, time.monotonic, _sleep, label="换卡", calib=True)  # fmt: skip
     _change_run.t = time.monotonic()
     return _change_run.run
 
@@ -307,7 +307,7 @@ def change_stage2(self, index: int = 0, card_id: str | None = None, cancel: bool
         dialog = read_card_dialog(img, CHANGE2_CARD_AREA)
         if dialog["cards"]:
             break
-        time.sleep(CHANGE_POLL)
+        _sleep(CHANGE_POLL)
     run.snap(img, "stage2-deck")
     target, why = (None, "决策判定不换") if cancel else pick_change_target(dialog["cards"], index, card_id, remove_index=remove_index,
                                                                          remove_upgrade=remove_upgrade)  # fmt: skip
@@ -330,7 +330,7 @@ def change_stage2(self, index: int = 0, card_id: str | None = None, cancel: bool
                 seen = None
                 for _ in range(CARD_OP_MAX_SCREENS):
                     _dialog_swipe(CHANGE2_CARD_AREA, down, swipe)
-                    time.sleep(CARD_OP_SCROLL_SETTLE)
+                    _sleep(CARD_OP_SCROLL_SETTLE)
                     img = device.screenshot()
                     dialog = read_card_dialog(img, CHANGE2_CARD_AREA)
                     target, why = pick_change_target(dialog["cards"], index, card_id, remove_upgrade=remove_upgrade)
@@ -349,11 +349,11 @@ def change_stage2(self, index: int = 0, card_id: str | None = None, cancel: bool
             _STAGE2_CANCELS[key] = _STAGE2_CANCELS.get(key, 0) + 1
         logger.warning("换卡阶段 2：%s，不换，点「キャンセル」（卡格 %s）", why, [c.get("name") for c in dialog["cards"]])
         device.click(*CHANGE_CANCEL_TAP)
-        time.sleep(CHANGE_POLL)
+        _sleep(CHANGE_POLL)
         run.snap(device.screenshot(), "stage2-cancel")
         return False
     device.click(*target["center"])
-    time.sleep(CHANGE_POLL)
+    _sleep(CHANGE_POLL)
     picked = read_card_dialog(device.screenshot(), CHANGE2_CARD_AREA)
     run.snap(device.screenshot(), "stage2-picked")
     sel = picked.get("selected_card") or {}
@@ -367,7 +367,7 @@ def change_stage2(self, index: int = 0, card_id: str | None = None, cancel: bool
     deadline = time.monotonic() + CHANGE_STAGE_TIMEOUT
     gone = 0
     while time.monotonic() < deadline:
-        time.sleep(CHANGE_POLL)
+        _sleep(CHANGE_POLL)
         img = device.screenshot()
         if confirm_change_dialog(img, run):
             gone = 0
@@ -428,7 +428,7 @@ def confirm_change_dialog(img, run=None) -> bool:
         return False
 
 
-def _card_op(kind: str, card_id: str | None, *, shoot=None, click=None, clock=time.monotonic, sleep=time.sleep, ocr=None,
+def _card_op(kind: str, card_id: str | None, *, shoot=None, click=None, clock=time.monotonic, sleep=_sleep, ocr=None,
              calib: bool = True, choose=None, swipe=None, expected_size: int | None = None) -> bool:
     """全屏选卡页（删卡 / 强化）：read_card_dialog 定位 card_id → 点卡 → 核对选中 → 点「削除 / 強化」→（确认框）→ 页面关闭。
 
@@ -622,7 +622,7 @@ def acquire_lit(img, base_val: float | None = None) -> bool:
     return orange_lit(img, PITEM_ACQUIRE_BTN, base_val)
 
 
-def pitem_commit(self, index: int, *, shoot=None, click=None, clock=time.monotonic, sleep=time.sleep) -> bool:
+def pitem_commit(self, index: int, *, shoot=None, click=None, clock=time.monotonic, sleep=_sleep) -> bool:
     """H.I.F P 道具三选一：点第 index 个背包 → 等「受け取る」变亮 → 点它 → 等按钮消失。成功返回 True，点不动返回 False。"""
     from hiro.produce.ops import wait_change
 
@@ -668,7 +668,6 @@ def drink_select_can_skip(img) -> bool:
 
 def drink_select_commit(index: int | None, *, sleep=None) -> bool:
     """选第 index 瓶并「受け取る」；index=None 不拿（点「受け取らない」再点按钮）。同 KAA DrinkSelectContext.commit。返回是否做完。"""
-    from hiro.devices.active import sleep as _sleep
     from hiro.vision.ocr import Box
     from hiro.vision.ui_templates import tpl
 
@@ -707,7 +706,6 @@ CARD_SELECT_MAX_TRIES = 8  # KAA 的循环没有上限
 
 def card_select_commit(rect, *, sleep=None) -> bool:
     """点卡（字母框中心），「受け取る」还灰就点它再等 2 秒，直到按钮不再是灰的（同 KAA CardSelectContext.commit）。返回是否做完。"""
-    from hiro.devices.active import sleep as _sleep
     from hiro.vision.ui_templates import tpl
 
     sleep = sleep or _sleep

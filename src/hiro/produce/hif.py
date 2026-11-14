@@ -278,8 +278,8 @@ class HifCore:
                 if self.s.state.page_fields.get("cards"):
                     break
                 # 续跑 / 定制后停在菜单页或提示上（q12-r1：菜单页读不到卡格，决策判「卡未识别」直接结束，少做一次定制）：先退回一览
-                if not sg._to_grid(sg._runner(None, None, None, time.monotonic, time.sleep, None, True), tries=3):
-                    time.sleep(1.0)
+                if not sg._to_grid(sg._runner(None, None, None, time.monotonic, sleep, None, True), tries=3):
+                    sleep(1.0)
             if o is not None and (gone := self.s.left_page("SPECIAL_GUIDANCE", o, ("cards",))) is not None:
                 logger.warning("特別指導：画面已经是 %s，退出定制循环", gone)
                 return True
@@ -1046,7 +1046,7 @@ class HifCore:
                 o = self.s.observe(scene=page)
                 if self.s.state.page_fields.get("cards"):
                     break
-                time.sleep(0.5)
+                sleep(0.5)
             self._scan_change_deck(card_ops.CARD_OP_REGION[kind], page)  # 一屏放不下时读整副交给决策（执行按 card_id 翻屏找）
             pf = self.s.state.page_fields
             cards = [c for c in pf.get("cards") or [] if c.get("card_id") not in failed] if failed else pf.get("cards")
@@ -1064,7 +1064,7 @@ class HifCore:
                 break
             # 必选页（没有キャンセル）卡格没读到 / 认出的都不能强化：决策等重新识别（D42），重读再决策，不盲选
             self.s.record(obs, decision=d)
-            time.sleep(self.CARD_WAIT_INTERVAL)
+            sleep(self.CARD_WAIT_INTERVAL)
             obs, cancelable = read()
             d = self.deciders.decide(page, self.s.state)
         if d.action.kind is ActionKind.WAIT:
@@ -1190,7 +1190,7 @@ class HifCore:
                     break
                 if attempt < self.CHANGE1_DECIDE_RETRIES:
                     self.s.record(obs, decision=d, timings_ms={"total": (time.monotonic() - t0) * 1000})
-                    time.sleep(self.CHANGE1_DECIDE_WAIT)
+                    sleep(self.CHANGE1_DECIDE_WAIT)
             args = d.action.args if d.action.kind is ActionKind.CHANGE_CARD else {}
             cancel = bool(args.get("cancel"))
             pick = int(args.get("pick_index") or 0)
@@ -1212,12 +1212,12 @@ class HifCore:
             except Exception:  # 没有设备（离线测试）等：无法核对，照常读
                 now = "unknown"
             if now not in ("SKILL_CARD_CHANGE_2", "unknown"):
-                time.sleep(0.5)
+                sleep(0.5)
                 continue
             obs = self.s.observe(scene="SKILL_CARD_CHANGE_2")
             if self.s.state.page_fields.get("cards"):
                 break
-            time.sleep(0.5)
+            sleep(0.5)
         else:
             obs = self.s.observe(scene="SKILL_CARD_CHANGE_2", fields=False)
         if not self.s.state.page_fields.get("cards"):
@@ -1236,7 +1236,7 @@ class HifCore:
                 self.s.record(obs, execution=replace(result, ok=True), timings_ms={"total": (time.monotonic() - t0) * 1000})
                 return
             for _ in range(self.CHANGE_EMPTY_REREADS):
-                time.sleep(1.0)
+                sleep(1.0)
                 obs = self.s.observe(scene="SKILL_CARD_CHANGE_2")
                 if self.s.state.page_fields.get("cards"):
                     break
@@ -1542,7 +1542,7 @@ class HifCore:
 
     EXAM_SCENE_SETTLE_S = 6.0  # 本战流程里考试开头认不出 HIF_EXAM 时，再看这么久才当成レッスン
 
-    def _settle_exam_scene(self, scene: str, *, clock=time.monotonic, sleep=time.sleep) -> str:
+    def _settle_exam_scene(self, scene: str, *, clock=time.monotonic, sleep=sleep) -> str:
         """考试刚开始的过场里 classify_current 认不出：本战流程再连看几秒，认出 HIF_EXAM 就用它（截图快的后端更容易撞上）。"""
         from hiro.vision.scene import classify_current
 

@@ -19,6 +19,8 @@ import numpy as np
 
 import logging
 
+from hiro.devices.active import sleep as _sleep
+
 logger = logging.getLogger(__name__)
 
 ENABLED_ENV = "HIRO_EXAM_SCHEDULE_PROBE"
@@ -63,7 +65,7 @@ def probe(
     log: Callable[..., object] | None = None,
     note: Callable[[str], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
 ) -> dict:
     """点开审查日程、存帧、关掉，返回 {opened, closed, close_by, open_ms, close_ms, total_ms, texts}。关不掉抛 ResumeBlocked。"""
     from hiro.loop.errors import ResumeBlocked

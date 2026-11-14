@@ -107,7 +107,7 @@ def test_pick_once_scans_all_then_picks_best(monkeypatch):
     monkeypatch.setattr(rental, "device", Dev())
     monkeypatch.setattr(rental, "_ensure_plan_fit", lambda: None)
     monkeypatch.setattr(rental, "progress", lambda why: None)
-    monkeypatch.setattr(rental.time, "sleep", lambda s: None)
+    monkeypatch.setattr(rental, "_sleep", lambda s: None)
     monkeypatch.setattr(rental, "_rows", lambda: {"rows": screens[state["screen"]], "controls": {"decide": [497, 1157]},
                                                     "pager": {"page": 1, "pages": 1}})  # fmt: skip
     assert rental._pick_once("Da", set(), score) == best["support_card_id"]
