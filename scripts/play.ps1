@@ -13,6 +13,7 @@
 #   -SupportSet / -MemorySet  支援卡 / 回忆编成号（缺省 4 / 5，见 AGENTS.md「开局编成」）
 #   -Device      HIRO_DEVICE（缺省 mumu；也可 adb / leidian / dmm）。dmm = DMM 版：游戏以管理员身份运行，
 #                本脚本会自己申请管理员权限（弹一次 UAC）后在新窗口里开局；先关掉 localify 一类改界面文字的插件
+#   -Runtime     kaa（缺省，KAA 主循环）/ own（新主循环 hiro.runtime，不用 KAA；-Device dmm 时设备走 MaaFramework，要先装 maafw）
 #   -Llm         HIRO_LLM（缺省 codex；用 Claude Code 写 claude:sonnet）
 #   -Proxy       给 LLM 调用设 HTTPS_PROXY / HTTP_PROXY（国内网络通常要）
 #   -Relaunch    游戏被杀 / 闪退时自己拉起、回首页续跑（HIRO_RELAUNCH_GAME=1；缺省关，关着时讲清原因停下）
@@ -39,6 +40,7 @@ param(
     [string]$SupportSet = "4",
     [string]$MemorySet = "5",
     [ValidateSet("mumu", "adb", "leidian", "dmm")][string]$Device = "mumu",
+    [ValidateSet("kaa", "own")][string]$Runtime = "kaa",
     [string]$Llm = "codex",
     [string]$Proxy = "",
     [switch]$Relaunch,
@@ -69,6 +71,7 @@ if (-not (Test-Path $Py)) { throw "没有 .venv：先跑 scripts\setup.ps1" }
 
 $env:PYTHONPATH = "src"; $env:PYTHONUTF8 = "1"; $env:PYTHONIOENCODING = "utf-8"
 $env:HIRO_DEVICE = $Device
+$env:HIRO_RUNTIME = $Runtime  # own = 新主循环（hiro.runtime）；以参数传而不是外面设环境变量：DMM 提权重开（RunAs）带不过环境变量
 if ($Device -eq "mumu" -and -not $env:HIRO_SCREENSHOT) { $env:HIRO_SCREENSHOT = "adb" }
 # DMM 版截图很快（PrintWindow 约 0.19s），考试稳帧 3 次读数不到 1 秒，会在两段动画之间判稳、回合没切完就决策：要求一致读数持续 1.5s
 if ($Device -eq "dmm" -and -not $env:HIRO_SETTLE_MIN_S) { $env:HIRO_SETTLE_MIN_S = "1.5" }
