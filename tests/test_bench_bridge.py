@@ -704,3 +704,15 @@ def test_tower_formation_idol_falls_back_to_tower_loadout(monkeypatch, tmp_path)
     monkeypatch.setenv("HIRO_TOWER_LOADOUT", str(p))
     assert _tower_idol("tower_001-ttmr", 15) == "i_card-ttmr-2-000"
     assert _tower_idol("tower_001-ttmr", 16) is None
+
+
+def test_tower_gnrpa_warm_start_default_on(monkeypatch):
+    """协调 11-15 批：偶像之路 GNRPA 缺省跨步热启动（warm=2）。"""
+    import sys
+    import types
+
+    from hiro.search import tower_algo as ta
+
+    monkeypatch.setitem(sys.modules, "gakumas_exam_rs", types.SimpleNamespace(search=None, plan_many=None))
+    assert ta.TowerGnrpa().warm == ta.WARM == 2.0
+    assert ta.TowerGnrpa(warm=0).warm == 0.0

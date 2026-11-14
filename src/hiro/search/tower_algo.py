@@ -14,11 +14,17 @@ from __future__ import annotations
 
 import collections
 import json
+import logging
 import random
 import time
 from dataclasses import dataclass, field
 
+logger = logging.getLogger("hiro.search.tower")
 
+
+# 跨步热启动强度（协调 11-15 批）：bench 同题同种子每步 5 秒，26 层三星 2/8 → 5/8、均分 38.2 万 → 51.4 万（8 局逐局都高），
+# 27 层三星 2/8 → 2/8、均分 101.8 万 → 104.0 万（不降）。0 = 关
+WARM = 2.0
 STEP_SECONDS = 5.0  # 每步搜索秒数（用户 11-14 定 5 秒）；ctx.budget 有就用它
 
 
@@ -53,7 +59,7 @@ class TowerGnrpa:
     needs_gkms = False
     sees_seed = False
 
-    def __init__(self, seconds: float | None = None, worlds: int = 8, threads: int = 0, warm: float = 0.0, greedy: float = 0.0, **params):
+    def __init__(self, seconds: float | None = None, worlds: int = 8, threads: int = 0, warm: float = WARM, greedy: float = 0.0, **params):
         try:
             import gakumas_exam_rs as rs
         except ImportError as e:
@@ -168,8 +174,16 @@ class TowerGnrpa:
             extra["greedy"] = self.greedy
         if self.warm and self.policy:
             extra["prior"] = {k: v * self.warm for k, v in self.policy.items()}
-        r = rs.search(self.rx.clone(), self.prefix, free, worlds=self.worlds, seconds=max(0.2, secs - 0.3), threads=self.threads,
-                      seed=int(time.time()) & 0xFFFFFFFF, **self.obj, **extra)  # fmt: skip
+        kw = dict(worlds=self.worlds, seconds=max(0.2, secs - 0.3), threads=self.threads, seed=int(time.time()) & 0xFFFFFFFF, **self.obj)
+        try:
+            r = rs.search(self.rx.clone(), self.prefix, free, **kw, **extra)
+        except TypeError as e:  # 旧 Rust 包不认 prior / greedy：这一局关掉，照常搜
+            if not extra:
+                raise
+            logger.warning("Rust 后端不认 %s（%s），这一局关掉热启动 / 先验", sorted(extra), e)
+            self.warm = self.greedy = 0.0
+            self.stats["no_prior"] += 1
+            r = rs.search(self.rx.clone(), self.prefix, free, **kw)
         self.policy = r.get("policy") or {}
         best = tuple(r["best"]) if r.get("best") else ("end",)
         if legal and best not in legal:
