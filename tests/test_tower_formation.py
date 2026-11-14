@@ -165,3 +165,20 @@ def test_hard_filter_drops_decks_with_too_many_lost_ssr(monkeypatch):
     monkeypatch.setattr(ProduceDeciders, "TOWER_EVAL", staticmethod(_eval({"0": 300000, "1": 900000, "2": 450000, "3": 200000})))
     d = ProduceDeciders(CAMPUS_HIRO, None).decide("TOWER_FORMATION", _state())
     assert d.action.args["main"] == 2 and "筛掉 1 个编成" in d.reason  # 分数最高的 1 号被筛掉
+
+
+def test_current_formation_uses_shown_bonus(monkeypatch):
+    """回忆选择页没接上之前只给当前编成一组：倍率 / 体力按编成页画面读到的，选它，直接挑战。"""
+    seen = []
+
+    def run(loadouts, seeds, **kw):
+        seen.extend(lo["score_bonus_permils"] for lo in loadouts)
+        return [[{"score": 520000, "first": True, "stars": 3}] * len(seeds) for _ in loadouts]
+
+    monkeypatch.setattr(ProduceDeciders, "TOWER_EVAL", staticmethod(run))
+    st = _state(1)
+    st.page_fields["candidates"][0]["current"] = True
+    st.page_fields.update(shown_bonus=[23090, 11980, 2600], shown_stamina=46)
+    d = ProduceDeciders(CAMPUS_HIRO, None).decide("TOWER_FORMATION", st)
+    assert d.action.args["main"] == 0 and d.source == "sim" and seen[0] == [23090, 11980, 2600]
+    assert "倍率按画面" in d.reason
