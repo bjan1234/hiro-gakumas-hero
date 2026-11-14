@@ -152,3 +152,16 @@ def test_condition_rate_breaks_tie_when_uinet_never_gets_three_stars(monkeypatch
     monkeypatch.setattr(ProduceDeciders, "TOWER_EVAL", staticmethod(run))
     d = ProduceDeciders(CAMPUS_HIRO, None).decide("TOWER_FORMATION", _state())
     assert d.action.args["main"] == 2, d.reason
+
+
+def test_hard_filter_drops_decks_with_too_many_lost_ssr(monkeypatch):
+    """27 层式「除外 SSR ≤ 5」：牌组里打出即除外的 SSR 超过 5 张的编成不进模拟（协调 11-14）。"""
+    from hiro.bench_bridge import tower as tw
+    from hiro.brain import tower as tf
+
+    lex = dict(LEX, star_conditions=[{"text": "除外 SSR ≤ 5", "field": "lost_ssr", "op": "<=", "value": 5}])
+    monkeypatch.setattr(tw, "layer_exam", lambda t, l, m=None: dict(lex))
+    monkeypatch.setattr(tf, "lost_ssr_count", lambda deck: 8 if deck[0].endswith("1") else 3)  # 1 号牌组 8 张
+    monkeypatch.setattr(ProduceDeciders, "TOWER_EVAL", staticmethod(_eval({"0": 300000, "1": 900000, "2": 450000, "3": 200000})))
+    d = ProduceDeciders(CAMPUS_HIRO, None).decide("TOWER_FORMATION", _state())
+    assert d.action.args["main"] == 2 and "筛掉 1 个编成" in d.reason  # 分数最高的 1 号被筛掉
