@@ -134,13 +134,18 @@ pub struct Params {
     pub end_bias: f64,
     /// 一次续打最多走几步（防死循环）
     pub max_steps: usize,
+    /// 眼前得分先验的权重（0 = 关）：每个候选加 greedy × 这一手的即时得分增量 / 本步候选里最大的增量。
+    /// 增量按动作编码在每个世界里缓存（第一次遇到时 clone 走一步算），续打不会慢几倍。
+    pub greedy: f64,
+    /// 初始策略（跨步热启动：上一步各世界最好路线学到的权重，按动作编码；空 = 从零开始）。每个世界第一轮从它起，之后的轮从零起。
+    pub prior: std::sync::Arc<Policy>,
     /// 终局目标（缺省 = 分数）
     pub obj: Objective,
 }
 
 impl Default for Params {
     fn default() -> Self {
-        Params { level: 2, iterations: 60, alpha: 1.0, temperature: 1.0, end_bias: -1.0, max_steps: 600, obj: Objective::default() }
+        Params { level: 2, iterations: 60, alpha: 1.0, temperature: 1.0, end_bias: -1.0, max_steps: 600, greedy: 0.0, prior: Default::default(), obj: Objective::default() }
     }
 }
 
@@ -178,9 +183,32 @@ pub struct Line {
     steps: Vec<(Vec<u64>, Vec<f64>, usize)>,
 }
 
-type Policy = FxHashMap<u64, f64>;
+pub type Policy = FxHashMap<u64, f64>;
 
-fn playout(root: &Exam, pol: &Policy, p: &Params, rng: &mut Rng) -> Line {
+/// 一个世界里跨续打共用的东西：续打次数、眼前得分增量的缓存（按动作编码）。
+#[derive(Default)]
+pub struct Run {
+    pub playouts: u64,
+    gain: FxHashMap<u64, f64>,
+}
+
+fn gain(ex: &Exam, a: Action, c: u64, run: &mut Run) -> f64 {
+    if let Some(&g) = run.gain.get(&c) {
+        return g;
+    }
+    let g = match a {
+        Action::End => 0.0,
+        _ => {
+            let mut x = ex.clone();
+            x.step(a);
+            (x.score - ex.score).max(0) as f64
+        }
+    };
+    run.gain.insert(c, g);
+    g
+}
+
+fn playout(root: &Exam, pol: &Policy, p: &Params, rng: &mut Rng, run: &mut Run) -> Line {
     let mut ex = root.clone();
     let mut line = Line::default();
     let mut probs: Vec<f64> = vec![];
@@ -194,7 +222,16 @@ fn playout(root: &Exam, pol: &Policy, p: &Params, rng: &mut Rng) -> Line {
             break;
         }
         let codes: Vec<u64> = acts.iter().map(|&a| code(&ex, a)).collect();
-        let bs: Vec<f64> = acts.iter().map(|&a| bias(a, p, acts.len())).collect();
+        let mut bs: Vec<f64> = acts.iter().map(|&a| bias(a, p, acts.len())).collect();
+        if p.greedy != 0.0 && acts.len() > 1 {
+            let gs: Vec<f64> = acts.iter().zip(&codes).map(|(&a, &c)| gain(&ex, a, c, run)).collect();
+            let mx = gs.iter().cloned().fold(0.0, f64::max);
+            if mx > 0.0 {
+                for (b, g) in bs.iter_mut().zip(&gs) {
+                    *b += p.greedy * g / mx;
+                }
+            }
+        }
         probs.clear();
         let mut mx = f64::NEG_INFINITY;
         for (c, b) in codes.iter().zip(&bs) {
@@ -250,15 +287,15 @@ fn adapt(pol: &Policy, best: &Line, p: &Params) -> Policy {
 }
 
 /// 嵌套搜索；到 deadline 就返回目前最好的路线。
-pub fn gnrpa(root: &Exam, level: u32, pol: &Policy, p: &Params, rng: &mut Rng, deadline: Instant, playouts: &mut u64) -> Line {
+pub fn gnrpa(root: &Exam, level: u32, pol: &Policy, p: &Params, rng: &mut Rng, deadline: Instant, run: &mut Run) -> Line {
     if level == 0 {
-        *playouts += 1;
-        return playout(root, pol, p, rng);
+        run.playouts += 1;
+        return playout(root, pol, p, rng, run);
     }
     let mut best = Line { score: i64::MIN, ..Default::default() };
     let mut pol = pol.clone();
     for _ in 0..p.iterations {
-        let r = gnrpa(root, level - 1, &pol, p, rng, deadline, playouts);
+        let r = gnrpa(root, level - 1, &pol, p, rng, deadline, run);
         if r.score >= best.score {
             best = r;
         }
@@ -279,6 +316,8 @@ pub struct WorldResult {
     pub raw: i64,
     pub stars: i64,
     pub playouts: u64,
+    /// 这个世界最好路线调出来的权重（从零 adapt 一次；search 平均成下一步的 prior）
+    pub policy: Policy,
     /// 顶层至少跑完了一整轮（false = 第一轮就被时间截断，路线没充分搜）
     pub complete: bool,
 }
@@ -290,13 +329,15 @@ pub struct SearchResult {
     pub votes: Vec<(Action, usize, f64)>,
     pub worlds: Vec<WorldResult>,
     pub elapsed: Duration,
+    /// 各世界 policy 的平均（下一步热启动用）
+    pub policy: Policy,
 }
 
 fn run_world(w: Exam, p: &Params, seed: u64, deadline: Instant) -> WorldResult {
     let mut rng = Rng::new(seed.wrapping_mul(0x2545_F491_4F6C_DD1D));
-    let mut n = 0u64;
+    let mut n = Run::default();
     // 顶层跑完一轮还有时间：从空策略重新跑一轮（换随机数），留最好的路线（预算用满，不提前交卷）
-    let mut best = gnrpa(&w, p.level, &Policy::default(), p, &mut rng, deadline, &mut n);
+    let mut best = gnrpa(&w, p.level, &p.prior, p, &mut rng, deadline, &mut n);
     let mut rounds = 1;
     while Instant::now() < deadline {
         let r = gnrpa(&w, p.level, &Policy::default(), p, &mut rng, deadline, &mut n);
@@ -305,7 +346,8 @@ fn run_world(w: Exam, p: &Params, seed: u64, deadline: Instant) -> WorldResult {
         }
         rounds += 1;
     }
-    WorldResult { first: best.first, score: best.score, raw: best.raw, stars: best.stars, playouts: n, complete: rounds > 1 }
+    let policy = adapt(&Policy::default(), &best, p);
+    WorldResult { first: best.first, score: best.score, raw: best.raw, stars: best.stars, playouts: n.playouts, policy, complete: rounds > 1 }
 }
 
 /// W 个世界并行各跑 GNRPA，第一手投票。threads = 0 时用「CPU 核数 − 1」（至少 1）。
@@ -317,7 +359,7 @@ pub fn search(ex: &Exam, hidden: &Hidden, worlds: usize, seconds: f64, threads: 
     root.advance();
     if root.ended || root.legal_actions().len() <= 1 {
         let only = if root.ended { None } else { root.legal_actions().first().copied() };
-        return SearchResult { best: only, votes: only.map(|a| vec![(a, 0, 0.0)]).unwrap_or_default(), worlds: vec![], elapsed: t0.elapsed() };
+        return SearchResult { best: only, votes: only.map(|a| vec![(a, 0, 0.0)]).unwrap_or_default(), worlds: vec![], elapsed: t0.elapsed(), policy: Policy::default() };
     }
     let threads = if threads == 0 {
         std::thread::available_parallelism().map(|n| n.get().saturating_sub(1)).unwrap_or(1).max(1)
@@ -373,7 +415,14 @@ pub fn search(ex: &Exam, hidden: &Hidden, worlds: usize, seconds: f64, threads: 
         }
     }
     tally.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal)));
-    SearchResult { best: tally.first().map(|t| t.0), votes: tally, worlds, elapsed: t0.elapsed() }
+    let mut policy = Policy::default();
+    let nw = worlds.len().max(1) as f64;
+    for w in &worlds {
+        for (c, v) in &w.policy {
+            *policy.entry(*c).or_insert(0.0) += v / nw;
+        }
+    }
+    SearchResult { best: tally.first().map(|t| t.0), votes: tally, worlds, elapsed: t0.elapsed(), policy }
 }
 
 
@@ -404,7 +453,7 @@ pub fn plan_many(exams: Vec<Exam>, seconds: f64, threads: usize, seed: u64, p: &
                         .into_iter()
                         .map(|(i, ex)| {
                             let w = if ex.ended {
-                                WorldResult { first: None, score: p.obj.value(&ex), raw: ex.score, stars: p.obj.stars(&ex), playouts: 0, complete: true }
+                                WorldResult { first: None, score: p.obj.value(&ex), raw: ex.score, stars: p.obj.stars(&ex), playouts: 0, policy: Policy::default(), complete: true }
                             } else {
                                 run_world(ex, &p, seed ^ ((i as u64) << 24), Instant::now() + Duration::from_secs_f64(seconds.max(0.0)))
                             };
