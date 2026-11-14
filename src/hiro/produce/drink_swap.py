@@ -459,16 +459,34 @@ def discard_then_receive(
 
 
 def skip_incoming(*, sleep_s=_sleep) -> bool:
-    """饮料满、决策是不要新饮料：「Pドリンク所持上限」标题连认两帧 →「離れる」没亮就先勾一个没勾的选框 → 点亮着的「離れる」
+    """饮料满、决策是不要新饮料：确认在溢出页（连认两帧）→「離れる」/「残す」没亮就先勾一个没勾的选框 → 点亮着的那个按钮
     （替代 KAA ProduceInterrupt._check_pdrink_max；KAA 用彩色直方图找没勾的框，这里灰度找框后按橙色占比判有没有勾，
-    同 ui_templates.checkbox_checked）。点了返回 True；随后的「報酬スキップ」确认由 on_pdrink_max_confirm 放行。"""
+    同 ui_templates.checkbox_checked）。点了返回 True；随后的「報酬スキップ」确认由 on_pdrink_max_confirm 放行。
+
+    按钮模板 InProduce.ButtonLeave 也认得「残す」（同一个箭头按钮）：持有全勾、「あと0個選択」时点它 = 留下持有、不收新饮料。
+    认页面：标题「Pドリンク所持上限」模板，或 OCR 读到「手持ち」小标题——列表滚下去时标题不在画面里（Mac h9 11-15：
+    标题模板 0.33，三次都没认出页面就停机）。读到「手持ち」时另外核对新饮料一行都没勾（勾了再点「残す」会丢持有的饮料）。"""
+    from hiro.produce.ops import ocr_boxes
     from hiro.vision.ui_templates import checkbox_checked, find_enabled, tpl
 
+    def on_page(im) -> tuple[bool, tuple | None]:
+        header = find_text(ocr_boxes(im), OVERFLOW_HEADER)
+        return header is not None or tpl("InProduce.TextPDrinkMax").exists(im), header
+
     img = device.screenshot()
-    if not tpl("InProduce.TextPDrinkMax").exists(img):
+    if tpl("InProduce.TextPDrinkMaxConfirmTitle").exists(img):
+        # 「報酬スキップ」确认已经弹出来了：上一次已经点过「残す」/「離れる」（Mac h8 11-15：点完下一拍还把过渡帧判成 PDRINK_MAX，
+        # 处理器又跑一遍，找不到按钮 3 次后停机）。当作已跳过，确认框交给 on_pdrink_max_confirm
+        logger.info("饮料满：「報酬スキップ」确认已经弹出，当作已点过")
+        return True
+    if not on_page(img)[0]:
         return False
     img = device.screenshot()  # 再认一帧：对话框可能正在退出
-    if not tpl("InProduce.TextPDrinkMax").exists(img):
+    ok, header = on_page(img)
+    if not ok:
+        return False
+    if header is not None and any(on for y, on in checkboxes(img) if y < header[1]):
+        logger.warning("饮料满：不要新饮料，但新饮料那一行是勾着的，不点「残す」（会丢持有的饮料）")
         return False
     if find_enabled("InProduce.ButtonLeave", img) is None:
         chk = next((m for m in tpl("Common.CheckboxUnchecked").find_all(img) if checkbox_checked(img, m) is False), None)
@@ -478,7 +496,7 @@ def skip_incoming(*, sleep_s=_sleep) -> bool:
             img = device.screenshot()
     if (leave := find_enabled("InProduce.ButtonLeave", img)) is not None:
         device.click(*leave.rect.center)
-        logger.info("饮料满：不要新饮料，点「離れる」")
+        logger.info("饮料满：不要新饮料，点「離れる」/「残す」（留下持有的）")
         return True
     return False
 

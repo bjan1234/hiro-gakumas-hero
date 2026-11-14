@@ -25,6 +25,7 @@ def _rig(monkeypatch, module, frames, on_tap):
             cur["f"] = nxt
 
     monkeypatch.setattr(module, "device", NS(screenshot=lambda: cur["f"], click=click))
+    monkeypatch.setattr("hiro.produce.ops.ocr_boxes", lambda img: [])  # 打桩帧不是图：OCR 读不到「手持ち」，按模板认页
     monkeypatch.setattr(ut, "tpl", tpl)
     if hasattr(module, "tpl"):
         monkeypatch.setattr(module, "tpl", tpl)
@@ -60,3 +61,34 @@ def test_end_interval_times_out(monkeypatch):
     monkeypatch.setattr(interval_exit, "sleep", lambda s: t.__setitem__("now", t["now"] + s))
     assert interval_exit.end_interval(timeout=3, clock=lambda: t["now"]) is False
     assert set(taps) == {interval_exit.BLANK_TAP}
+
+
+
+def _real(name):
+    import os
+    from pathlib import Path
+
+    import cv2
+    import pytest
+
+    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / name
+    if not path.exists():
+        pytest.skip(f"需要实机截图 pages/{name}")
+    return cv2.resize(cv2.imread(str(path)), (720, 1280))
+
+
+def test_skip_incoming_taps_keep_when_held_all_checked(monkeypatch):
+    """Mac h8 #1724：没有「離れる」，持有两瓶都勾着、「残す」亮着、「あと0個選択」：点「残す」= 留持有、不收新饮料。"""
+    img = _real("pdrink-max-keep-lit-h8.jpg")
+    taps = []
+    monkeypatch.setattr(drink_swap, "device", NS(screenshot=lambda: img, click=lambda x, y: taps.append((x, y))))
+    assert drink_swap.skip_incoming(sleep_s=lambda s: None) is True
+    assert len(taps) == 1 and abs(taps[0][1] - 1160) < 15 and 250 < taps[0][0] < 420
+
+
+def test_skip_incoming_when_reward_skip_already_open(monkeypatch):
+    """Mac h8 #1726 / h9：点完「残す」后「報酬スキップ」已经弹出，处理器又被叫了一遍：当作已点过返回 True，不再点（原来 3 次找不到「離れる」停机）。"""
+    img = _real("reward-skip-confirm-h9.png")
+    taps = []
+    monkeypatch.setattr(drink_swap, "device", NS(screenshot=lambda: img, click=lambda x, y: taps.append((x, y))))
+    assert drink_swap.skip_incoming(sleep_s=lambda s: None) is True and taps == []
