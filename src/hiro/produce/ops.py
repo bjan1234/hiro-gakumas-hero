@@ -388,3 +388,25 @@ def fast_acquire(card_center, *, shoot=None, click=None, sleep=_sleep, clock=tim
             return True
     logger.info("三选一：点了「受け取る」%.0fs 后按钮还在", close_timeout)
     return True  # 已点过亮着的「受け取る」：交给调用方核对页面
+
+
+# ---------------------------------------------------------------- 选卡再抽選确认框
+REROLL_CONFIRM = ("再抽選する", "決定", "はい", "OK")
+REROLL_COST_WORDS = ("ジュエル",)  # 确认框上出现这些就点キャンセル（绝不用ジュエル）
+
+
+def _btn_norm(t: str) -> str:
+    import re
+
+    return re.sub(r"[^\u3040-\u30ff\u4e00-\u9fffA-Za-z0-9]", "", t)  # 按钮前的「→」「×」图标会和字连着读出来
+
+
+def reroll_confirm_action(texts) -> tuple[str, object, str | None] | None:
+    """「スキルカード再抽選確認」等再抽選确认框的文字（hiro.vision.ocr.Text，只看 y > 600）→ 该点什么：
+    ("cost", キャンセル 的框或 None, 消耗字样) / ("ok", 确认按钮的框, None) / None（这一帧没有确认按钮）。
+    「次回以降表示しない」不动（勾着第二次刷新照样弹，协调 11-14）。"""
+    texts = [t for t in texts if t.rect.center.y > 600]
+    if (cost := next((t.text for t in texts if any(w in t.text for w in REROLL_COST_WORDS)), None)) is not None:
+        return "cost", next((t for t in texts if "キャンセル" in t.text), None), cost
+    hit = next((t for t in texts if _btn_norm(t.text) in REROLL_CONFIRM), None)
+    return ("ok", hit, None) if hit is not None else None

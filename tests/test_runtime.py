@@ -356,3 +356,42 @@ def test_tutorial_card_taps_its_only_button(name, word):
         assert r is None and taps == []
     else:
         assert r == f"教程框：点「{word}」" and len(taps) == 1 and abs(taps[0][1] - 1160) < 10 and 300 < taps[0][0] < 430
+
+
+def test_reroll_confirm_interrupt_on_resume():
+    """续跑时「スキルカード再抽選確認」已经开着（上一个进程点了再抽選后停了）：中断层点「再抽選する」（协调 11-14，原来 181 秒停机）。
+    标题条被大号白字切成两段、只认出下半截时标题读空：往上多裁一截重读。"""
+    import os
+    from pathlib import Path
+    from types import SimpleNamespace as NS
+
+    import cv2
+
+    from hiro.runtime import interrupts
+    from hiro.runtime.frame import Frame
+
+    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "settings" / "reroll-confirm-acct2.png"
+    if not path.exists():
+        pytest.skip("需要实机截图 settings/reroll-confirm-acct2.png")
+    f = Frame(cv2.imread(str(path)), 0.0)
+    assert f.dialog["title"] == "スキルカード再抽選確認"
+    taps = []
+    assert "再抽選する" in interrupts.reroll_confirm(f, NS(device=NS(tap=lambda x, y: taps.append((x, y)))))
+    assert len(taps) == 1 and taps[0][0] > 380 and abs(taps[0][1] - 1160) < 15
+
+
+def test_reroll_confirm_interrupt_cost_cancels():
+    from types import SimpleNamespace as NS
+
+    from hiro.runtime import interrupts
+
+    def fr(texts):
+        return NS(has_dialog=True, dialog={"title": "スキルカード再抽選確認"}, texts=texts)
+
+    taps = []
+    rt = NS(device=NS(tap=lambda x, y: taps.append((x, y))))
+    cost = [T("ジュエルを30個消費します", 300, 760), T("キャンセル", 234, 1161), T("→ 再抽選する", 493, 1160)]
+    assert "キャンセル" in interrupts.reroll_confirm(fr(cost), rt) and taps == [(234, 1161)]
+    with pytest.raises(ResumeBlocked, match="キャンセル"):
+        interrupts.reroll_confirm(fr([T("ジュエルを30個消費します", 300, 760), T("→ 再抽選する", 493, 1160)]), rt)
+    assert interrupts.reroll_confirm(NS(has_dialog=True, dialog={"title": "再挑戦確認"}, texts=[]), rt) is None  # 别的确认框不管

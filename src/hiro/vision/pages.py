@@ -85,6 +85,9 @@ def _white_body(img: MatLike, y2: int) -> bool:
     return float(((hsv[:, :, 1] < 40) & (hsv[:, :, 2] > 225)).mean()) >= 0.6
 
 
+TITLE_RETRY_H, TITLE_RETRY_UP = 40, 40  # 标题条高度不到这么多、标题读空时，往上多裁这么多重读
+
+
 def _title_white(img: MatLike, y1: int, y2: int) -> bool:
     hsv = cv2.cvtColor(img[y1:y2, 40:320], cv2.COLOR_BGR2HSV)
     return ((hsv[:, :, 1] < 40) & (hsv[:, :, 2] > 235)).mean() >= TITLE_WHITE_MIN
@@ -105,6 +108,9 @@ def read_dialog(img: MatLike) -> dict | None:
         if not _title_white(img, y1, y2):
             continue  # 没有白色标题字：获得演出的金色名称栏、橙色背景的场景
         title = "".join(t for t, _ in ocr(img[max(0, y1 - 4) : y2 + 4, 20:560])).replace(" ", "")
+        if not title and y2 - y1 < TITLE_RETRY_H:
+            # 标题条被大号白字切成两段时只认出下半截（「スキルカード再抽選確認」：条 635–695，认出 670–695），字被裁掉读空：往上多裁一截再读
+            title = "".join(t for t, _ in ocr(img[max(0, y1 - TITLE_RETRY_UP) : y2 + 4, 20:560])).replace(" ", "")
         if not title:
             continue
         kind = next((k for key, k in DIALOG_KINDS if key in title), "other")
