@@ -420,3 +420,62 @@ def test_empty_crop_does_not_crash_main_loop(monkeypatch):
     if path.exists():
         monkeypatch.undo()
         pages.read_dialog(cv2.resize(cv2.imread(str(path)), (720, 1280)))  # 实机那一帧：不抛异常
+
+
+def _fake_session():
+    from types import SimpleNamespace as NS
+
+    rec = []
+    saved = []
+    sess = NS(recover=lambda kind, detail: rec.append((kind, detail)), observe=lambda **k: None,
+              trace=NS(next_seq=lambda: 7, save_frame=lambda seq, img: saved.append(seq) or f"frames/{seq:05d}.jpg"))  # fmt: skip
+    return sess, rec, saved
+
+
+def test_handler_exception_is_absorbed_then_stops_after_limit():
+    """总兜底（协调 11-15）：处理器 / 识别抛普通异常，这一拍按认不出处理、记 trace（带栈尾和帧）、继续；
+    中间成功一拍就重新计数；同一异常连续 ERROR_LIMIT 次才停机，写明原因。"""
+    from hiro.runtime import loop
+
+    sess, rec, saved = _fake_session()
+    boom = {"on": True}
+
+    def handler(rt, f, hit):
+        if boom["on"]:
+            raise ValueError("ssize.empty")
+        return DONE
+
+    rt, clock = runtime([frame()], classify=lambda img: PageHit("ACTION_SELECT", "pixel"), handlers={"ACTION_SELECT": handler}, session=sess)
+    for _ in range(loop.ERROR_LIMIT - 1):
+        assert rt.step() is STAY
+    assert len(rec) == loop.ERROR_LIMIT - 1 and rec[0][0] == "unhandled" and "ValueError" in rec[0][1] and "frames/00007.jpg" in rec[0][1]
+    boom["on"] = False
+    assert rt.step() is DONE  # 成功一拍：计数清零
+    boom["on"] = True
+    for _ in range(loop.ERROR_LIMIT - 1):
+        rt.step()
+    with pytest.raises(ResumeBlocked, match="连续 10 次"):
+        rt.step()
+
+
+def test_stop_class_exceptions_still_propagate():
+    from hiro.loop.date_change import DateChanged
+
+    for exc in (ResumeBlocked("停"), DateChanged("日付変更")):
+        def handler(rt, f, hit, exc=exc):
+            raise exc
+
+        rt, _ = runtime([frame()], classify=lambda img: PageHit("ACTION_SELECT", "pixel"), handlers={"ACTION_SELECT": handler})
+        with pytest.raises(type(exc)):
+            rt.step()
+
+
+def test_interrupt_exception_absorbed_in_tick():
+    sess, rec, _ = _fake_session()
+
+    def bad(f, rt):
+        raise IndexError("crop")
+
+    rt, _ = runtime([frame()], interrupts=(bad,), session=sess)
+    f, done = rt.tick()
+    assert done and "IndexError" in done and rec and "中断层" in rec[0][1]
