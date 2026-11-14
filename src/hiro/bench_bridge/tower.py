@@ -11,7 +11,10 @@
 低于审查基准的每项扣 0.25 − 参数 / 基准 × 0.15（扣分加总后乘到三项上），再 +1000 按 10 向上取整。
 2026-11-14 用 6 场实机开局（1 副 4 场、3 副 2 场）核过，6 场都对，且换别的系数 / 取整都对不上。
 
-过关：拿第 1 名，线 = 第 1 名对手 scoreMax + 1。三星条件另算（这里不管）。
+星：按名次给，★1 = 第 3 名、★2 = 第 2 名、★3 = 第 1 名（GKMS 按 10 局实机 Tower/ListLayers 抓包确认）；26、27 层的★3 另要
+通关时条件（主数据 ProduceExamTrigger 里 …-for_tower_stage<层> 的触发器，现在只有这两个：26「クリア時に低下状態が2個以上」、
+27「クリア時に除外にあるスキルカード(SSR)が5枚以下」）。对手的实际分数引擎不给、只有区间：名次保守算（超过对手 scoreMax
+才算赢过他），另给乐观值（超过 scoreMin 就算）。border = 第 1 名对手 scoreMax + 1。
 
 evaluate 要 gkbench（bench 的裁判）和 GKMS 引擎（本机克隆，见 gkbench.engine），开源包里没有 GKMS 时报错说明。
 """
@@ -64,9 +67,12 @@ class Master:
     def __init__(self, catalog=None, rows: dict | None = None):
         self._rows = rows
         if rows is None and catalog is None:
-            from gakumas_exam.catalog import Catalog
+            import importlib
 
-            import hiro.sim  # noqa: F401  把 vendor 里的考试引擎放进 sys.path
+            importlib.import_module(
+                "hiro.sim"
+            )  # 先把 vendor 里的考试引擎放进 sys.path（写成调用：import 排序不会把它挪到后面）
+            Catalog = importlib.import_module("gakumas_exam.catalog").Catalog
 
             catalog = Catalog()
         self.cat = catalog
@@ -126,6 +132,27 @@ class Master:
             ):
                 out[(m["tower"], m["mechanic"], int(m["stage"]))].append(r["id"])
         return {k: sorted(v) for k, v in out.items()}
+
+    @lru_cache(maxsize=1)  # noqa: B019
+    def _tower_triggers(self) -> dict:
+        out: dict = {}
+        for r in self.rows("ProduceExamTrigger"):
+            if m := re.search(r"-for_tower_stage(\d+)$", r.get("id", "")):
+                out.setdefault(int(m[1]), []).append(r)
+        return out
+
+    def tower_triggers(self, layer: int) -> list[dict]:
+        return list(self._tower_triggers().get(int(layer), ()))
+
+    def all_tower_triggers(self) -> list[dict]:
+        return [r for rows in self._tower_triggers().values() for r in rows]
+
+    @lru_cache(maxsize=1)  # noqa: B019
+    def _rarity(self) -> dict:
+        return {r["id"]: r.get("rarity") for r in self.rows("ProduceCard") if r.get("id")}
+
+    def card_rarity(self, card_id: str) -> str | None:
+        return self._rarity().get(card_id)
 
     def gimmick_variants(self, family: str, mechanic: str, layer: int) -> list[str]:
         theme = "exam_full_power" if mechanic == "exam_preservation" else mechanic  # 温存和全力共用一套时间表
@@ -188,6 +215,84 @@ def score_bonus_permils(battle_config_id: str, params: list[int], m: Master | No
     return [math.ceil((_interpolate(points, c, v) * factor + 1000) / 10.0) * 10 for c, v in zip(COLUMNS, params)]
 
 
+# ---------------------------------------------------------------- 星
+
+
+STAR_OF_PLACE = {1: 3, 2: 2, 3: 1}
+SSR = "ProduceCardRarity_Ssr"
+SEARCH_FIELDS = {"p_card_search-ssr-lost": "lost_ssr"}  # 触发器里的卡检索 → 局末状态字段
+
+
+def _names(v) -> list[str]:
+    return [x.get("name") if isinstance(x, dict) else x for x in v or ()]
+
+
+def parse_trigger(row: dict) -> dict:
+    """通关时条件的触发器 → {trigger, text, field, op, value}。只认「最后一回合结束时 + 低下状態个数 / 卡检索张数」两种，
+    其余 field 为 None（不认识就不判，记下来）。"""
+    text = "".join(d.get("text") or "" for d in row.get("produceDescriptions") or ())
+    out = {"trigger": row.get("id"), "text": text, "field": None, "op": None, "value": None}
+    types, values = _names(row.get("fieldStatusTypes")), list(row.get("fieldStatusValues") or ())
+    negate = "ProduceExamTriggerCheckType_Not" in _names(row.get("fieldStatusCheckTypes"))
+    searches = list(row.get("fieldStatusProduceCardSearchIds") or ())
+    if (
+        _names(row.get("phaseTypes")) != ["ProduceExamPhaseType_ExamEndTurn"]
+        or "ProduceExamFieldStatusType_RemainingTurn" not in types
+    ):
+        return out
+    rest = [(t, v) for t, v in zip(types, values) if t != "ProduceExamFieldStatusType_RemainingTurn"]
+    if len(rest) != 1 or int(values[types.index("ProduceExamFieldStatusType_RemainingTurn")]) != 1:
+        return out
+    kind, value = rest[0][0], int(rest[0][1])
+    if kind == "ProduceExamFieldStatusType_DebuffCountUp":
+        field = "debuffs"
+    elif kind == "ProduceExamFieldStatusType_CardSearchCountUp" and len(searches) == 1 and searches[0] in SEARCH_FIELDS:
+        field = SEARCH_FIELDS[searches[0]]
+    else:
+        return out
+    op, bound = ("<=", value - 1) if negate else (">=", value)
+    return {**out, "field": field, "op": op, "value": bound}
+
+
+def star_conditions(layer: int, m: Master | None = None) -> list[dict]:
+    """★3 在名次之外还要的通关时条件（没有就空表）。"""
+    return [parse_trigger(r) for r in (m or master()).tower_triggers(layer)]
+
+
+def condition_by_text(text: str, m: Master | None = None) -> dict | None:
+    """画面上读到的条件原文 → 条件（按触发器文案对；去掉空白比）。对不上返回 None。"""
+    key = re.sub(r"\s+", "", text or "")
+    for r in (m or master()).all_tower_triggers():
+        c = parse_trigger(r)
+        if re.sub(r"\s+", "", c["text"]) == key:
+            return c
+    return None
+
+
+def _place(score: int, rivals: list, *, optimistic: bool) -> int:
+    """名次：保守 = 1 + scoreMax ≥ 分数的对手数；乐观 = 1 + scoreMin > 分数的对手数。rivals 是 [[min, max], …]。"""
+    return 1 + sum(1 for lo, hi in rivals if (lo > score if optimistic else hi >= score))
+
+
+def judge(score: int, rivals: list, conditions: list[dict], state: dict) -> dict:
+    """一局的判定：{score, place, place_optimistic, first, stars, stars_optimistic, conditions: [{text, field, got, ok}]}。
+    state 是局末的 {debuffs, lost_ssr}。条件不认识（field None）或局末没读到时 ok=None，★3 不给（宁可少算）。"""
+    checks = []
+    for c in conditions:
+        got = state.get(c["field"]) if c.get("field") else None
+        ok = None if got is None else (got <= c["value"] if c["op"] == "<=" else got >= c["value"])
+        checks.append({"text": c["text"], "field": c.get("field"), "got": got, "ok": ok})
+    cond_ok = all(x["ok"] is True for x in checks)
+
+    def stars(place):
+        n = STAR_OF_PLACE.get(place, 0)
+        return 2 if n == 3 and not cond_ok else n  # 第 1 名但没满足条件：★2（GKMS 实测 27 层第 1 名给了 rank 2）
+
+    place, opt = _place(score, rivals, optimistic=False), _place(score, rivals, optimistic=True)
+    return {"score": int(score), "place": place, "place_optimistic": opt, "first": place == 1,
+            "stars": stars(place), "stars_optimistic": stars(opt), "conditions": checks}  # fmt: skip
+
+
 # ---------------------------------------------------------------- 层设置
 
 
@@ -209,6 +314,7 @@ def layer_mechanics(tower_id: str, layer: int) -> list[str]:
 def layer_exam(tower_id: str, layer: int, mechanic: str | None = None, m: Master | None = None) -> dict | None:
     """本层考试设置：{mechanic, turns, exam: {produce_exam_battle_config_id, produce_exam_gimmick_effect_group_id,
     produce_exam_battle_npc_group_id, produce_item_ids}, criteria, border, rivals, gimmick_variants, source}。
+    star_conditions：★3 在第 1 名之外要的通关时条件（见 star_conditions）。
     mechanic 不给时：这一层只知道一种就用它，否则 None。battle_config / gimmick 只有绑定里有（没有就是 None，要从画面读）；
     对手组、层道具按命名规则推；border = 第 1 名对手 scoreMax + 1，对手组查不到时 None。"""
     m = m or master()
@@ -245,6 +351,7 @@ def layer_exam(tower_id: str, layer: int, mechanic: str | None = None, m: Master
         "border": rivals[0][1] + 1 if rivals else None,
         "rivals": rivals,
         "gimmick_variants": variants,
+        "star_conditions": star_conditions(layer, m),
         "source": bound.get("source") or "rule",
     }
 
@@ -310,31 +417,86 @@ def _gkbench():
     return runner
 
 
-def evaluate(loadouts: list[dict], seeds: list[int], *, algo: str = "uinet", budget_s: float | None = None,
-             step_seconds: float = 5.0) -> list[list[int | None]]:  # fmt: skip
-    """每个编成（gkms.exam_loadout.v1）在同一批种子上各打一局，返回终局分（出错 None）。
-    budget_s：总时限，到了就停，没跑到的给 None。algo 写法同 HIRO_BENCH_ALGO（uinet 用我们的模型和主数据）。
-    同一编成、同一种子、同一算法，分数和 bench 上的一样（2026-11-14 核过 idolroad 题）。"""
+_W: dict = {}  # 每个进程一份：runner、算法、记下最后一个裁判（取局末状态）
+
+
+def _setup(algo: str, step_seconds: float) -> None:
     runner = _gkbench()
     from hiro.bench_bridge.advisor import load_algo
 
-    bot = load_algo(algo)
-    t0 = time.monotonic()
-    out: list[list[int | None]] = []
-    for li, lo in enumerate(loadouts):
-        row: list[int | None] = []
-        problem = {"id": f"eval-{li}", "family": f"eval-{li}", "set": "hiro-eval", "loadout": lo}
-        for si, seed in enumerate(seeds):
-            if budget_s is not None and time.monotonic() - t0 > budget_s:
-                row.append(None)
-                continue
-            ep = runner.play_episode(problem, {"index": si, "seed": int(seed)}, bot, step_seconds, keep_obs=False)
-            if ep.get("err"):
-                logger.info("编成 %d 种子 %d 出错：%s", li, seed, ep["err"])
-                row.append(None)
-            else:
-                row.append(int(ep["final"]["score"]))
-        out.append(row)
+    base = getattr(runner, "Referee", None)
+    if base is not None and not getattr(base, "_hiro_keeps_last", False):
+
+        class Keep(base):  # play_episode 自己建裁判；记下来好读局末的低下状態 / 除外区
+            _hiro_keeps_last = True
+
+            def __init__(self, *a, **kw):
+                super().__init__(*a, **kw)
+                _W["ref"] = self
+
+        runner.Referee = Keep
+    _W.update(runner=runner, bot=load_algo(algo), step=step_seconds)
+
+
+def _end_state(ref) -> dict:
+    s = getattr(getattr(ref, "battle", None), "session", None)
+    out = {"debuffs": None, "lost_ssr": None}
+    if s is None:
+        return out
+    try:
+        out["debuffs"] = int(s.debuff_count())
+    except Exception:
+        logger.debug("局末低下状態读不到", exc_info=True)
+    try:
+        m = master()
+        out["lost_ssr"] = sum(1 for c in s.deck.lost or () if m.card_rarity(c.get("produce_card_id")) == SSR)
+    except Exception:
+        logger.debug("局末除外区读不到", exc_info=True)
+    return out
+
+
+def _play(li: int, si: int, loadout: dict, seed: int, detail: bool, deadline: float | None):
+    if deadline is not None and time.time() > deadline:
+        return li, si, None
+    problem = {"id": f"eval-{li}", "family": f"eval-{li}", "set": "hiro-eval", "loadout": loadout}
+    _W.pop("ref", None)
+    ep = _W["runner"].play_episode(problem, {"index": si, "seed": int(seed)}, _W["bot"], _W["step"], keep_obs=False)
+    if ep.get("err"):
+        logger.info("编成 %d 种子 %d 出错：%s", li, seed, ep["err"])
+        return li, si, None
+    score = int(ep["final"]["score"])
+    if not detail:
+        return li, si, score
+    rivals = [[int(r["score_min"]), int(r["score_max"])] for r in (ep.get("meta") or {}).get("rival_scores") or ()]
+    layer = loadout.get("layer")
+    conds = star_conditions(int(layer)) if layer else []
+    return li, si, judge(score, rivals, conds, _end_state(_W.get("ref")))
+
+
+def evaluate(loadouts: list[dict], seeds: list[int], *, algo: str = "uinet", budget_s: float | None = None,
+             step_seconds: float = 5.0, detail: bool = False, workers: int = 1) -> list[list]:  # fmt: skip
+    """每个编成（gkms.exam_loadout.v1）在同一批种子上各打一局。
+    返回 [编成][种子]：detail=False 时是终局分；detail=True 时是 judge() 的判定（名次、星、条件）；出错 / 没跑到 None。
+    budget_s：总时限，到了就停。workers > 1 时多进程（每个进程各载一次引擎和模型）。
+    algo 写法同 HIRO_BENCH_ALGO（uinet 用我们的模型和主数据）。同一编成、同一种子、同一算法，分数和 bench 上的一样
+    （2026-11-14：idolroad 163 题 × 4 种子 652 局逐局相同）。"""
+    deadline = None if budget_s is None else time.time() + budget_s
+    jobs = [(li, si, lo, int(seed)) for li, lo in enumerate(loadouts) for si, seed in enumerate(seeds)]
+    out: list[list] = [[None] * len(seeds) for _ in loadouts]
+    if workers <= 1:
+        _setup(algo, step_seconds)
+        for li, si, lo, seed in jobs:
+            out[li][si] = _play(li, si, lo, seed, detail, deadline)[2]
+        return out
+    import multiprocessing as mp
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+
+    with ProcessPoolExecutor(max_workers=workers, mp_context=mp.get_context("spawn"), initializer=_setup,
+                             initargs=(algo, step_seconds)) as pool:  # fmt: skip
+        futs = [pool.submit(_play, li, si, lo, seed, detail, deadline) for li, si, lo, seed in jobs]
+        for f in as_completed(futs):
+            li, si, v = f.result()
+            out[li][si] = v
     return out
 
 

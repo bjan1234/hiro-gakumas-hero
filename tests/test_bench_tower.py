@@ -158,6 +158,98 @@ def test_exam_fields_tower_matches_bench():
     assert exam_fields("r1", idol="x", plan=1)["produce"] == "produce-008"
 
 
+# ---------------------------------------------------------------- 星
+
+TRIG26 = {
+    "id": "e_trigger-exam_end_turn-debuff_count_up-2-remaining_turn-1-for_tower_stage26",
+    "phaseTypes": ["ProduceExamPhaseType_ExamEndTurn"],
+    "fieldStatusTypes": ["ProduceExamFieldStatusType_DebuffCountUp", "ProduceExamFieldStatusType_RemainingTurn"],
+    "fieldStatusValues": [2, 1],
+    "fieldStatusCheckTypes": [],
+    "fieldStatusProduceCardSearchIds": [],
+    "produceDescriptions": [{"text": "クリア時に低下状態が2個以上"}],
+}
+TRIG27 = {
+    "id": "e_trigger-exam_end_turn-not-card_search_count_up-6-p_card_search-ssr-lost-remaining_turn-1-for_tower_stage27",
+    "phaseTypes": ["ProduceExamPhaseType_ExamEndTurn"],
+    "fieldStatusTypes": ["ProduceExamFieldStatusType_CardSearchCountUp", "ProduceExamFieldStatusType_RemainingTurn"],
+    "fieldStatusValues": [6, 1],
+    "fieldStatusCheckTypes": ["ProduceExamTriggerCheckType_Not"],
+    "fieldStatusProduceCardSearchIds": ["p_card_search-ssr-lost"],
+    "produceDescriptions": [{"text": "クリア時に除外にあるスキルカード(SSR)が5枚以下"}],
+}
+STAR_M = T.Master(
+    rows={
+        "ProduceExamTrigger": [TRIG26, TRIG27, {"id": "e_trigger-other"}],
+        "ProduceCard": [
+            {"id": "ssr", "rarity": "ProduceCardRarity_Ssr"},
+            {"id": "sr", "rarity": "ProduceCardRarity_Sr"},
+        ],
+    }
+)
+RIVALS = [[90000, 92000], [50000, 52000], [20000, 22000], [9000, 9500]]
+
+
+def test_star_conditions_from_layer_triggers():
+    assert T.star_conditions(25, STAR_M) == []
+    (c26,) = T.star_conditions(26, STAR_M)
+    assert (c26["field"], c26["op"], c26["value"]) == ("debuffs", ">=", 2)
+    (c27,) = T.star_conditions(27, STAR_M)
+    assert (c27["field"], c27["op"], c27["value"]) == ("lost_ssr", "<=", 5)  # 「6 个以上」取反 = 5 枚以下
+    assert T.condition_by_text("クリア時に 除外にあるスキルカード(SSR)が5枚以下", STAR_M)["field"] == "lost_ssr"
+    assert T.condition_by_text("クリア時にやる気が10以上", STAR_M) is None
+    odd = dict(
+        TRIG26, fieldStatusTypes=["ProduceExamFieldStatusType_Unknown", "ProduceExamFieldStatusType_RemainingTurn"]
+    )
+    assert T.parse_trigger(odd)["field"] is None  # 不认识的条件不判
+
+
+def test_judge_places_conservative_and_optimistic():
+    no = []
+    assert T.judge(95000, RIVALS, no, {})["stars"] == 3
+    r = T.judge(91000, RIVALS, no, {})  # 落在第 1 名对手区间里：保守第 2、乐观第 1
+    assert (r["place"], r["place_optimistic"], r["first"], r["stars"], r["stars_optimistic"]) == (2, 1, False, 2, 3)
+    assert T.judge(30000, RIVALS, no, {})["stars"] == 1
+    assert T.judge(9200, RIVALS, no, {})["stars"] == 0  # 第 4 名及以后没有星
+
+
+def test_judge_star3_needs_condition():
+    c27 = T.star_conditions(27, STAR_M)
+    ok = T.judge(95000, RIVALS, c27, {"lost_ssr": 5})
+    assert ok["stars"] == 3 and ok["conditions"][0]["ok"] is True
+    bad = T.judge(95000, RIVALS, c27, {"lost_ssr": 6})
+    assert bad["first"] and bad["stars"] == 2 and bad["conditions"][0]["got"] == 6
+    unknown = T.judge(95000, RIVALS, c27, {})  # 局末读不到：不给★3
+    assert unknown["stars"] == 2 and unknown["conditions"][0]["ok"] is None
+
+
+def test_end_state_counts_ssr_in_lost(monkeypatch):
+    monkeypatch.setattr(T, "master", lambda: STAR_M)
+    deck = SimpleNamespace(lost=[{"produce_card_id": "ssr"}, {"produce_card_id": "sr"}, {"produce_card_id": "ssr"}])
+    ref = SimpleNamespace(battle=SimpleNamespace(session=SimpleNamespace(deck=deck, debuff_count=lambda: 3)))
+    assert T._end_state(ref) == {"debuffs": 3, "lost_ssr": 2}
+    assert T._end_state(None) == {"debuffs": None, "lost_ssr": None}
+
+
+def test_evaluate_detail_judges_each_episode(monkeypatch):
+    def play(problem, row, bot, step_seconds, keep_obs):
+        return {
+            "err": None,
+            "final": {"score": row["seed"]},
+            "meta": {"rival_scores": [{"score_min": 90000, "score_max": 92000}]},
+        }
+
+    monkeypatch.setattr(T, "_gkbench", lambda: SimpleNamespace(play_episode=play))
+    monkeypatch.setattr("hiro.bench_bridge.advisor.load_algo", lambda spec: object())
+    monkeypatch.setattr(T, "star_conditions", lambda layer, m=None: [])
+    monkeypatch.setattr(T, "_end_state", lambda ref: {})
+    (row,) = T.evaluate([{"layer": 12}], [95000, 91000], detail=True)
+    assert [(d["score"], d["place"], d["stars"]) for d in row] == [
+        (95000, 1, 3),
+        (91000, 2, 2),
+    ]  # 落在对手区间里：保守算第 2
+
+
 def test_evaluate_plays_every_seed_and_respects_budget(monkeypatch):
     calls = []
 
