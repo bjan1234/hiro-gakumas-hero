@@ -24,7 +24,7 @@ class Frame:
 
     @cached_property
     def dialog(self) -> dict | None:
-        """弹窗 {kind, title, danger, y}（hiro.vision.pages.read_dialog）；没有弹窗 None。"""
+        """弹窗 {kind, title, body, danger, y}（hiro.vision.pages.read_dialog）；没有弹窗 None。"""
         from hiro.vision.pages import read_dialog
 
         return read_dialog(self.img) if self.has_dialog else None

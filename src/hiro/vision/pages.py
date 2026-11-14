@@ -97,7 +97,7 @@ def dialog_header(img: MatLike) -> tuple[int, int] | None:
 
 
 def read_dialog(img: MatLike) -> dict | None:
-    """橙黄标题条的弹窗 → {kind, title, danger, y}。danger：リタイア / 培育数据破棄 这类绝不能确认的弹窗（标题或正文含关键字）。有多个（详情框上叠确认框）时取最下面那个（后弹出的在上层、位置靠下）。
+    """橙黄标题条的弹窗 → {kind, title, body, danger, y}（body：标题条下面的正文 OCR）。danger：リタイア / 培育数据破棄 这类绝不能确认的弹窗（标题或正文含关键字）。有多个（详情框上叠确认框）时取最下面那个（后弹出的在上层、位置靠下）。
     标题认不出关键字时 kind="other"、title 为 OCR 原文；没有标题条返回 None。"""
     from hiro.vision.ocr import ocr
 
@@ -114,7 +114,7 @@ def read_dialog(img: MatLike) -> dict | None:
         if kind == "other":
             kind = next((k for key, k in DIALOG_BODY_KINDS if key in body), "other")
         danger = kind in DANGER_KINDS or (kind != "produce_resume" and any(w in title or w in body for w in DANGER_WORDS))
-        return {"kind": kind, "title": title, "danger": danger, "y": int((y1 + y2) // 2)}
+        return {"kind": kind, "title": title, "body": body, "danger": danger, "y": int((y1 + y2) // 2)}
     return None
 
 

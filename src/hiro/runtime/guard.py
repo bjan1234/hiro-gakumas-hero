@@ -6,6 +6,9 @@
 2. 点的位置落在含 ジュエル / 購入 / 課金 / 有償 / 破棄 / リタイア 的文字上：拦下（不管有没有弹窗）。
    培育中 ≡ 菜单、「プロデュース再開」框上也有「リタイア」字样，只要不点在它上面就不拦。
    （「購入」在培育里只会是ジュエル / 金币购买；日常任务的金币商店以后走 runtime 时要单独放行。）
+3. 模式自带的弹窗危险词（Runtime.dialog_words，缺省空）：弹窗标题或正文含其中任一个，同第 1 条只放行キャンセル / 閉じる。
+   偶像之路用它拦「再挑戦」确认框上的消耗（ジュエル / アイテム / チケット / 回数，hiro.runtime.tower.DIALOG_WORDS）；
+   H.I.F 不开（本战再挑戦按用户规则可以用券，由执行层读确认框判断）。
 拦下就抛 DangerBlocked（ResumeBlocked：停机交给人，不重试），画面留给人看。
 
 代价：判弹窗先看像素（约 20 ms），有弹窗才读标题和正文；「点在什么字上」只 OCR 点击点周围 TAP_ROI 那一小块，不做整帧 OCR。
@@ -42,14 +45,17 @@ def word_at(frame: Frame, x: int, y: int) -> str | None:
     return None
 
 
-def check_tap(screen: Screen, x: int, y: int) -> None:
-    """(x, y) 能不能点；不能就抛 DangerBlocked。"""
+def check_tap(screen: Screen, x: int, y: int, dialog_words: tuple[str, ...] = ()) -> None:
+    """(x, y) 能不能点；不能就抛 DangerBlocked。dialog_words：模式自带的弹窗危险词（见模块说明第 3 条）。"""
     f = screen.frame
     if f is None or screen.clock() - f.t > FRESH_S:
         f = screen.shot()
     word = word_at(f, x, y)
-    if f.has_dialog and (d := f.dialog) is not None and d["danger"] and not (word and any(s in word for s in SAFE_ON_DANGER)):
-        raise DangerBlocked(f"危险弹窗「{d['title']}」开着，只能点キャンセル：拦下 ({x}, {y}) {word or '（空白处）'}")
+    if f.has_dialog and (d := f.dialog) is not None and not (word and any(s in word for s in SAFE_ON_DANGER)):
+        if d["danger"]:
+            raise DangerBlocked(f"危险弹窗「{d['title']}」开着，只能点キャンセル：拦下 ({x}, {y}) {word or '（空白处）'}")
+        if hit := next((w for w in dialog_words if w in d["title"] or w in d.get("body", "")), None):
+            raise DangerBlocked(f"弹窗「{d['title']}」含「{hit}」，只能点キャンセル：拦下 ({x}, {y}) {word or '（空白处）'}")
     if word and (hit := next((w for w in HARD_WORDS if w in word), None)):
         raise DangerBlocked(f"要点的「{word}」含「{hit}」：拦下 ({x}, {y})")
 
@@ -61,18 +67,18 @@ class GuardedDevice:
 
     PASS = frozenset({"screenshot", "swipe", "alive", "orientation", "close", "connect"})
 
-    def __init__(self, device, screen: Screen):
-        self._device, self._screen = device, screen
+    def __init__(self, device, screen: Screen, dialog_words: tuple[str, ...] = ()):
+        self._device, self._screen, self._dialog_words = device, screen, dialog_words
         self.name = device.name
         if hasattr(device, "real_tap"):  # 只有 MaaToolsDevice 有（PlayCover 真实鼠标兜底）；调用方按 getattr(dev, "real_tap", None) 判断
             self.real_tap = self._real_tap
 
     def tap(self, x: int, y: int) -> None:
-        check_tap(self._screen, x, y)
+        check_tap(self._screen, x, y, self._dialog_words)
         self._device.tap(x, y)
 
     def _real_tap(self, x: int, y: int) -> None:
-        check_tap(self._screen, x, y)
+        check_tap(self._screen, x, y, self._dialog_words)
         self._device.real_tap(x, y)
 
     def __getattr__(self, name):
