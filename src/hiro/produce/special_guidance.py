@@ -19,7 +19,8 @@ import time
 from collections.abc import Callable
 
 import numpy as np
-from kotonebot import device, logging
+import logging
+from hiro.devices.active import device
 
 from hiro.contracts import Action, ActionKind, ExecutionResult
 from hiro.produce.ops import Run, button_sv, find_text, orange_lit

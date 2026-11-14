@@ -68,7 +68,15 @@ def has_card_letters(img) -> bool:
 
 
 def option_buttons(img) -> int:
-    """授業 / おでかけ / 开局二选一的选项按钮数（同 KAA CommuEventButtonUI._detect_regions 的按钮判定）。"""
+    """授業 / おでかけ / 开局二选一的选项按钮数。"""
+    return len(option_regions(img))
+
+
+def option_regions(img) -> list:
+    """授業 / おでかけ / 开局二选一的选项按钮框（整帧坐标的 Box，从上到下；同 KAA CommuEventButtonUI.all 的按钮判定，
+    有选中项时最上面那块是描述、不算按钮）。"""
+    from hiro.vision.ocr import Box
+
     x1, y1, x2, y2 = box("InProduce.BoxCommuEventButtonsArea")
     crop = img[y1:y2, x1:x2]
     edges = cv2.Canny(cv2.threshold(crop, 190, 255, cv2.THRESH_BINARY)[1], 200, 250)
@@ -81,11 +89,11 @@ def option_buttons(img) -> int:
             continue
         is_button = 60 < h < 100
         white = (cv2.threshold(cv2.cvtColor(crop[y : y + h, x : x + w], cv2.COLOR_BGR2GRAY), 190, 255, cv2.THRESH_BINARY)[1] == 255).mean()
-        regions.append([y, is_button, is_button and white < 0.5])
+        regions.append([y, is_button, is_button and white < 0.5, Box(x1 + x, y1 + y, x1 + x + w, y1 + y + h)])
     regions.sort(key=lambda r: r[0])
     if regions and any(r[2] for r in regions):
         regions[0][1] = False  # 有选中项时，最上面那块是描述（同 KAA）
-    return sum(1 for r in regions if r[1])
+    return [r[3] for r in regions if r[1]]
 
 
 # ---------------------------------------------------------------- KAA check_scene 的同一套模板判据（只判不点）

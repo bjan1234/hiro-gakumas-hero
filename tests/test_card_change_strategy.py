@@ -1,5 +1,7 @@
 """HiroHifStrategy.on_skill_card_change：按决策的 card_id 换出；决策取消时传 cancel；阶段 1 候选未识别时换入第 0 张。"""
 
+import pytest
+
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import Action, ActionKind, ExecutionResult, GameState
@@ -26,9 +28,23 @@ class StubSession:
         self.notes.append(text)
 
 
+_CTX: list = []  # 最近建的 StubCtx：换卡执行器（card_ops.change_stage1 / 2）的替身把调用记到它上面
+
+
+@pytest.fixture(autouse=True)
+def _route_card_ops(monkeypatch):
+    from hiro.produce import card_ops
+
+    monkeypatch.setattr(card_ops, "change_stage1", lambda _self, index: _CTX[-1].commit_stage1(index))
+    monkeypatch.setattr(card_ops, "change_stage2", lambda _self, index, **kw: _CTX[-1].commit_stage2(index, **kw))
+    yield
+    _CTX.clear()
+
+
 class StubCtx:
     def __init__(self, stage):
         self.stage, self.calls = stage, []
+        _CTX.append(self)
 
     def commit_stage1(self, index):
         self.calls.append(("s1", index))

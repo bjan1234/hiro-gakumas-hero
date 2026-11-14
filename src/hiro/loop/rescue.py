@@ -343,12 +343,12 @@ def _default_ocr(img):
 
 
 def _default_shoot():
-    from kotonebot import device
+    from hiro.devices.active import device
 
     return device.screenshot()
 
 
 def _default_click(x, y):
-    from kotonebot import device
+    from hiro.devices.active import device
 
     device.click(x, y)

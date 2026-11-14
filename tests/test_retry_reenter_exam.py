@@ -137,7 +137,6 @@ def _finals_strategy(tmp_path, notes_by_seg):
     from types import SimpleNamespace as NS
 
     import hiro.produce.hif as hif
-    from kaa.config.const import HifScenario
 
     for name, notes in notes_by_seg.items():
         d = tmp_path / name
@@ -149,7 +148,7 @@ def _finals_strategy(tmp_path, notes_by_seg):
     cur.mkdir()
     st = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
     st.s = NS(note=lambda *a: None, notes=[], trace=NS(dir=str(cur)))
-    st.scenario = HifScenario.MAIN
+    st.scenario = "main"
     st.exam_count = 1
     return st
 

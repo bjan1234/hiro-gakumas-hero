@@ -17,7 +17,7 @@ EIEI = "p_card-02-men-1_031"
 
 
 def _read(name):
-    from hiro.loop.kaa_patches import CARD_OP_REGION
+    from hiro.produce.card_ops import CARD_OP_REGION
     from hiro.vision.deck import read_card_dialog
 
     return read_card_dialog(load(cv2.imread(str(FIX / f"{name}.jpg"))), CARD_OP_REGION["remove"])["cards"]

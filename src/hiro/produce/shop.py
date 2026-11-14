@@ -16,7 +16,8 @@ from collections.abc import Callable
 
 import cv2
 import numpy as np
-from kotonebot import device, logging
+import logging
+from hiro.devices.active import device
 
 from hiro.contracts import Action, ActionKind, ExecutionResult
 from hiro.produce.ops import Run, button_sv, find_text, orange_lit, roi_diff
@@ -219,9 +220,9 @@ def settle_after_op(r: Run) -> tuple[bool, np.ndarray]:
 
 def _service(r: Run, name: str, services: dict, card_id: str | None = None, choose_card=None, deck_size: int | None = None) -> ExecutionResult:
     """相談「強化 / 削除」：点服务键打开选卡页 → 读卡格 → card_id（动作给的，或 choose_card(kind, cards) 让决策选）
-    → 点卡、核对选中 →「強化 / 削除」→ 确认框 →「〜しました」→ 回到相談。走 kaa_patches._card_op；
+    → 点卡、核对选中 →「強化 / 削除」→ 确认框 →「〜しました」→ 回到相談。走 card_ops._card_op；
     选不出 / 找不到 / 选中不符时点「キャンセル」退回相談，返回 ok=False（error 写原因）。"""
-    from hiro.loop.kaa_patches import _card_op
+    from hiro.produce.card_ops import _card_op
 
     label = {"delete": "削除", "upgrade": "強化"}[name]
     kind = {"delete": "remove", "upgrade": "enhance"}[name]

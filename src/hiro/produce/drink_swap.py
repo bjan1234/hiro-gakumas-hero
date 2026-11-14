@@ -20,7 +20,8 @@ from collections.abc import Callable
 
 import cv2
 import numpy as np
-from kotonebot import device, logging
+import logging
+from hiro.devices.active import device
 
 from hiro.contracts import Action, ActionKind, ExecutionResult
 from hiro.produce.ops import Run, button_sv, find_text, orange_lit
@@ -455,3 +456,29 @@ def discard_then_receive(
     logger.info("饮料替换：丢底栏第 %d 瓶「%s」，收第 %d 个候选", held_index, entry.get("name"), pick_slot)
     return swap_receive(pick_slot, held_index, slots=slots, action=act, shoot=shoot, click=click, clock=clock, sleep=sleep,
                         ocr=ocr, calib=calib)  # fmt: skip
+
+
+def skip_incoming(*, sleep_s=time.sleep) -> bool:
+    """饮料满、决策是不要新饮料：「Pドリンク所持上限」标题连认两帧 →「離れる」没亮就先勾一个没勾的选框 → 点亮着的「離れる」
+    （替代 KAA ProduceInterrupt._check_pdrink_max；KAA 用彩色直方图找没勾的框，这里灰度找框后按橙色占比判有没有勾，
+    同 ui_templates.checkbox_checked）。点了返回 True；随后的「報酬スキップ」确认由 on_pdrink_max_confirm 放行。"""
+    from hiro.vision.ui_templates import checkbox_checked, find_enabled, tpl
+
+    img = device.screenshot()
+    if not tpl("InProduce.TextPDrinkMax").exists(img):
+        return False
+    img = device.screenshot()  # 再认一帧：对话框可能正在退出
+    if not tpl("InProduce.TextPDrinkMax").exists(img):
+        return False
+    if find_enabled("InProduce.ButtonLeave", img) is None:
+        chk = next((m for m in tpl("Common.CheckboxUnchecked").find_all(img) if checkbox_checked(img, m) is False), None)
+        if chk is not None:
+            device.click(*chk.rect.center)
+            sleep_s(0.2)
+            img = device.screenshot()
+    if (leave := find_enabled("InProduce.ButtonLeave", img)) is not None:
+        device.click(*leave.rect.center)
+        logger.info("饮料满：不要新饮料，点「離れる」")
+        return True
+    return False
+

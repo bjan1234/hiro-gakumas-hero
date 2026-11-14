@@ -12,10 +12,9 @@ from functools import lru_cache
 import cv2
 import numpy as np
 from cv2.typing import MatLike
-from kaa.tasks.produce.new.play_cards import ui  # noqa: F811  先导入 kaa.tasks，避免 kaa.game_data 循环导入
-from kaa.tasks.produce.new.play_cards import ui
 
 from hiro.vision import assets
+from hiro.vision.hand_slots import CARD_OFFSET, CARD_SCALE
 
 QUERY_SIZE = (28, 74)  # (w, h)，半卡区域 57x148 缩小一半
 
@@ -41,8 +40,8 @@ def _index() -> tuple[list[str], np.ndarray]:
         data = np.load(CACHE, allow_pickle=False)
         if str(data["stamp"]) == stamp:
             return list(data["keys"]), data["matrix"]
-    h = int(ui.CARD_OFFSET[1] / ui.CARD_SCALE)
-    w = int(ui.CARD_OFFSET[0] / ui.CARD_SCALE)
+    h = int(CARD_OFFSET[1] / CARD_SCALE)
+    w = int(CARD_OFFSET[0] / CARD_SCALE)
     keys, rows = [], []
     for name in sorted(os.listdir(folder)):
         img = cv2.imread(os.path.join(folder, name))

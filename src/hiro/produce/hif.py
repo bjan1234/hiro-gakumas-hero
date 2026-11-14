@@ -15,10 +15,8 @@ from pathlib import Path
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from kaa.config.const import HifScenario, ProduceAction
-from kaa.kaa_context import produce_solution
-from kaa.tasks.produce.new.strategies.hif_grind import HifGrindStrategy
-from kotonebot import Loop, device, logging, sleep
+import logging
+from hiro.devices.active import Loop, device, sleep
 
 from hiro.brain.battle import BattleBrain
 from hiro.vision.ocr import find_text, screen_texts
@@ -26,11 +24,12 @@ from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.llm import from_spec
 from hiro.brain.state import profile_for
 from hiro.contracts import Action, ActionKind, Candidate, Decision, ExecutionResult
-from hiro.loop.resume import ResumeBlocked
+from hiro.loop.errors import ResumeBlocked
 from hiro.loop.session import Session
 from hiro.produce import ops
 from hiro.produce.ops import button_text
-from hiro.vision.ui_templates import box, tpl
+from hiro.vision.hif import is_final_exam
+from hiro.vision.ui_templates import box, tap, tpl
 from hiro.exec.exam import run_exam
 from hiro.recorder import Recorder
 
@@ -50,23 +49,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# KAA ProduceAction → 契约 Action.produce_next 的参数
-_PA = {
-    ProduceAction.VOCAL_SP: ("training", "Vo", True), ProduceAction.DANCE_SP: ("training", "Da", True), ProduceAction.VISUAL_SP: ("training", "Vi", True),
-    ProduceAction.VOCAL: ("training", "Vo", False), ProduceAction.DANCE: ("training", "Da", False), ProduceAction.VISUAL: ("training", "Vi", False),
-    ProduceAction.STUDY_VOCAL_HIF: ("class", "Vo", None), ProduceAction.STUDY_DANCE_HIF: ("class", "Da", None), ProduceAction.STUDY_VISUAL_HIF: ("class", "Vi", None),
-    ProduceAction.STUDY: ("class", None, None), ProduceAction.OUTING: ("outing", None, None), ProduceAction.GIFT: ("gift", None, None),
-    ProduceAction.CONSULT: ("shop", None, None), ProduceAction.REST: ("rest", None, None),
-}  # fmt: skip
 ACTION_REQUIRED = ("stamina", "produce_point", "params", "options")
 TAP_RETRIES = 2
 EXAM_END_LOOP_TIMEOUT = 90.0  # 考试结束后点「次へ」/ 结果页的总时长上限
 EXAM_END_SETTLE = 2.0  # 考试结束后点「次へ」等按钮区变化的上限（原来固定睡 2s）
-
-
-def to_action(pa: ProduceAction) -> Action:
-    option, attr, sp = _PA.get(pa, (pa.value, None, None))
-    return Action.produce_next(option, attr=attr, sp=sp)
 
 
 def _card_summary(card) -> dict | None:
@@ -141,7 +127,11 @@ def finals_label_round(npc_round: int | None, turns: int | None) -> int | None:
     return 1 if turns == 9 else None
 
 
-class HiroHifStrategy(HifGrindStrategy):
+class HifCore:
+    """H.I.F 培育的决策和执行（不依赖 KAA）：每个页面的 observe → decide → act → record。
+    KAA 主循环用 HiroHifStrategy（下面，HifCore + KAA 的 HifGrindStrategy）；新主循环（hiro.runtime）的处理器也调这里。
+    共享状态放在类属性上（run_hif 用 setattr 注入、跨实例保留），方法里一律通过 type(self) 读写。"""
+
     recorder: Recorder | None = None
     session: Session | None = None  # run_hif 注入；None 时自动建一个（trace 仍会写）
     use_llm: bool = True  # run_hif 的 --no-llm 会关掉，只用规则与兜底
@@ -150,20 +140,19 @@ class HiroHifStrategy(HifGrindStrategy):
     main_attr: str | None = None  # run_hif 的 --main-attr：Vo / Da / Vi；支援卡编成识别到位前靠它指定
     llm_spec: str | None = None  # run_hif 的 --llm：claude:sonnet / openai:<model>，None 读 HIRO_LLM
 
-    def __init__(self, controller: "ProduceController") -> None:
-        super().__init__(controller)
-        if HiroHifStrategy.recorder is None:
-            HiroHifStrategy.recorder = Recorder()
-        if HiroHifStrategy.session is None:
+    def __init__(self, *, scenario: str, idol: str) -> None:
+        """scenario：qualify（选拔）/ main（本战）；idol：偶像卡 skin id。"""
+        if type(self).recorder is None:
+            type(self).recorder = Recorder()
+        if type(self).session is None:
             from hiro.contracts import TraceWriter
 
-            HiroHifStrategy.session = Session(TraceWriter())
-        self.rec = HiroHifStrategy.recorder
-        self.s = HiroHifStrategy.session
+            type(self).session = Session(TraceWriter())
+        self.rec = type(self).recorder
+        self.s = type(self).session
         logger.info("Decision log: %s；trace: %s", self.rec.dir, self.s.trace.dir)
-        solution = produce_solution().data
-        self.scenario = solution.mode
-        self.profile = profile_for(solution.idol)
+        self.scenario = scenario
+        self.profile = profile_for(idol)
         llm = from_spec(self.llm_spec) if self.use_llm else None
         self.brain = BattleBrain(self.profile, llm)
         # 特別指導：执行器有了（游戏执行-04），但定制页 cards 识别还没有，进去也只能直接结束 → 暂不进候选（选行动按候选顺序兜底）
@@ -177,12 +166,12 @@ class HiroHifStrategy(HifGrindStrategy):
         self._seed_produce_from_trace()
         # 同一进程内崩溃重启（run_hif 的 _supervised_resume）时沿用已完成的场次；跨进程续跑用 run_hif --exams-done，
         # 没给时从之前的 trace 段数（dmmt2：续跑后第 2 场记成 qualify-1）
-        if not HiroHifStrategy.exams_done and self.scenario == HifScenario.QUALIFY:
-            HiroHifStrategy.exams_done = self._exams_done_from_trace()
-        self.exam_count = HiroHifStrategy.exams_done
-        self.lesson_count = HiroHifStrategy.lessons_done
+        if not type(self).exams_done and self.scenario == "qualify":
+            type(self).exams_done = self._exams_done_from_trace()
+        self.exam_count = type(self).exams_done
+        self.lesson_count = type(self).lessons_done
         self.advisor = self._exam_advisor(llm)
-        self.rec.log("strategy_init", idol=solution.idol, profile=self.profile.idol_id if self.profile else None,
+        self.rec.log("strategy_init", idol=idol, profile=self.profile.idol_id if self.profile else None,
                      llm=f"{llm.name}:{llm.model}" if llm else None)  # fmt: skip
 
     def _exam_advisor(self, llm):
@@ -201,29 +190,32 @@ class HiroHifStrategy(HifGrindStrategy):
 
     # ---------------------------------------------------------------- 选行动
     @staticmethod
-    def _to_produce_action(action: Action, actions: list[ProduceAction]) -> ProduceAction | None:
-        """契约 ProduceNext(option, attr, sp) → 当前可用的 KAA ProduceAction（精确匹配优先；SP 与普通不混判）。"""
+    def _match_button(action: Action, buttons: list):
+        """契约 ProduceNext(option, attr, sp) → 当前画面上能点的行动按钮（精确匹配优先；SP 与普通不混判）。"""
         if action.kind is not ActionKind.PRODUCE_NEXT:
             return None
         want = (action.args.get("option"), action.args.get("attr"), action.args.get("sp"))
-        for a in actions:
-            o, at, sp = _PA.get(a, (a.value, None, None))
-            if (o, at) == want[:2] and (o != "training" or bool(sp) == bool(want[2])):
-                return a
-        for a in actions:  # SP 判断与 KAA 识别不一致时退一步：同课程同属性
-            o, at, _ = _PA.get(a, (a.value, None, None))
-            if (o, at) == want[:2]:
-                return a
+        for b in buttons:
+            if (b.option, b.attr) == want[:2] and (b.option != "training" or bool(b.sp) == bool(want[2])):
+                return b
+        for b in buttons:  # SP 判断与识别不一致时退一步：同课程同属性
+            if (b.option, b.attr) == want[:2]:
+                return b
         return None
 
     ACTION_WAIT_RETRIES = 3
 
-    def on_action_select(self, ctx: "ActionSelectContext"):
+    def on_action_select(self, ctx=None):
+        """选行动：识别可点的行动按钮（hiro.vision.action_buttons，替换 KAA fetch_available_actions）→ 决策 → 提交
+        （hiro.produce.action_select.action_commit）。决策和全部候选都对不上按钮时：KAA 主循环仍交给 KAA，新主循环停机。"""
+        from hiro.produce.action_select import action_commit
+        from hiro.vision.action_buttons import available_actions
+
         t0 = time.monotonic()
         obs = self.s.observe_complete("ACTION_SELECT", ACTION_REQUIRED)
         # 先等选行动页读完整（淡入结束、能点了）再开牌组一览（第二十局开局：页面刚出来就点，一览很晚才弹）
         self._maybe_review_deck()
-        actions, objects = ctx.fetch_available_actions()
+        buttons = available_actions(device.screenshot())
         d = self.deciders.decide("ACTION_SELECT", self.s.state)
         for _ in range(self.ACTION_WAIT_RETRIES):
             # 决策器异常 / 读数被拦（第十九局本战第 1 天 Da 2296 读成 3296 被不变量拦下 → 决策器缺属性抛异常 → Wait）：
@@ -233,7 +225,7 @@ class HiroHifStrategy(HifGrindStrategy):
             sleep(self.SELECT_RETRY_WAIT)
             device.screenshot()
             obs = self.s.observe_complete("ACTION_SELECT", ACTION_REQUIRED)
-            actions, objects = ctx.fetch_available_actions()
+            buttons = available_actions(device.screenshot())
             d = self.deciders.decide("ACTION_SELECT", self.s.state)
         if d.action.kind is ActionKind.WAIT:
             self._stop("ACTION_SELECT", f"选行动重读 {self.ACTION_WAIT_RETRIES} 次决策仍是 Wait（{d.reason}），不交给 KAA 盲选", obs=obs, decision=d)
@@ -244,24 +236,26 @@ class HiroHifStrategy(HifGrindStrategy):
                 return
             d = self.deciders.decide("ACTION_SELECT", self.s.state)  # 进不去：再决策一次，下面按候选走
             d = replace(d, warnings=[*d.warnings, "特別指導 没进去，改用候选"])
-        choice = self._to_produce_action(d.action, actions)
+        choice = self._match_button(d.action, buttons)
         if choice is None and d.action.kind is ActionKind.PRODUCE_NEXT:
-            # 首选执行不了（例如「特別指導」KAA 没有这个行动）：按决策器的候选顺序找第一个能执行的，不交给 KAA 的 v0 规则（它会回退成休息）
+            # 首选执行不了（画面上没有这个按钮）：按决策器的候选顺序找第一个能执行的，不交给 KAA 的 v0 规则（它会回退成休息）
             alt = next(((c.action, a) for c in d.candidates if c.action != d.action
-                        and (a := self._to_produce_action(c.action, actions)) is not None), None)  # fmt: skip
-            self.s.recover("page_misjudged", f"选行动：{d.action} 不在 KAA 可用行动里")
+                        and (a := self._match_button(c.action, buttons)) is not None), None)  # fmt: skip
+            self.s.recover("page_misjudged", f"选行动：{d.action} 不在画面上的可用行动里")
             if alt is not None:
-                d.warnings.append(f"首选 {d.action} 无法执行（KAA 可用 {[a.value for a in actions]}），改用候选 {alt[0]}")
+                d.warnings.append(f"首选 {d.action} 无法执行（可用 {[b.label for b in buttons]}），改用候选 {alt[0]}")
                 choice = alt[1]
             else:
-                d.warnings.append(f"决策 {d.action} 与全部候选在 KAA 可用行动 {[a.value for a in actions]} 里都找不到，交给 KAA")
-        self.rec.log("action_select", image=self.s.img, available=[str(a) for a in actions], choice=str(choice), source=d.source, reason=d.reason)
-        logger.info("选行动 %s ← %s：%s", choice, d.source, d.reason)
+                d.warnings.append(f"决策 {d.action} 与全部候选在可用行动 {[b.label for b in buttons]} 里都找不到")
+        self.rec.log("action_select", image=self.s.img, available=[b.label for b in buttons], choice=choice.label if choice else None, source=d.source, reason=d.reason)
+        logger.info("选行动 %s ← %s：%s", choice.label if choice else None, d.source, d.reason)
         if choice is None:
+            if ctx is None:  # 新主循环：不交给 KAA 盲选（用户规则 3c）
+                self._stop("ACTION_SELECT", f"决策 {d.action} 和全部候选在画面上都没有对应按钮", obs=obs, decision=d)
             self.s.record(obs, decision=d, timings_ms={"total": (time.monotonic() - t0) * 1000})
             return super().on_action_select(ctx)
-        taps = [[int(o.rect.center.x), int(o.rect.center.y)] for a, o in zip(actions, objects) if a == choice][:1]
-        result = self._act(lambda: ctx.commit(choice), d.action, page_before="ACTION_SELECT", taps=taps)
+        taps = [[int(choice.rect.center.x), int(choice.rect.center.y)]]
+        result = self._act(lambda: action_commit(choice), d.action, page_before="ACTION_SELECT", taps=taps)
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
     MAX_CUSTOMIZE_STEPS = 4
@@ -405,24 +399,27 @@ class HiroHifStrategy(HifGrindStrategy):
     SELECT_RETRY_WAIT = 0.5
     PDRINK_DECIDE_RETRIES = 2  # 饮料溢出页决策没给出 DiscardDrink（异常兜底成 Wait）时重新观测再决策几次
 
-    def on_select_card(self, ctx: "CardSelectContext"):
+    def on_select_card(self, ctx=None):
+        """三选一选卡：候选位置 / 卡 / おすすめ 用 hiro.vision.card_select（替换 KAA CardSelectContext），提交用 card_ops.card_select_commit。"""
+        from hiro.produce.card_ops import card_select_commit
+        from hiro.vision.card_select import recommended_index, select_card_options
         from hiro.vision.extract import extract
 
         t0 = time.monotonic()
         img = device.screenshot()
-        options = ctx.fetch_cards()
-        for _ in range(3):  # 弹窗入场动画中 KAA 可能一张都找不到（IDLE 补判进来时尤其常见）
+        options = select_card_options(img)
+        for _ in range(3):  # 弹窗入场动画中可能一张都找不到（IDLE 补判进来时尤其常见）
             if options:
                 break
             sleep(1)
             img = device.screenshot()
-            options = ctx.fetch_cards()
+            options = select_card_options(img)
         if not options:
-            self.s.recover("missing_fields", "三选一页 KAA 没找到候选卡，回主循环重新观测")
+            self.s.recover("missing_fields", "三选一页没找到候选卡，回主循环重新观测")
             logger.warning("三选一页没找到候选卡，跳过本次，等下一轮")
             return
-        recommend = ctx.fetch_recommend_card()
-        rec_index = next((i for i, o in enumerate(options) if recommend and o.rect == recommend.rect), None)
+        rec_index = recommended_index(img, options)
+        recommend = options[rec_index] if rec_index is not None else None
         raw, _ = extract("SELECT_CARD", img)
 
         def known(r) -> int:  # extract 给的是 options（candidates 是换算后的观测字段，以前查错了键，每次都白等 4 轮）
@@ -436,7 +433,7 @@ class HiroHifStrategy(HifGrindStrategy):
                 break
             sleep(self.SELECT_RETRY_WAIT)
             frame = device.screenshot()
-            options = ctx.fetch_cards() or options
+            options = select_card_options(frame) or options
             again, _ = extract("SELECT_CARD", frame)
             if known(again) > best[0]:
                 best = (known(again), again, frame)
@@ -460,7 +457,7 @@ class HiroHifStrategy(HifGrindStrategy):
             d2 = self.deciders.decide("SELECT_CARD", st, n_options=len(options))
             logger.info("选卡：刷新没做成（本页已刷 %d 次），按刷新用完重新决策 → %s", self._rerolls_this_page, d2.action)
             d = replace(d2, warnings=[*d2.warnings, f"刷新没做成（本页已刷 {self._rerolls_this_page} 次），按刷新已用完重新决策"])
-        if d.action.kind is ActionKind.EXCLUDE_CARD and HiroHifStrategy.exclude_failures >= 2:
+        if d.action.kind is ActionKind.EXCLUDE_CARD and type(self).exclude_failures >= 2:
             d = replace(d, warnings=[*d.warnings, "カード除去 本局已连续失败，改用再抽選"])
             if self._rerolls_this_page < self.MAX_REROLLS_PER_PAGE and self._reroll(obs, replace(d, action=Action(ActionKind.REROLL)), t0):
                 return
@@ -472,9 +469,9 @@ class HiroHifStrategy(HifGrindStrategy):
             logger.info("选卡 カード除去 第 %d 张 ← %s：%s（%s）", k, d.source, d.reason, "成功" if res.ok else res.error)
             self.s.record(obs, decision=d, execution=res, timings_ms={"total": (time.monotonic() - t0) * 1000})
             if res.ok:
-                HiroHifStrategy.exclude_failures = 0
+                type(self).exclude_failures = 0
                 return  # 候选变了：主循环重新 observe → 再决策
-            HiroHifStrategy.exclude_failures += 1
+            type(self).exclude_failures += 1
             # 除去不成：决策本意是不要这些候选，改用再抽選（还有次数时），不退成拿一张不想要的卡
             if self._rerolls_this_page < self.MAX_REROLLS_PER_PAGE and self._reroll(obs, replace(d, action=Action(ActionKind.REROLL)), t0):
                 return
@@ -490,7 +487,7 @@ class HiroHifStrategy(HifGrindStrategy):
         def commit():
             # 先走快速提交（点卡 → 等「受け取る」亮 → 点 → 等消失），亮不起来才退回 KAA commit + 补点
             if not ops.fast_acquire((int(choice.rect.center.x), int(choice.rect.center.y))):
-                ctx.commit(choice)
+                card_select_commit(choice.rect)
                 self._confirm_acquire()
 
         result = self._act(commit, Action.activate_effect(i), page_before="SELECT_CARD",
@@ -498,7 +495,7 @@ class HiroHifStrategy(HifGrindStrategy):
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
     def _stage(self) -> str:
-        mode = "qualify" if self.scenario == HifScenario.QUALIFY else "main"
+        mode = "qualify" if self.scenario == "qualify" else "main"
         return f"{mode}，已完成 {self.exam_count} 场考试"
 
     POUCH_NAME = {"red": "ポーチ（赤）", "green": "ポーチ（緑）", "yellow": "ポーチ（黄）"}
@@ -517,7 +514,7 @@ class HiroHifStrategy(HifGrindStrategy):
         return out
 
     def on_select_pitem(self, ctx):
-        """H.I.F P 道具三选一：识别 pitems（颜色）→ 决策器（社区：黄 > 緑 > 赤）→ kaa_patches.pitem_commit 点包 + 受け取る。"""
+        """H.I.F P 道具三选一：识别 pitems（颜色）→ 决策器（社区：黄 > 緑 > 赤）→ card_ops.pitem_commit 点包 + 受け取る。"""
         from hiro.vision.extract import extract
 
         t0 = time.monotonic()
@@ -542,7 +539,9 @@ class HiroHifStrategy(HifGrindStrategy):
         if not 0 <= i < n:  # 认不出 / 没模板：停下，不选第一个（用户规则 3c）
             self._stop("SELECT_PITEM", f"决策没给出合法的 P 道具（{d.action}，来源 {d.source}）", obs=obs, decision=d)
         logger.info("P 道具 第 %d 个 ← %s：%s", i, d.source, d.reason)
-        result = self._act(lambda: ctx.commit(i), Action.activate_effect(i), page_before="SELECT_PITEM", taps=[])
+        from hiro.produce.card_ops import pitem_commit
+
+        result = self._act(lambda: pitem_commit(None, i), Action.activate_effect(i), page_before="SELECT_PITEM", taps=[])  # 同 KAA 打过补丁的 ctx.commit
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
     DRINK_FULL_SOURCES = ("rule", "sim")
@@ -721,8 +720,8 @@ class HiroHifStrategy(HifGrindStrategy):
     PDRINK_RETRIES = 3  # 饮料溢出页决策给不出（Wait）时重读几次
     PDRINK_RETRY_WAIT = 0.5
 
-    def on_pdrink_max(self, ctx):
-        """饮料满（课程 / 考试奖励溢出页）：决策器（新饮料优于最差一瓶才换）→ drink_swap.resolve_overflow；决策不换时走 KAA 默认（留旧、跳过新）。
+    def on_pdrink_max(self, ctx=None):
+        """饮料满（课程 / 考试奖励溢出页）：决策器（新饮料优于最差一瓶才换）→ drink_swap.resolve_overflow；决策不换时 drink_swap.skip_incoming（留旧、跳过新，替代 KAA 默认）。
         替换执行失败不落到 KAA 默认（D41）：只在看得到的已有饮料里重新决策一次，还不行停下。"""
         from hiro.produce import drink_swap
         from hiro.produce.drink_swap import resolve_overflow
@@ -771,9 +770,14 @@ class HiroHifStrategy(HifGrindStrategy):
         self.s.record(obs, decision=d, timings_ms={"total": (time.monotonic() - t0) * 1000})
         # 决策是不要新饮料：点 KAA 的跳过，随后的「報酬スキップ」确认由 on_pdrink_max_confirm 放行
         self._skip_incoming_drink = True
-        return super().on_pdrink_max(ctx)
+        for _ in range(self.PDRINK_SKIP_TRIES):
+            if drink_swap.skip_incoming():
+                return
+            sleep(self.SELECT_RETRY_WAIT)
+        self._stop("PDRINK_MAX", f"决策不要新饮料，但 {self.PDRINK_SKIP_TRIES} 次都没点到「離れる」", obs=obs, decision=d)
 
     PDRINK_SWAP_RETRIES = 1  # 饮料替换执行失败后（只在看得到的已有饮料里）重新决策、再执行几次
+    PDRINK_SKIP_TRIES = 3  # 不要新饮料时找「離れる」几次（对话框淡入 / 勾选后按钮才亮）
 
     def _mark_offscreen_held(self, visible_rows: int | None) -> None:
         """溢出页「手持ちのドリンク」只看到前 visible_rows 行（列表没滚、最后一行被视口切掉）：后面的已有饮料标 visible=False，
@@ -788,11 +792,14 @@ class HiroHifStrategy(HifGrindStrategy):
         self.s.state = replace(self.s.state, page_fields={**pf, "held": marked})
         self.s.note(f"PDRINK_MAX：已有饮料只看得到前 {visible_rows} 行，其余标为点不到")
 
-    def on_select_drink(self, ctx: "DrinkSelectContext"):
+    def on_select_drink(self, ctx=None):
+        """选饮料三选一（差し入れ / 活動支給 等）：识别 → 决策 → 选第 i 瓶或不拿（card_ops.drink_select_*，替换 KAA DrinkSelectContext）。"""
+        from hiro.produce.card_ops import DRINK_SELECT_BOXES, drink_select_can_skip, drink_select_commit
+
         if self._drink_full_skip():
             return
         t0 = time.monotonic()
-        data = ctx.fetch_select_drink()
+        can_skip = drink_select_can_skip(device.screenshot())
         obs = self.s.observe(scene="SELECT_DRINK")
         for _ in range(self.SELECT_RETRIES):
             # 弹窗淡入时读的帧候选为空（第十八局选拔第 1 天差し入れ：读到空 → 决策 Wait → 停机；同一画面稍后三瓶都认得出）：等一下重读。
@@ -800,32 +807,29 @@ class HiroHifStrategy(HifGrindStrategy):
             if self.s.state.page_fields.get("candidates"):
                 break
             sleep(self.SELECT_RETRY_WAIT)
-            device.screenshot()
-            data = ctx.fetch_select_drink()
+            can_skip = drink_select_can_skip(device.screenshot())
             obs = self.s.observe(scene="SELECT_DRINK")
         if not self.s.state.page_fields.get("candidates"):
             self.s.recover("missing_fields", f"SELECT_DRINK 重读 {self.SELECT_RETRIES} 次候选仍为空（或页面防抖未结束）")
-        d = self.deciders.decide("SELECT_DRINK", self.s.state, can_skip=bool(data.can_skip), n_options=len(data.drinks))
+        n = len(DRINK_SELECT_BOXES)
+        d = self.deciders.decide("SELECT_DRINK", self.s.state, can_skip=can_skip, n_options=n)
         self._note_fallback("SELECT_DRINK", d)
-        if d.action.kind is ActionKind.ACTIVATE_EFFECT and data.drinks:
-            i = min(int(d.action.args["pick_indexes"][0]), len(data.drinks) - 1)
-            drink, act = data.drinks[i], Action.activate_effect(i)
-        elif data.can_skip:
+        if d.action.kind is ActionKind.ACTIVATE_EFFECT:
+            i = min(int(d.action.args["pick_indexes"][0]), n - 1)
+            drink, act = i, Action.activate_effect(i)
+        elif can_skip:
             drink, act = None, d.action
             self._skip_incoming_drink = True  # 决策不拿：随后的「報酬スキップ」确认是这一步的结果（main8 实机误停）
         else:  # 不能跳过、决策也没选：不默认拿第 1 瓶（用户规则 3c），停下
             self._stop("SELECT_DRINK", f"不能跳过，但决策没选饮料（{d.action}，来源 {d.source}）", obs=obs, decision=d)
         def commit():
             if drink is not None:
-                # 快速提交（点饮料 → 等「受け取る」亮 → 点 → 等消失），亮不起来才退回 KAA commit（固定 sleep 0.5 + 2s 再循环）
-                from kaa.tasks.produce.new.page import POSTIONS
-
-                idx = getattr(drink, "index", None)
-                r = POSTIONS[idx] if isinstance(idx, int) and 0 <= idx < len(POSTIONS) else None
-                if r is not None and ops.fast_acquire((int(r.center.x), int(r.center.y))):
+                # 快速提交（点饮料 → 等「受け取る」亮 → 点 → 等消失），亮不起来才退回慢提交（同 KAA：固定 sleep 0.5 + 2s 再循环）
+                x1, y1, x2, y2 = DRINK_SELECT_BOXES[drink]
+                if ops.fast_acquire(((x1 + x2) // 2, (y1 + y2) // 2)):
                     self._confirm_acquire()  # 万一按钮还在（没关掉）再补点
                     return
-            ctx.commit(data, drink)
+            drink_select_commit(drink)
             if drink is not None:
                 self._confirm_acquire()
 
@@ -836,17 +840,17 @@ class HiroHifStrategy(HifGrindStrategy):
     def _event_page(self, page: str, commit_index, n_options: int | None = None):
         t0 = time.monotonic()
         obs = self.s.observe(scene=page)
-        kaa_n = n_options
+        btn_n = n_options
         choices = self.s.state.page_fields.get("choices") or []
         if n_options is not None and len(choices) > n_options:
-            # 第二十五局本战授業：3 项里第 3 项「声の細かいチェック」被下方对话框挡住一半，KAA fetch_options 只认出 2 项。
-            # 选项数按识别层的 choices；选到 KAA 没认出的那项时按识别的 center 点（同 KAA commit：点两下 = 选中再确认）
+            # 第二十五局本战授業：3 项里第 3 项「声の細かいチェック」被下方对话框挡住一半，按钮识别只认出 2 项。
+            # 选项数按识别层的 choices；选到按钮识别没认出的那项时按识别层的 center 点（点两下 = 选中再确认）
             n_options = len(choices)
-            kaa_commit = commit_index
+            btn_commit = commit_index
 
             def commit_index(i):  # noqa: F811
-                if i < kaa_n:
-                    return kaa_commit(i)
+                if i < btn_n:
+                    return btn_commit(i)
                 c = next((c for c in choices if c.get("index") == i and c.get("center")), None)
                 if c is None:
                     return False
@@ -856,23 +860,52 @@ class HiroHifStrategy(HifGrindStrategy):
                     sleep(0.5)
                 return True
 
-            self.s.note(f"{page}：KAA 认出 {kaa_n} 项，识别层 {len(choices)} 项（有选项被挡住），按识别层")
+            self.s.note(f"{page}：按钮识别认出 {btn_n} 项，识别层 {len(choices)} 项（有选项被挡住），按识别层")
         d = self.deciders.decide(page, self.s.state, n_options=n_options)
         self._note_fallback(page, d)
         i = int(d.action.args.get("select", -1)) if d.action.kind is ActionKind.EVENT_SELECT else -1
         if d.action.kind is not ActionKind.EVENT_SELECT or (n_options is not None and not 0 <= i < n_options):
             # 用户规则（3c）：兜底不选第 0 项。决策器自己会按社区模板兜底；到这里说明兜底也没给出合法选项 → 停下
             self._stop(page, f"决策没给出合法选项（{d.action}，共 {n_options} 项，来源 {d.source}）", obs=obs, decision=d)
-        # KAA 的 Study/OutingContext.commit 只双击一次、不等按钮消失；实机第 6 天双击只选中没确认，所以这里不信任 commit 返回，
+        # commit 只双击一次、不等按钮消失（同 KAA Study/OutingContext.commit）；实机第 6 天双击只选中没确认，所以这里不信任 commit 返回，
         # 页面没变就再双击（第二次点在已选中的项上即确认）
         result = self._act(lambda: commit_index(i), Action.event_select(i), page_before=page, taps=[], trust_commit=False)
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
-    def on_study(self, ctx: "StudyContext"):
-        self._event_page("STUDY", ctx.commit, len(ctx.fetch_options()))
+    OPTION_WAIT_S = 2.0  # 选项按钮还没出来（入场动画）时最多等这么久
 
-    def on_outing(self, ctx: "OutingContext"):
-        self._event_page("OUTING", ctx.commit, len(ctx.fetch_options()))
+    def _event_options(self) -> list:
+        """授業 / おでかけ 的选项按钮（hiro.vision.classify.option_regions，同 KAA CommuEventButtonUI）。KAA 一个都没找到时直接抛错
+        崩到续跑；这里先等一会儿再读，还没有就给空（_event_page 再按识别层 choices 或停机）。"""
+        from hiro.vision.classify import option_regions
+
+        end = time.monotonic() + self.OPTION_WAIT_S
+        while not (buttons := option_regions(device.screenshot())) and time.monotonic() < end:
+            sleep(0.4)
+        return buttons
+
+    def _event_commit(self, i: int, *, outing: bool) -> None:
+        """选第 i 项（同 KAA Study/OutingContext.commit：重新找按钮、双击、等 2 秒）。外出另外盯 3 秒「AP 已满」确认框，出了点确定。"""
+        buttons = self._event_options()
+        if not 0 <= i < len(buttons):
+            raise ValueError(f"选项 {i} 不在 {len(buttons)} 个按钮里")
+        device.double_click(*buttons[i].center)
+        sleep(2)
+        if not outing:
+            return
+        end = time.monotonic() + 3.0
+        while time.monotonic() < end:
+            img = device.screenshot()
+            if tpl("InProduce.OutingApMaxOutDialog.Title").exists(img):
+                logger.info("外出：AP 已满确认框，点确定")
+                tap("InProduce.OutingApMaxOutDialog.ButtonConfirm", img, device.click)
+            sleep(0.1)
+
+    def on_study(self, ctx=None):
+        self._event_page("STUDY", lambda i: self._event_commit(i, outing=False), len(self._event_options()))
+
+    def on_outing(self, ctx=None):
+        self._event_page("OUTING", lambda i: self._event_commit(i, outing=True), len(self._event_options()))
 
     # ---------------------------------------------------------------- 主动查看牌组（state-events §6）
     _reviewed_at_exam: int | None = None
@@ -968,10 +1001,10 @@ class HiroHifStrategy(HifGrindStrategy):
             self.s.record(obs, decision=d, timings_ms={"total": (time.monotonic() - t0) * 1000})
             return
         self._confirm_unknown = 0
-        from kaa.tasks.produce.shared.common import ProduceInterrupt
-
         act = d.action
-        ProduceInterrupt._check_pdrink_max_confirm(device.screenshot())
+        img = device.screenshot()  # 确认框标题连判两帧再点「確定」（同 KAA ProduceInterrupt._check_pdrink_max_confirm）
+        if tpl("InProduce.TextPDrinkMaxConfirmTitle").exists(img) and tpl("InProduce.TextPDrinkMaxConfirmTitle").exists(img := device.screenshot()):
+            tap("Common.ButtonConfirm", img, device.click)
         self._skip_incoming_drink = False
         result = self.s.verify(act, page_before="PDRINK_MAX_CONFIRM", taps=[])
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
@@ -999,13 +1032,13 @@ class HiroHifStrategy(HifGrindStrategy):
     def _card_event(self, page: str, ctx, executor_name: str):
         """强化 / 删卡事件：观测卡格 → 决策 → 按 card_id 执行（游戏执行-06）→ 记录。决策器或执行器还没有、读不出、决策取消执行失败 → 停下。"""
         from hiro.brain import deciders as deciders_mod
-        from hiro.loop import kaa_patches
+        from hiro.produce import card_ops
 
         t0 = time.monotonic()
         if page not in deciders_mod.PAGES:
             self._stop(page, "决策器还没有这个页面（决策-08）")
         kind = "enhance" if page == "SKILL_CARD_ENHANCE" else "remove"
-        failed = HiroHifStrategy.op_failed.setdefault(kind, set())
+        failed = type(self).op_failed.setdefault(kind, set())
 
         def read():
             """观测卡格 → 一屏放不下时读整副 → 去掉本局做不成的卡 → 按画面有没有「キャンセル」填 cancelable（False = 必选，决策 512e3c3）。"""
@@ -1014,7 +1047,7 @@ class HiroHifStrategy(HifGrindStrategy):
                 if self.s.state.page_fields.get("cards"):
                     break
                 time.sleep(0.5)
-            self._scan_change_deck(kaa_patches.CARD_OP_REGION[kind], page)  # 一屏放不下时读整副交给决策（执行按 card_id 翻屏找）
+            self._scan_change_deck(card_ops.CARD_OP_REGION[kind], page)  # 一屏放不下时读整副交给决策（执行按 card_id 翻屏找）
             pf = self.s.state.page_fields
             cards = [c for c in pf.get("cards") or [] if c.get("card_id") not in failed] if failed else pf.get("cards")
             # cancelable 以识别填的为准（识屏 e226c6b：底部按钮判据）；识别没给（None）时用这里看到的「キャンセル」补
@@ -1050,7 +1083,7 @@ class HiroHifStrategy(HifGrindStrategy):
             self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
             logger.info("%s：%s → 点キャンセル 退回", page, d.reason)
             return
-        execute = getattr(kaa_patches, executor_name, None)
+        execute = getattr(card_ops, executor_name, None)
         if execute is None:
             self._stop(page, f"执行器 {executor_name} 还没有（游戏执行-06）", obs=obs, decision=d)
         done = execute(ctx, card_id)
@@ -1097,7 +1130,7 @@ class HiroHifStrategy(HifGrindStrategy):
     def _stage1_column(self, pick: int, d: Decision) -> int:
         """决策的 pick_index 是识别 candidates 的序号；执行侧 change_stage1 按「第几列」点。用候选卡面中心 x 换算成列
         （qualify6 r2 实机：识别多读了一张重复卡，决策选 #3 せのびの魔法，执行去找第 3 列，超时空转）。"""
-        from hiro.loop.kaa_patches import CHANGE1_MARK_X
+        from hiro.produce.card_ops import CHANGE1_MARK_X
 
         cands = self.s.state.page_fields.get("candidates") or []
         c = next((c for c in cands if c.get("index") == pick), None)
@@ -1112,10 +1145,10 @@ class HiroHifStrategy(HifGrindStrategy):
     CHANGE_EMPTY_REREADS = 3  # 换卡阶段 2 卡格读成空时再读几次（每次隔 1s）
 
     def _scan_change_deck(self, region=None, page: str = "换卡阶段 2") -> bool:
-        """换卡阶段 2：牌组一屏放不下时往下滑读整副（kaa_patches.scan_dialog_deck，拼完滑回顶部），整副交给决策。
+        """换卡阶段 2：牌组一屏放不下时往下滑读整副（card_ops.scan_dialog_deck，拼完滑回顶部），整副交给决策。
         决策 da6c8e5：第十八、十九局对话框只读到一屏 12 张（牌组 22 张），只能在可见的牌里选。返回是否用了多屏整副。
         拼接不可信时不替换（保留这一屏），在 page_fields 标 deck_complete=False / deck_screens，决策据此当「张数不可信」。"""
-        from hiro.loop.kaa_patches import CHANGE2_CARD_AREA, scan_dialog_deck
+        from hiro.produce.card_ops import CHANGE2_CARD_AREA, scan_dialog_deck
 
         pf = self.s.state.page_fields
         if not pf.get("cards"):
@@ -1139,11 +1172,14 @@ class HiroHifStrategy(HifGrindStrategy):
     CHANGE1_DECIDE_RETRIES = 3  # 换卡阶段 1 拿不到换卡决策时再读几帧（等页面提交进状态），之后才退回第 0 张
     CHANGE1_DECIDE_WAIT = 0.4
 
-    def on_skill_card_change(self, ctx):
+    def on_skill_card_change(self, ctx=None, *, stage: int | None = None):
         """换卡：阶段 1 按决策选换入候选（候选未识别时选第 0 张），阶段 2 按决策的 card_id 换出；决策取消时点キャンセル。
-        执行在 kaa_patches.change_stage1 / change_stage2（核心卡保护、认不出就取消）。KAA 原版固定换第 0 张，第 4 局因此丢了 デイドリーミング。"""
+        执行在 card_ops.change_stage1 / change_stage2（核心卡保护、认不出就取消）。KAA 原版固定换第 0 张，第 4 局因此丢了 デイドリーミング。"""
+        from hiro.produce.card_ops import change_stage1, change_stage2  # KAA 的 ctx.commit_stage1 / 2 也被补丁换成它们
+
+        stage = stage if stage is not None else ctx.stage  # 新主循环按判页给（SKILL_CARD_CHANGE_1 / 2），KAA 主循环在 ctx 上
         cancel = False
-        if ctx.stage == 1:
+        if stage == 1:
             t0 = time.monotonic()
             # 换卡页刚出现的第一帧：识别已经认出候选，但页面要连续两帧才提交进状态，状态里还是上一页（获得饮料 / 饮料已满）的字段，
             # 决策器读不到候选只能回 Wait，下面就会盲换第 0 张（Windows 第二局两次、Mac A5b 一次，2026-11-06）。再读几帧等状态提交。
@@ -1161,7 +1197,7 @@ class HiroHifStrategy(HifGrindStrategy):
             if d.action.kind is not ActionKind.CHANGE_CARD:
                 d.warnings.append("候选未识别，换入第 0 张（阶段 2 仍按决策换出 / 取消）")
             pick = self._stage1_column(pick, d)
-            ok = ctx.commit_stage1(pick)  # 自带轮询到阶段 2；不走 _act 的重复点击
+            ok = change_stage1(None, pick)  # 自带轮询到阶段 2；不走 _act 的重复点击
             result = self.s.verify(d.action, page_before="SKILL_CARD_CHANGE_1", taps=[], retries=0)
             if ok is False:
                 result = replace(result, ok=False, error="阶段 1 超时没进入阶段 2")
@@ -1187,7 +1223,7 @@ class HiroHifStrategy(HifGrindStrategy):
         if not self.s.state.page_fields.get("cards"):
             # 卡格读成空：可能是上一次点「チェンジ」后晚弹出来的确认框挡着（第二十局 03:21:58：读成 [] → 判不换 → 点了确认框的キャンセル，
             # 多花约 80 秒）。是我们自己的换卡确认框就点「決定」（换哪张上一次已按决策选好）；否则再重读几次，不直接取消
-            from hiro.loop.kaa_patches import confirm_change_dialog
+            from hiro.produce.card_ops import confirm_change_dialog
 
             try:
                 late = confirm_change_dialog(device.screenshot())
@@ -1229,10 +1265,10 @@ class HiroHifStrategy(HifGrindStrategy):
             self._change_cancels = 0
         card_id = None if cancel else args.get("remove_card_id")
         # 整副扫描过（多屏）时 remove_index 是牌组序号、不是这一屏的格子号：只按 card_id + 强化次数找（翻屏）
-        changed = ctx.commit_stage2(0, card_id=card_id, cancel=cancel, remove_index=None if cancel or scanned else args.get("remove_index"),
+        changed = change_stage2(None, 0, card_id=card_id, cancel=cancel, remove_index=None if cancel or scanned else args.get("remove_index"),
                                     remove_upgrade=None if cancel else args.get("remove_upgrade"))  # 自带确认框处理；取消 / 不符时点キャンセル 返回 False  # fmt: skip
         result = self.s.verify(d.action, page_before="SKILL_CARD_CHANGE_2", taps=[], retries=0)
-        result = replace(result, ok=bool(changed) or cancel, error=None if changed or cancel else "换卡未完成（见 kaa_patches 日志与 stage2 帧）")
+        result = replace(result, ok=bool(changed) or cancel, error=None if changed or cancel else "换卡未完成（见 card_ops 日志与 stage2 帧）")
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
     def _end_page(self, page: str, commit):
@@ -1288,7 +1324,7 @@ class HiroHifStrategy(HifGrindStrategy):
             d = self._consult_open_dialog(d, done_services)
             action = d.action if step < self.MAX_SHOP_STEPS - 1 else Action(ActionKind.SHOP_END)
             logger.info("相談 第 %d 步 %s ← %s：%s", step + 1, action, d.source, d.reason)
-            HiroHifStrategy.last_dialog_pick = None
+            type(self).last_dialog_pick = None
             result = execute_shop(action, dict(self.s.state.page_fields), choose_card=self._choose_dialog_card, deck_size=self._deck_size())
             service = ("upgrade" if action.kind is ActionKind.SHOP_UPGRADE_CARD else action.args.get("service")) if action.kind in (
                 ActionKind.SHOP_UPGRADE_CARD, ActionKind.SHOP_BUY) else None  # fmt: skip
@@ -1307,10 +1343,10 @@ class HiroHifStrategy(HifGrindStrategy):
                     fails.clear()  # 新货架：失败计数按格子号记的，作废
                 continue
             streak += 1
-            if service and HiroHifStrategy.last_dialog_pick and HiroHifStrategy.last_dialog_pick[1] and "没打开选卡页" not in (result.error or ""):
-                kind, cid = HiroHifStrategy.last_dialog_pick[:2]
-                HiroHifStrategy.op_failed.setdefault(kind, set()).add(cid)
-                HiroHifStrategy.last_dialog_pick = None
+            if service and type(self).last_dialog_pick and type(self).last_dialog_pick[1] and "没打开选卡页" not in (result.error or ""):
+                kind, cid = type(self).last_dialog_pick[:2]
+                type(self).op_failed.setdefault(kind, set()).add(cid)
+                type(self).last_dialog_pick = None
                 self.s.recover("tap_no_effect", f"相談 {action} 选的 {cid} 做不成（{result.error}），本局不再选它，换下一张")
             elif service:  # 打不开 / 已用过：本次相談不再开这个服务
                 done_services.add(service)
@@ -1330,7 +1366,7 @@ class HiroHifStrategy(HifGrindStrategy):
         """強化 / 削除做成后，把对话框里实际选的卡写进记录的动作（args.card_id / upgrade）：删卡事件、trace 和记账都按实际那张。
         动作只带 card_index 时执行器不按它点，是在对话框里让决策重选的（DMM 第 12 天：决策写删 アイコンタクトの基本，
         对话框里删的是 眠気，状态账本却按 card_index 删了 アイコンタクトの基本）。"""
-        pick = HiroHifStrategy.last_dialog_pick
+        pick = type(self).last_dialog_pick
         if not pick or not pick[1] or d.action.args.get("card_id"):
             return d
         _, cid, upgrade, name = (*pick, None, None)[:4]
@@ -1371,19 +1407,19 @@ class HiroHifStrategy(HifGrindStrategy):
     def _choose_dialog_card(self, kind: str, cards: list) -> str | None:
         """相談 / 轮间的強化 / 削除对话框：把整副卡格交给决策 enhance_card / remove_card，返回要点的 card_id（None = 不选，执行器点キャンセル）。"""
         page = "SKILL_CARD_ENHANCE" if kind == "enhance" else "SKILL_CARD_REMOVAL"
-        failed = HiroHifStrategy.op_failed.setdefault(kind, set())
+        failed = type(self).op_failed.setdefault(kind, set())
         cards = [c for c in cards if c.get("card_id") not in failed]
         state = replace(self.s.state, page_fields={**self.s.state.page_fields, "cards": cards})
         d = self.deciders.decide(page, state)
         cid = d.action.args.get("card_id")
         card = next((c for c in cards if c.get("card_id") == cid), {})
-        HiroHifStrategy.last_dialog_pick = (kind, cid, card.get("upgrade"), card.get("name"))
+        type(self).last_dialog_pick = (kind, cid, card.get("upgrade"), card.get("name"))
         logger.info("相談%s选卡 %s ← %s：%s", "强化" if kind == "enhance" else "删除", d.action.args.get("card_id"), d.source, d.reason)
         return None if d.action.args.get("cancel") else d.action.args.get("card_id")
 
     MAX_INTERVAL_STEPS = 12
 
-    def on_hif_round_interval(self, ctx: "HifRoundIntervalContext"):
+    def on_hif_round_interval(self, ctx=None):
         """轮间：observe → 决策器 interval → execute_interval，一步一步直到 IntervalEnd（hiro.produce.interval.interval_loop）。
         某一步失败不退出（重新观测后继续）；买过 / 买不了的格子标成已购；离开前先按画面回满体力（R2 不自动回血）。"""
         from hiro.produce.interval import interval_loop
@@ -1440,24 +1476,27 @@ class HiroHifStrategy(HifGrindStrategy):
         except PageLeft as e:  # 画面已经不是轮间：不再按沿用的旧字段买 / 回体力，交回主循环
             logger.warning("轮间：画面已经是 %s，退出轮间循环", e.page)
             return
-        self.s.recover("tap_no_effect", "轮间结束失败，交回 KAA 结束")
-        ctx.end()  # 兜底：执行器结束不了时用 KAA 的结束流程
+        from hiro.produce.interval_exit import TIMEOUT, end_interval
+
+        self.s.recover("tap_no_effect", "轮间执行器结束不了，点「終了」兜底")
+        if not end_interval():  # 兜底：点「終了」和确认框直到离开轮间（替代 KAA HifRoundIntervalContext.end，带超时）
+            self._stop("HIF_ROUND_INTERVAL", f"轮间 {TIMEOUT:.0f}s 内没结束")
 
     # ---------------------------------------------------------------- 考试
     def _battle_label(self, ctx: "ExamContext") -> str:
         """KAA 把 H.I.F 的公開レッスン也当 EXAM 场景；用我们的场景识别区分：HIF_EXAM 才是选拔 / 本战。"""
         from hiro.vision.scene import classify_current
 
-        if self.scenario != HifScenario.QUALIFY and self._r1_done_in_trace():
+        if self.scenario != "qualify" and self._r1_done_in_trace():
             # 本战 R1 结算过之后只剩 R2（中间只有轮间，没有レッスン）：不看场景直接是 r2。DMM dmm2（maindmm2-20261111-043916）：
             # 考试刚开始那一刻画面还在过场，classify_current 不是 HIF_EXAM，R2 四次挑战三次标成 lesson-N（不走 R2 预演 / 打法）
             self.exam_count += 1
-            HiroHifStrategy.exams_done = self.exam_count
+            type(self).exams_done = self.exam_count
             return "r2"
         scene = classify_current().scene
-        if scene != "HIF_EXAM" and self.scenario != HifScenario.QUALIFY:
+        if scene != "HIF_EXAM" and self.scenario != "qualify":
             scene = self._settle_exam_scene(scene)
-        if scene == "HIF_EXAM" and self.scenario != HifScenario.QUALIFY:
+        if scene == "HIF_EXAM" and self.scenario != "qualify":
             try:
                 from hiro.vision.hif import read_hif_exam
 
@@ -1465,7 +1504,7 @@ class HiroHifStrategy(HifGrindStrategy):
             except Exception:
                 f = {}
             self.exam_count += 1
-            HiroHifStrategy.exams_done = self.exam_count
+            type(self).exams_done = self.exam_count
             if self._r1_done_in_trace():
                 # R1 打完不会再考 R1：之后的考试一定是 R2（Windows 第十局 04:00 日切换后续跑进 R2 末回合，
                 # NPC 读不到、剩余回合不是 9，退回 KAA 颜色判断成了 r1，再挑戦按 r1 计数又多点了一次）
@@ -1473,13 +1512,13 @@ class HiroHifStrategy(HifGrindStrategy):
             rnd = finals_label_round(f.get("finals_round"), f.get("remaining_turns"))
             if rnd in (1, 2):
                 return f"r{rnd}"
-            return "r2" if ctx.is_final_exam() else "r1"
+            return "r2" if is_final_exam(device.screenshot()) else "r1"
         if scene != "HIF_EXAM":
             self.lesson_count += 1
-            HiroHifStrategy.lessons_done = self.lesson_count
+            type(self).lessons_done = self.lesson_count
             return f"lesson-{self.lesson_count}"
         self.exam_count += 1
-        if self.scenario == HifScenario.QUALIFY:
+        if self.scenario == "qualify":
             # 考试画面排名栏的突破线人数：64/128 → 选拔①、32/64 → ②、16/32 → ③。以画面为准（续跑时不必再手动给 --exams-done）
             from hiro.vision.hif import read_hif_exam
 
@@ -1496,10 +1535,10 @@ class HiroHifStrategy(HifGrindStrategy):
             if n is not None and n != self.exam_count:
                 logger.info("考试场次以画面为准：選抜試験%d（计数为 %d）", n, self.exam_count)
                 self.exam_count = n
-            HiroHifStrategy.exams_done = self.exam_count
+            type(self).exams_done = self.exam_count
             return f"qualify-{self.exam_count}"
-        HiroHifStrategy.exams_done = self.exam_count
-        return "r2" if ctx.is_final_exam() else "r1"
+        type(self).exams_done = self.exam_count
+        return "r2" if is_final_exam(device.screenshot()) else "r1"
 
     EXAM_SCENE_SETTLE_S = 6.0  # 本战流程里考试开头认不出 HIF_EXAM 时，再看这么久才当成レッスン
 
@@ -1552,7 +1591,7 @@ class HiroHifStrategy(HifGrindStrategy):
         # 再挑戦同一场考试：场次不加
         self.exam_restarted = True  # 主循环据此重新进入 on_exam_entered（HiroController._rearm_exam）
         self.exam_count -= 1
-        HiroHifStrategy.exams_done = self.exam_count
+        type(self).exams_done = self.exam_count
         self.rec.log("exam_retry", exam=label, retry_kind=kind)
         return True
 
@@ -1644,7 +1683,7 @@ class HiroHifStrategy(HifGrindStrategy):
             if clicks > 1:
                 logger.info("%s 再挑戦确认框点了「%s」还在，再点一次（第 %d 次）", label, hit.text.strip(), clicks)
         kind = kind or "free"
-        HiroHifStrategy.retries_used[kind] = HiroHifStrategy.retries_used.get(kind, 0) + 1
+        type(self).retries_used[kind] = type(self).retries_used.get(kind, 0) + 1
         # 记账（协调 2026-11-04）：这一次用的是免费还是券、券还剩几张，写进日志和 trace（复盘报告读 note）
         what = {"free": "免费", "ticket": "再挑戦チケット"}[kind]
         left = f"，再挑戦チケット {tickets[0]} → {tickets[1]} 张" if tickets else "（所持张数没读到）"
@@ -1747,3 +1786,30 @@ class HiroHifStrategy(HifGrindStrategy):
                 break
             ops.wait_change(before, roi=btn.rect.xywh, timeout=EXAM_END_SETTLE, use_signature=False)
             ops.wait_stable(timeout=EXAM_END_SETTLE)  # 转场中间帧找不到「次へ」会提前退出循环，等画面停稳再判断
+
+
+def _kaa_strategy():
+    """KAA 主循环用的策略：KAA 的 _dispatch 调这些 on_* 钩子（钩子本身在 HifCore 里）。去 KAA 收尾时整个删掉。
+    懒加载（PEP 562 模块 __getattr__）：只有用到 HiroHifStrategy 时才 import KAA，新主循环只用 HifCore，不碰 KAA。"""
+    from kaa.config.const import HifScenario
+    from kaa.kaa_context import produce_solution
+    from kaa.tasks.produce.new.strategies.hif_grind import HifGrindStrategy
+
+    class HiroHifStrategy(HifCore, HifGrindStrategy):
+        def __init__(self, controller: "ProduceController") -> None:
+            HifGrindStrategy.__init__(self, controller)
+            solution = produce_solution().data
+            HifCore.__init__(self, scenario="qualify" if solution.mode == HifScenario.QUALIFY else "main", idol=solution.idol)
+
+    HiroHifStrategy.__module__, HiroHifStrategy.__qualname__ = __name__, "HiroHifStrategy"
+    return HiroHifStrategy
+
+
+def __getattr__(name: str):
+    if name in ("HiroHifStrategy", "HifGrindStrategy"):
+        if "HiroHifStrategy" not in globals():
+            cls = _kaa_strategy()
+            globals()["HiroHifStrategy"] = cls
+            globals()["HifGrindStrategy"] = cls.__mro__[2]
+        return globals()[name]
+    raise AttributeError(name)

@@ -112,8 +112,11 @@ def test_select_drink_uses_fast_acquire(monkeypatch):
               record=lambda *a, **k: None, recover=lambda *a: None)  # fmt: skip
     st.deciders = NS(decide=lambda *a, **k: Decision(action=Action.activate_effect(1), reason="", source="rule"))
     st._act = lambda commit, act, **kw: (commit(), ExecutionResult(action=act, ok=True))[1]
-    kaa_commit = []
-    data = NS(drinks=[NS(index=0), NS(index=1), NS(index=2)], can_skip=False)
-    ctx = NS(fetch_select_drink=lambda: data, commit=lambda d, dr: kaa_commit.append(dr))
-    st.on_select_drink(ctx)
-    assert got == [(360, 884)] and kaa_commit == []  # 第 2 瓶（POSTIONS[1] 中心），没走 KAA commit
+    from hiro.produce import card_ops
+
+    slow = []
+    monkeypatch.setattr(hif, "device", NS(screenshot=lambda: None))
+    monkeypatch.setattr(card_ops, "drink_select_can_skip", lambda img: False)
+    monkeypatch.setattr(card_ops, "drink_select_commit", lambda drink: slow.append(drink))
+    st.on_select_drink()
+    assert got == [(360, 884)] and slow == []  # 第 2 瓶（中心 360, 884），快速提交成功，没走慢提交

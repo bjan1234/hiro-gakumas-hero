@@ -5,6 +5,7 @@ from pathlib import Path
 
 import cv2
 
+from hiro.produce import card_ops
 from hiro.loop import kaa_patches as kp
 from hiro.vision.deck import read_card_dialog
 
@@ -13,38 +14,38 @@ EIEIO = "p_card-02-men-1_031"
 
 
 def _cards(name):
-    return read_card_dialog(cv2.imread(str(FIX / name)), kp.CHANGE2_CARD_AREA)["cards"]
+    return read_card_dialog(cv2.imread(str(FIX / name)), card_ops.CHANGE2_CARD_AREA)["cards"]
 
 
 def test_main19_picks_unupgraded_copy_by_index():
     cards = _cards("main19-eieio-three.jpg")
     assert [(c["index"], c["upgrade"]) for c in cards if c.get("card_id") == EIEIO] == [(8, 1), (9, 0), (10, 0)]
-    hit, why = kp.pick_change_target(cards, 0, EIEIO, protected=set(), remove_index=10, remove_upgrade=0)
+    hit, why = card_ops.pick_change_target(cards, 0, EIEIO, protected=set(), remove_index=10, remove_upgrade=0)
     assert hit["index"] == 10 and hit["upgrade"] == 0 and tuple(hit["center"]) == (434, 992)
 
 
 def test_upgrade_only_when_index_does_not_match():
     cards = _cards("main19-eieio-three.jpg")
-    hit, _ = kp.pick_change_target(cards, 0, EIEIO, protected=set(), remove_index=99, remove_upgrade=0)
+    hit, _ = card_ops.pick_change_target(cards, 0, EIEIO, protected=set(), remove_index=99, remove_upgrade=0)
     assert hit["upgrade"] == 0  # 格子号对不上（画面变了）：按强化次数挑没强化的那张，绝不点 +1
 
 
 def test_multiple_copies_without_match_stops():
     cards = _cards("main19-eieio-three.jpg")
-    hit, why = kp.pick_change_target(cards, 0, EIEIO, protected=set(), remove_index=99, remove_upgrade=2)
+    hit, why = card_ops.pick_change_target(cards, 0, EIEIO, protected=set(), remove_index=99, remove_upgrade=2)
     assert hit is None and "3 张" in why  # 不退回只按 card_id
 
 
 def test_old_behaviour_without_index():
     cards = _cards("main19-eieio-three.jpg")
-    hit, _ = kp.pick_change_target(cards, 0, EIEIO, protected=set())
+    hit, _ = card_ops.pick_change_target(cards, 0, EIEIO, protected=set())
     assert hit["card_id"] == EIEIO  # 决策没给序号 / 强化（旧数据）：仍按 card_id
 
 
 def test_main19_second_change_kyorikan():
     """00:04 第二次换卡（距離感の基本，remove_index 7）当时是对的，新逻辑结果不变。"""
     cards = _cards("main19-kyorikan.jpg")
-    hit, why = kp.pick_change_target(cards, 0, "p_card-02-men-0_039", protected=set(), remove_index=7, remove_upgrade=0)
+    hit, why = card_ops.pick_change_target(cards, 0, "p_card-02-men-0_039", protected=set(), remove_index=7, remove_upgrade=0)
     assert hit is not None and hit["index"] == 7
 
 
@@ -76,7 +77,7 @@ def test_scan_dialog_deck_merges_and_returns_to_top(monkeypatch):
         pos["swipes"].append("down" if down else "up")
         pos["i"] = min(len(screens) - 1, pos["i"] + 1) if down else max(0, pos["i"] - 1)
 
-    out = kp.scan_dialog_deck(kp.CHANGE2_CARD_AREA, expected=22, shoot=lambda: None, swipe=swipe, sleep=lambda s: None)
+    out = card_ops.scan_dialog_deck(card_ops.CHANGE2_CARD_AREA, expected=22, shoot=lambda: None, swipe=swipe, sleep=lambda s: None)
     assert out["complete"] and len(out["cards"]) == 22 and out["screens"] > 1
     assert [c["card_id"] for c in out["cards"]] == [f"c{i:02d}" for i in range(22)] and out["cards"][21]["index"] == 21
     assert pos["i"] == 0 and pos["swipes"].count("up") >= 1  # 滑回顶部，点卡时从第一屏开始找
@@ -89,7 +90,7 @@ def test_scan_single_screen_does_not_swipe(monkeypatch):
     swipes = []
     monkeypatch.setattr(vd, "read_card_dialog", lambda img, region: {"cards": one})
     monkeypatch.setattr(vd, "dialog_scroll", lambda img, region: {"scrollable": False, "at_top": True})
-    out = kp.scan_dialog_deck(kp.CHANGE2_CARD_AREA, shoot=lambda: None, swipe=lambda *a: swipes.append(a), sleep=lambda s: None)
+    out = card_ops.scan_dialog_deck(card_ops.CHANGE2_CARD_AREA, shoot=lambda: None, swipe=lambda *a: swipes.append(a), sleep=lambda s: None)
     assert out["screens"] == 1 and len(out["cards"]) == 12 and swipes == []
 
 
@@ -104,20 +105,20 @@ def test_hif_hands_whole_deck_to_decision(monkeypatch):
     st.s = NS(state=GameState(page_fields={"cards": _screens(_deck())[0]}), note=notes.append, recover=lambda k, d: recovers.append(k))
     st._deck_size = lambda: 22
     whole = [{**c, "index": i, "deck_index": i} for i, c in enumerate(_deck())]
-    monkeypatch.setattr(kp, "scan_dialog_deck", lambda region, expected=None: {"cards": whole, "complete": True, "screens": 4, "problems": []})
+    monkeypatch.setattr(card_ops, "scan_dialog_deck", lambda region, expected=None: {"cards": whole, "complete": True, "screens": 4, "problems": []})
     assert st._scan_change_deck() is True
     pf = st.s.state.page_fields
     assert len(pf["cards"]) == 22 and pf["deck_complete"] and pf["deck_screens"] == 4
     # 拼接不可信：保留第一屏，标 deck_complete=False
     st.s.state = GameState(page_fields={"cards": _screens(_deck())[0]})
-    monkeypatch.setattr(kp, "scan_dialog_deck", lambda region, expected=None: {"cards": whole[:30], "complete": False, "screens": 3, "problems": ["x"]})
+    monkeypatch.setattr(card_ops, "scan_dialog_deck", lambda region, expected=None: {"cards": whole[:30], "complete": False, "screens": 3, "problems": ["x"]})
     assert st._scan_change_deck() is False
     assert len(st.s.state.page_fields["cards"]) == 12 and st.s.state.page_fields["deck_complete"] is False and recovers == ["missing_fields"]
 
 
 def test_stage2_cancel_limit_constants():
     """阶段 2 找不到要换的那张时先取消；同一张卡取消满 STAGE2_MAX_CANCELS 次后改换强化最低的（不能无限打转）。"""
-    assert kp.STAGE2_MAX_CANCELS >= 1 and isinstance(kp._STAGE2_CANCELS, dict)
+    assert card_ops.STAGE2_MAX_CANCELS >= 1 and isinstance(card_ops._STAGE2_CANCELS, dict)
 
 
 def test_dmm_unsure_upgrade_copy_is_the_target():
@@ -126,10 +127,10 @@ def test_dmm_unsure_upgrade_copy_is_the_target():
     yur = "p_card-02-act-1_028"
     cards = [{"index": i, "card_id": yur, "upgrade": u, "name": "ゆるふわおしゃべり"} for i, u in enumerate((1, 1, 1, None))]
     cards.append({"index": 4, "card_id": "p_card-02-act-1_037", "upgrade": 1, "name": "デイドリーミング"})
-    hit, why = kp.pick_change_target(cards, 0, yur, protected=set(), remove_index=None, remove_upgrade=0)
+    hit, why = card_ops.pick_change_target(cards, 0, yur, protected=set(), remove_index=None, remove_upgrade=0)
     assert hit["index"] == 3 and "认不准" in why
     cards[3]["upgrade"] = 1  # 四张都明确认成 +1：还是不换（不能盲换一张强化过的）
-    hit, _ = kp.pick_change_target(cards, 0, yur, protected=set(), remove_index=None, remove_upgrade=0)
+    hit, _ = card_ops.pick_change_target(cards, 0, yur, protected=set(), remove_index=None, remove_upgrade=0)
     assert hit is None
 
 

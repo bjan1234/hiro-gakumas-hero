@@ -399,7 +399,7 @@ def _cursor_px(hsv: MatLike, rect: tuple[int, int, int, int]) -> int:
 
 
 # 相談「削除 / 強化」、换卡第 2 步的选卡对话框卡格区域（720x1280）。削除：详情框下 y≈398 起，底部按钮从 y≈1120 起，第 5 行（986–1104）整格可见；
-# 強化：上方两个详情框，卡格 y≈698 起，只露出约 3 行（右侧有滚动条）。与 kaa_patches.CARD_OP_REGION 一致
+# 強化：上方两个详情框，卡格 y≈698 起，只露出约 3 行（右侧有滚动条）。与 produce.card_ops.CARD_OP_REGION 一致
 REMOVAL_GRID = (0, 380, 720, 1110)
 ENHANCE_GRID = (0, 690, 720, 1115)
 SCROLL_X = 683  # 卡格右侧滚动条的滑块列：比左右两侧亮 ≥ 25
@@ -722,7 +722,7 @@ def read_acquire_popup(img: MatLike, art: bool = True) -> dict | None:
 # ---------------------------------------------------------------- 换卡第 1 步（SKILL_CARD_CHANGE_1）：换进哪张
 # 布局同三选一：中间一行 3 张候选（类别字母 x≈213 / 352 / 491，间距 139，与删卡页 147、一览 161 都不同），
 # 卡下「おすすめ」，左下「あと N回 カード除去」、右下「あと N回 再抽選」（KAA 参考图 dialog_card_change_1.png）。
-CHANGE1_MARKS = (40, 820, 680, 1020)  # 同 hiro.loop.kaa_patches.CHANGE_LETTERS_BOX
+CHANGE1_MARKS = (40, 820, 680, 1020)  # 同 hiro.produce.card_ops.CHANGE_LETTERS_BOX
 CHANGE1_DX, CHANGE1_DY, CHANGE1_CELL = -53, -110, 124
 CHANGE1_TEXT = (0, 940, 720, 1130)
 

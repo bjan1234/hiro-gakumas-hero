@@ -1097,6 +1097,245 @@
    "file": "InProduce.LootboxSliverLock.png",
    "slice_rect": null,
    "source": "KAA af2eb9a8-641a-4f12-80d4-c926720b3e02.png"
+  },
+  "InProduce.OutingApMaxOutDialog.Title": {
+   "file": "InProduce.OutingApMaxOutDialog.Title.png",
+   "slice_rect": [
+    51,
+    914,
+    78,
+    48
+   ],
+   "source": "KAA 2c1920c4-29f2-4f98-a293-b6f0c3126203_template.png",
+   "fixed": true
+  },
+  "InProduce.OutingApMaxOutDialog.ButtonConfirm": {
+   "file": "InProduce.OutingApMaxOutDialog.ButtonConfirm.png",
+   "slice_rect": [
+    389,
+    1133,
+    205,
+    55
+   ],
+   "source": "KAA a6a7efa2-cf6b-47f8-99b8-d42428c22c3b_template.png"
+  },
+  "InProduce.TextDontClaim": {
+   "file": "InProduce.TextDontClaim.png",
+   "slice_rect": [
+    281,
+    989,
+    156,
+    34
+   ],
+   "source": "KAA e4683def-8d1d-472b-a5ab-bb3885c0c98e_template.png"
+  },
+  "InProduce.ButtonDontClaim": {
+   "file": "InProduce.ButtonDontClaim.png",
+   "slice_rect": [
+    263,
+    1072,
+    188,
+    49
+   ],
+   "source": "KAA 447d0e44-5d87-4b7c-8e60-edb111fe1639_template.png"
+  },
+  "InProduce.ButtonLeave": {
+   "file": "InProduce.ButtonLeave.png",
+   "slice_rect": null,
+   "source": "KAA fb8adce8-7171-4eca-851b-3de42d3206d5.png"
+  },
+  "Common.CheckboxUnchecked": {
+   "file": "Common.CheckboxUnchecked.png",
+   "slice_rect": [
+    242,
+    997,
+    23,
+    19
+   ],
+   "source": "KAA b34b4459-c28c-4fbf-9984-cff1d7fe8d7a_template.png"
+  },
+  "InProduce.HifIntervalConfirm.Title": {
+   "file": "InProduce.HifIntervalConfirm.Title.png",
+   "slice_rect": [
+    57,
+    760,
+    331,
+    49
+   ],
+   "source": "KAA c8d8de37-a02c-46de-9dcc-778b90de4fc1_template.png",
+   "fixed": true
+  },
+  "InProduce.HifIntervalConfirm.ButtonConfirm": {
+   "file": "InProduce.HifIntervalConfirm.ButtonConfirm.png",
+   "slice_rect": [
+    385,
+    1136,
+    56,
+    48
+   ],
+   "source": "KAA c2ad9449-7472-41d4-9f3f-c713baa2b436_template.png",
+   "fixed": true
+  },
+  "InProduce.HifInterval.ButtonEnd": {
+   "file": "InProduce.HifInterval.ButtonEnd.png",
+   "slice_rect": [
+    585,
+    1057,
+    44,
+    51
+   ],
+   "source": "KAA 331aa87e-b844-4f97-bc13-2ffe70707f32_template.png",
+   "region": [
+    560,
+    1040,
+    140,
+    86
+   ]
+  },
+  "InProduce.Rest": {
+   "file": "InProduce.Rest.png",
+   "slice_rect": [
+    621,
+    822,
+    50,
+    37
+   ],
+   "source": "KAA f10246ec-334d-4e5c-9f2f-6622e232de4c_template.png"
+  },
+  "InProduce.ButtonIconOuting": {
+   "file": "InProduce.ButtonIconOuting.png",
+   "slice_rect": [
+    147,
+    962,
+    83,
+    75
+   ],
+   "source": "KAA 28959fc6-bf01-45b1-97b3-68e4a80d0ccc_template.png"
+  },
+  "InProduce.ButtonIconConsult": {
+   "file": "InProduce.ButtonIconConsult.png",
+   "slice_rect": [
+    320,
+    963,
+    83,
+    80
+   ],
+   "source": "KAA 00d6ad15-9550-4bc2-b77d-b027d758ace4_template.png"
+  },
+  "InProduce.ButtonIconGift": {
+   "file": "InProduce.ButtonIconGift.png",
+   "slice_rect": [
+    403,
+    955,
+    76,
+    81
+   ],
+   "source": "KAA e7149839-d25b-4d92-8437-8cc2df588f8a_template.png"
+  },
+  "InProduce.ButtonIconStudyVisualHif": {
+   "file": "InProduce.ButtonIconStudyVisualHif.png",
+   "slice_rect": [
+    453,
+    941,
+    137,
+    118
+   ],
+   "source": "KAA 93ec5956-4eed-4ef0-b744-9c62c8270d53_template.png"
+  },
+  "InProduce.ButtonIconStudyVocalHif": {
+   "file": "InProduce.ButtonIconStudyVocalHif.png",
+   "slice_rect": [
+    129,
+    939,
+    137,
+    119
+   ],
+   "source": "KAA c9bd526a-9c4a-48af-af6c-53f896551f98_template.png"
+  },
+  "InProduce.ButtonIconStudyDanceHif": {
+   "file": "InProduce.ButtonIconStudyDanceHif.png",
+   "slice_rect": [
+    291,
+    939,
+    137,
+    119
+   ],
+   "source": "KAA 6959d8d1-1c9c-4dc7-b8c5-a398cdcbf41c_template.png"
+  },
+  "InProduce.ButtonPracticeVocal": {
+   "file": "InProduce.ButtonPracticeVocal.png",
+   "slice_rect": [
+    171,
+    965,
+    30,
+    73
+   ],
+   "source": "KAA ce1d1d6f-38f2-48bf-98bd-6e091c7ca5b8_template.png"
+  },
+  "InProduce.ButtonPracticeVocalHif": {
+   "file": "InProduce.ButtonPracticeVocalHif.png",
+   "slice_rect": [
+    144,
+    969,
+    62,
+    69
+   ],
+   "source": "KAA a14e704e-e9e0-49fb-a4f3-6ba6ac3df724_template.png"
+  },
+  "InProduce.ButtonPracticeDance": {
+   "file": "InProduce.ButtonPracticeDance.png",
+   "slice_rect": [
+    337,
+    970,
+    53,
+    60
+   ],
+   "source": "KAA b2e1bf3c-2c36-4fb5-9db7-c10a29563a37_template.png"
+  },
+  "InProduce.ButtonPracticeDanceHif": {
+   "file": "InProduce.ButtonPracticeDanceHif.png",
+   "slice_rect": [
+    318,
+    965,
+    79,
+    64
+   ],
+   "source": "KAA b89204bb-a92b-4a32-9d2f-80fa015d9051_template.png"
+  },
+  "InProduce.ButtonPracticeVisual": {
+   "file": "InProduce.ButtonPracticeVisual.png",
+   "slice_rect": [
+    506,
+    972,
+    55,
+    59
+   ],
+   "source": "KAA adc533a7-970b-4c5b-a037-2181531a35d6_template.png"
+  },
+  "InProduce.ButtonPracticeVisualHif": {
+   "file": "InProduce.ButtonPracticeVisualHif.png",
+   "slice_rect": [
+    505,
+    967,
+    77,
+    69
+   ],
+   "source": "KAA f09b8a7a-2ccd-4c29-b4dc-c5a38ac24f91_template.png"
+  },
+  "InProduce.IconSp": {
+   "file": "InProduce.IconSp.png",
+   "slice_rect": [
+    188,
+    926,
+    32,
+    26
+   ],
+   "source": "KAA d982d2b5-4bc0-4ae9-a516-f29c2848d64b_template.png"
+  },
+  "InProduce.RestConfirmBtn": {
+   "file": "InProduce.RestConfirmBtn.png",
+   "slice_rect": null,
+   "source": "KAA e2c3e555-ce29-4686-af76-015e150cd593.png"
   }
  },
  "boxes": {

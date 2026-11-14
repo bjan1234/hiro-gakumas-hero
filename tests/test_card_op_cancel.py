@@ -51,7 +51,7 @@ def _hook(monkeypatch, *, cancel_btn, decision):
     texts = [Text("キャンセル" if cancel_btn else "強化", Box(155, 1150, 175, 1170))]
     monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: texts)
     monkeypatch.setattr(hif, "device", NS(click=lambda *r: clicks.append(r), screenshot=lambda: None))
-    monkeypatch.setattr("hiro.loop.kaa_patches.CARD_OP_REGION", {"enhance": None, "remove": None})
+    monkeypatch.setattr("hiro.produce.card_ops.CARD_OP_REGION", {"enhance": None, "remove": None})
     st = GameState(page_fields={"cards": [{"card_id": "x"}]})
     s = NS(state=st, observe=lambda **k: "obs", verify=lambda a, **k: ExecutionResult(action=a, ok=True), record=lambda *a, **k: records.append(k))
     seen = {}
@@ -97,13 +97,13 @@ def test_hook_without_cancel_button_stops_instead_of_guessing(monkeypatch):
 
 def test_hook_forced_page_rereads_on_wait_then_executes(monkeypatch):
     from hiro.contracts import Action, ActionKind, Decision
-    from hiro.loop import kaa_patches
+    from hiro.produce import card_ops
 
     wait = Decision(Action.ui(ActionKind.WAIT, why="卡格没读到"), "等重新识别", "rule", 0.3)
     pick = Decision(Action(ActionKind.ENHANCE_CARD, {"card_id": "x", "index": 0, "upgrade": 0}), "强化 x", "rule", 0.7)
     h, clicks, stops, records, seen = _hook(monkeypatch, cancel_btn=False, decision=[wait, pick])
     done = []
-    monkeypatch.setattr(kaa_patches, "enhance_card", lambda ctx, cid: done.append(cid) or True, raising=False)
+    monkeypatch.setattr(card_ops, "enhance_card", lambda ctx, cid: done.append(cid) or True, raising=False)
     h._card_event("SKILL_CARD_ENHANCE", None, "enhance_card")
     assert seen["cancelable"] == [False, False] and done == ["x"] and not stops and clicks == []
 

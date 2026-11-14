@@ -54,6 +54,6 @@ def test_hif_pdrink_max_rereads_on_wait(monkeypatch):
     strat.s, strat.deciders = sess, Deciders()
     monkeypatch.setattr(hif, "sleep", lambda s: None)
     monkeypatch.setattr(hif, "device", NS(screenshot=lambda: None))  # 合并后执行侧版本重读前会先截图
-    monkeypatch.setattr(hif.HifGrindStrategy, "on_pdrink_max", lambda self, ctx: "kaa", raising=False)
+    monkeypatch.setattr("hiro.produce.drink_swap.skip_incoming", lambda **k: True)
     strat.on_pdrink_max(None)
     assert calls == ["PDRINK_MAX", "PDRINK_MAX"]

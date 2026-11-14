@@ -180,7 +180,7 @@ def loop_callback(ocr: Callable, *, every: float = 5.0, clock: Callable[[], floa
         from hiro.loop import comm_error
 
         if comm_error.comm_error(boxes) is not None:
-            from kotonebot import device
+            from hiro.devices.active import device
 
             comm_error.handle(boxes, lambda x, y: device.click(x, y))
         return False

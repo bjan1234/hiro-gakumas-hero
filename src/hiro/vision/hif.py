@@ -916,6 +916,17 @@ def read_hand_badges(img: MatLike) -> list[int | None] | None:
     return [read_badge(img, cx, xs[i + 1] if i + 1 < len(xs) else None)["badge_score"] for i, cx in enumerate(xs)]
 
 
+EXAM_TYPE_BOX = (123, 4, 214, 50)  # 考试左上角的考试类型徽章（KAA R.InProduce.BoxDetectExamType）
+
+
+def is_final_exam(img: MatLike) -> bool:
+    """考试类型徽章偏黄 / 偏红 = 最终考试（本战 R2 等），同 KAA ExamContext.is_final_exam：Lab 的 b 均值 > 145，或 b > 138 且 a > 135。"""
+    x1, y1, x2, y2 = EXAM_TYPE_BOX
+    lab = cv2.cvtColor(normalize(img)[y1:y2, x1:x2], cv2.COLOR_BGR2Lab)
+    a, b = float(np.mean(lab[..., 1])), float(np.mean(lab[..., 2]))
+    return b > 145 or (b > 138 and a > 135)
+
+
 EXAM_CACHE = RegionCache()  # 考试循环逐帧调用时复用不变区域的结果；离线评测传 cache=None
 
 
