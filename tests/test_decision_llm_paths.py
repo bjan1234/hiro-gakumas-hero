@@ -308,3 +308,10 @@ def test_pitem_custom_page_unrecognized_slots_stop():
                                            {"slot": 1, "name": "羽ロボ（黄）", "color": "yellow", "custom": True},
                                            {"slot": 2, "name": "花ロボ（黄）", "color": "yellow", "custom": True}]})
     assert ProduceDeciders(CAMPUS_HIRO, None).decide("SELECT_PITEM", st).action.args["pick_indexes"] == [2]
+
+
+def test_pitem_custom_identical_names_wait_for_candidates():
+    """定制页三个候选名字一样（DMM own2 seq 170：候选还没出来，识别按背包颜色猜了 ロボ ×3）：停下重读，不按第 1 个点。"""
+    st = GameState(page_fields={"pitems": [{"slot": i, "name": "ロボ（黄）", "color": "yellow", "custom": True} for i in range(3)]})
+    d = ProduceDeciders(CAMPUS_HIRO, None).decide("SELECT_PITEM", st)
+    assert d.action.kind.name == "WAIT" and "重读" in d.reason
