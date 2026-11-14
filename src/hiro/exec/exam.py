@@ -1206,6 +1206,7 @@ def run_exam(
                 stale = _stale_before_tap(frame) if stale_streak < STALE_MAX else None
             if stale is not None:
                 stale_streak += 1
+                _count("stale_frame")  # 决策帧过时（报告 exam_settle.stale_frames）
                 rec.log("exam_stale_frame", exam=exam, action=d.action, reason=stale, remaining=frame.remaining)
                 logger.warning("[%s] 决策帧已过时（%s）：不点 %s，重新决策", exam, stale, d.action)
                 if session is not None:
