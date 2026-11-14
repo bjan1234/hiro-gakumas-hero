@@ -194,10 +194,17 @@ def _masked_region(img: MatLike, k: int) -> tuple[MatLike, int, int]:
     return region, x0, y0
 
 
-def _unit_label(img: MatLike, k: int) -> str | None:
+def _label_text(img: MatLike, k: int) -> str:
     cy = _slot_y(k)
-    label = "".join(t for t, _ in ocr(img[cy - 2 : cy + 34, SLOT_X + 14 : SLOT_X + 130])).replace(" ", "")
+    return "".join(t for t, _ in ocr(img[cy - 2 : cy + 34, SLOT_X + 14 : SLOT_X + 130])).replace(" ", "")
+
+
+def _unit_label(img: MatLike, k: int) -> str | None:
+    label = _label_text(img, k)
     return next((u for u in UNITS if u in label), None)
+
+
+VALUE_UNIT = re.compile(r"(\d+)(ターン|回|%)")
 
 
 def _value(img: MatLike, k: int, kind: str, card_id: str | None = None) -> tuple[int | None, str | None]:
@@ -219,7 +226,10 @@ def _value(img: MatLike, k: int, kind: str, card_id: str | None = None) -> tuple
                 return value, None  # 这次没读到（被特效遮住等）：不缓存，下次再读
             _ENCHANT_UNIT[card_id] = unit
         return value, _ENCHANT_UNIT[card_id]
-    # 慢路径：与原实现相同
+    # 慢路径：先用整行 OCR 认「数字 + 单位」（「12ターン」）。ddddocr 读这一框会把单位的「タ」当成 5，
+    # 好調「12ターン」读成 125、「10ターン」读成 105（偶像之路 Mac 15 层 11-14）
+    if m := VALUE_UNIT.match(_label_text(img, k)):
+        return int(m.group(1)), m.group(2)
     value = read_dddd(img, (SLOT_X + 12, cy + 2, SLOT_X + 60, cy + 32))
     if value is None:
         return None, None

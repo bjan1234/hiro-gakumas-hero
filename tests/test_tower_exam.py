@@ -41,3 +41,11 @@ def test_layout_is_right_aligned_with_divider():
     assert [c[0] for c in cols] == [1, 2, 3, 4, 5, 6] and cols[-1][2] == 710
     assert cols[3][2] - cols[3][1] == 127 and cols[2][2] - cols[2][1] == 69
     assert cols[3][1] - cols[2][2] == 2 + 13  # 3rd / 4th 之间的分隔
+
+
+def test_status_turn_count_not_misread():
+    """好調「12ターン」：ddddocr 把单位的「タ」读成 5（125）。先用整行 OCR 认「数字 + 单位」。"""
+    from hiro.vision.status import read_status_column
+
+    st = {e["key"]: e["value"] for e in read_status_column(_img("exam-status-12turn-mac15.jpg"), cache=None) if e.get("key")}
+    assert st["examparameterbuff"] == 12 and st["examlessonbuff"] == 15
