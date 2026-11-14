@@ -1,0 +1,162 @@
+"""偶像之路的编成决策（用户 11-14：编成「接入我们的 bench 算法去游玩」，不用おまかせ；设计稿
+`.temp/plans-20261112/偶像之路-编成决策-设计.md`）。
+
+一层的编成 = 考哪种考试（mechanic，一层通常有几种）+ 主回忆（牌组、P 道具、饮料、体力、属性）+ 副回忆（只加属性：
+每份副回忆三属性 × 0.2 向下取整，hiro.bench_bridge.tower.stage_params）。
+
+- 副回忆：倍率公式（tower.score_bonus_permils）是确定的，按「倍率和最大」贪心挑，不用模拟；
+- 考试 × 主回忆：每个组合换成 bench 题目的编成（gkms.exam_loadout.v1），用 bench 引擎 + UINet 按同一批种子打
+  （tower.evaluate(detail=True)，每局给名次 / 星 / 条件），按「三星概率 → 拿第 1 的概率 → 平均分」排（用户 11-14：追求三星通关、
+  在全部回忆里选最优组合）。全部回忆都进第一轮，逐轮淘汰（ROUNDS）。
+
+UINet 只在 H.I.F 上训练过，偶像之路上只到上限的 33.7%（8a3a1e7）：排序只当依据之一，前两名接近时交 LLM。
+"""
+
+from __future__ import annotations
+
+import math
+import statistics
+
+SUB_POOL = 12  # 副回忆候选最多看这么多份（按属性和）
+ROUNDS = ((4, 8), (16, 3), (48, 1))  # 逐轮淘汰：累计打到这么多局，留前这么多个
+
+
+def _vec(m) -> list[int]:
+    p = m.get("params") if isinstance(m, dict) else m
+    return [int(x or 0) for x in (p or (0, 0, 0))]
+
+
+def bonus(lex: dict, main: dict, subs: list[dict]) -> list[int] | None:
+    """这一层这一编成的考试倍率；battle_config 不知道时 None。"""
+    from hiro.bench_bridge import tower as tw
+
+    cfg = (lex.get("exam") or {}).get("produce_exam_battle_config_id")
+    if not cfg:
+        return None
+    try:
+        return tw.score_bonus_permils(cfg, tw.stage_params(_vec(main), [_vec(s) for s in subs]))
+    except KeyError:
+        return None
+
+
+def choose_subs(lex: dict, main: dict, pool: list[dict], k: int) -> list[dict]:
+    """副回忆：贪心挑 k 份，让本层倍率和（不知道倍率时用属性和）最大。主回忆不能同时当副回忆。"""
+    from hiro.bench_bridge import tower as tw
+
+    left = sorted((m for m in pool if m is not main), key=lambda m: -sum(_vec(m)))[:SUB_POOL]
+    out: list[dict] = []
+    for _ in range(max(0, k)):
+        if not left:
+            break
+
+        def gain(m):
+            b = bonus(lex, main, out + [m])
+            return sum(b) if b is not None else sum(tw.stage_params(_vec(main), [_vec(s) for s in out + [m]]))
+
+        best = max(left, key=gain)
+        out.append(best)
+        left.remove(best)
+    # 两两交换一轮：倍率曲线有插值和审查基准罚分，贪心不一定最优
+    total = lambda subs: sum(bonus(lex, main, subs) or tw.stage_params(_vec(main), [_vec(x) for x in subs]))  # noqa: E731
+    improved = True
+    while improved:
+        improved = False
+        for i in range(len(out)):
+            for m in list(left):
+                trial = out[:i] + [m] + out[i + 1:]
+                if total(trial) > total(out):
+                    left.append(out[i])
+                    left.remove(m)
+                    out = trial
+                    improved = True
+    return out
+
+
+def signature(cands: list[dict]) -> str:
+    """回忆库存签名（缓存键用）：回忆有增减、属性 / 牌组 / 道具（强化、定制）变了就变。"""
+    import hashlib
+    import json
+
+    rows = sorted(json.dumps([c.get("memory_id"), _vec(c), c.get("max_stamina"), c.get("deck"), c.get("items"), c.get("drinks")],
+                             ensure_ascii=False, sort_keys=True) for c in cands)  # fmt: skip
+    return hashlib.sha1("\n".join(rows).encode()).hexdigest()[:16]
+
+
+def loadout(lex: dict, main: dict, subs: list[dict], idol_card_id: str | None = None) -> dict:
+    """（本层考试设置, 主回忆, 副回忆）→ gkms.exam_loadout.v1（同 idolroad 题目的写法）。"""
+    exam = dict(lex.get("exam") or {})
+    layer_items = list(exam.get("produce_item_ids") or [])
+    hp = int(main.get("max_stamina") or 0) or None
+    out = {
+        "schema": "gkms.exam_loadout.v1", "produce_id": "tower", "round": "final",
+        "tower_id": lex["tower_id"], "layer": int(lex["layer"]), "mechanic": lex["mechanic"],
+        "idol_card_id": idol_card_id or main.get("idol_card_id"),
+        "max_stamina": hp, "starting_stamina": hp,
+        "score_bonus_permils": bonus(lex, main, subs),
+        "produce_cards": list(main.get("deck") or []),
+        "produce_item_ids": list(main.get("items") or []) + [i for i in layer_items if i not in (main.get("items") or [])],
+        "exam": exam, "drink_ids": list(main.get("drinks") or []),
+    }  # fmt: skip
+    if lex.get("open_rounds") is not None:
+        out["open_rounds"] = lex["open_rounds"]
+    return out
+
+
+def evaluable(lo: dict) -> str | None:
+    """编成能不能拿去模拟：不能返回原因。"""
+    ex = lo.get("exam") or {}
+    if not lo.get("produce_cards"):
+        return "主回忆的牌组没读到"
+    if lo.get("score_bonus_permils") is None or not ex.get("produce_exam_battle_config_id"):
+        return "本层考试设置（审查基准 / 回合数）不知道"
+    if not ex.get("produce_exam_gimmick_effect_group_id"):
+        return "本层机关不知道"
+    if not lo.get("max_stamina"):
+        return "主回忆的体力没读到"
+    return None
+
+
+def _rate(k: int, n: int) -> tuple[float, float]:
+    p = k / n
+    return p, math.sqrt(max(p * (1 - p), 1 / n) / n)
+
+
+def summarize(rows: list, border: int | None) -> dict:
+    """K 局结果 → {n, mean, se, p3, p3_se, first, first_se, clear}（出错 / 没跑到的局不算）。
+    rows 是 evaluate(detail=True) 的判定（{score, first, stars, …}），也接只有分数的旧写法（这时按过关线算 first、没有三星）。"""
+    got = [r for r in rows if r is not None]
+    n = len(got)
+    out = {"n": n, "mean": None, "se": None, "p3": None, "p3_se": None, "first": None, "first_se": None, "clear": None}
+    if not n:
+        return out
+    if isinstance(got[0], dict):
+        xs = [int(r.get("score") or 0) for r in got]
+        firsts = sum(bool(r.get("first")) for r in got)
+        stars = sum(int(r.get("stars") or 0) >= 3 for r in got)
+        out["p3"], out["p3_se"] = _rate(stars, n)
+    else:
+        xs = [int(x) for x in got]
+        firsts = sum(x >= border for x in xs) if border is not None else None
+    out["mean"] = round(statistics.fmean(xs))
+    out["se"] = round(statistics.stdev(xs) / math.sqrt(n)) if n > 1 else 0
+    if firsts is not None:
+        out["first"], out["first_se"] = _rate(firsts, n)
+        out["clear"] = out["first"]
+    return out
+
+
+def rank_key(s: dict) -> tuple:
+    """排序键（大的好）：三星概率 → 拿第 1 的概率 → 平均分（用户 11-14：追求三星通关）。不知道的项按最低。"""
+    return tuple(-1.0 if s.get(k) is None else s[k] for k in ("p3", "first", "mean"))
+
+
+def clearly_better(a: dict, b: dict) -> bool:
+    """第一名是否明显好过第二名（> 2 个标准误），按 三星概率 → 拿第 1 的概率 → 平均分 依次比：前一项差在噪声内才比下一项。"""
+    for k, kse, floor in (("p3", "p3_se", 1e-9), ("first", "first_se", 1e-9), ("mean", "se", 1.0)):
+        if a.get(k) is None or b.get(k) is None:
+            continue
+        se = math.hypot(a.get(kse) or 0, b.get(kse) or 0)
+        d = a[k] - b[k]
+        if abs(d) > 2 * max(se, floor):
+            return d > 0
+    return False
