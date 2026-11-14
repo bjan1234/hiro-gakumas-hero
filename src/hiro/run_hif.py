@@ -186,16 +186,21 @@ def main():
         os.environ["HIRO_DEBUG_RECOG"] = "1"  # Session 读它：全部 Check 写进 trace、页面变化都存帧
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s")
 
-    scenario = HifScenario.MAIN if args.mode == "main" else HifScenario.QUALIFY
-    Strategy = load_strategy(args.strategy)
-    from hiro.kaa_env import SetupMissing
+    own = os.environ.get("HIRO_RUNTIME", "kaa").strip().lower() == "own"  # 新主循环（hiro.runtime，不用 KAA）；缺省仍是 KAA 主循环
+    if not own:
+        scenario = HifScenario.MAIN if args.mode == "main" else HifScenario.QUALIFY
+        Strategy = load_strategy(args.strategy)
+        from hiro.kaa_env import SetupMissing
 
-    try:
-        init_kaa(scenario, idol=args.idol, require_sets=args.command == "new")
-    except SetupMissing as e:
-        print(str(e), file=sys.stderr)
-        return 2
+        try:
+            init_kaa(scenario, idol=args.idol, require_sets=args.command == "new")
+        except SetupMissing as e:
+            print(str(e), file=sys.stderr)
+            return 2
     from hiro import kaa_env
+
+    if own:
+        kaa_env.apply_formation_plan(args.idol)
 
     if args.main_attr is None and kaa_env.PLAN_MAIN_ATTR:
         args.main_attr = kaa_env.PLAN_MAIN_ATTR  # 没给 --main-attr：用开局编成方案的主属性（策略、租借格、trace 都按它）
@@ -210,8 +215,20 @@ def main():
 
     name = args.trace or datetime.now().strftime("%Y%m%d-%H%M%S")
     trace = TraceWriter(name=name, meta={"command": args.command, "mode": args.mode, "idol": args.idol, "llm": None if args.no_llm else (args.llm or "env/default"), "main_attr": args.main_attr, "debug_recog": os.environ.get("HIRO_DEBUG_RECOG") == "1",
-                                         "strategy": f"{Strategy.__module__}:{Strategy.__qualname__}", "manifest": manifest.to_dict()})  # fmt: skip
+                                         "strategy": "hiro.produce.hif:HifCore" if own else f"{Strategy.__module__}:{Strategy.__qualname__}",
+                                         "runtime": "own" if own else "kaa", "manifest": manifest.to_dict()})  # fmt: skip
     session = Session(trace)
+    if own:
+        from hiro.loop import pause_flag
+        from hiro.runtime import play
+
+        pause_flag.wait_until_recording()
+        logger.info("新主循环（HIRO_RUNTIME=own）；trace → %s", trace.dir)
+        try:
+            return play.run(args, session)
+        finally:
+            trace.close()
+            _write_report(trace, name)
     HiroController.session = session
     for k, v in {"session": session, "use_llm": not args.no_llm, "llm_spec": args.llm, "main_attr": args.main_attr,
                  "exams_done": args.exams_done}.items():  # fmt: skip
@@ -323,20 +340,25 @@ def main():
     finally:
         rec_watch.stop()
         trace.close()
-        try:
-            r = report(trace.dir)
-            from hiro.loop import kaa_usage
-
-            r["kaa_usage"] = kaa_usage.snapshot()  # 去 KAA 第 0 步：这一段里 KAA 出手的次数
-            logger.info("KAA 出手：%s", r["kaa_usage"] or "无")
-            out = Path("reports/runs") / f"{name}.json"
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(json.dumps(r, ensure_ascii=False, indent=1), encoding="utf-8")
-            print(markdown(r))
-            print(f"→ {out}")
-        except Exception as e:  # 报告失败不影响已写好的 trace
-            logger.error("生成报告失败：%r", e)
+        _write_report(trace, name)
     return 0
+
+
+def _write_report(trace, name: str) -> None:
+    """每段结束写 reports/runs/<名>.json 并打印摘要（含 KAA 出手次数；新主循环下应为空）。"""
+    try:
+        r = report(trace.dir)
+        from hiro.loop import kaa_usage
+
+        r["kaa_usage"] = kaa_usage.snapshot()  # 去 KAA 第 0 步：这一段里 KAA 出手的次数
+        logger.info("KAA 出手：%s", r["kaa_usage"] or "无")
+        out = Path("reports/runs") / f"{name}.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(r, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(markdown(r))
+        print(f"→ {out}")
+    except Exception as e:  # 报告失败不影响已写好的 trace
+        logger.error("生成报告失败：%r", e)
 
 
 if __name__ == "__main__":
