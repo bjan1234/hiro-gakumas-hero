@@ -513,31 +513,53 @@ class HifCore:
         logger.info("定制候选：%s", names)
         return out
 
+    PITEM_READS = 3  # 决策给 Wait / 不合法时重读的上限
+    PITEM_CUSTOM_WAIT = 6.0  # 定制页进场动画：等三个候选出来的上限（秒）
+
+    def _pitem_frame(self):
+        """P 道具三选一的观测帧 → (img, texts, custom)。定制页（「カスタム後を選択」）先等三个候选格都出来：刚进场时格里只有蓝色背景，
+        会被认成三个「ロボ」（DMM 11-14 own2 seq 170，决策只好兜底）。等不到就用最后一帧，交给识别给 None、决策给 Wait。"""
+        from hiro.vision.pitem_custom import candidates_present
+
+        deadline = time.monotonic() + self.PITEM_CUSTOM_WAIT
+        while True:
+            img = device.screenshot()
+            texts = [t.text for t in screen_texts(img)]
+            custom = any("カスタム後を選択" in t for t in texts)  # 选拔②③后的定制（「カスタムPアイテム」过场也带カスタム，不算）
+            if not custom or all(candidates_present(img)) or time.monotonic() >= deadline:
+                return img, texts, custom
+            sleep(0.5)
+
     def on_select_pitem(self, ctx):
-        """H.I.F P 道具三选一：识别 pitems（颜色）→ 决策器（社区：黄 > 緑 > 赤）→ card_ops.pitem_commit 点包 + 受け取る。"""
+        """H.I.F P 道具三选一：识别 pitems（颜色）→ 决策器（社区：黄 > 緑 > 赤）→ card_ops.pitem_commit 点包 + 受け取る。
+        决策给 Wait（候选没认出 / 还没出来）或不合法时重读，最多 PITEM_READS 次，还不行停下（不选第一个，用户规则 3c）。"""
         from hiro.vision.extract import extract
 
         t0 = time.monotonic()
-        img = device.screenshot()
-        raw, _ = extract("SELECT_PITEM", img)
-        raw = dict(raw or {})
-        # 识别给颜色、决策器按名称解析：选拔①后的背包按颜色补名称，选拔②③后的定制由 hiro.vision.pitem_custom 认候选
-        texts = [t.text for t in screen_texts(img)]
-        if any("カスタム後を選択" in t for t in texts):  # 选拔②③后的定制（「カスタムPアイテム」过场也带カスタム，不算）
-            raw["options"] = self._custom_options(img, raw.get("options") or [])
-        else:
-            raw["options"] = [{**it, "name": it.get("name") or self.POUCH_NAME.get(it.get("color"))} for it in raw.get("options") or []]
-        obs = self.s.observe(scene="SELECT_PITEM", img=img, fields=raw)
-        for _ in range(2):  # 页面切换还在防抖时字段没进 state（D39 第三十三局 seq 229，同 SELECT_CARD / SELECT_DRINK）：再观测让页面落定
-            if self.s.state.page.name == "SELECT_PITEM" and self.s.state.page_fields.get("pitems"):
-                break
+        for read in range(1, self.PITEM_READS + 1):
+            img, texts, custom = self._pitem_frame()
+            raw, _ = extract("SELECT_PITEM", img)
+            raw = dict(raw or {})
+            # 识别给颜色、决策器按名称解析：选拔①后的背包按颜色补名称，选拔②③后的定制由 hiro.vision.pitem_custom 认候选
+            if custom:
+                raw["options"] = self._custom_options(img, raw.get("options") or [])
+            else:
+                raw["options"] = [{**it, "name": it.get("name") or self.POUCH_NAME.get(it.get("color"))} for it in raw.get("options") or []]
             obs = self.s.observe(scene="SELECT_PITEM", img=img, fields=raw)
-        n = len(raw.get("options") or []) or 3
-        d = self.deciders.decide("SELECT_PITEM", self.s.state, n_options=n)
+            for _ in range(2):  # 页面切换还在防抖时字段没进 state（D39 第三十三局 seq 229，同 SELECT_CARD / SELECT_DRINK）：再观测让页面落定
+                if self.s.state.page.name == "SELECT_PITEM" and self.s.state.page_fields.get("pitems"):
+                    break
+                obs = self.s.observe(scene="SELECT_PITEM", img=img, fields=raw)
+            n = len(raw.get("options") or []) or 3
+            d = self.deciders.decide("SELECT_PITEM", self.s.state, n_options=n)
+            i = int(d.action.args["pick_indexes"][0]) if d.action.args.get("pick_indexes") else -1
+            if d.action.kind is not ActionKind.WAIT and 0 <= i < n:
+                break
+            logger.info("P 道具：决策给 %s（%s，第 %d 次读），重读", d.action.kind.value, d.reason, read)
+            sleep(1.0)
+        else:
+            self._stop("SELECT_PITEM", f"重读 {self.PITEM_READS} 次决策仍没给出合法的 P 道具（{d.action}，来源 {d.source}：{d.reason}）", obs=obs, decision=d)
         self._note_fallback("SELECT_PITEM", d)
-        i = int(d.action.args["pick_indexes"][0]) if d.action.args.get("pick_indexes") else -1
-        if not 0 <= i < n:  # 认不出 / 没模板：停下，不选第一个（用户规则 3c）
-            self._stop("SELECT_PITEM", f"决策没给出合法的 P 道具（{d.action}，来源 {d.source}）", obs=obs, decision=d)
         logger.info("P 道具 第 %d 个 ← %s：%s", i, d.source, d.reason)
         from hiro.produce.card_ops import pitem_commit
 
