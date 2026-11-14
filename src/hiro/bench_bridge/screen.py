@@ -291,15 +291,51 @@ def _cards(c: Counter) -> list:
     return sorted(({"id": k[0], "u": k[1]} for k, n in c.items() for _ in range(n)), key=lambda x: (x["id"], x["u"]))
 
 
+def _card_ref(text: str) -> tuple[str, int]:
+    """题目编成里的卡写法 "p_card-03-act-2_070+1/p_card_custom-…" → (卡 id, 强化)。"""
+    head = str(text).split("/", 1)[0]
+    cid, _, up = head.partition("+")
+    return cid, int(up or 0)
+
+
+def tower_context(loadout: dict) -> dict:
+    """偶像之路这一场的已知量（编成决定的，gkms.exam_loadout.v1）：回合数、三属性倍率、最大体力、偶像、开局牌组。
+    画面读不全或读错时（中途重启后回合计数从 1 开始、开考只读到当前属性的倍率、最大体力读不到）以这些为准。"""
+    from hiro.bench_bridge.tower import BATTLE_CONFIG
+
+    exam = loadout.get("exam") or {}
+    m = BATTLE_CONFIG.match(exam.get("produce_exam_battle_config_id") or "")
+    pm = loadout.get("score_bonus_permils")
+    if isinstance(pm, dict):
+        pm = [pm.get(k, pm.get(int(k) if str(k).isdigit() else k)) for k in ("1", "2", "3")]
+    return {
+        "turns": int(m["turn"]) if m else (int(loadout["turns"]) if loadout.get("turns") else None),  # 没有 battle_config 时可直接给
+        "permil_fixed": {a: int(v) for a, v in zip(("Vo", "Da", "Vi"), pm)} if pm and all(pm) else None,
+        "max_stamina": int(loadout["max_stamina"]) if loadout.get("max_stamina") else None,
+        "idol": loadout.get("idol_card_id"),
+        "deck": [_card_ref(c) for c in loadout.get("produce_cards") or ()],
+    }
+
+
 def from_screen(state: Any, memory: Any, legal: list, tracker: ScreenTracker, exam: dict) -> tuple[dict, list]:
-    """画面读数 → UIObs。返回 (UIObs, 饮料下标 → 画面饮料槽位)。legal 是 hiro 的合法动作键（play:i / drink:j / skip）。"""
+    """画面读数 → UIObs。返回 (UIObs, 饮料下标 → 画面饮料槽位)。legal 是 hiro 的合法动作键（play:i / drink:j / skip）。
+    exam 里有 turns（偶像之路编成给的回合数）时：limit 固定、turn = limit − 残りターン + 1（不靠本场计数，中途重启也对）；
+    有 permil_fixed 时三属性倍率用它（画面一次只显示当前属性那一项）；max_stamina 读不到时用 exam 的。"""
     turn = max(1, int(getattr(memory, "turn", 0) or 1))
     remaining = getattr(state, "remaining_turns", None)
-    limit = turn + int(remaining) - 1 if remaining else max(turn, len(tracker.attrs) or turn)
+    if exam.get("turns"):
+        limit = int(exam["turns"])
+        if remaining:
+            turn = max(1, limit - int(remaining) + 1)
+    else:
+        limit = turn + int(remaining) - 1 if remaining else max(turn, len(tracker.attrs) or turn)
     pm = dict(exam.get("permil_default") or {})  # 开考第一步还没读到倍率时：记下的 / 参考值
     pm.update({k: v for k, v in (getattr(state, "attr_permils", None) or {}).items() if v})
+    if exam.get("permil_fixed"):
+        pm = dict(exam["permil_fixed"])
     known = [v for v in pm.values() if v]
     permil = [int(pm.get(a) or (min(known) if known else 0)) for a in ("Vo", "Da", "Vi")]
+    max_hp = getattr(state, "max_hp", None) or exam.get("max_stamina")
     drinks = sorted(getattr(state, "drinks", None) or (), key=lambda d: d.slot)
     slot_of = [d.slot for d in drinks]
     plays, lg = set(), []
@@ -322,7 +358,7 @@ def from_screen(state: Any, memory: Any, legal: list, tracker: ScreenTracker, ex
         "exam": {**{k: exam.get(k) for k in ("produce", "step", "plan", "idol")}, "turn": turn, "limit": limit,
                  "types": tracker.types(turn, limit, exam.get("allocation")), "permil": permil, "crit": list(exam.get("crit") or [0, 0, 0])},
         "num": {"score": tracker.num("score", getattr(state, "score", None)), "stamina": tracker.num("stamina", getattr(state, "hp", None)),
-                "max_stamina": tracker.num("max_stamina", getattr(state, "max_hp", None)), "block": tracker.num("block", getattr(state, "genki", None)),
+                "max_stamina": tracker.num("max_stamina", max_hp), "block": tracker.num("block", getattr(state, "genki", None)),
                 "playable": max(1, int(getattr(state, "actions_left", None) or 1)), "plays": len(tracker.played)},
         "stance": [None, 0],
         "status": _status_rows(state),

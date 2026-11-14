@@ -408,3 +408,51 @@ def test_layer_units_follow_gkms_uiobs():
                layer("FullPowerPointAdditiveStatusEffect", 400)]  # fmt: skip
     got = {k: v for k, v, _ in statuses({"status": {"effects": effects}})}
     assert got == {"enthusiastic_add": 10.0, "lesson_buff_multiple": 0.25, "full_power_point_add": 0.4}
+
+
+TOWER_LO = {"produce_id": "tower", "layer": 15, "idol_card_id": "i_card-ttmr-2-000", "max_stamina": 46,
+            "score_bonus_permils": [23090, 11980, 2600],
+            "exam": {"produce_exam_battle_config_id": "p_exam_battle_config-tower_001-1_2_3-4_5_6-turn_15"},
+            "produce_cards": ["p_card-a+1", "p_card-b/p_card_custom-x", "p_card-c+2/p_card_custom-y"]}  # fmt: skip
+
+
+def test_tower_context_from_loadout():
+    from hiro.bench_bridge.screen import tower_context
+
+    tc = tower_context(TOWER_LO)
+    assert tc["turns"] == 15 and tc["permil_fixed"] == {"Vo": 23090, "Da": 11980, "Vi": 2600}
+    assert tc["max_stamina"] == 46 and tc["idol"] == "i_card-ttmr-2-000"
+    assert tc["deck"] == [("p_card-a", 1), ("p_card-b", 0), ("p_card-c", 2)]
+    assert tower_context({**TOWER_LO, "score_bonus_permils": {"1": 1, "2": 2, "3": 3}})["permil_fixed"] == {"Vo": 1, "Da": 2, "Vi": 3}
+    assert tower_context({"turns": 15, "max_stamina": 46})["turns"] == 15  # 驱动手写的最小编成
+
+
+def test_from_screen_tower_uses_loadout_after_restart():
+    """2026-11-14 Mac 15 层：驱动中途重启，本场计数从 T1 开始（实际第 5 回合），limit 算成 11；开考只读到 Vo 倍率，三项都填成 23090；
+    最大体力读不到给 0。有编成时：turn 按残りターン倒推、limit 固定 15、倍率和最大体力用编成的。"""
+    from hiro.bench_bridge.screen import tower_context
+
+    st, mem = _state([_card(0, "p_card-a", 1)], remaining=11, turn=1)
+    st.max_hp = None
+    exam = {**exam_fields("tower-15", idol=None, plan=None), **{k: v for k, v in tower_context(TOWER_LO).items() if k != "deck"}}
+    t = ScreenTracker([("p_card-a", 1), ("p_card-b", 0)])
+    t.observe(st, mem)
+    obs, _ = from_screen(st, mem, st.legal_actions(), t, exam)
+    assert obs["exam"]["turn"] == 5 and obs["exam"]["limit"] == 15 and len(obs["exam"]["types"]) == 15
+    assert obs["exam"]["permil"] == [23090, 11980, 2600] and obs["num"]["max_stamina"] == 46
+    assert obs["exam"]["produce"] == "tower" and obs["exam"]["plan"] == 0
+
+
+@pytest.mark.bench_on
+def test_advisor_reads_tower_loadout_file(monkeypatch, tmp_path):
+    p = tmp_path / "lo.json"
+    p.write_text(__import__("json").dumps({"loadout": TOWER_LO}))
+    monkeypatch.setenv("HIRO_TOWER_LOADOUT", str(p))
+    algo = _Algo(("play", 0))
+    monkeypatch.setattr(A, "load_algo", lambda *a, **k: algo)
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    adv.on_round_start(1, {"exam": "tower-15", "idol": None, "deck": []})
+    assert adv.exam["turns"] == 15 and adv.exam["max_stamina"] == 46 and adv.exam["idol"] == "i_card-ttmr-2-000"
+    assert adv.deck == [("p_card-a", 1), ("p_card-b", 0), ("p_card-c", 2)]
+    adv.on_round_start(1, {"exam": "r1", "idol": "i_card-shro-3-007", "deck": [("p_card-x", 0)]})  # H.I.F 不受影响
+    assert "turns" not in adv.exam and adv.deck == [("p_card-x", 0)]
