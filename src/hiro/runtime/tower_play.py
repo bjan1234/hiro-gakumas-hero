@@ -168,8 +168,8 @@ class TowerPlay:
             logger.info("偶像之路编成存到 %s（签名 %s）", cached, sig)
         current = {"index": 0, "current": True, "memory_id": None, "params": p1.get("params"), "max_stamina": p1.get("max_stamina"),
                    "deck": lo.get("produce_cards"), "items": [], "drinks": []}  # fmt: skip
-        pf = {"tower_id": tower_id, "layer": self.layer, "sub_slots": 0, "candidates": [current],
-              "shown_bonus": p1.get("score_bonus_permils"), "shown_stamina": p1.get("max_stamina")}  # fmt: skip
+        pf = {"tower_id": tower_id, "layer": self.layer, "sub_slots": 0, "candidates": [current], "idol_card_id": p1.get("idol_card_id"),
+              "shown_bonus": p1.get("score_bonus_permils"), "shown_stamina": p1.get("max_stamina")}  # fmt: skip  # idol_card_id：编成评估用（3940a9 11-15）
         d = self.core.deciders.decide("TOWER_FORMATION", replace(self.core.s.state, page_fields=pf))
         args = d.action.args or {}
         logger.info("偶像之路编成决策 ← %s：%s", d.source, d.reason)
