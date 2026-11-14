@@ -23,11 +23,26 @@ ADVANCE_PAGES = ("unknown", "IDLE", "TRANSITION", "LOADING", "commu", "LIVE",
 # 不点的页（读取 / 闪屏 / 考前说明演出）同一种连续 QUICK_WAIT_TAP_S 秒没过就点一下兜底（同旧主循环 HiroController._quick_page）
 QUICK_WAIT_TAP_S = 15.0
 QUICK_WAIT_TAP_BY_KIND = {"gift_effect": 1.0, "day_countdown": 4.0}
+# 选拔 / 本战通关后的结算流程开头几页（选回忆照片、选拔突破证书），判页认不出：交 finish.finish_produce_end 一路点到开始确认页停
+# （同旧主循环 HiroController._is_produce_finished）
+END_MARKERS = ("メモリーにするフォト", "選抜試験突破者")
 QUICK_WAIT_TAP_POS = {"day_countdown": "safe"}  # 倒计时下面就是选行动页，(12,12) 会点进左上框：改点安全空白
+
+
+def _produce_finished(frame) -> bool:
+    texts = [t.text.strip() for t in frame.texts]
+    return any(m in t for t in texts for m in END_MARKERS) or "完了する" in texts
 
 
 def advance(rt, frame, hit) -> bool:
     """没有处理器的页面：先认非弹窗场景，再按旧主循环的规则安全连点。返回是否点了。"""
+    if hit.name == "unknown" and _produce_finished(frame):
+        from hiro.runtime import finish
+
+        logger.info("认到结算流程（回忆照片 / 突破证书）：交给结算收尾，点到开始确认页停")
+        finish.finish_produce_end(rt)
+        rt.finished = True  # 这一段打完了：run 的 until 看它
+        return True
     from hiro.loop import advance as adv
     from hiro.runtime import scenes
     from hiro.vision.pages import dialog_header
@@ -127,7 +142,7 @@ def run(args, session) -> int:
                     started = True
                 elif attempt or args.command == "resume":
                     finish.resume_produce(rt)
-                rt.run(until=lambda: False)
+                rt.run(until=lambda: getattr(rt, "finished", False))
                 return 0
             except DateChanged:
                 if attempt >= MAX_DATE_CHANGES:
