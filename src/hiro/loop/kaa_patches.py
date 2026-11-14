@@ -365,16 +365,6 @@ def _prep_progress(fn, name: str):
     return wrapped
 
 
-def patch_character_suffix() -> None:
-    """KAA 只认它 CharacterId 里列出的角色后缀；DMM 游戏数据里有新角色（秦谷美鈴 -hmsz）的卡图变体。"""
-    import kaa.game_ui.skill_card_select as scs
-
-    from hiro.vision.deck import base_asset
-
-    # KAA 只认它列出的角色后缀，新角色（-hmsz）的卡图变体被当成另一张卡、票数被拆开（三选一 / 卡牌详情的 match_card_region 同受影响）
-    scs.strip_character_suffix = base_asset
-
-
 def apply() -> None:
     import importlib
 
@@ -413,7 +403,6 @@ def apply() -> None:
         fn = getattr(prep, name, None)
         if fn is not None and not getattr(fn, "_hiro_progress", False):
             setattr(prep, name, _prep_progress(fn, name))
-    patch_character_suffix()
     from hiro.loop import win_desktop
 
     win_desktop.apply()  # DMM 后台点击：桌面暂时不可用（UAC / 锁屏）时等它恢复，不让主循环连崩

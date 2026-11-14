@@ -7,7 +7,7 @@
 每格：
 - 定位：卡缩略图底部的类别字母 A / M / T（模板 InProduce.A / M / T，hiro.vision.ui_templates），按字母推卡格。
   一览页格宽 141、横向间距 161；相談削除 / 强化 / 换卡弹窗格宽 118、间距 147，按字母间距判断是哪种。
-- 定卡：KAA match_card_region（三选一、相談货架同一套缩略图库）。认不出 card_id 为 None。
+- 定卡：hiro.vision.card_db（三选一、相談货架同一套卡面图库，和 KAA match_card_region 同一做法）。认不出 card_id 为 None。
 - 强化：卡格右侧中部的红黄「+」（素材 ProduceAtlas/icon_enhanced），数高饱和红色像素。
   3 张样本 36 格：有「+」71–169 像素（被效果图标盖住一半时 122），没有 ≤3；橙色插图在宽松阈值下会到 107，所以只用严格阈值。
   介于两者之间（压暗、遮挡）→ None。二次及以上强化（++）的缩略图还没有样本：看到「+」一律记 1，field_meta 注明。
@@ -692,7 +692,7 @@ def read_acquire_popup(img: MatLike, art: bool = True) -> dict | None:
     """获得演出的名称栏：{kind: card|drink|pitem, card_id/drink_id/pitem_id, name, upgrade?, art_card_id?, agree?, text}。
 
     名称栏文字居中、且精确命中主数据才算（所以也可当页面判定用：命中不了返回 None，约 80–200 ms 一次 OCR）。
-    卡：再用中间缩略图认卡（KAA match_card_region）核对，agree=False 时 card_id 仍以名称栏为准（带强化次数），由调用方决定是否采信。
+    卡：再用中间缩略图认卡（hiro.vision.card_db）核对，agree=False 时 card_id 仍以名称栏为准（带强化次数），由调用方决定是否采信。
     「H.I.Fワッペン」在 P 道具表里（pitem_00-3-265-0）。同名 P 道具有多个 id 时 pitem_id 为 None、pitem_ids 全列出。
     """
     from hiro.vision.ocr import ocr_boxes
@@ -710,10 +710,12 @@ def read_acquire_popup(img: MatLike, art: bool = True) -> dict | None:
         return None
     item["text"] = text
     if item["kind"] == "card" and art:  # art=False：只判页（hiro.vision.quick），不用卡面核对（首次加载卡图库要 1–2 秒）
-        from kaa.game_ui.skill_card_select import match_card_region
+        from hiro import master
+        from hiro.vision import card_db
 
         ax1, ay1, ax2, ay2 = ACQUIRE_ART
-        art = match_card_region(img[ay1:ay2, ax1:ax2])
+        asset = card_db.match(img[ay1:ay2, ax1:ax2])
+        art = master.card_by_asset(asset) if asset else None
         item["art_card_id"] = art._id if art else None
         item["agree"] = (art._id == item["card_id"]) if art else None
     return item
@@ -856,18 +858,16 @@ def grid_art_scores(crop) -> list[tuple[str, float]]:
 
 
 def match_grid_card(crop):
-    """卡格缩略图认卡：KAA 票数（match_card_region 同一套图库）为主，票数临界（≤3 票或并列）时用卡图相关核对。
+    """卡格缩略图认卡：卡面图库票数（hiro.vision.card_db，同 KAA match_card_region）为主，票数临界（≤3 票或并列）时用卡图相关核对。
     Windows 上同一帧票数常比 Mac 少 1：仕草の基本 2:2:2 平票、定制过的 えいえいおー+ 2:2（Mac 3:2 却认成 アイドル魂，卡图完全不像）。
     改前改后逐帧对比见私有仓库 .temp/platforms/w3-windows/卡格认卡改前改后.md。"""
     from hiro import master
-    from kaa.game_ui import skill_card_select as scs
+    from hiro.vision import card_db
 
-    db = scs.dialog_cards_db()
-    results = db.query(crop, k=len(db), threshold=None)
     votes: dict[str, int] = {}
     dist: dict[str, float] = {}
-    for r in results or []:
-        a = base_asset(r.key.removesuffix(".png"))
+    for r in card_db.query(crop):
+        a = base_asset(r.key)
         votes[a] = votes.get(a, 0) + r.votes
         dist[a] = min(dist.get(a, float("inf")), r.distance)
     if not votes:
@@ -885,7 +885,7 @@ def match_grid_card(crop):
         # 票数不够、但卡图第一正是并列最高票里的一张且明显领先：两路独立证据一致（DMM 本战相談 アイドル宣言+：
         # Windows 2:2 平票，卡图 0.472 领先 0.144；Mac 同一帧 3 票直接认对）
         return master.card_by_asset(art[0][0])
-    if top < scs.MIN_VOTES:
+    if top < card_db.MIN_VOTES:
         return None
     if not art:  # 没有卡图素材：按 KAA 原规则（并列时按特征距离排第一的）
         return master.card_by_asset(ranked[0])

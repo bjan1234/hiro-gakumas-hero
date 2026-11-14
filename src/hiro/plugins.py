@@ -36,6 +36,10 @@ class AssetSource(Protocol):
     def card_art_dir(self) -> Path | None:
         """技能卡卡面图（识别手牌、选卡）。"""
 
+    def skill_card_dir(self) -> Path | None:
+        """技能卡原图目录（<asset id>.png），卡面图库（SIFT 认卡）用；没有返回 None。"""
+        return None
+
     def idol_dir(self) -> Path | None:
         """偶像卡图目录（<skin id>_<n>.png），选偶像用；没有返回 None。"""
         return None

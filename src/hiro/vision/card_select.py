@@ -2,8 +2,7 @@
 
 位置照 KAA fetch_cards 移植：卡区（box InProduce.SkillCardSelect.CardsBox）里找类别字母 A / M（阈值 0.65），按左上角排序，
 中心 x 相差 30 以内算同一张。「おすすめ」照 KAA fetch_recommend_card：徽章挂在卡的正下方（badge.match 的 mb），取第一张。
-认卡（_dialog_card）暂时还用 KAA 的 dialog_cards_db（match_card_region，相談货架 / 牌组卡格同一套图库）——这是识别层剩下的
-KAA 依赖，换自有卡面库时只改这一个函数。
+认卡（_dialog_card）用卡面图库 hiro.vision.card_db（和 KAA match_card_region 同一做法，相談货架 / 牌组卡格同一套图库）。
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ SAME_CARD_DX = 30
 @dataclass(frozen=True)
 class CardOption:
     rect: Box  # 类别字母框（点这里选卡，同 KAA）
-    card: object | None  # 认出的卡（KAA SkillCard / hiro.master.Card 同名属性）；认不出 None
+    card: object | None  # 认出的卡（hiro.master.Card）；认不出 None
 
 
 def card_letters(img: np.ndarray) -> list[Box]:
@@ -38,9 +37,11 @@ def card_letters(img: np.ndarray) -> list[Box]:
 
 
 def _dialog_card(crop: np.ndarray):
-    from kaa.game_ui.skill_card_select import match_card_region  # 识别层剩下的 KAA 依赖（见模块说明）
+    from hiro import master
+    from hiro.vision import card_db
 
-    return match_card_region(crop)
+    asset = card_db.match(crop)
+    return master.card_by_asset(asset) if asset else None
 
 
 def select_card_options(img: np.ndarray) -> list[CardOption]:
