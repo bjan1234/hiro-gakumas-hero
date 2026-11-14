@@ -269,6 +269,10 @@ class HifCore:
 
     MAX_CUSTOMIZE_STEPS = 4
 
+    def on_special_guidance(self, ctx=None):
+        """新主循环看到 特別指導 定制选卡页（已经在里面：定制中途的获得演出点过回来、或续跑）：接着按决策定制 / 结束。"""
+        self._special_guidance(None, entered=True)
+
     def _special_guidance(self, obs, *, entered: bool = False) -> bool:
         """进入特別指導 → 每步观测定制页 → 决策 special_guidance（CustomizeCard / CustomizeEnd）→ 执行 → 离开。返回是否进去过。"""
         from hiro.produce import special_guidance as sg
