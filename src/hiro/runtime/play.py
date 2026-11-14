@@ -19,6 +19,9 @@ MAX_DATE_CHANGES = 2
 # 走的也是这条连点（2026-11-14 DMM 实机：外出拿到「眠気」的获得演出盖在剧情上，181 秒没人点被看门狗停机）
 ADVANCE_PAGES = ("unknown", "IDLE", "TRANSITION", "LOADING", "commu", "LIVE",
                  "ACQUIRE", "STAR_GAIN", "UPGRADE_RESULT", "DELETE_RESULT", "CUSTOMIZE_RESULT")  # fmt: skip
+# 没有按钮、只有效果说明的展示页：说明文字常带 BLOCK_WORDS（「レッスン終了時」的「終了」），不过文字过滤，没有弹窗标题条就点一下空白
+# （P 道具「カスタマイズ完了」：Mac h10 11-15 原来没人点，180 秒停机）
+SHOW_PAGES = ("PITEM_CUSTOMIZE_DONE",)
 # 快速判页（hiro.vision.quick）认出的「点一下就过」的页（获得演出、结果气泡、TAP 提示、礼物箱…）带 tap 直接点；
 # 不点的页（读取 / 闪屏 / 考前说明演出）同一种连续 QUICK_WAIT_TAP_S 秒没过就点一下兜底（同旧主循环 HiroController._quick_page）
 QUICK_WAIT_TAP_S = 15.0
@@ -54,6 +57,11 @@ def advance(rt, frame, hit) -> bool:
     if frame.img is not None and frame.img.shape[1] > frame.img.shape[0]:
         return False  # 横屏演出中：不点
     if scenes.commu_skip(rt, frame) or scenes.first_run_settings(rt, frame):
+        return True
+    if hit.name in SHOW_PAGES:
+        if dialog_header(frame.img) is not None:
+            return False
+        rt.device.tap(*adv.ADVANCE_TAP)
         return True
     if hit.name not in ADVANCE_PAGES:
         return False
