@@ -416,13 +416,23 @@ TOWER_LO = {"produce_id": "tower", "layer": 15, "idol_card_id": "i_card-ttmr-2-0
             "produce_cards": ["p_card-a+1", "p_card-b/p_card_custom-x", "p_card-c+2/p_card_custom-y"]}  # fmt: skip
 
 
-def test_tower_context_from_loadout():
+def _init_master():
+    from hiro.bench_bridge.tower import Master
+
+    return Master(rows={"IdolCard": [{"id": "i_card-ttmr-2-000", "examEffectType": "ProduceExamEffectType_ExamLessonBuff"}],
+                        "ExamInitialDeck": [{"id": "initial_deck-lesson_buff", "produceCardIds": ["p_card-b", "p_card-basic"]}]})  # fmt: skip
+
+
+def test_tower_context_from_loadout(monkeypatch):
     from hiro.bench_bridge.screen import tower_context
+
+    monkeypatch.setattr("hiro.bench_bridge.tower.master", lambda: _init_master())
 
     tc = tower_context(TOWER_LO)
     assert tc["turns"] == 15 and tc["permil_fixed"] == {"Vo": 23090, "Da": 11980, "Vi": 2600}
     assert tc["max_stamina"] == 46 and tc["idol"] == "i_card-ttmr-2-000"
-    assert tc["deck"] == [("p_card-a", 1), ("p_card-b", 0), ("p_card-c", 2)]
+    assert tc["deck"] == [("p_card-a", 1), ("p_card-b", 0), ("p_card-c", 2), ("p_card-basic", 0)]  # 补基本卡，已有的不重复
+    assert tower_context({**TOWER_LO, "produce_cards": []})["deck"] == []  # 编成页没读牌组：不凭空补
     assert tower_context({**TOWER_LO, "score_bonus_permils": {"1": 1, "2": 2, "3": 3}})["permil_fixed"] == {"Vo": 1, "Da": 2, "Vi": 3}
     assert tower_context({"turns": 15, "max_stamina": 46})["turns"] == 15  # 驱动手写的最小编成
 
@@ -448,12 +458,13 @@ def test_advisor_reads_tower_loadout_file(monkeypatch, tmp_path):
     p = tmp_path / "lo.json"
     p.write_text(__import__("json").dumps({"loadout": TOWER_LO}))
     monkeypatch.setenv("HIRO_TOWER_LOADOUT", str(p))
+    monkeypatch.setattr("hiro.bench_bridge.tower.master", lambda: _init_master())
     algo = _Algo(("play", 0))
     monkeypatch.setattr(A, "load_algo", lambda *a, **k: algo)
     adv = A.BenchAdvisor(CAMPUS_HIRO)
     adv.on_round_start(1, {"exam": "tower-15", "idol": None, "deck": []})
     assert adv.exam["turns"] == 15 and adv.exam["max_stamina"] == 46 and adv.exam["idol"] == "i_card-ttmr-2-000"
-    assert adv.deck == [("p_card-a", 1), ("p_card-b", 0), ("p_card-c", 2)]
+    assert adv.deck == [("p_card-a", 1), ("p_card-b", 0), ("p_card-c", 2), ("p_card-basic", 0)]
     adv.on_round_start(1, {"exam": "r1", "idol": "i_card-shro-3-007", "deck": [("p_card-x", 0)]})  # H.I.F 不受影响
     assert "turns" not in adv.exam and adv.deck == [("p_card-x", 0)]
 
@@ -509,3 +520,19 @@ def test_plays_left_counts_known_extra_plays_and_never_drops_below_one():
     obs, _ = from_screen(st2, mem2, st2.legal_actions(), t, exam_fields("r1", idol=None, plan=None))
     assert obs["num"]["playable"] == 3 and obs["num"]["plays"] == 0
     assert any(a[0] == "play" for a in obs["legal"])  # 合法动作照旧
+
+
+
+def test_idol_initial_cards_by_exam_effect_type():
+    """偶像之路开局另加 2 张基本卡：ExamInitialDeck「initial_deck-<主题>」，主题按主回忆偶像卡的 examEffectType（GKMS 6 局实机核过）。"""
+    m = _init_master()
+    assert m.idol_initial_cards("i_card-ttmr-2-000") == ["p_card-b", "p_card-basic"]
+    assert m.idol_initial_cards("i_card-unknown") == []
+
+
+def test_idol_initial_cards_aggressive_row_name():
+    from hiro.bench_bridge.tower import Master
+
+    m = Master(rows={"IdolCard": [{"id": "i_card-x", "examEffectType": "ProduceExamEffectType_ExamCardPlayAggressive"}],
+                     "ExamInitialDeck": [{"id": "initial_deck-aggressive", "produceCardIds": ["p1", "p2"]}]})  # fmt: skip
+    assert m.idol_initial_cards("i_card-x") == ["p1", "p2"]  # やる気：examEffectType 是 CardPlayAggressive，行名是 aggressive

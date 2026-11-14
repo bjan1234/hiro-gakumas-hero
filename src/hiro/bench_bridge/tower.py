@@ -34,6 +34,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 SUB_RATE = 0.2
+INITIAL_DECK_THEME = {"card_play_aggressive": "aggressive"}  # examEffectType 的写法 → ExamInitialDeck 行名（やる気）
 COLUMNS = ("vocal", "dance", "visual")
 BATTLE_CONFIG = re.compile(
     r"^p_exam_battle_config-(?P<tower>tower_\d+)-(?:\d+_){2}\d+-(?:\d+_){2}\d+-turn_(?P<turn>\d+)$"
@@ -146,6 +147,18 @@ class Master:
 
     def all_tower_triggers(self) -> list[dict]:
         return [r for rows in self._tower_triggers().values() for r in rows]
+
+    def idol_initial_cards(self, idol_card_id: str) -> list[str]:
+        """偶像之路开局另加的基本卡（编成页不显示）：ExamInitialDeck「initial_deck-<主题>」，主题 = 主回忆偶像卡的 examEffectType
+        （ExamLessonBuff → lesson_buff）。GKMS 6 局实机开局对过（ttmr / hmsz / hski / hrnm）。查不到返回空。"""
+        card = next((r for r in self.rows("IdolCard") if r.get("id") == idol_card_id), None)
+        effect = (card or {}).get("examEffectType") or ""
+        if not effect.startswith("ProduceExamEffectType_Exam"):
+            return []
+        theme = re.sub(r"(?<!^)(?=[A-Z])", "_", effect.removeprefix("ProduceExamEffectType_Exam")).lower()
+        theme = INITIAL_DECK_THEME.get(theme, theme)
+        row = next((r for r in self.rows("ExamInitialDeck") if r.get("id") == f"initial_deck-{theme}"), None)
+        return list((row or {}).get("produceCardIds") or ())
 
     @lru_cache(maxsize=1)  # noqa: B019
     def _rarity(self) -> dict:

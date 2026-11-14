@@ -323,8 +323,23 @@ def tower_context(loadout: dict) -> dict:
         "permil_fixed": {a: int(v) for a, v in zip(("Vo", "Da", "Vi"), pm)} if pm and all(pm) else None,
         "max_stamina": int(loadout["max_stamina"]) if loadout.get("max_stamina") else None,
         "idol": loadout.get("idol_card_id"),
-        "deck": [_card_ref(c) for c in loadout.get("produce_cards") or ()],
+        "deck": _with_initial_cards([_card_ref(c) for c in loadout.get("produce_cards") or ()], loadout.get("idol_card_id")),
     }
+
+
+def _with_initial_cards(deck: list, idol: str | None) -> list:
+    """编成页读到的牌组补上游戏另加的 2 张基本卡（tower.Master.idol_initial_cards）；已经在里面的不重复加（bench 题本来就带）。
+    牌组是空的（编成页没读）或主数据不可用时原样返回。"""
+    if not deck or not idol:
+        return deck
+    try:
+        from hiro.bench_bridge.tower import master
+
+        extra = master().idol_initial_cards(idol)
+    except Exception:  # noqa: BLE001  没有主数据：不补，最多少 2 张
+        return deck
+    have = {cid for cid, _ in deck}
+    return deck + [(cid, 0) for cid in extra if cid not in have]
 
 
 def from_screen(state: Any, memory: Any, legal: list, tracker: ScreenTracker, exam: dict) -> tuple[dict, list]:
