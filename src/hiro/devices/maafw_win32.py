@@ -32,7 +32,9 @@ from hiro.device_maafw import (
     screencap_flags,
 )
 
-from .base import DeviceGone, DeviceUnavailable, LogicalScreen
+from .base import DeviceGone, DeviceUnavailable, LogicalScreen, check_aspect
+
+RESIZE_SETTLE_S = 3.0  # 截到的画面宽高比不对（横竖屏切换时窗口正在改尺寸）：最多重截这么久
 
 
 class MaaFwWin32Device:
@@ -132,7 +134,19 @@ class MaaFwWin32Device:
         return np.ascontiguousarray(image)  # BGR
 
     def screenshot(self) -> np.ndarray:
-        return self.screen.frame(self._grab())
+        """截图 → 逻辑分辨率。宽高比和 9:16 差太多时多半是窗口正在横竖屏切换（DMM 11-14：选拔③结束进 LIVE 时截到 540x572），
+        每 0.2 秒重截，RESIZE_SETTLE_S 内恢复就用新的那张；一直不对再报 DeviceUnavailable。"""
+        deadline = time.monotonic() + RESIZE_SETTLE_S
+        while True:
+            image = self._grab()
+            try:
+                check_aspect(image.shape[1], image.shape[0])
+            except DeviceUnavailable:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.2)
+                continue
+            return self.screen.frame(image)
 
     # -- 点击 / 滑动（坐标先换成框架截图的像素）
     def _native(self, x: float, y: float) -> tuple[int, int]:

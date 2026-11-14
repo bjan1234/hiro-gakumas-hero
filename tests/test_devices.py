@@ -287,6 +287,24 @@ def test_maafw_device_screenshot_tap_swipe(tmp_path, monkeypatch):
     assert dev.alive()
 
 
+def test_maafw_device_retries_while_window_resizes(tmp_path, monkeypatch):
+    """横竖屏切换时窗口正在改尺寸（DMM 11-14 截到 540x572）：重截到比例对了再用；一直不对才报错。"""
+    import hiro.devices.maafw_win32 as mw
+
+    monkeypatch.setenv("HIRO_MAAFW_LOG", str(tmp_path))
+    monkeypatch.setattr(mw.time, "sleep", lambda s: None)
+    frames = iter([bgr(541, 961), bgr(540, 572), bgr(540, 572), bgr(961, 541)])
+    api, st = fake_maa(image=None)
+    dev = MaaFwWin32Device(api=api)
+    monkeypatch.setattr(dev, "_grab", lambda: next(frames))
+    assert dev.screenshot().shape == (1280, 720, 3)
+    assert dev.screenshot().shape == (720, 1280, 3)  # 两张 540x572 跳过，用上切好的横屏
+    monkeypatch.setattr(dev, "_grab", lambda: bgr(540, 572))
+    monkeypatch.setattr(mw, "RESIZE_SETTLE_S", 0.0)
+    with pytest.raises(DeviceUnavailable):
+        dev.screenshot()
+
+
 def test_maafw_device_reconnects_once_then_reports(tmp_path, monkeypatch):
     monkeypatch.setenv("HIRO_MAAFW_LOG", str(tmp_path))
     api, st = fake_maa(fail=1)
