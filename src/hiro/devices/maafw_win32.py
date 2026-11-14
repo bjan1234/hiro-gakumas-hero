@@ -8,8 +8,9 @@
 点击在自己的 Win32 测试窗口上 0 像素误差（含贴屏幕四边 / 四角）。DMM 游戏以管理员运行，对游戏点击要以管理员身份
 跑这个驱动（UIPI），还没在游戏上实测。详见 hiro.device_maafw（kotonebot 版，HIRO_DMM_DRIVER=maafw）。
 
-框架把截图缩到短边 720（1081x1921 → 720x1279），点击坐标也按它的截图像素；本类再把截图拉伸到 720x1280，
-点击按比例换回框架截图的像素（hiro.devices.base.LogicalScreen）。
+框架给窗口原生尺寸的截图（set_screenshot_use_raw_size），点击坐标也按原生像素；本类用 cv2.resize 一次拉伸到 720x1280
+（同 KAA），点击按比例换回原生像素（hiro.devices.base.LogicalScreen）。不让框架先缩到短边 720：它的插值和我们再拉一次叠起来，
+画面和 KAA 截的不一样，RapidOCR 跟着读偏（2026-11-14 DMM 实机：窗口 541x961，「選抜試験」读成「選友試験」、公開レッスン漏一张）。
 """
 
 from __future__ import annotations
@@ -23,7 +24,6 @@ import numpy as np
 from hiro.device_maafw import (
     DEFAULT_INPUT,
     DEFAULT_SCREENCAP,
-    SHORT_SIDE,
     SWIPE_FPS,
     WINDOW_CLASS,
     WINDOW_TITLE,
@@ -80,7 +80,7 @@ class MaaFwWin32Device:
             mouse_method=input_method(self.input_name, inp),
             keyboard_method=input_method(self.input_name, inp),
         )
-        ctrl.set_screenshot_target_short_side(SHORT_SIDE)
+        ctrl.set_screenshot_use_raw_size(True)
         if not ctrl.post_connection().wait().succeeded:
             raise DeviceUnavailable(
                 f"MaaFramework 连不上游戏窗口（截图 {self.screencap}、输入 {self.input_name}），"

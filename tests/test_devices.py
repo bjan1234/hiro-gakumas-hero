@@ -218,8 +218,8 @@ def fake_maa(image=None, windows=None, fail=0):
             state["ctrls"] += 1
             self.hwnd = hwnd
 
-        def set_screenshot_target_short_side(self, n):
-            state["short"] = n
+        def set_screenshot_use_raw_size(self, on):
+            state["raw"] = on
 
         def post_connection(self):
             return Job()
@@ -228,7 +228,7 @@ def fake_maa(image=None, windows=None, fail=0):
             if state["fail"]:
                 state["fail"] -= 1
                 return Job(ok=False)
-            return Job(result=bgr(720, 1279) if image is None else image)
+            return Job(result=bgr(541, 961) if image is None else image)
 
         def post_click(self, x, y):
             state["calls"].append(("click", x, y))
@@ -273,17 +273,17 @@ def test_maafw_device_screenshot_tap_swipe(tmp_path, monkeypatch):
     api, st = fake_maa()
     dev = MaaFwWin32Device(api=api)
     dev.connect()
-    assert dev.name == "maafw-win32" and st["short"] == 720
-    assert dev.screenshot().shape == (1280, 720, 3)  # 框架给 720x1279，拉伸到 720x1280
+    assert dev.name == "maafw-win32" and st["raw"] is True  # 框架给原生尺寸，缩放只在 LogicalScreen 做一次（同 KAA）
+    assert dev.screenshot().shape == (1280, 720, 3)  # 原生 541x961 拉伸到 720x1280
     dev.tap(360, 1280)
-    assert st["calls"][-1] == ("click", 360, 1278)  # 夹在框架截图内
+    assert st["calls"][-1] == ("click", 270, 960)  # 换回原生像素，夹在画面内
     dev.swipe(100, 900, 100, 300, duration=0.2)
-    assert st["calls"][-1] == ("swipe", 100, 899, 100, 300, 200)
+    assert st["calls"][-1] == ("swipe", 75, 676, 75, 225, 200)
     st["calls"].clear()
     dev.swipe(100, 900, 100, 300, duration=0.05, hold=0.05)
     kinds = [c[0] for c in st["calls"]]
     assert kinds[0] == "down" and kinds[-1] == "up" and kinds.count("move") >= 3
-    assert st["calls"][-2] == ("move", 100, 300)
+    assert st["calls"][-2] == ("move", 75, 225)
     assert dev.alive()
 
 
