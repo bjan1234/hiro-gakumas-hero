@@ -86,6 +86,29 @@ def _quick_tap(rt, q: dict, now: float) -> bool:
     return True
 
 
+def fit_dmm_window(device, session) -> str | None:
+    """DMM 版开局检查：游戏客户区按显示器算的 9:16 目标（hiro.devices.win_window，用户 11-14）不对就调；调不了返回原因（停机）。
+    实际客户区尺寸记进 trace 备注。HIRO_DMM_FIT=0 不查（非 DMM 设备也不查）。"""
+    import os
+
+    if os.environ.get("HIRO_DEVICE") != "dmm" or os.environ.get("HIRO_DMM_FIT") == "0":
+        return None
+    from hiro.devices import win_window
+
+    try:
+        before, after = win_window.ensure()
+    except Exception as e:  # noqa: BLE001  找不到窗口 / 显示器放不下 540x960 / 不是 Windows
+        return f"DMM 窗口尺寸检查没过：{e}"
+    device.screenshot()  # 改完重截一张，LogicalScreen 记下新的原生尺寸
+    native = getattr(getattr(device, "screen", None), "native", None)
+    note = f"DMM 游戏客户区 {before[0]}x{before[1]}" + (f" → {after[0]}x{after[1]}" if after != before else "") + f"（截图原生 {native}）"
+    logger.info("%s", note)
+    session.note(note)
+    if native is not None and tuple(native) != tuple(after):
+        return f"DMM 窗口调成 {after[0]}x{after[1]}，截图原生尺寸却是 {native}：停下报告"
+    return None
+
+
 def build(args, session, device):
     """HifCore + Runtime（调用方负责 device.connect / close 和 active.use）。"""
     from hiro.produce.handlers import make_handlers
@@ -128,6 +151,11 @@ def run(args, session) -> int:
         return 2
     device = open_device()
     device.connect()
+    if (err := fit_dmm_window(device, session)) is not None:
+        logger.error("%s", err)
+        print(err)
+        device.close()
+        return 3
     core, rt = build(args, session, device)
     active.use(rt)
     started = args.command != "new"  # resume：本来就在培育里

@@ -75,6 +75,11 @@ $env:HIRO_RUNTIME = $Runtime  # own = 新主循环（hiro.runtime）；以参数
 if ($Device -eq "mumu" -and -not $env:HIRO_SCREENSHOT) { $env:HIRO_SCREENSHOT = "adb" }
 # DMM 版截图很快（PrintWindow 约 0.19s），考试稳帧 3 次读数不到 1 秒，会在两段动画之间判稳、回合没切完就决策：要求一致读数持续 1.5s
 if ($Device -eq "dmm" -and -not $env:HIRO_SETTLE_MIN_S) { $env:HIRO_SETTLE_MIN_S = "1.5" }
+# DMM 窗口（用户 11-14）：游戏客户区按显示器自适应，9:16，高 = 工作区高 - 外框高，上限 1080x1920，下限 540x960。
+# -Runtime own 开局时由 hiro.runtime.play.fit_dmm_window 核对、不对就调（要管理员，本脚本已提权）；HIRO_DMM_FIT=0 关掉
+if ($Device -eq "dmm") {
+    & "$Py" -m hiro.devices.win_window 2>&1 | Write-Host
+}
 # 外部暂停旗标（hiro.loop.pause_flag）：文件在就停在下一个检查点，删掉就继续。缺省放在普通用户能写的目录，
 # DMM 版 hiro 以管理员身份跑，普通权限停不了它的进程，要让它停在安全点就靠这个文件（dmmt1 想挡住花券的再挑戦时没有它）
 if (-not $env:HIRO_PAUSE_FLAG) { $env:HIRO_PAUSE_FLAG = Join-Path $env:LOCALAPPDATA "hiro\pause.flag" }
