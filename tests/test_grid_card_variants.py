@@ -21,14 +21,13 @@ def test_main_consult_shelf_complete():
     assert [c["price"] for c in r["shelf"]] == [53, 70, 105, 70, 35, 100, 75, 100]
 
 
-def test_kaa_patch_strips_any_character_suffix(monkeypatch):
-    """KAA 三选一 / 卡牌详情认卡（match_card_region）只认它列出的角色后缀：新角色（-hmsz）的卡图变体会被当成另一张卡。
-    考试手牌已经不走 KAA（hiro.vision.hif.hand_cards），原来给 SkillCard.from_asset_id 打的补丁删了。"""
-    import kaa.game_ui.skill_card_select as scs
+def test_card_db_merges_character_variants(monkeypatch):
+    """卡面图库认卡（hiro.vision.card_db.match）：同一张卡的角色专属图（-hmsz 等新角色后缀）合并计票，不被拆成两张。"""
+    from hiro.vision import card_db
 
-    from hiro.loop.kaa_patches import patch_character_suffix
-
-    monkeypatch.setattr(scs, "strip_character_suffix", scs.strip_character_suffix)
-    patch_character_suffix()
-    patch_character_suffix()  # 重复调用不叠加
-    assert scs.strip_character_suffix("img_general_skillcard_men-3_041-hmsz") == "img_general_skillcard_men-3_041"
+    monkeypatch.setattr(card_db, "query", lambda img: [card_db.Hit("img_general_skillcard_men-3_041", 2, 900.0),
+                                                       card_db.Hit("img_general_skillcard_men-3_041-hmsz", 2, 800.0),
+                                                       card_db.Hit("img_general_skillcard_men-3_003", 3, 500.0)])  # fmt: skip
+    assert card_db.match(None) == "img_general_skillcard_men-3_041"  # 2 + 2 票 > 3 票
+    monkeypatch.setattr(card_db, "query", lambda img: [card_db.Hit("img_general_skillcard_men-3_041-hmsz", 2, 800.0)])
+    assert card_db.match(None) is None  # 不到 3 票不认

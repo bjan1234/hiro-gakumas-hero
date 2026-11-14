@@ -271,11 +271,12 @@ def _change_run():
 
 def _mark_card_name(img, mark) -> str:
     """阶段 1 候选：角标在卡格左下，往上取卡面认名字（只用于日志）。"""
-    from hiro.vision.card_art import match_card_art
-    from hiro.vision.hif import _art_card
+    from hiro import master
+    from hiro.vision import card_db
 
     x, y = int(mark.rect.x1), int(mark.rect.y1)
-    card = _art_card(match_card_art(img[max(0, y - 95) : y + 25, max(0, x - 5) : x + 115], k=5))[3]
+    asset = card_db.match(img[max(0, y - 95) : y + 25, max(0, x - 5) : x + 115])  # 卡格缩略图：卡面图库（卡面相关在这类小图上认不准）
+    card = master.card_by_asset(asset) if asset else None
     return card.name if card else "?"
 
 
