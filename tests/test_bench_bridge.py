@@ -395,3 +395,16 @@ def test_tracker_does_not_reshuffle_when_deck_still_has_cards():
     st, mem = _state([_card(0, "p_card-00-acc-0_002"), _card(1, "c-a")], turn=3)
     t.observe(st, mem)
     assert sum(t.grave.values()) == 2 and sum(t.deck.values()) == 5
+
+
+def test_layer_units_follow_gkms_uiobs():
+    """单位照 GKMS UIObs 的实际输出：熱意獲得量増加是绝对量（不除 1000），倍率类千分比写成小数（3940a9 11-14 对拍发现）。"""
+    from hiro.bench_bridge.uiobs import statuses
+
+    def layer(cls, value):
+        return {"cls": cls, "turn": 2, "limited": True, "passing": False, "value": value, "extra": {}, "trig": None}
+
+    effects = [layer("EnthusiasticAdditiveStatusEffect", 10), layer("LessonBuffMultipleStatusEffect", 250),
+               layer("FullPowerPointAdditiveStatusEffect", 400)]  # fmt: skip
+    got = {k: v for k, v, _ in statuses({"status": {"effects": effects}})}
+    assert got == {"enthusiastic_add": 10.0, "lesson_buff_multiple": 0.25, "full_power_point_add": 0.4}
