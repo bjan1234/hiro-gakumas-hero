@@ -112,7 +112,7 @@ def _list_fields(boxes) -> dict:
     return {"idols": idols}
 
 
-def _formation_fields(boxes) -> dict:
+def _formation_fields(boxes, img: np.ndarray | None = None) -> dict:
     """编成页（挑戦する那页）：层号、回合数、三属性倍率 → 千分比（HIRO_TOWER_LOADOUT 的 score_bonus_permils）、体力上限、按钮。
     三属性倍率从上到下是 Vo / Da / Vi（ボーカル / ダンス / ビジュアル 那三行右侧的「2309%」）。"""
     import re
@@ -138,12 +138,50 @@ def _formation_fields(boxes) -> dict:
     for key, word in (("challenge", "挑戦する"), ("omakase", "おまかせ"), ("reset", "リセット")):
         if (b := _find(boxes, word, (1000, 1280))) is not None:
             out[key] = _center(b)  # おまかせ 只记位置，绝不点（用户 11-14：编成走我们的决策）
+    # 第 1 / 2 页（「1/2」「2/2」，两边是左右翻页箭头，间距约 97）：第 2 页整副牌组直接显示
+    if (pg := next(((t, b) for t, b in boxes if re.fullmatch(r"([12])/2", t) and 600 <= _center(b)[1] <= 720), None)) is not None:
+        out["page"] = int(pg[0][0])
+        cx, cy = _center(pg[1])
+        out["next_page"], out["prev_page"] = [cx + 97, cy], [cx - 97, cy]
     return out
 
 
 STAR_X = (250, 360, 470)
 STAR_PINK_MIN = 0.2
 LAYER_BOX = (280, 385, 440, 470)
+
+
+# 编成页第 2/2 页的牌组（协调 11-14 第二批采样 38 号帧）：3 排，第 1 排主回忆 6 张（x 70 起、间隔 90），第 2、3 排是サブ1 / サブ2
+#（前面一个「+」，x 195 起）。灰掉的（「重複」「制限」）不进考试（8a3a1e7 拿 GKMS 6 局开局对过），按亮度跳过：灰 102–141、亮 181–239。
+# 强化看右上角的红「+」（卡中心右上约 +25..+40、-20..0）；左上角的数字是等级不是强化。基本 2 张页面上不显示，由中转层按偶像补。
+DECK_ROWS = ((415, (70, 160, 250, 340, 430, 520)), (515, (195, 285, 375, 465, 555, 645)), (607, (195, 285, 375, 465, 555, 645)))
+DECK_HALF = 42
+DECK_DIM_V = 160  # 卡面平均亮度低于这个算灰掉（重複 / 制限）
+DECK_PLUS_MIN = 15  # 右上角红色像素：强化 20–60，没强化 ≤ 8
+
+
+def read_formation_deck(img: np.ndarray) -> dict:
+    """编成页第 2/2 页 → {"cards": [「卡ID」或「卡ID+1」…]（亮着的、认得出的）, "rows": [[{name, card_id, upgrade, dim}…]×3], "unread": 亮着但认不出的张数}。"""
+    from hiro.vision.deck import match_grid_card
+
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    rows, cards, unread = [], [], 0
+    for y, xs in DECK_ROWS:
+        row = []
+        for x in xs:
+            cell = hsv[y - DECK_HALF : y + DECK_HALF, x - DECK_HALF : x + DECK_HALF]
+            dim = float(cell[..., 2].mean()) < DECK_DIM_V
+            corner = hsv[y - 22 : y + 2, x + 15 : x + 45]
+            upgrade = int(int((((corner[..., 0] <= 8) | (corner[..., 0] >= 172)) & (corner[..., 1] >= 150) & (corner[..., 2] >= 170)).sum()) >= DECK_PLUS_MIN)
+            card = None if dim else match_grid_card(img[y - DECK_HALF : y + DECK_HALF, x - DECK_HALF : x + DECK_HALF])
+            row.append({"name": card.name if card else None, "card_id": card._id if card else None, "upgrade": upgrade, "dim": dim})
+            if not dim:
+                if card is None:
+                    unread += 1
+                else:
+                    cards.append(card._id + ("+1" if upgrade else ""))
+        rows.append(row)
+    return {"cards": cards, "rows": rows, "unread": unread}
 
 
 def _result_fields(img: np.ndarray, boxes) -> dict:
@@ -213,7 +251,10 @@ def tower_page(img: np.ndarray, boxes) -> tuple[str, dict] | None:
     if _find(boxes, "挑戦する", (900, 1100)) and _find(boxes, "ステージ別ランキング"):
         return "TOWER_LAYERS", _layers_fields(img, boxes)
     if _find(boxes, "応援/トラブル", (0, 60)) and _find(boxes, "審査基準") and _find(boxes, "ターン", (60, 130)):
-        return "TOWER_FORMATION", _formation_fields(boxes)
+        f = _formation_fields(boxes, img)
+        if f.get("page") == 2:
+            f["deck"] = read_formation_deck(img)
+        return "TOWER_FORMATION", f
     if _find(boxes, "編成中") and _find(boxes, "審査基準"):
         dec = next((b for t, b in boxes if "決定" in t and _center(b)[1] > 1050), None)
         return "TOWER_MEMORY_SELECT", {"decide": _center(dec) if dec else None}

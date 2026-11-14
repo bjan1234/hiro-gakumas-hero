@@ -50,3 +50,12 @@ def test_memory_select_result_retry_exam():
     name, f = _hit("10_retry_confirm.png")
     assert name == "TOWER_RETRY_CONFIRM" and f["cost"] is None and f["same"] and f["ok"]  # 没有消耗字样
     assert _hit("11_retry_started.png")[0] == "TOWER_EXAM"  # 先于 KAA 的 EXAM 模板
+
+
+def test_formation_page2_reads_deck():
+    """编成页第 2/2 页：亮着的卡进牌组（「重複」「制限」灰掉的跳过），右上角红「+」是强化；认不出的记 unread。"""
+    name, f = _hit("38_formation_page2.png")
+    assert name == "TOWER_FORMATION" and f["page"] == 2
+    d = f["deck"]
+    assert [sum(c["dim"] for c in r) for r in d["rows"]] == [1, 3, 4]
+    assert "p_card-01-ido-2_017+1" in d["cards"] and "p_card-00-sup-3_027" in d["cards"] and len(d["cards"]) + d["unread"] == 10
