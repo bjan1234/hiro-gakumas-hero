@@ -159,3 +159,21 @@ def test_session_classify_uses_runtime_device_under_own(monkeypatch):
     finally:
         active.use(None)
     assert seen == [(1280, 720, 3)] and r.scene == "unknown" and r.area == "unknown"
+
+
+def test_produce_end_pages_hand_off_to_finish_and_stop(monkeypatch):
+    """选拔打完后的回忆照片页（「メモリーにするフォトを選んでください」，DMM 11-14 判页认不出、advance 不点，180 秒停机）：
+    交给 finish.finish_produce_end 点到开始确认页停，这一段结束。"""
+    from hiro.runtime import finish
+
+    rt, called = FakeRt(), []
+    monkeypatch.setattr(finish, "finish_produce_end", lambda r, **kw: called.append(kw) or True)
+    photo = frame([T("メモリーにするフォトを選んでください", 360, 440), T("次へ", 360, 1160)])
+    assert play.advance(rt, photo, NS(name="unknown")) is True and called == [{}] and rt.finished is True
+    rt2 = FakeRt()
+    monkeypatch.setattr(scenes, "commu_skip", lambda rt, f: False)
+    monkeypatch.setattr(scenes, "first_run_settings", lambda rt, f: False)
+    import hiro.loop.advance as adv
+
+    monkeypatch.setattr(adv, "burst", lambda texts, **kw: 0)
+    assert play.advance(rt2, frame([T("次へ", 360, 1160)]), NS(name="unknown")) is False and not getattr(rt2, "finished", False)
