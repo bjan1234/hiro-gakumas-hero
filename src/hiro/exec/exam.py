@@ -895,10 +895,25 @@ def _turn_ending(frame) -> bool:
     return a is None or b is None or not _lite_same(a, b)
 
 
-def _play_missed(frame, confirmed: bool) -> bool:
+def _play_observable(card_id: str | None, upgrade: int | None) -> bool:
+    """打出这张牌会不会动元気 / 体力（D34 拿它们没变当「没打出去」的证据）。0 消耗、不加元気的牌（眠気等）打出后两者都不变，
+    用掉本回合最后一次出牌时回合自然结束，不能据此判没打出去（偶像之路 Mac 15 层 11-14：除外区的眠気一步步从 2 涨到 8）。
+    主数据里查不到的牌按「会动」算（保持原判法）。"""
+    from hiro import master
+
+    c = master.card(card_id, upgrade or 0) if card_id else None
+    if c is None:
+        return True
+    text = (c.produce_descriptions or "") + c.effect_display_text
+    other_cost = bool(c.cost_value) and (c.cost_type or "").rsplit("_", 1)[-1] not in ("", "Unknown")  # 消耗好印象 / やる気 等
+    return bool(c.stamina or c.force_stamina or other_cost) or "元気" in text or "体力" in text
+
+
+def _play_missed(frame, confirmed: bool, observable: bool = True) -> bool:
     """D34：没看到 SELECT、没点确认的出牌（只点了一下，或第一下没被接收补点了一下），点完读 HUD：
-    剩余回合变少、元気 / 体力都没变 = 回合自动结束了，牌没打出去。confirmed：_play_card 看到 SELECT 并点了确认。"""
-    if confirmed:
+    剩余回合变少、元気 / 体力都没变 = 回合自动结束了，牌没打出去。confirmed：_play_card 看到 SELECT 并点了确认。
+    observable=False（打这张牌本来就不动元気 / 体力，见 _play_observable）：没有证据，不判没打出去。"""
+    if confirmed or not observable:
         return False
     try:
         a = _lite_sig(frame.img)
@@ -1225,7 +1240,9 @@ def run_exam(
             missed = None
             if changed and todo.kind == "play":
                 with _phase("play_verify"):
-                    if _play_missed(frame, PLAY_RESULT["confirmed"]):
+                    card = state.hand[d.slot] if d.kind == "play" and 0 <= d.slot < len(state.hand) else None
+                    observable = _play_observable(getattr(card, "card_id", None), getattr(card, "upgrade", None)) if card else True
+                    if _play_missed(frame, PLAY_RESULT["confirmed"], observable):
                         missed = "回合自动结束了，牌没打出去（没看到 SELECT、没点确认；剩余回合减少、元気 / 体力没变）"
             t_done = time.monotonic()
             _LAST_EXEC["t"] = t_done

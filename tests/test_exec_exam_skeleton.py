@@ -116,7 +116,7 @@ def env(monkeypatch):
     monkeypatch.setattr(ex, "_stale_before_tap", lambda f: None)
     monkeypatch.setattr(ex, "_execute", lambda d, f: [[100, 1010]])
     monkeypatch.setattr(ex, "_wait_change", lambda sig: True)
-    monkeypatch.setattr(ex, "_play_missed", lambda f, c: False)
+    monkeypatch.setattr(ex, "_play_missed", lambda f, c, observable=True: False)
     monkeypatch.setattr(ex.time, "monotonic", lambda: t[0])
     monkeypatch.setattr(ex, "sleep", lambda s: t.__setitem__(0, t[0] + s))
     return t
