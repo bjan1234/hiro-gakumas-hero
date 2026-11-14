@@ -355,7 +355,7 @@ def confirm_acquire(tries: int = 3, *, timeout: float = 3.0) -> int:
 def fast_acquire(card_center, *, shoot=None, click=None, sleep=_sleep, clock=time.monotonic, lit_timeout: float = 1.5,
                  close_timeout: float = 3.0) -> bool:  # fmt: skip
     """三选一（卡 / 饮料）：点选项 → 等「受け取る」亮起 → 点 → 等它消失。替代 KAA commit 的固定等待（点后 sleep 0.5 + 2s 再循环一轮，
-    第二十一局选拔选卡执行中位 8.5s）。亮不起来（再点一次选项也不行）返回 False，调用方退回 KAA commit。"""
+    第二十一局选拔选卡执行中位 8.5s）。亮不起来（再点一次选项也不行）返回 False，调用方先看是不是弹了设置框，再退回逐步提交。"""
     shoot = shoot or device.screenshot
     click = click or (lambda x, y: device.click(x, y))
     base = shoot()
@@ -377,7 +377,7 @@ def fast_acquire(card_center, *, shoot=None, click=None, sleep=_sleep, clock=tim
         if ok:
             break
     else:
-        logger.info("三选一：点了选项「受け取る」没亮，交回 KAA commit")
+        logger.info("三选一：点了选项「受け取る」没亮，退回逐步提交")
         return False
     click(*RECEIVE_TAP)
     deadline = clock() + close_timeout

@@ -120,3 +120,22 @@ def test_select_drink_uses_fast_acquire(monkeypatch):
     monkeypatch.setattr(card_ops, "drink_select_commit", lambda drink: slow.append(drink))
     st.on_select_drink()
     assert got == [(360, 884)] and slow == []  # 第 2 瓶（中心 360, 884），快速提交成功，没走慢提交
+
+
+def test_select_card_handles_first_time_settings_dialog(monkeypatch):
+    """选卡快速提交没亮时先看是不是弹了首次设置框（獲得ガイド表示設定），处理完返回 True；不是设置框返回 False（协调 11-14）。"""
+    from types import SimpleNamespace as NS
+
+    from hiro.produce import hif
+
+    boxes = [("獲得ガイド表示設定", 1.0, (60, 700, 350, 740)), ("獲得ガイドを表示する", 1.0, (110, 875, 350, 905)),
+             ("獲得ガイドを表示しない", 1.0, (110, 952, 370, 982)), ("決定", 1.0, (355, 1146, 410, 1176))]  # fmt: skip
+    clicks, notes = [], []
+    monkeypatch.setattr(hif, "device", NS(screenshot=lambda: "img", click=lambda x, y: clicks.append((x, y))))
+    monkeypatch.setattr(hif, "sleep", lambda s: None)
+    fake = NS(s=NS(note=notes.append))
+    monkeypatch.setattr(hif.ops, "ocr_boxes", lambda img: boxes)
+    assert hif.HifCore._settings_dialog(fake, "SELECT_CARD") is True
+    assert clicks == [(240, 967), (382, 1161)] and "獲得ガイド表示設定" in notes[0]
+    monkeypatch.setattr(hif.ops, "ocr_boxes", lambda img: [("受け取る", 1.0, (300, 1146, 420, 1176))])
+    assert hif.HifCore._settings_dialog(fake, "SELECT_CARD") is False

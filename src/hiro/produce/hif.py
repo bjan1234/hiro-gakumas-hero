@@ -337,12 +337,24 @@ class HifCore:
         return result
 
     # ---------------------------------------------------------------- 三选一
+    def _settings_dialog(self, where: str) -> bool:
+        """流程中途弹的首次设置框（hiro.loop.skip_settings：演出スキップ / 早送り / ボイス / 獲得ガイド）：按既定设置选好、点決定。
+        处理了返回 True。整帧 OCR 一次（约 0.3s），只在点击没生效的退路上调。"""
+        from hiro.loop import skip_settings
+
+        r = skip_settings.handle(ops.ocr_boxes(device.screenshot()), shoot=device.screenshot, ocr=ops.ocr_boxes,
+                                 click=lambda x, y: device.click(x, y), sleep=sleep)  # fmt: skip
+        if r is None:
+            return False
+        self.s.note(f"{where} 中途弹了设置框「{r['kind']}」：{'已点決定' if r['ok'] else '没点成決定'}")
+        return bool(r["ok"])
+
     def _confirm_acquire(self, tries: int = 3) -> int:
         """KAA 的 commit 只在找到灰色「受け取る」时才点；选中后按钮变橙色就退出，画面停在三选一（KAA 判 IDLE）。
         这里补点亮着的「受け取る」（ops.confirm_acquire，等按钮区变化而不是固定睡），返回点击次数。"""
         clicks = ops.confirm_acquire(tries)
         if clicks:
-            self.s.recover("tap_no_effect", f"KAA commit 后「受け取る」未按下，补点 {clicks} 次")
+            self.s.recover("tap_no_effect", f"逐步提交后「受け取る」未按下，补点 {clicks} 次")
         return clicks
 
     def _pick_index(self, d: Decision, n: int, fallback: int) -> int:
@@ -485,10 +497,15 @@ class HifCore:
                      choice=_card_summary(choice.card), source=d.source, reason=d.reason)  # fmt: skip
         logger.info("选卡 %s ← %s：%s", choice.card.name if choice.card else "?", d.source, d.reason)
         def commit():
-            # 先走快速提交（点卡 → 等「受け取る」亮 → 点 → 等消失），亮不起来才退回 KAA commit + 补点
-            if not ops.fast_acquire((int(choice.rect.center.x), int(choice.rect.center.y))):
-                card_select_commit(choice.rect)
-                self._confirm_acquire()
+            # 先走快速提交（点卡 → 等「受け取る」亮 → 点 → 等消失）。亮不起来时先看是不是弹了首次设置框（獲得ガイド表示設定：
+            # 新账号第一次拿卡，框挡住按钮，原来在逐步提交和重试里空等约 2.5 分钟，协调 11-14），处理完再快速提交一次；还不行才逐步提交 + 补点
+            center = (int(choice.rect.center.x), int(choice.rect.center.y))
+            if ops.fast_acquire(center):
+                return
+            if self._settings_dialog("SELECT_CARD") and ops.fast_acquire(center):
+                return
+            card_select_commit(choice.rect)
+            self._confirm_acquire()
 
         result = self._act(commit, Action.activate_effect(i), page_before="SELECT_CARD",
                            taps=[[int(choice.rect.center.x), int(choice.rect.center.y)]])  # fmt: skip

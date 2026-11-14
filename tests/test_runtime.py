@@ -331,3 +331,28 @@ def test_runtime_imports_no_kaa():
     env = {k: v for k, v in os.environ.items() if k != "HIRO_KAA_GAME_DATA"}  # 设了它 hiro.vision 会给 KAA 指主数据目录（KAA 还在时要）
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True, env=env).stdout.strip()
     assert out == "[]"
+
+
+@pytest.mark.parametrize("name, word", [("tutorial-90_h2_unknown.png", "次へ"), ("tutorial-91_tut_1.png", "閉じる"),
+                                        ("tutorial-71_produce_menu.png", "次へ"), ("not-tutorial-sound-settings.png", None)])  # fmt: skip
+def test_tutorial_card_taps_its_only_button(name, word):
+    """新账号第一次进 H.I.F 的教程框（白底卡片 + 页码点 + 底部只有 次へ / 閉じる）：直接点那个按钮（Mac 账号 2，11-14，原来判成 unknown
+    182 秒停机）。声音设置页（同样白底、有橙色滑条）不是。"""
+    import os
+    from pathlib import Path
+    from types import SimpleNamespace as NS
+
+    import cv2
+
+    from hiro.runtime import interrupts
+    from hiro.runtime.frame import Frame
+
+    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / name
+    if not path.exists():
+        pytest.skip(f"需要实机截图 pages/{name}")
+    taps = []
+    r = interrupts.tutorial(Frame(cv2.imread(str(path)), 0.0), NS(device=NS(tap=lambda x, y: taps.append((x, y)))))
+    if word is None:
+        assert r is None and taps == []
+    else:
+        assert r == f"教程框：点「{word}」" and len(taps) == 1 and abs(taps[0][1] - 1160) < 10 and 300 < taps[0][0] < 430
