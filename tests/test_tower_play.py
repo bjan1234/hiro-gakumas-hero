@@ -37,6 +37,8 @@ def _play(tmp_path, decision=None, layers=1):
 def test_layers_then_formation_keeps_current(tmp_path, monkeypatch):
     keep = Decision(Action(ActionKind.SELECT_FORMATION, {"kind": "tower", "mechanic": None, "main": 0, "subs": []}), "只有当前编成", "sim", 0.8)
     p = _play(tmp_path, keep)
+    seen_pf = []
+    p.core.deciders.decide = lambda page, st: seen_pf.append(st.page_fields) or keep
     rt, taps = _rt()
     assert p.on_layers(rt, None, NS(fields={"idol": "月村手毬", "stage": 15, "challenge": [446, 987]})) is DONE and p.layer == 15
     monkeypatch.setattr(tp, "idol_code", lambda name: "ttmr")
@@ -55,6 +57,7 @@ def test_layers_then_formation_keeps_current(tmp_path, monkeypatch):
                   "max_stamina": 46, "idol_card_id": "i_card-ttmr-2-000", "produce_cards": ["p_card-01-ido-2_017+1", "p_card-00-sup-3_027"],
                   "formation_signature": "i_card-ttmr-2-000.12075-10773-9978"}  # fmt: skip
     assert p.run.tower_id == "tower_001-ttmr"
+    assert seen_pf[-1]["idol_card_id"] == "i_card-ttmr-2-000"  # 编成评估要偶像卡（3940a9 11-15）
     assert json.loads((tmp_path / "cache" / "tower_001-ttmr-15.json").read_text(encoding="utf-8")) == lo  # 同编成重试时读这份
 
 
