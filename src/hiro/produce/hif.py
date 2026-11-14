@@ -175,15 +175,24 @@ class HifCore:
                      llm=f"{llm.name}:{llm.model}" if llm else None)  # fmt: skip
 
     def _exam_advisor(self, llm):
-        """考试出招插件。默认实现（BenchAdvisor：bench 算法出牌，出错退回规则；关掉 bench 时是规则 + 同一个 LLM，--llm / --no-llm）；
-        注册 / 环境变量 / 入口点给了别的实现就原样用它（返回 None，run_exam 自己取插件）。"""
+        """考试出招插件。缺省 / 环境变量指定的实现是 BenchAdvisor 一系（缺省 SearchAdvisor：Rust 搜索，搜不了退回 bench 中转层；
+        BenchAdvisor：bench 算法出牌，出错退回规则；关掉 bench 时是规则 + 同一个 LLM，--llm / --no-llm）时，带上 profile 和 llm 建；
+        注册 / 入口点 / 别的实现原样用插件（返回 None，run_exam 自己取插件）。11-14 以前这里缺省时直接建 BenchAdvisor，
+        把插件表里的缺省 SearchAdvisor 绕过去了（协调：H.I.F 实机全是「bench：uinet」）。"""
         from hiro import plugins
-
-        if not plugins.source("exam_advisor").startswith("default:"):
-            return None
         from hiro.bench_bridge.advisor import BenchAdvisor
 
-        adv = BenchAdvisor(self.profile, llm)  # 缺省：bench 算法出牌（HIRO_BENCH_ADVISOR=0 时就是原来的规则 + LLM）
+        src = plugins.source("exam_advisor")
+        kind, _, spec = src.partition(":")
+        if kind not in ("default", "env"):
+            return None
+        try:
+            cls = plugins._load(spec)
+        except Exception:  # noqa: BLE001  写错 / 缺依赖：交给 run_exam 取插件时报
+            return None
+        if not (isinstance(cls, type) and issubclass(cls, BenchAdvisor)):
+            return None
+        adv = cls(self.profile, llm)
         if llm is None:  # --no-llm：只用规则（RuleLLMAdvisor 收到 None 会去读 HIRO_LLM）
             adv.rules.brain = BattleBrain(self.profile, None)
         return adv
