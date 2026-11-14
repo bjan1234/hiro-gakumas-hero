@@ -223,7 +223,7 @@ class ProduceDeciders:
 
     # ---------------------------------------------------------------- 选行动
     def action_select(self, state: GameState) -> Decision:
-        from hiro.state.context import payload, preview_action_select, to_previews
+        from hiro.state.context import preview_action_select
 
         ps = self.produce_state(state)
         available = state.page_fields.get("options") or None
@@ -231,8 +231,35 @@ class ProduceDeciders:
             available = [o for o in available if o.get("option") not in self.unavailable_options] or None
         if ps is None:
             return self._action_select_without_state(available, state.produce)
+        # 日程那一步和页面选项对不上（DMM own 测试局：页头「選抜試験1まで」读偏 → step 停在前一天，用旧 step 的日程找课程 KeyError、
+        # 重读 3 次后停机）：在附近几步里找和页面选项一致的那一步预览；找不到就不用日程预览，按页面选项兜底。都记 fallback，不抛异常
+        stale = None
+        if available:
+            fit = _step_for_options(ps, available)
+            if fit is None:
+                return self._stale_step_fallback(available, state.produce, f"日程第 {ps.step} 步的选项和页面对不上，附近也找不到对得上的一步")
+            if fit != ps.step:
+                stale = f"日程第 {ps.step} 步的选项和页面对不上，按第 {fit} 步预览（页头可能读偏）"
+                ps = replace(ps, step=fit)
         unknown = self.unknown_fields(state, ps)
-        rows = [r for r in preview_action_select(ps, available, unknown) if r["option"] not in self.unavailable_options]
+        try:
+            rows = [r for r in preview_action_select(ps, available, unknown) if r["option"] not in self.unavailable_options]
+        except (KeyError, IndexError, StopIteration, TypeError) as e:
+            return self._stale_step_fallback(available, state.produce, f"选行动预览失败（{type(e).__name__}: {e}）")
+        if stale:
+            d = self._action_select_decide(ps, state, available, unknown, rows)
+            return replace(d, source="fallback" if d.source in ("rule", "llm") else d.source, warnings=[*d.warnings, stale])
+        return self._action_select_decide(ps, state, available, unknown, rows)
+
+    def _stale_step_fallback(self, available: list[dict] | None, produce: dict | None, why: str) -> Decision:
+        """日程对不上时的兜底：不按（可能读错的）step 套日程模板，只按页面上的选项选。"""
+        prod = {k: v for k, v in (produce or {}).items() if k != "step"}
+        d = self._action_select_without_state(available, prod)
+        return replace(d, source="fallback", warnings=[*d.warnings, why])
+
+    def _action_select_decide(self, ps: ProduceState, state: GameState, available, unknown, rows: list[dict]) -> Decision:
+        from hiro.state.context import payload, to_previews
+
         for i, r in enumerate(rows):
             r["index"] = i
         previews = to_previews(rows)
@@ -1785,7 +1812,7 @@ class ProduceDeciders:
         else:
             trouble, paid, free = (OUTING_LAYOUT.index(k) for k in ("trouble", "paid", "free"))
         if ps and ps.mode == "produce-007" and ps.step == 5 and trouble is not None:
-            return Decision(Action.event_select(trouble), "社区：选拔第 5 天外出选眠気档，多拿强化卡备战选拔①", "rule", 0.8, warnings=warn, decider="outing")
+            return Decision(Action.event_select(trouble), "社区：选拔第 5 天外出选中间的眠気档，之后在相談花 100P 删掉——比当场花 50P 避开多拿一次获得 / 删卡收益 [ep07]", "rule", 0.8, warnings=warn, decider="outing")
         if ps and paid is not None and ps.produce_point >= 150:
             return Decision(Action.event_select(paid), f"P 点 {ps.produce_point} 充裕，付 50P 多拿一张强化卡", "rule", 0.6, warnings=warn, decider="outing")
         if ps is None:
@@ -2680,6 +2707,34 @@ def wants_copy(card_id: str | None, copies: int) -> bool:
         return True
     k = YARUKI_CARDS.get(card_id or "") or {}
     return bool(k.get("must")) and copies < int(k.get("keep") or 1)
+
+
+STEP_SEARCH = (1, 2, -1, 3)  # 日程对不上时往前后找几步（页头读偏多半是还停在前一天）
+
+
+def _step_for_options(ps: ProduceState, available: list[dict]) -> int | None:
+    """和页面选项对得上的日程位置：当前 step 对得上就是它；否则按 STEP_SEARCH 找附近的；都对不上 None。
+    「对得上」= 页面上的每种选项（休息除外）日程那天都有，页面有课程时日程那天有 open_lesson_ids。"""
+    from hiro.state.context import schedule
+
+    kinds = {o.get("option") for o in available if o.get("option")} - {"rest"}
+    try:
+        sch = schedule(ps.mode)
+        n = len(sch.export()["stages"])
+    except Exception:  # noqa: BLE001  日程表不可用：不核对，照旧
+        return ps.step
+
+    def fits(pos: int) -> bool:
+        if not 1 <= pos <= n:
+            return False
+        st = sch.stage(pos)
+        if "training" in kinds and not st.get("open_lesson_ids"):
+            return False
+        return kinds <= set(st.get("options") or ())
+
+    if fits(ps.step):
+        return ps.step
+    return next((ps.step + d for d in STEP_SEARCH if fits(ps.step + d)), None)
 
 
 def _is_core_card(card_id: str | None, copies: int | None = None) -> bool:

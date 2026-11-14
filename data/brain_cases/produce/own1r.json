@@ -1,0 +1,465 @@
+[
+ {
+  "id": "outing-own1r-day5",
+  "decider": "OUTING",
+  "source": "实机 DMM own qualifyown1r-20261114-140224 seq42",
+  "note": "选拔第 5 天外出：攻略（ep07）选中间的眠気档，之后花 100P 删除。实机 DMM own 测试局这一步就是这么选的（协调 11-14 确认是否有意）",
+  "accept": [
+   "event:1"
+  ],
+  "state": {
+   "mode": "produce",
+   "page": {
+    "name": "OUTING",
+    "area": "produce",
+    "since_seq": 41,
+    "stable": true,
+    "frames": 2
+   },
+   "produce": {
+    "mode": "produce-007",
+    "step": 5,
+    "stamina": 12,
+    "max_stamina": 33,
+    "produce_point": 470,
+    "params": {
+     "Vo": 509,
+     "Da": 645,
+     "Vi": 288
+    },
+    "growth_permil": {
+     "Vo": 1455,
+     "Da": 1444,
+     "Vi": 1413
+    },
+    "star": 120,
+    "param_cap": 3000,
+    "drinks": [
+     "pdrink_00-2-009",
+     "pdrink_00-2-003"
+    ],
+    "drink_capacity": 4
+   },
+   "exam": null,
+   "exam_session": {
+    "label": null,
+    "turn": 0,
+    "last_remaining": null,
+    "brief_permil": null,
+    "brief_exam_no": null
+   },
+   "page_fields": {
+    "choices": [
+     {
+      "index": 0,
+      "text": "情報を集めましょう",
+      "cost_hp": null,
+      "cost_p": 50,
+      "trouble": false,
+      "selected": false,
+      "center": [
+       360,
+       698
+      ]
+     },
+     {
+      "index": 1,
+      "text": "見た目とは限りません",
+      "cost_hp": null,
+      "cost_p": null,
+      "trouble": true,
+      "selected": false,
+      "center": [
+       360,
+       799
+      ]
+     },
+     {
+      "index": 2,
+      "text": "トレーナーを頼りましょう",
+      "cost_hp": null,
+      "cost_p": null,
+      "trouble": false,
+      "selected": false,
+      "center": [
+       360,
+       901
+      ]
+     }
+    ],
+    "complete": true
+   },
+   "sources": {
+    "produce.mode": {
+     "origin": "screen",
+     "seq": 21
+    },
+    "produce.step": {
+     "origin": "screen",
+     "seq": 21
+    },
+    "produce.stamina": {
+     "origin": "screen",
+     "seq": 21
+    },
+    "produce.max_stamina": {
+     "origin": "screen",
+     "seq": 21
+    },
+    "produce.produce_point": {
+     "origin": "screen",
+     "seq": 21
+    },
+    "produce.params": {
+     "origin": "screen",
+     "seq": 21
+    },
+    "produce.growth_permil": {
+     "origin": "screen",
+     "seq": 21
+    },
+    "produce.star": {
+     "origin": "screen",
+     "seq": 21
+    },
+    "produce.param_cap": {
+     "origin": "screen",
+     "seq": 21
+    },
+    "produce.drinks": {
+     "origin": "screen",
+     "seq": 21
+    },
+    "produce.drink_capacity": {
+     "origin": "screen",
+     "seq": 21
+    }
+   },
+   "seq": 42,
+   "pending_page": null,
+   "conflicts": [],
+   "field_status": {
+    "produce.mode": "observed",
+    "produce.step": "observed",
+    "produce.stamina": "observed",
+    "produce.max_stamina": "observed",
+    "produce.produce_point": "pending",
+    "produce.params.Vo": "observed",
+    "produce.params.Da": "observed",
+    "produce.params.Vi": "observed",
+    "produce.growth_permil": "observed",
+    "produce.star": "observed",
+    "produce.param_cap": "observed",
+    "produce.advice": "observed",
+    "produce.drinks": "observed",
+    "produce.drink_capacity": "observed",
+    "produce.options": "observed",
+    "produce.complete": "observed",
+    "produce.upgrades_done": "predicted"
+   },
+   "pending_review": [
+    "produce.produce_point"
+   ],
+   "ledger": [
+    {
+     "seq": 10,
+     "kind": "WAPPEN_TRIGGER",
+     "origin": "observed",
+     "args": {
+      "star_gain": 15
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 10,
+      "screenshot": "frames/00010.jpg",
+      "page": "STAR_GAIN"
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 14,
+     "kind": "CARD_UPGRADE",
+     "origin": "observed",
+     "args": {
+      "card_id": null,
+      "upgrade": null
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 14,
+      "screenshot": "frames/00014.jpg",
+      "page": "UPGRADE_RESULT"
+     },
+     "confidence": null,
+     "note": "卡名「フクワクが止まらない」没认出",
+     "version": "1.2"
+    }
+   ],
+   "version": "1.2"
+  }
+ },
+ {
+  "id": "action-own1r-day4-stale-step",
+  "decider": "ACTION_SELECT",
+  "source": "实机 DMM own qualifyown1r-20261114-134956 seq133",
+  "note": "页头「選抜試験1まで」读偏 → 状态停在第 3 步（授業日），页面是第 4 天的公開レッスン。原来按旧 step 预览 KeyError、停机；应该按第 4 步预览选课程，不能 Wait",
+  "accept": [
+   "training:Vo",
+   "training:Da",
+   "training:Vi"
+  ],
+  "state": {
+   "mode": "produce",
+   "page": {
+    "name": "ACTION_SELECT",
+    "area": "produce",
+    "since_seq": 129,
+    "stable": true,
+    "frames": 6
+   },
+   "produce": {
+    "stamina": 20,
+    "max_stamina": 33,
+    "produce_point": 440,
+    "params": {
+     "Vo": 437,
+     "Da": 463,
+     "Vi": 277
+    },
+    "growth_permil": {
+     "Vo": 1455,
+     "Da": 1444,
+     "Vi": 1413
+    },
+    "star": 105,
+    "param_cap": 3000,
+    "drinks": [
+     "pdrink_00-2-009",
+     "pdrink_00-2-003"
+    ],
+    "drink_capacity": 4,
+    "mode": "produce-007",
+    "step": 3
+   },
+   "exam": null,
+   "exam_session": {
+    "label": null,
+    "turn": 0,
+    "last_remaining": null,
+    "brief_permil": null,
+    "brief_exam_no": null
+   },
+   "page_fields": {
+    "options": [
+     {
+      "option": "rest",
+      "attr": null,
+      "hp_cost": null,
+      "hp_gain": 13,
+      "center": [
+       646,
+       865
+      ]
+     },
+     {
+      "option": "training",
+      "attr": "Vo",
+      "hp_cost": 6,
+      "hp_gain": null,
+      "center": [
+       172,
+       1023
+      ]
+     },
+     {
+      "option": "training",
+      "attr": "Vi",
+      "hp_cost": 8,
+      "hp_gain": null,
+      "center": [
+       545,
+       1024
+      ]
+     }
+    ],
+    "complete": true,
+    "advice": "実力は十分ですね。好成績を相うには得意パラメータを伸ばすのがおすすめです!"
+   },
+   "sources": {
+    "produce.stamina": {
+     "origin": "screen",
+     "seq": 133
+    },
+    "produce.max_stamina": {
+     "origin": "screen",
+     "seq": 133
+    },
+    "produce.produce_point": {
+     "origin": "screen",
+     "seq": 133
+    },
+    "produce.params": {
+     "origin": "screen",
+     "seq": 133
+    },
+    "produce.growth_permil": {
+     "origin": "screen",
+     "seq": 133
+    },
+    "produce.star": {
+     "origin": "screen",
+     "seq": 133
+    },
+    "produce.param_cap": {
+     "origin": "screen",
+     "seq": 133
+    },
+    "produce.drinks": {
+     "origin": "screen",
+     "seq": 133
+    },
+    "produce.drink_capacity": {
+     "origin": "screen",
+     "seq": 133
+    },
+    "produce.mode": {
+     "origin": "screen",
+     "seq": 84
+    },
+    "produce.step": {
+     "origin": "screen",
+     "seq": 84
+    }
+   },
+   "seq": 134,
+   "pending_page": null,
+   "conflicts": [
+    "seq 6: ACQUIRE → GIFT 不在转移图里，连续 3 帧后接受"
+   ],
+   "field_status": {
+    "produce.stamina": "observed",
+    "produce.max_stamina": "observed",
+    "produce.produce_point": "observed",
+    "produce.params.Vo": "observed",
+    "produce.params.Da": "observed",
+    "produce.params.Vi": "observed",
+    "produce.growth_permil": "observed",
+    "produce.star": "observed",
+    "produce.param_cap": "observed",
+    "produce.advice": "observed",
+    "produce.drinks": "verified",
+    "produce.drink_capacity": "observed",
+    "produce.options": "observed",
+    "produce.complete": "observed",
+    "produce.mode": "observed",
+    "produce.step": "observed"
+   },
+   "pending_review": [],
+   "ledger": [
+    {
+     "seq": 1,
+     "kind": "PITEM_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "pitem_id": "pitem_02-3-062-0"
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 1,
+      "screenshot": "frames/00001.jpg",
+      "page": "ACQUIRE"
+     },
+     "confidence": 1.0,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 37,
+     "kind": "CARD_ACQUIRE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-00-men-2_012",
+      "upgrade": 1
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 37
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 100,
+     "kind": "CARD_REROLL",
+     "origin": "action",
+     "args": {},
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 100
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 102,
+     "kind": "CARD_REROLL",
+     "origin": "action",
+     "args": {},
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 102
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 104,
+     "kind": "CARD_ACQUIRE",
+     "origin": "action",
+     "args": {
+      "card_id": "p_card-02-act-3_186",
+      "upgrade": 0
+     },
+     "basis": "observe_only",
+     "confirmed": null,
+     "ref": {
+      "decision_seq": 104
+     },
+     "confidence": null,
+     "note": null,
+     "version": "1.2"
+    },
+    {
+     "seq": 110,
+     "kind": "DRINK_ACQUIRE",
+     "origin": "observed",
+     "args": {
+      "drink_id": "pdrink_00-2-003"
+     },
+     "basis": "observe_only",
+     "confirmed": true,
+     "ref": {
+      "observation_seq": 110,
+      "screenshot": "frames/00110.jpg",
+      "page": "ACQUIRE"
+     },
+     "confidence": 1.0,
+     "note": null,
+     "version": "1.2"
+    }
+   ],
+   "version": "1.2"
+  }
+ }
+]
