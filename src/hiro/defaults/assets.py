@@ -70,14 +70,10 @@ class PublicAssetSource:
     def card_art_dir(self) -> Path | None:
         return self._fullest_dir(*(r / "cards" for r in self._roots()), self.kaa / "skill_cards")
 
-    def skill_card_dir(self) -> Path | None:
-        """KAA 公开数据的技能卡原图（skill_cards/，带透明通道的原版），卡面图库 hiro.vision.card_db 用。
-        随仓库素材包 cards/ 的图合成过底色，SIFT 特征和原图不同，不拿来建这个库。"""
-        return self._first_dir(self.kaa / "skill_cards")
-
-    def idol_dir(self) -> Path | None:
-        """偶像卡图（编成第 1 步选偶像，hiro.vision.idols）：KAA 公开数据的 idol_cards/。"""
-        return self._first_dir(self.kaa / "idol_cards")
+    def game_data(self, category: str) -> Path | None:
+        """KAA 公开数据里的原图目录：idol_cards（选偶像，hiro.vision.idols）/ skill_cards（卡面图库 hiro.vision.card_db、卡格缩略图）
+        / drinks（饮料图标）。随仓库素材包里同类的图合成过底色，特征和原图不同，这几处要原图。"""
+        return self._first_dir(self.kaa / category)
 
     def icon_dir(self, kind: str) -> Path | None:
         extra = (self.kaa / "drinks",) if kind == "drink" else ()

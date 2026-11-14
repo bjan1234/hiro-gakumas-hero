@@ -11,15 +11,19 @@ import cv2
 import numpy as np
 from cv2.typing import MatLike
 from hiro import master
-from kaa.game_data.paths import sprites_path
 
 SCALES = (1.05, 1.15, 1.25, 1.35)
 
 
 @lru_cache(maxsize=1)
 def _templates() -> list[tuple[str, list[np.ndarray]]]:
+    from hiro import plugins
+
     out = []
-    folder = sprites_path("drinks")
+    src = plugins.get("asset_source")
+    folder = src.game_data("drinks") if src is not None and hasattr(src, "game_data") else None
+    if folder is None:
+        return out
     for name in sorted(os.listdir(folder)):
         img = cv2.imread(os.path.join(folder, name))
         if img is None:
