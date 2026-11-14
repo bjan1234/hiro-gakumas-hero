@@ -132,6 +132,10 @@ def _formation_fields(boxes, img: np.ndarray | None = None) -> dict:
                         and (v := _int(t)) is not None and v >= 10), None) for y, _ in pcts]  # fmt: skip
         if all(v is not None for v in params):
             out["params"] = params
+    name = next((t for t, b in boxes if 390 <= _center(b)[1] <= 425 and 180 <= _center(b)[0] <= 400), None)
+    title = next((t for t, b in boxes if 360 <= _center(b)[1] <= 390 and 180 <= _center(b)[0] <= 330), None)
+    if name and title:
+        out["idol_name"], out["idol_card_title"] = name, title  # 「月村手毬」「一匹狼」：查 IdolCard 得主回忆的偶像卡
     hp = _find(boxes, "体力", (500, 600))
     if hp is not None:
         out["max_stamina"] = next((int(t) for t, b in boxes if t.isdigit() and abs(_center(b)[0] - _center(hp)[0]) < 30 and 15 <= _center(b)[1] - _center(hp)[1] <= 50), None)
@@ -242,6 +246,23 @@ def _layers_fields(img: np.ndarray, boxes) -> dict:
     return {"idol": name, "stage": layer, "stars": stars, "locked": orange < LOCK_ORANGE_MIN, "challenge": [cx, cy]}
 
 
+def _ranking_fields(boxes) -> dict:
+    """考完的名次页（左上「3位」徽章 + 6 行「名次 名字 分数Pt」+「次へ」）：各行（按 y 排）、自己的名次（徽章数字）。
+    分数是 OCR 读的，偶尔错一位（105,438 → 105,458），只做记录；星数以结果页为准。"""
+    import re
+
+    pts = sorted(((b[1], _int(t)) for t, b in boxes if t.lower().endswith("pt") and _int(t) is not None), key=lambda x: x[0])
+    names = sorted(((b[1], t) for t, b in boxes if 200 <= _center(b)[0] <= 400 and not t.lower().endswith("pt") and not re.search(r"\d", t)
+                    and _center(b)[1] > 300), key=lambda x: x[0])  # fmt: skip
+    rows = []
+    for i, (y, score) in enumerate(pts):
+        name = next((t for ny, t in names if 0 < y - ny < 70), None)
+        rows.append({"rank": i + 1, "name": name, "score": score})
+    badge = next((int(t) for t, b in boxes if t.isdigit() and len(t) == 1 and _center(b)[1] < 260 and _center(b)[0] < 200), None)
+    nxt = _find(boxes, "次へ", (1080, 1260))
+    return {"my_rank": badge, "rows": rows, "next": _center(nxt) if nxt else None}
+
+
 def tower_dialog(dialog: dict, boxes) -> tuple[str, dict] | None:
     """偶像之路的弹窗：层详情「条件」（每颗星的条件原文，8a3a1e7 按原文查表）、再挑戦确认（选项 / 按钮 / 消耗词）。"""
     from hiro.runtime.tower import retry_cost
@@ -278,6 +299,8 @@ def tower_page(img: np.ndarray, boxes) -> tuple[str, dict] | None:
     if _find(boxes, "編成中") and _find(boxes, "審査基準"):
         dec = next((b for t, b in boxes if "決定" in t and _center(b)[1] > 1050), None)
         return "TOWER_MEMORY_SELECT", {"decide": _center(dec) if dec else None}
+    if _find(boxes, "次へ", (1080, 1260)) and _find(boxes, "位", (130, 260)) and sum(1 for t, _ in boxes if t.lower().endswith("pt")) >= 3:
+        return "TOWER_RANKING", _ranking_fields(boxes)
     if _find(boxes, "CLEAR", (150, 320)) and (_find(boxes, "一覧に戻る", (1080, 1260)) or _find(boxes, "再挑戦", (1080, 1260))):
         return "TOWER_RESULT", _result_fields(img, boxes)
     return None

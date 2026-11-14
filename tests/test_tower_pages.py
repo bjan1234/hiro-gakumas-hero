@@ -60,3 +60,12 @@ def test_formation_page2_reads_deck():
     assert [sum(c["dim"] for c in r) for r in d["rows"]] == [1, 3, 4]
     assert "p_card-01-ido-2_017+1" in d["cards"] and "p_card-00-sup-3_027" in d["cards"] and len(d["cards"]) + d["unread"] == 10
     assert "p_card-01-act-2_032+1" in d["cards"] and d["unread"] == 0  # スタンドプレー+：带等级 / 角标，卡格规则没把握，两票对一票认出
+
+
+def test_ranking_page_after_exam():
+    """考完的名次页（第一次实机 r1：判成 unknown，180 秒停机）：左上名次徽章、各行分数、「次へ」。"""
+    name, f = _hit("40_after_r1_stop.png")
+    assert name == "TOWER_RANKING" and f["my_rank"] == 3 and f["next"]
+    assert [(r["rank"], r["name"]) for r in f["rows"][:3]] == [(1, "白草四音"), (2, "暁美みずき"), (3, "月村手毬")] and f["rows"][2]["score"] == 54009
+    name, f = _hit("06_challenge.png")
+    assert (f["idol_name"], f["idol_card_title"]) == ("月村手毬", "一匹狼")

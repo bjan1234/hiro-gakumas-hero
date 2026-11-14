@@ -39,10 +39,21 @@ def idol_code(name: str | None) -> str | None:
     return row[0] if row else None
 
 
+def idol_card_id(title: str | None, code: str | None) -> str | None:
+    """偶像卡名（「一匹狼」）+ 偶像代号（ttmr）→ IdolCard.id（i_card-ttmr-2-000）；查不到 None。"""
+    from hiro import master
+
+    if not title or not code:
+        return None
+    row = next(iter(master.rows("SELECT id FROM IdolCard WHERE name = ? AND characterId = ?", title.strip(), code)), None)
+    return row[0] if row else None
+
+
 def loadout(fields: dict, tower_id: str | None, layer: int | None) -> dict:
     """编成页字段 → HIRO_TOWER_LOADOUT（gkms.exam_loadout.v1；读不到的不写，8a3a1e7 11-14）。"""
     lo = {"produce_id": "tower", "tower_id": tower_id, "layer": layer, "turns": fields.get("turns"),
-          "score_bonus_permils": fields.get("score_bonus_permils"), "max_stamina": fields.get("max_stamina")}  # fmt: skip
+          "score_bonus_permils": fields.get("score_bonus_permils"), "max_stamina": fields.get("max_stamina"),
+          "idol_card_id": fields.get("idol_card_id")}  # fmt: skip
     return {k: v for k, v in lo.items() if v is not None}
 
 
@@ -106,6 +117,8 @@ class TowerPlay:
         p1 = self.page1
         self.layer = p1.get("layer") or self.layer
         tower_id = f"{TOWER_NO}-{code}" if (code := idol_code(self.idol_name)) else None
+        self.run.tower_id = tower_id
+        p1 = {**p1, "idol_card_id": idol_card_id(p1.get("idol_card_title"), code)}
         lo = loadout(p1, tower_id, self.layer)
         if self.deck and self.deck.get("cards"):
             lo["produce_cards"] = list(self.deck["cards"])  # 基本 2 张由中转层按偶像补（8a3a1e7 069d34c）
@@ -173,6 +186,14 @@ class TowerPlay:
             rt.device.tap(*fields["back"])
         return DONE
 
+    def on_ranking(self, rt, f, hit):
+        """考完的名次页：记下名次和各人分数（TowerRun.rankings），点「次へ」到 CLEAR 结果页（重试规则在结果页按星数走）。"""
+        fields = hit.fields
+        layer = self.layer
+        self.run.rankings.setdefault(layer, []).append({"my_rank": fields.get("my_rank"), "rows": fields.get("rows")})
+        logger.info("偶像之路第 %s 层名次：第 %s 名（%s）", layer, fields.get("my_rank"), fields.get("rows"))
+        return self._tap(rt, fields.get("next"))
+
     def on_retry_confirm(self, rt, f, hit):
         fields = hit.fields
         if fields.get("cost"):
@@ -187,7 +208,7 @@ class TowerPlay:
     def handlers(self) -> dict:
         return {"TOWER_LIST": self.on_list, "TOWER_LAYERS": self.on_layers, "TOWER_LAYER_INFO": self.on_layer_info,
                 "TOWER_FORMATION": self.on_formation, "TOWER_MEMORY_SELECT": self.on_memory_select, "TOWER_EXAM": self.on_exam,
-                "TOWER_RESULT": self.on_result, "TOWER_RETRY_CONFIRM": self.on_retry_confirm}  # fmt: skip
+                "TOWER_RANKING": self.on_ranking, "TOWER_RESULT": self.on_result, "TOWER_RETRY_CONFIRM": self.on_retry_confirm}  # fmt: skip
 
 
 def run(args) -> int:

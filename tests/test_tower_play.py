@@ -36,7 +36,8 @@ def test_layers_then_formation_keeps_current(tmp_path, monkeypatch):
     assert p.on_layers(rt, None, NS(fields={"idol": "月村手毬", "stage": 15, "challenge": [446, 987]})) is DONE and p.layer == 15
     monkeypatch.setattr(tp, "idol_code", lambda name: "ttmr")
     f = {"layer": 15, "turns": 15, "score_bonus_permils": [23090, 11980, 2600], "params": [2348, 1701, 611], "max_stamina": 46,
-         "challenge": [381, 1091], "omakase": [643, 1090]}  # fmt: skip
+         "challenge": [381, 1091], "omakase": [643, 1090], "idol_name": "月村手毬", "idol_card_title": "一匹狼"}  # fmt: skip
+    monkeypatch.setattr(tp, "idol_card_id", lambda title, code: "i_card-ttmr-2-000" if (title, code) == ("一匹狼", "ttmr") else None)
     f = {**f, "page": 1, "next_page": [458, 674], "prev_page": [264, 674]}
     assert p.on_formation(rt, None, NS(fields=f)) is DONE and taps[-1] == (458, 674)  # 先翻到第 2 页读牌组
     deck = {"cards": ["p_card-01-ido-2_017+1", "p_card-00-sup-3_027"], "unread": 1}
@@ -45,7 +46,8 @@ def test_layers_then_formation_keeps_current(tmp_path, monkeypatch):
     assert taps == [(446, 987), (458, 674), (381, 1091)]  # おまかせ 没点
     lo = json.loads((tmp_path / "lo.json").read_text(encoding="utf-8"))
     assert lo == {"produce_id": "tower", "tower_id": "tower_001-ttmr", "layer": 15, "turns": 15, "score_bonus_permils": [23090, 11980, 2600],
-                  "max_stamina": 46, "produce_cards": ["p_card-01-ido-2_017+1", "p_card-00-sup-3_027"]}  # fmt: skip
+                  "max_stamina": 46, "idol_card_id": "i_card-ttmr-2-000", "produce_cards": ["p_card-01-ido-2_017+1", "p_card-00-sup-3_027"]}  # fmt: skip
+    assert p.run.tower_id == "tower_001-ttmr"
 
 
 def test_formation_lands_on_page2_goes_back_first(tmp_path):
@@ -104,3 +106,16 @@ def test_layers_locked_or_three_stars_stop(tmp_path):
     with pytest.raises(ResumeBlocked, match="三星"):
         p.on_layers(rt, None, NS(fields={"idol": "月村手毬", "stage": 10, "stars": 3, "locked": False, "challenge": [480, 988]}))
     assert taps == []
+
+
+def test_ranking_records_and_taps_next(tmp_path):
+    p = _play(tmp_path)
+    p.layer = 15
+    rt, taps = _rt()
+    rows = [{"rank": 1, "name": "白草四音", "score": 105438}, {"rank": 3, "name": "月村手毬", "score": 54009}]
+    assert p.on_ranking(rt, None, NS(fields={"my_rank": 3, "rows": rows, "next": [361, 1160]})) is DONE and taps == [(361, 1160)]
+    assert p.run.summary()["rankings"] == {15: [{"my_rank": 3, "rows": rows}]}
+
+
+def test_idol_card_id_from_master():
+    assert tp.idol_card_id("一匹狼", "ttmr") == "i_card-ttmr-2-000" and tp.idol_card_id("一匹狼", "hski") is None
