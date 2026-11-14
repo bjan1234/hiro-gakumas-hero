@@ -70,6 +70,7 @@ def _match_white(img: MatLike, name: str, box) -> tuple[float, tuple[int, int]]:
     return float(score), (loc[0] + x1, loc[1] + y1)
 
 
+BREAKTHROUGH_MIN = 0.6  # 顶部「突破ライン」条（选拔赛）；偶像之路考试帧最高 0.38
 BREAKTHROUGH_STRONG = 0.75  # 「突破ライン」条匹配到这个分数，「残りターン」可放宽到 FINALS_TURNS_MIN（考试帧 0.80–0.82）
 
 
@@ -467,6 +468,13 @@ def read_ranking(img: MatLike) -> dict:
     """
     if is_finals_strip(img):
         return read_finals_ranking(img)
+    if _match_white(img, "hif_exam_breakthrough", TOP_STRIP)[0] < BREAKTHROUGH_MIN:
+        from hiro.vision.tower import read_tower_ranking
+
+        # 没有突破线也不是本战名次条：偶像之路的 6 人名次条（hiro.vision.tower）
+        if (t := read_tower_ranking(img)) is not None:
+            npcs = [v for i, v in enumerate(t["scores"], 1) if i != t["my_rank"]]
+            return {"my_rank_index": t["my_rank"], "my_score": t["my_score"], "npc_scores": npcs, "my_score_read": None, "tower": t}
     x1, y1, x2, y2 = RANK_STRIP
     strip = img[y1:y2, x1:x2]
     hsv = cv2.cvtColor(strip, cv2.COLOR_BGR2HSV)

@@ -77,10 +77,11 @@ class Runtime:
     clock: Callable[[], float] = pause_flag.active_clock
     sleep: Callable[[float], None] = time.sleep
     flow: _Flow = field(default_factory=_Flow)
+    dialog_words: tuple[str, ...] = ()  # 模式自带的弹窗危险词（GuardedDevice 第 3 条；偶像之路用 hiro.runtime.tower.DIALOG_WORDS）
 
     def __post_init__(self) -> None:
         self.screen = Screen(self.raw_device, self.clock)
-        self.device = GuardedDevice(self.raw_device, self.screen)
+        self.device = GuardedDevice(self.raw_device, self.screen, self.dialog_words)
         self._unknown_since: float | None = None
         self._base: tuple[str, object, float] | None = None  # 进展看门狗的基准：(页面, 缩略图, 时刻)
 
