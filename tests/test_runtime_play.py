@@ -141,3 +141,19 @@ def test_quick_pages_tap_through_or_wait(monkeypatch):
     monkeypatch.setattr(scenes, "commu_skip", lambda rt, fr: False)
     monkeypatch.setattr(scenes, "first_run_settings", lambda rt, fr: False)
     assert not play.advance(rt, f(20.0), pitem)  # 要决策的页（dispatch）不在这里点
+
+
+def test_session_classify_uses_runtime_device_under_own(monkeypatch):
+    """新主循环下 Session.verify / HifCore 的判页（scene.classify_current）从 Runtime 截图，不碰 kotonebot（实机：选完行动核对时崩）。"""
+    from hiro.devices import active
+    from hiro.vision import scene
+
+    rt, seen = FakeRt(), []
+    monkeypatch.setattr(scene, "classify_scene", lambda img: seen.append(img.shape) or NS(name="LIVE", area="produce"))
+    monkeypatch.setattr(active, "_kb", lambda: (_ for _ in ()).throw(AssertionError("不该走 kotonebot")))
+    active.use(rt)
+    try:
+        r = scene.classify_current()
+    finally:
+        active.use(None)
+    assert seen == [(1280, 720, 3)] and r.scene == "unknown" and r.area == "unknown"
