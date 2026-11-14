@@ -337,8 +337,11 @@ def from_screen(state: Any, memory: Any, legal: list, tracker: ScreenTracker, ex
 
 
 def exam_fields(label: str | None, *, idol: str | None, plan: int | None, crit=None) -> dict:
-    """hiro 的考试标签（qualify-1/2/3、r1、r2）→ UIObs exam 的固定部分。"""
+    """hiro 的考试标签（qualify-1/2/3、r1、r2、tower / tower-<层>）→ UIObs exam 的固定部分。
+    偶像之路照 bench 给 UINet 的写法：produce "tower"、step 空、plan 0、crit 全 0（bench 的局面里没有这几项，填了反而和 bench 不可比）。"""
     base = str(label or "").split("#", 1)[0].lower()
+    if base.startswith("tower"):
+        return {"produce": "tower", "step": None, "plan": 0, "idol": idol, "crit": [0, 0, 0]}
     if base.startswith("qualify"):
         n = int(base.rsplit("-", 1)[-1]) if base[-1:].isdigit() else 1
         produce, step = "produce-007", STEPS[min(max(n, 1), 3) - 1]
