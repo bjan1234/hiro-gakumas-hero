@@ -17,6 +17,7 @@ def _n(v) -> int:
     return INF if v <= 0 else v
 
 
+PLAYABLE_ADD = "ProduceExamEffectType_ExamPlayableValueAdd"
 CREATE_TO_DECK = ("ProduceCardMovePositionType_DeckRandom", "ProduceCardMovePositionType_DeckFirst", "ProduceCardMovePositionType_DeckLast")
 
 
@@ -65,6 +66,24 @@ class Enchants:
             if e and e.get("effectType") == "ProduceExamEffectType_ExamCardCreateId" and e.get("targetProduceCardId") \
                     and e.get("movePositionType") in CREATE_TO_DECK:
                 out.append((e["targetProduceCardId"], int(e.get("targetUpgradeCount") or 0), max(1, int(e.get("effectValue1") or 0))))
+        return tuple(out)
+
+    @lru_cache(maxsize=None)  # noqa: B019
+    def plays_added(self, card_id: str, upgrade: int) -> tuple:
+        """打出这张卡确定会加的出牌次数（スキルカード使用数追加）：((几回合后, 次数), …)。0 = 本回合（ExamPlayableValueAdd，
+        次数在 effectCount）；ExamEffectTimer 链着它的是 effectValue1 回合后（「次のターン、」= 1）。带触发条件的不算（画面上判断不了）。"""
+        out = []
+        for pe in (self._row(card_id, upgrade) or {}).get("playEffects") or ():
+            if pe.get("produceExamTriggerId"):
+                continue
+            e = self._get("ProduceExamEffect", pe.get("produceExamEffectId")) or {}
+            if e.get("effectType") == PLAYABLE_ADD:
+                out.append((0, max(1, int(e.get("effectCount") or 0))))
+            elif e.get("effectType") == "ProduceExamEffectType_ExamEffectTimer":
+                for cid in e.get("chainProduceExamEffectIds") or ():
+                    c = self._get("ProduceExamEffect", cid) or {}
+                    if c.get("effectType") == PLAYABLE_ADD:
+                        out.append((max(1, int(e.get("effectValue1") or 0)), max(1, int(c.get("effectCount") or 0))))
         return tuple(out)
 
     @lru_cache(maxsize=None)  # noqa: B019
