@@ -26,7 +26,25 @@ def complete_loadout(lo: dict) -> dict:
                 items.append(i)
         lo["produce_item_ids"] = items
     lo["exam"] = ex
+    lo["produce_cards"] = with_initial_cards(list(lo.get("produce_cards") or []), lo.get("idol_card_id"))
     return lo
+
+
+def with_initial_cards(cards: list, idol: str | None) -> list:
+    """编成页读到的牌组补上游戏开局另加的 2 张基本卡（tower.Master.idol_initial_cards，同 bench_bridge.screen._with_initial_cards）：
+    已经在里面的不重复加（bench 题本来就带）。没有偶像 id / 主数据时原样返回。"""
+    if not cards or not idol:
+        return cards
+    try:
+        from hiro.bench_bridge.tower import master
+
+        extra = master().idol_initial_cards(idol)
+    except Exception:  # noqa: BLE001
+        return cards
+    from hiro.search.loadout import parse_deck_entry
+
+    have = {parse_deck_entry(c)[0] for c in cards}
+    return cards + [c for c in extra if c not in have]
 
 
 def bonus_permils(b) -> dict:

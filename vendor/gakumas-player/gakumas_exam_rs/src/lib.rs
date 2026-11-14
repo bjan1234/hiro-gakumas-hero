@@ -348,6 +348,17 @@ mod py {
             k.invalidate();
             true
         }
+        /// 新建一张卡（不放进任何区，调用方用 set_zone 放）→ guid。画面上出现引擎牌组里没有的卡（眠気这类机关 / 效果生成的卡、
+        /// 编成里没读到的牌）时，对齐用它接住。主数据里没有这张卡时报错。
+        fn new_card(&mut self, card_id: &str, upgrade: i64) -> PyResult<String> {
+            let cid = sym::intern(card_id);
+            if self.ex.m.card(cid, upgrade).is_none() {
+                return Err(pyo3::exceptions::PyKeyError::new_err(format!("主数据里没有 {card_id}+{upgrade}")));
+            }
+            let g = self.ex.new_guid();
+            self.ex.add_card_obj(crate::card::Card::new(cid, upgrade, vec![], g.clone()));
+            Ok(g.to_string())
+        }
         fn card_info(&self, guid: &str) -> Option<(String, i64, Vec<i64>)> {
             self.find(guid).map(|c| {
                 let k = &self.ex.cards[c];

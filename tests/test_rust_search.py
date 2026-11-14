@@ -104,3 +104,14 @@ def test_objective_stars_by_rivals(rs, rx):
 def test_plan_many_returns_best_line(rs, rx):
     out = rs.plan_many([rx.clone(), rx.clone()], seconds=0.2, threads=2, rivals=[1])
     assert len(out) == 2 and all(v >= 3 * 10 ** 10 and raw > 1 and st == 3 for v, raw, st in out)
+
+
+def test_new_card_for_generated_cards(rs, rx):
+    """画面上出现引擎牌组里没有的卡（眠気等生成卡）：new_card 新建、set_zone 放进手牌（11-14 Mac 实机整步报「手牌对不上」）。"""
+    if not hasattr(rx, "new_card"):
+        pytest.skip("Rust 后端没有 new_card")
+    g = rx.new_card("p_card-00-acc-0_002", 0)
+    rx.set_zone("hand", list(rx.zone("hand")) + [g])
+    assert rx.card_info(g)[0] == "p_card-00-acc-0_002" and g in rx.zone("hand")
+    with pytest.raises(KeyError):
+        rx.new_card("p_card-nope", 0)

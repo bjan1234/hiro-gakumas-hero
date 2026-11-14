@@ -81,6 +81,20 @@ def action_key(a: Action) -> str:
     return a.kind.value if a.kind is not ActionKind.REROLL else "reroll"
 
 
+def _tower_idol(tower_id: str, layer: int) -> str | None:
+    """编成页没给 idol_card_id 时：用驱动刚写的这一层编成（HIRO_TOWER_LOADOUT，同塔同层才算）里的。编成评估要它
+    （引擎按偶像定 plan 和开局基本卡；11-14 Mac 实机缺了它，评估报 KeyError IdolCard:None）。"""
+    try:
+        from hiro.bench_bridge.advisor import _tower_loadout
+
+        lo = _tower_loadout({}) or {}
+    except Exception:  # noqa: BLE001
+        return None
+    if lo.get("tower_id") == tower_id and int(lo.get("layer") or -1) == int(layer):
+        return lo.get("idol_card_id")
+    return None
+
+
 class ProduceDeciders:
     def __init__(self, profile: IdolProfile | None, llm: LLMAdapter | None = None, *, main_attr: str | None = None,
                  unavailable_options: set[str] | frozenset = frozenset(), change_controlled: bool = False):  # fmt: skip
@@ -924,6 +938,7 @@ class ProduceDeciders:
         if not tower_id or layer is None or not cands:
             return stop("偶像之路编成：塔 / 层 / 候选回忆没读出来，停下等重新识别")
         mechs = list(pf.get("mechanics") or tw.layer_mechanics(tower_id, int(layer)) or [None])
+        idol = pf.get("idol_card_id") or _tower_idol(tower_id, int(layer))
         key = (tower_id, int(layer), tuple(sorted(str(m) for m in mechs)), k, tf.signature(cands))
         cache = getattr(self, "_tower_cache", {})
         notes: list[str] = []
@@ -939,7 +954,7 @@ class ProduceDeciders:
                     continue
                 for main in cands:
                     subs = tf.choose_subs(lex, main, cands, k)
-                    lo = tf.loadout(lex, main, subs, pf.get("idol_card_id"))
+                    lo = tf.loadout(lex, main, subs, idol)
                     if main.get("current") and len(cands) == 1:
                         # 当前编成（只有这一组时）：倍率 / 体力以编成页画面读到的为准，公式算的只作对照
                         shown, hp = pf.get("shown_bonus"), pf.get("shown_stamina")
