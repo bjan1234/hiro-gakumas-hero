@@ -5,7 +5,7 @@ bench Algorithm 接口（hiro.bench_bridge 的 tower 场次按 HIRO_TOWER_ALGO �
               ctx.loadout["rivals"] / 画面读到的优先，没有用主数据区间上限），26 / 27 层带通关条件。
   decide(ctx)：引擎局面按 ctx.obs（UIObs，画面读数）对齐——手牌（按画面顺序）、山札 / 弃牌 / 除外（按卡 id 对实例，同区优先）、
               分数 / 体力 / 元気 / やる気 / 好印象 / 饮料 / 回合；ctx.known_draws（用户 11-14：同一编成重试可以用上一次画面上看到的
-              抽牌顺序）有就把还没抽到的那段排在山札最前、设成已知前缀；然后 gakumas_exam_rs.search（三星目标）→ 动作；
+              抽牌顺序；只用第一轮，洗牌后会分叉）有就把还没抽到的那段排在山札最前、设成已知前缀；然后 gakumas_exam_rs.search（三星目标）→ 动作；
               这个动作也在我们的引擎里执行，状态 / 附魔由引擎演化。
 不读种子、不读存档；ctx.worlds（GKMS 世界）不用。出错就抛异常，由调用方退回 uinet（写明原因）；Rust 后端没有 search / plan_many 时构造就抛（加载失败 → 退回 uinet）。
 """
@@ -31,8 +31,7 @@ class Decision:
 def known_prefix(known: list[str], deck_ids: list[str], start: int = 0) -> tuple[int, list[str]]:
     """已知抽牌顺序 known（编成牌组的卡 id，按抽到先后）和现在的山札 deck_ids（画面读到的，可能有生成卡）对位：
     找最小的 k ≥ start，使 known[k:] 开头那一段（最多山札里编成牌的张数）都在山札里、并且 known 没到头时正好就是山札里的编成牌
-    → (k, 那一段)。用山札内容对位，不靠数手牌：生成卡进手牌、抽到和刚打出的同名卡都不会数错；洗牌后接着对（顺序跟种子走，
-    越往后越依赖这期间除外 / 生成的牌一样，8a3a1e7 11-14）。对不上 / 已知的抽完了返回 (start, [])。"""
+    → (k, 那一段)。用山札内容对位，不靠数手牌：生成卡进手牌、抽到和刚打出的同名卡都不会数错（known 由调用方截到第一轮，洗牌后不当已知）。对不上 / 已知的抽完了返回 (start, [])。"""
     ids = set(known)
     left = collections.Counter(c for c in deck_ids if c in ids)  # 山札里的编成牌（生成卡不算）
     n = sum(left.values())
@@ -79,7 +78,10 @@ class TowerGnrpa:
         seed = random.Random(json.dumps(self.lo.get("produce_cards"), sort_keys=True)).randrange(1, 2 ** 31)
         self.rx = tower_env(self.lo, seed).rx
         self.rx.advance()
-        self.known = [(d["id"], int(d.get("u") or 0)) for d in (getattr(ctx, "known_draws", None) or [])]
+        # 只用第一轮（牌组张数以内）：洗牌后的顺序和当时弃牌堆的内容有关，打法不同就分叉（平台模块 11-14 回放 r1 / r3：前 12 张一样、
+        # 第 13 张起不同），洗牌后交给搜索当随机
+        known = [(d["id"], int(d.get("u") or 0)) for d in (getattr(ctx, "known_draws", None) or [])]
+        self.known = known[:len(self.lo.get("produce_cards") or [])]
         self.drawn = 0  # known_draws 里已经抽过的张数（每步按山札内容重新对位）
         self.stats = collections.Counter()
 
