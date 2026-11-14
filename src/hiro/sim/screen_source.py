@@ -162,12 +162,33 @@ class SimScreenExamStateSource(ScreenExamStateSource):
         max_hp = state.max_hp or (self.profile.max_hp if self.profile is not None else None) or 33
         permil = {k: v for k, v in (getattr(memory, "attr_permil", None) or {}).items() if v} or dict(CONTEXT.get("permil") or {})
         setup, notes = rv.setup_for(self.template or self.label, deck=deck, drinks=drinks, hp=state.hp or max_hp, max_hp=max_hp, permil=permil)
+        # 任务 ②：P 道具 / 支援卡 / 回忆附魔换成这一局的（原来是模板那一局的，任务 ① 查到搜出来的未来是错的）
+        run, run_notes = self._run_loadout()
+        setup = iv._with(setup, **run)
+        notes = list(notes) + run_notes
         game = self._new_game(setup, copy.deepcopy(memory))
         self.setup = setup
         self.tracker = SimTracker(game, 0, self.meta)
         logger.info("模拟器跟踪：%s 合成开局（牌组 %d 张、饮料 %s、体力 %s/%s%s）", self.label, len(deck), drinks, state.hp, max_hp,
                     "；" + "、".join(notes) if notes else "")  # fmt: skip
         return True
+
+    def _run_loadout(self) -> tuple[dict, list]:
+        """这一局的编成（hiro.search.loadout）：P 道具来自培育记账，支援卡 / 回忆附魔来自开局编成方案（HIRO_FORMATION_PLAN=off 时没有）。"""
+        import os
+
+        from hiro.search.loadout import run_loadout
+
+        produce = (getattr(self.session.state, "produce", None) or {}) if self.session is not None else {}
+        plan = None
+        if os.environ.get("HIRO_FORMATION_PLAN", "").lower() != "off":
+            try:
+                from hiro.brain.formation_plan import load
+
+                plan = load(os.environ.get("HIRO_FORMATION_PLAN") or None)
+            except Exception as e:  # noqa: BLE001
+                logger.info("开局编成方案读不了：%s", e)
+        return run_loadout(produce, plan)
 
     def _new_game(self, setup, memory):
         from hiro.sim import interval as iv
@@ -206,7 +227,15 @@ class SimScreenExamStateSource(ScreenExamStateSource):
         rows = []
         if self.session is not None:
             rows = (getattr(self.session.state, "produce", None) or {}).get("deck") or []
-        deck = [(c["card_id"], int(c.get("upgrade") or 0)) for c in rows if isinstance(c, dict) and c.get("card_id")]
+        from hiro.search.loadout import customize_counts
+
+        deck = []
+        for c in rows:
+            if not (isinstance(c, dict) and c.get("card_id")):
+                continue
+            up = int(c.get("upgrade") or 0)
+            counts = customize_counts(c["card_id"], up, c.get("customize"))  # 特別指導记下的定制（任务 ②）
+            deck.append((c["card_id"], up, counts) if counts else (c["card_id"], up))
         if deck:
             return deck
         from hiro.state.finals_context import CONTEXT
@@ -222,6 +251,16 @@ class SimScreenExamStateSource(ScreenExamStateSource):
         self._missing = []
         env = clone(self.tracker.game.env)
         notes: list[str] = []
+        # 先执行上一步已经做了、但没和画面核对上的动作，再按画面修牌区和数值：原来从出牌之前的局面重建，这一步出牌的效果
+        # （卡上挂的附魔、移到除外的卡、状态）整个丢了（任务 ② 验证 2：附魔完全一致的步只有 40%）
+        pending = getattr(self.tracker, "pending", None)
+        if pending:
+            try:
+                fast_apply(env, pending)
+                notes.append("先执行上一步的动作")
+            except Exception as e:  # noqa: BLE001  这一步在旧局面上执行不了：照旧从旧局面按画面重建
+                env = clone(self.tracker.game.env)
+                notes.append(f"上一步的动作执行不了（{type(e).__name__}），从旧局面重建")
         guard = 0
         while not env.ended and state.remaining_turns is not None and self.tracker.screen_remaining(env) > state.remaining_turns and guard < 6:
             fast_apply(env, {"kind": "end_turn"})
@@ -256,6 +295,13 @@ class SimScreenExamStateSource(ScreenExamStateSource):
                 setattr(env, attr, v)
         if env.actions <= 0 and any(c.available for c in state.hand):
             env.actions = 1
+        # 饮料栏按画面（画面每格都认出时）：重建从上一次对上的局面出发，中间喝掉的那瓶原来会一直留在引擎里（任务 ② 验证 2）
+        screen_drinks = [getattr(d, "drink_id", None) for d in state.drinks or []]
+        if all(screen_drinks) and sorted(env.drinks.values()) != sorted(screen_drinks):
+            rx = getattr(env, "rx", None)
+            if rx is not None and hasattr(type(rx), "drinks") and getattr(type(rx).drinks, "__set__", None):
+                notes.append(f"饮料按画面：{sorted(env.drinks.values())} → {screen_drinks}")
+                rx.drinks = screen_drinks
         _order_hand(env, want, notes)
         game = SimGame(env, self.label, self.profile)
         game.memory, game.meta = self.tracker.game.memory, self.meta

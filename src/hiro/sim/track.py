@@ -276,9 +276,14 @@ def _order_hand(env, screen_hand, notes: list[str]) -> None:
         exact = [i for i in cands if up is None or def_upgrade(env.cards[i]) == up]
         inst = (exact or cands)[0]
         if not exact:
-            # 随机强化重放也没对上：只记一笔。画面的「+」数和引擎的 upgrade 同口径（基础 + 考试中 + 支援强化），不能按画面改基础强化；
-            # 以前这里写 env.cards[inst] = …，但 env.cards 每次现算，赋值从来没生效（dmmw1 日志「强化次数按画面改」其实没改）
-            notes.append(f"强化次数：模拟器 {env.cards[inst]} ≠ 画面 +{up}（未改）")
+            # 画面的「+」数和引擎的 upgrade 同口径（基础 + 考试中 + 支援强化）。考试中的支援强化是随机的，引擎掷的和实机不同：
+            # Rust 后端按画面调支援强化那一块（任务 ② 验证 2：26% 的步手牌强化不同，牌效果不同，やる気 等数值慢慢偏）；
+            # 没有这个入口（Python 后端 / 旧 Rust 包）时只记一笔
+            rx = getattr(env, "rx", None)
+            if rx is not None and up is not None and hasattr(rx, "set_card_upgrade") and rx.set_card_upgrade(inst, int(up)):
+                notes.append(f"强化次数按画面：{env.cards[inst]} → +{up}")
+            else:
+                notes.append(f"强化次数：模拟器 {env.cards[inst]} ≠ 画面 +{up}（未改）")
         ordered.append(inst)
         left.remove(inst)
     env.zones["hand"] = ordered + left

@@ -5,7 +5,7 @@
 - 选拔②后第一段定制（ぬいぐるみ）：黄 = ロボ / もじゃ / インコ / うさぎ（4 种随机出 3 个）；
 - 选拔③后第二段定制（デコレーション）：花 / リボン / メダル / 羽（ロボ固定 3 选：花 / リボン / 羽）。
 
-ID 规则：customize_pitem-<计划>-04-3-00<颜色>[_00-04-2-00<ぬいぐるみ>_01-01-1-001[_00-04-4-00<装饰>]]。
+ID 规则：customize_pitem-<计划>-04-3-00<颜色>[_00-04-2-00<ぬいぐるみ>_02-02-1-001[_00-04-4-00<装饰>]]（master ProduceCustomizeItem 核对，11-14）。
 
 社区建议（strategy/evidence/hif-guides-20261030.json）：
 - 背包选黄（饮料）[seesaa][もなみ][もりし「ポーチ（黄）一択」]；赤（回体力）最差：「赤を選ぶくらいなら授業で眠気取得…おでかけで体力をキープ」[seesaa]；
@@ -35,7 +35,7 @@ WHY = {
     "羽": "羽：社区认为不需要（追加卡会让牌组变大）[もなみ]",
 }
 
-_ID = re.compile(r"customize_pitem-\d+-04-3-(\d{3})(?:_00-04-2-(\d{3})_01-01-1-001(?:_00-04-4-(\d{3}))?)?$")
+_ID = re.compile(r"customize_pitem-\d+-04-3-(\d{3})(?:_00-04-2-(\d{3})_0[12]-0[12]-1-001(?:_00-04-4-(\d{3}))?)?$")
 _NAME = re.compile(r"^(花|リボン|メダル|羽)?(ポーチ|くま|人形|ロボ|もじゃ|インコ|うさぎ)（(赤|緑|黄)）$")
 
 
@@ -53,6 +53,31 @@ def parse(item: dict) -> dict | None:
         return None
     stage = "deco" if deco else "plush" if plush else "pouch"
     return {"stage": stage, "color": color, "plush": plush, "deco": deco}
+
+
+def custom_id(p: dict, plan: str = "02") -> str | None:
+    """parse 的结果 → 定制 P 道具的 master ID（任务 ② 记账：搜索起点要带这一局的 P 道具）。主数据里没有这个 ID 时返回 None。"""
+    code = lambda table, v: next((k for k, x in table.items() if x == v), None)  # noqa: E731
+    color = code(COLOR, p.get("color"))
+    if color is None:
+        return None
+    out = f"customize_pitem-{plan}-04-3-{color}"
+    if p.get("plush"):
+        plush = code(PLUSH, p["plush"])
+        if plush is None:
+            return None
+        out += f"_00-04-2-{plush}_02-02-1-001"
+        if p.get("deco"):
+            deco = code(DECO, p["deco"])
+            if deco is None:
+                return None
+            out += f"_00-04-4-{deco}"
+    try:
+        from hiro.state.context import catalog
+
+        return out if catalog().by_id("ProduceCustomizeItem", out) else None
+    except Exception:  # noqa: BLE001  主数据不可用：不确认，照拼的给
+        return out
 
 
 def score(p: dict) -> int:

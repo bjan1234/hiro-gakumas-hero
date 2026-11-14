@@ -524,7 +524,8 @@ def _drink_discard(prod: dict, args: dict, seq: int) -> list[Prediction]:
 
 def _pitem(prod: dict, args: dict, seq: int) -> list[Prediction]:
     """PITEM_ACQUIRE / PITEM_CUSTOMIZE {item_id, replaces?}：items 加入 / 替换（master ProduceItem / ProduceCustomizeItem 的 ID）。"""
-    item = args.get("item_id")
+    # 识别发的 PITEM_ACQUIRE 参数叫 pitem_id（原来只认 item_id，produce.items 从没记上，任务 ② 11-14）；同名分不清时 pitem_ids 取第一个
+    item = args.get("item_id") or args.get("pitem_id") or next(iter(args.get("pitem_ids") or []), None)
     if not item:
         return []
     items = list(prod.get("items") or [])

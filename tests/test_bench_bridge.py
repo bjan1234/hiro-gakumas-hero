@@ -552,7 +552,7 @@ def _tower_advisor(monkeypatch, tmp_path, tower_spec, *, fail=False):
     hif, tower = _Algo(("play", 0)), _Algo(("play", 0))
 
     def load(spec=None, **kw):
-        if spec and spec.startswith("my.gnrpa"):
+        if spec and (spec.startswith("my.gnrpa") or spec == A.TOWER_DEFAULT_ALGO):
             if fail:
                 raise ImportError("no rust")
             return tower
@@ -576,13 +576,38 @@ def test_tower_uses_tower_algo_with_loadout(monkeypatch, tmp_path):
 
 
 @pytest.mark.bench_on
-@pytest.mark.parametrize("spec, fail, why", [(None, False, "还没接上"), ("my.gnrpa:Search", True, "加载失败")])
-def test_tower_falls_back_to_hif_algo_and_says_so(monkeypatch, tmp_path, spec, fail, why):
+@pytest.mark.parametrize("spec, fail, why, default", [(None, False, "还没接上", ""), ("my.gnrpa:Search", True, "加载失败", None),
+                                                    (None, True, "加载失败", None)])  # fmt: skip
+def test_tower_falls_back_to_hif_algo_and_says_so(monkeypatch, tmp_path, spec, fail, why, default):
+    if default is not None:
+        monkeypatch.setattr(A, "TOWER_DEFAULT_ALGO", default)
     adv, hif, tower = _tower_advisor(monkeypatch, tmp_path, spec, fail=fail)
     st, mem = _state([_card(0, "p_card-a", 1)], remaining=15, turn=1)
     d = adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
     assert len(hif.seen) == 1 and not tower.seen
     assert "兜底" in d.reason and why in d.reason
+
+
+@pytest.mark.bench_on
+def test_tower_default_is_rust_gnrpa(monkeypatch, tmp_path):
+    """用户 11-14：偶像之路缺省用 Rust GNRPA（不设 HIRO_TOWER_ALGO 也是）。"""
+    assert A.TOWER_DEFAULT_ALGO == "hiro.search.tower_algo:TowerGnrpa"
+    adv, hif, tower = _tower_advisor(monkeypatch, tmp_path, None)
+    st, mem = _state([_card(0, "p_card-a", 1)], remaining=15, turn=1)
+    d = adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    assert len(tower.seen) == 1 and not hif.seen and "兜底" not in d.reason
+
+
+def test_tower_gnrpa_refuses_old_rust(monkeypatch):
+    """Rust 后端没有 search / plan_many：TowerGnrpa 构造就抛、写明缺什么（加载失败 → 退回 uinet）。"""
+    import sys
+    import types
+
+    from hiro.search.tower_algo import TowerGnrpa
+
+    monkeypatch.setitem(sys.modules, "gakumas_exam_rs", types.SimpleNamespace(search=lambda *a, **k: None))
+    with pytest.raises(RuntimeError, match="plan_many"):
+        TowerGnrpa()
 
 
 @pytest.mark.bench_on
@@ -627,3 +652,20 @@ def test_tower_ctx_carries_known_draws(monkeypatch, tmp_path):
     assert tower.ctx.known_draws == [{"id": "p_card-a", "u": 1}]
     adv.on_round_start(1, {"exam": "r1", "idol": "i_card-shro-3-007", "deck": [("p_card-x", 0)]})  # H.I.F：不给
     assert adv.known_draws is None
+
+
+
+def test_known_prefix_aligns_by_deck_contents():
+    """known_draws 按山札内容对位（8a3a1e7 11-14：生成卡不在记录里，跳过）。"""
+    from hiro.search.tower_algo import known_prefix
+
+    # 山札里混着生成卡 z（眠気这类）：不算，照样对上
+    assert known_prefix(["a", "b", "c", "d", "e"], ["d", "z", "c", "e"]) == (2, ["c", "d", "e"])
+    # 抽到和刚打出的同名卡（数手牌会漏数）
+    assert known_prefix(["a", "b", "a", "c"], ["c", "a"]) == (2, ["a", "c"])
+    # 记录只到一半：已知那段在山札里就用
+    assert known_prefix(["a", "b", "c"], ["c", "d", "e"]) == (2, ["c"])
+    # 从上一次的位置往后找；对不上不给前缀
+    assert known_prefix(["a", "b", "a"], ["a"], start=2) == (2, ["a"])
+    assert known_prefix(["a", "b"], ["b", "q"], start=0) == (1, ["b"])
+    assert known_prefix(["a", "b"], ["a", "a"], start=1) == (1, [])

@@ -404,7 +404,7 @@ def select_memories(inventory: dict | list, *, gains: dict | None = None, finals
         alt = alts[0] if alts else None
         return {"id": m["id"], "card_id": m["card_id"], "name": e.get("name") or m["name"], "upgrade": m["upgrade"],
                 "timing": m["timing"], "weight": s["weight"], "quality": round(s["quality"], 1), "role": e.get("role"), "slot": e.get("slot"),
-                "sources": e.get("sources", []), "why": s["why"], **_inventory_position(m["raw"]),
+                "sources": e.get("sources", []), "why": s["why"], "abilities": list(m.get("abilities") or []), **_inventory_position(m["raw"]),
                 "vs_same_card": (f"同卡另一份 {alt['id']}：质量 {scored[id(alt)]['quality']:.1f}（{'；'.join(scored[id(alt)]['why']) or '无'}）"
                                  if alt else "库存里只有这一份")}  # fmt: skip
 

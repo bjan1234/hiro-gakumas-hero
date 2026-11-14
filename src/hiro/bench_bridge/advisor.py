@@ -165,9 +165,9 @@ def algo_spec() -> str:
 
 # 偶像之路（tower-* 场次）的出牌算法：用户 2026-11-14 定「偶像之塔这里我们用 gnrpa 去搜索吧，这一块就不要强制性使用 uinet」。
 # HIRO_TOWER_ALGO 写法同 HIRO_BENCH_ALGO（包.模块:类名[:参数]，bench Algorithm 接口：begin(ctx) / decide(ctx) → Decision）；
-# 缺省 TOWER_DEFAULT_ALGO（3940a9 的 Rust GNRPA 接口好了填上）。没配置 / 加载失败时用 H.I.F 那个算法（uinet）兜底，
-# 每步决策的理由里写明「兜底」和原因。
-TOWER_DEFAULT_ALGO = ""
+# 缺省 TOWER_DEFAULT_ALGO = Rust GNRPA（hiro.search.tower_algo）。加载失败（Rust 后端没装 / 没有 search、plan_many）时用 H.I.F
+# 那个算法（uinet）兜底，每步决策的理由里写明「兜底」和原因。
+TOWER_DEFAULT_ALGO = "hiro.search.tower_algo:TowerGnrpa"
 
 
 def tower_algo_spec() -> str:
