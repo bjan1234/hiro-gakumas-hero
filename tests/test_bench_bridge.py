@@ -669,3 +669,14 @@ def test_known_prefix_aligns_by_deck_contents():
     assert known_prefix(["a", "b", "a"], ["a"], start=2) == (2, ["a"])
     assert known_prefix(["a", "b"], ["b", "q"], start=0) == (1, ["b"])
     assert known_prefix(["a", "b"], ["a", "a"], start=1) == (1, [])
+
+
+def test_tower_bonus_permils_accepts_list_and_template_dict():
+    """bench 模板（实打时的 ctx.loadout）把倍率写成 {"1": Vo, "2": Da, "3": Vi}；直接 zip 会拿到键、倍率变成 1 / 2 / 3（11-14 查出的
+    搜索预测分只有实际的几十分之一）。"""
+    from hiro.search.tower import bonus_permils
+
+    want = {1: 42790, 2: 8910, 3: 22630}
+    assert bonus_permils([42790, 8910, 22630]) == want
+    assert bonus_permils({"1": 42790, "2": 8910, "3": 22630}) == want
+    assert bonus_permils({1: 42790, 2: 8910, 3: 22630}) == want
