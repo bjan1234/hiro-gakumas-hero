@@ -36,6 +36,7 @@ def test_pages_call_core_methods():
     h = make_handlers(core)
     assert _run(h, "CONSULT") is DONE and _run(h, "SKILL_CARD_REMOVAL") is DONE and _run(h, "PDRINK_MAX_CONFIRM") is DONE
     assert core.calls == ["consult", "skill_card_removal", "pdrink_max_confirm"]
+    assert _run(h, "SPECIAL_GUIDANCE") is DONE and core.calls[-1] == "special_guidance"  # 回到定制选卡页接着做（h11 11-15）
     assert "LOADING" not in h and "unknown" not in h  # 不需要处理的页没登记，交给 advance
 
 
@@ -143,3 +144,27 @@ def test_handlers_and_core_import_no_kaa():
     env = {k: v for k, v in os.environ.items() if k != "HIRO_KAA_GAME_DATA"}
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True, env=env).stdout.strip()
     assert out == "[]"
+
+
+def test_special_guidance_reentry_continues_customizing(monkeypatch):
+    """特別指導 定制中途弹 ACQUIRE：定制循环先退出（不离开特別指導）；点过演出回到定制选卡页，处理器重进、按决策接着定制，最后 終了。"""
+    from types import SimpleNamespace as NS
+
+    from hiro.contracts import Action, ActionKind, Decision
+    from hiro.produce import hif
+    from hiro.produce import special_guidance as sg
+
+    calls = []
+    monkeypatch.setattr(sg, "enter", lambda pf: calls.append("enter") or NS(ok=True))
+    monkeypatch.setattr(sg, "customize", lambda ci, ii, levels=1, cards=None: calls.append(("customize", ci)) or NS(ok=True, page_after="SPECIAL_GUIDANCE"))
+    monkeypatch.setattr(sg, "leave", lambda: calls.append("leave") or NS(ok=True))
+    monkeypatch.setattr(hif, "sleep", lambda s: None)
+    state = NS(page_fields={"cards": [{"index": 0}, {"index": 1}]})
+    decisions = [Decision(Action(ActionKind.CUSTOMIZE_CARD, {"card_index": 1, "item_index": 0}), "定制", "rule", 0.8),
+                 Decision(Action(ActionKind.CUSTOMIZE_END, {}), "结束", "rule", 0.8)]  # fmt: skip
+    core = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
+    core.s = NS(state=state, observe=lambda **k: NS(fields={}), left_page=lambda *a: None, record=lambda *a, **k: None,
+                recover=lambda *a: None, note=lambda *a: None)  # fmt: skip
+    core.deciders = NS(decide=lambda page, st: decisions.pop(0))
+    core.on_special_guidance(None)
+    assert calls == [("customize", 1), "leave"]  # 已经在里面：不再 enter；接着定制一张，决策结束就离开
