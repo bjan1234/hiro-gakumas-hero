@@ -53,7 +53,7 @@ class TowerGnrpa:
     needs_gkms = False
     sees_seed = False
 
-    def __init__(self, seconds: float | None = None, worlds: int = 8, threads: int = 0, **params):
+    def __init__(self, seconds: float | None = None, worlds: int = 8, threads: int = 0, warm: float = 0.0, greedy: float = 0.0, **params):
         try:
             import gakumas_exam_rs as rs
         except ImportError as e:
@@ -63,7 +63,9 @@ class TowerGnrpa:
             raise RuntimeError(f"Rust 后端 gakumas_exam_rs 是旧版本，没有 {' / '.join(missing)}（要带搜索的新包）")
         self.seconds = None if seconds is None else float(seconds)
         self.worlds, self.threads = int(worlds), int(threads)
-        self.params = dict(params, seconds=seconds, worlds=worlds, threads=threads)
+        # warm：跨步热启动强度（上一步各世界最好路线的权重 × warm 作这一步的初始策略；0 = 关）；greedy：眼前得分先验（0 = 关）
+        self.warm, self.greedy = float(warm), float(greedy)
+        self.params = dict(params, seconds=seconds, worlds=worlds, threads=threads, warm=warm, greedy=greedy)
         self.rx = None
 
     def describe(self) -> dict:
@@ -79,6 +81,7 @@ class TowerGnrpa:
         self.rx = tower_env(self.lo, seed).rx
         self.rx.advance()
         self.prev = None  # 上一步对齐后、执行动作前的局面（引擎跑到画面前面时退回用）
+        self.policy: dict = {}  # 上一步搜索返回的权重（热启动用）
         # 只用第一轮（牌组张数以内）：洗牌后的顺序和当时弃牌堆的内容有关，打法不同就分叉（平台模块 11-14 回放 r1 / r3：前 12 张一样、
         # 第 13 张起不同），洗牌后交给搜索当随机
         known = [(d["id"], int(d.get("u") or 0)) for d in (getattr(ctx, "known_draws", None) or [])]
@@ -160,8 +163,14 @@ class TowerGnrpa:
         secs = self.seconds if self.seconds is not None else float(getattr(ctx, "budget", None) or STEP_SECONDS)
         legal = {tuple(a) for a in obs.get("legal") or []}
         free = [] if obs["exam"].get("types") else list(range(int(self.rx.current_turn), int(self.rx.limit_turn)))
+        extra = {}
+        if self.greedy:
+            extra["greedy"] = self.greedy
+        if self.warm and self.policy:
+            extra["prior"] = {k: v * self.warm for k, v in self.policy.items()}
         r = rs.search(self.rx.clone(), self.prefix, free, worlds=self.worlds, seconds=max(0.2, secs - 0.3), threads=self.threads,
-                      seed=int(time.time()) & 0xFFFFFFFF, **self.obj)  # fmt: skip
+                      seed=int(time.time()) & 0xFFFFFFFF, **self.obj, **extra)  # fmt: skip
+        self.policy = r.get("policy") or {}
         best = tuple(r["best"]) if r.get("best") else ("end",)
         if legal and best not in legal:
             ok = [tuple(v[0]) for v in r.get("votes") or [] if tuple(v[0]) in legal]

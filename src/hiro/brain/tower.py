@@ -122,12 +122,12 @@ def lost_ssr_count(deck: list) -> int | None:
     return n
 
 
-LOST_SSR_SLACK = 1  # 硬筛选留的余地：牌组里的卡不一定都打出（27 层 AS-EGTW6Z2W 牌组 6 张、实际打完除外 5–6 张，拿过三星）
+LOST_SSR_SLACK = 1  # ok 的余地（只用于提示，不筛）：牌组里的卡不一定都打出（27 层 AS-EGTW6Z2W 牌组 6 张、实际打完除外 5–6 张，拿过三星）
 
 
 def static_check(lo: dict, conds: list | None) -> dict:
     """编成本身能不能留出条件余量（不模拟）：{ok, margin}。现在只认「除外 SSR ≤ N」：牌组里打出即除外的 SSR 不超过
-    N + LOST_SSR_SLACK 才算可行（27 层 8 张的两题拿得到第 1 但条件满足不了，6 张的那题拿过三星）；margin = N − 张数（排序用）。
+    N + LOST_SSR_SLACK 时 ok；margin = N − 张数，排序时作软惩罚（rank_key 的 static_margin），不筛编成（协调 11-14）。
     没有这类条件时 {ok: None, margin: None}。"""
     for c in conds or []:
         if c.get("field") == "lost_ssr" and c.get("op") == "<=" and c.get("value") is not None:
