@@ -91,3 +91,19 @@ def test_voice_keeps_voice_on():
     clicks = []
     r = skip_settings.handle(boxes, shoot=lambda: None, ocr=lambda img: [], click=lambda x, y: clicks.append((x, y)), sleep=lambda s: None)
     assert r["kind"] == "ボイス再生確認" and r["ok"] and clicks == [(260, 417), (470, 1161)]
+
+
+@_real("settings/acquire-guide-acct2.png")
+def test_acquire_guide_picks_hide_then_decides():
+    """獲得ガイド表示設定（新账号第一次拿技能卡，选卡三选一中途弹）：选「獲得ガイドを表示しない」，再点決定（协调 11-14，Mac 账号 2）。"""
+    import cv2
+
+    from hiro.produce.ops import ocr_boxes
+
+    boxes = ocr_boxes(cv2.imread(str(FIX / "acquire-guide-acct2.png")))
+    clicks = []
+    r = skip_settings.handle(boxes, shoot=lambda: None, ocr=lambda img: [], click=lambda x, y: clicks.append((x, y)), sleep=lambda s: None)
+    assert r["kind"] == "獲得ガイド表示設定" and r["option"] and r["ok"] and len(clicks) == 2
+    (ox, oy), (kx, ky) = clicks
+    assert 940 < oy < 990 and ox < 400  # 「表示しない」那行（「表示する」在 y≈890）
+    assert abs(ky - 1160) < 15 and 300 < kx < 460  # 決定
