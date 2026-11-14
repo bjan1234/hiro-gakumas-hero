@@ -375,13 +375,16 @@ mod py {
     /// 实战出牌搜索（任务 ②）：W 个世界并行 GNRPA，第一手投票。返回 dict：
     /// best（动作元组或 None）、votes [(动作, 票数, 平均终局分)]、worlds [(第一手, 终局分, 续打数, 是否跑完)]、seconds
     #[pyfunction(name = "search")]
-    #[pyo3(signature = (ex, known_deck_prefix, free_turns, worlds=8, seconds=15.0, threads=0, seed=0, level=2, iterations=60, alpha=1.0, temperature=1.0, end_bias=-1.0))]
+    #[pyo3(signature = (ex, known_deck_prefix, free_turns, worlds=8, seconds=15.0, threads=0, seed=0, level=2, iterations=60, alpha=1.0, temperature=1.0, end_bias=-1.0,
+                        rivals=vec![], lost_ssr_max=None, debuffs_min=None))]
     #[allow(clippy::too_many_arguments)]
     fn search_py<'py>(py: Python<'py>, ex: &PyExam, known_deck_prefix: usize, free_turns: Vec<usize>, worlds: usize, seconds: f64, threads: usize,
-                      seed: u64, level: u32, iterations: u32, alpha: f64, temperature: f64, end_bias: f64) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+                      seed: u64, level: u32, iterations: u32, alpha: f64, temperature: f64, end_bias: f64, rivals: Vec<i64>,
+                      lost_ssr_max: Option<i64>, debuffs_min: Option<i64>) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
         use pyo3::types::PyDict;
         let h = crate::search::Hidden { known_deck_prefix, free_turns };
-        let p = crate::search::Params { level, iterations, alpha, temperature, end_bias, ..Default::default() };
+        let obj = crate::search::Objective { rivals, lost_ssr_max, debuffs_min };
+        let p = crate::search::Params { level, iterations, alpha, temperature, end_bias, obj, ..Default::default() };
         let ex0 = ex.ex.clone();
         let r = py.detach(move || crate::search::search(&ex0, &h, worlds, seconds, threads, seed, &p));
         let tup = |a: Action| -> PyResult<Bound<'py, PyTuple>> {
@@ -392,10 +395,22 @@ mod py {
         d.set_item("best", match r.best { Some(a) => Some(tup(a)?), None => None })?;
         let votes: PyResult<Vec<_>> = r.votes.iter().map(|&(a, n, m)| Ok((tup(a)?, n, m))).collect();
         d.set_item("votes", votes?)?;
-        let ws: PyResult<Vec<_>> = r.worlds.iter().map(|w| Ok((match w.first { Some(a) => Some(tup(a)?), None => None }, w.score, w.playouts, w.complete))).collect();
+        let ws: PyResult<Vec<_>> = r.worlds.iter().map(|w| Ok((match w.first { Some(a) => Some(tup(a)?), None => None }, w.score, w.playouts, w.complete, w.raw, w.stars))).collect();
         d.set_item("worlds", ws?)?;
         d.set_item("seconds", r.elapsed.as_secs_f64())?;
         Ok(d)
+    }
+
+    /// 一批局面各自从当前起搜一整局（不重排隐藏信息），返回 [(目标值, 终局分, 星)]。偶像之路编成评估用。
+    #[pyfunction(name = "plan_many")]
+    #[pyo3(signature = (exams, seconds=1.0, threads=0, seed=0, level=2, iterations=60, rivals=vec![], lost_ssr_max=None, debuffs_min=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn plan_many_py(py: Python<'_>, exams: Vec<PyRef<'_, PyExam>>, seconds: f64, threads: usize, seed: u64, level: u32, iterations: u32,
+                    rivals: Vec<i64>, lost_ssr_max: Option<i64>, debuffs_min: Option<i64>) -> Vec<(i64, i64, i64)> {
+        let xs: Vec<Exam> = exams.iter().map(|e| e.ex.clone()).collect();
+        let obj = crate::search::Objective { rivals, lost_ssr_max, debuffs_min };
+        let p = crate::search::Params { level, iterations, obj, ..Default::default() };
+        py.detach(move || crate::search::plan_many(xs, seconds, threads, seed, &p))
     }
 
     #[pymodule]
@@ -404,6 +419,7 @@ mod py {
         m.add_function(wrap_pyfunction!(bench_game_py, m)?)?;
         m.add_function(wrap_pyfunction!(sample_world_py, m)?)?;
         m.add_function(wrap_pyfunction!(search_py, m)?)?;
+        m.add_function(wrap_pyfunction!(plan_many_py, m)?)?;
         Ok(())
     }
 }

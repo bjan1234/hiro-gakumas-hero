@@ -75,6 +75,54 @@ pub fn sample_world(ex: &Exam, hidden: &Hidden, seed: u64) -> Exam {
     w
 }
 
+/// 终局目标（偶像之路：用户 11-14「追求三星」）。rivals 为空时就是分数（H.I.F）；否则按名次给星：
+/// 名次 = 1 + 终局分 ≤ 对手分的对手数（同分算输，保守），★3 = 第 1、★2 = 第 2、★1 = 第 3；
+/// 有通关条件（26 层低下状態 ≥ n、27 层除外 SSR ≤ n）时，第 1 但条件不满足给 ★2（GKMS 实测）。评估值 = 星 × 10¹⁰ + 分。
+#[derive(Clone, Debug, Default)]
+pub struct Objective {
+    pub rivals: Vec<i64>,
+    pub lost_ssr_max: Option<i64>,
+    pub debuffs_min: Option<i64>,
+}
+
+pub const STAR_WEIGHT: i64 = 10_000_000_000;
+const RARITY_SSR: i64 = 4;
+
+impl Objective {
+    pub fn place(&self, ex: &Exam) -> i64 {
+        1 + self.rivals.iter().filter(|&&r| r >= ex.score).count() as i64
+    }
+    pub fn conditions_ok(&self, ex: &Exam) -> bool {
+        if let Some(n) = self.lost_ssr_max {
+            let lost = ex.lost.iter().filter(|&&c| ex.row(c).base.rarity == RARITY_SSR).count() as i64;
+            if lost > n {
+                return false;
+            }
+        }
+        if let Some(n) = self.debuffs_min {
+            let d = ex.status.effects.iter().filter(|s| ex.m.debuff_status_classes.contains(&s.cls)).count() as i64;
+            if d < n {
+                return false;
+            }
+        }
+        true
+    }
+    pub fn stars(&self, ex: &Exam) -> i64 {
+        if self.rivals.is_empty() {
+            return 0;
+        }
+        match self.place(ex) {
+            1 => if self.conditions_ok(ex) { 3 } else { 2 },
+            2 => 2,
+            3 => 1,
+            _ => 0,
+        }
+    }
+    pub fn value(&self, ex: &Exam) -> i64 {
+        if self.rivals.is_empty() { ex.score } else { self.stars(ex) * STAR_WEIGHT + ex.score }
+    }
+}
+
 /// GNRPA 参数（缺省按论文：α = 1、τ = 1；层数 / 迭代数按 15 秒预算粗定，bench 冒烟时再调）。
 #[derive(Clone, Debug)]
 pub struct Params {
@@ -86,11 +134,13 @@ pub struct Params {
     pub end_bias: f64,
     /// 一次续打最多走几步（防死循环）
     pub max_steps: usize,
+    /// 终局目标（缺省 = 分数）
+    pub obj: Objective,
 }
 
 impl Default for Params {
     fn default() -> Self {
-        Params { level: 2, iterations: 60, alpha: 1.0, temperature: 1.0, end_bias: -1.0, max_steps: 600 }
+        Params { level: 2, iterations: 60, alpha: 1.0, temperature: 1.0, end_bias: -1.0, max_steps: 600, obj: Objective::default() }
     }
 }
 
@@ -119,7 +169,11 @@ fn bias(a: Action, p: &Params, n_legal: usize) -> f64 {
 /// 一条路线：每一步的 (候选编码, 偏置, 选了第几个)，调权重时不用重放局面。
 #[derive(Clone, Default)]
 pub struct Line {
+    /// 目标值（Objective::value；没有对手时就是分数）
     pub score: i64,
+    /// 原始终局分 / 星
+    pub raw: i64,
+    pub stars: i64,
     pub first: Option<Action>,
     steps: Vec<(Vec<u64>, Vec<f64>, usize)>,
 }
@@ -169,7 +223,9 @@ fn playout(root: &Exam, pol: &Policy, p: &Params, rng: &mut Rng) -> Line {
         line.steps.push((codes, bs, k));
     }
     ex.advance();
-    line.score = ex.score;
+    line.raw = ex.score;
+    line.stars = p.obj.stars(&ex);
+    line.score = p.obj.value(&ex);
     line
 }
 
@@ -218,7 +274,10 @@ pub fn gnrpa(root: &Exam, level: u32, pol: &Policy, p: &Params, rng: &mut Rng, d
 #[derive(Clone, Debug)]
 pub struct WorldResult {
     pub first: Option<Action>,
+    /// 目标值（同 Line.score）
     pub score: i64,
+    pub raw: i64,
+    pub stars: i64,
     pub playouts: u64,
     /// 顶层至少跑完了一整轮（false = 第一轮就被时间截断，路线没充分搜）
     pub complete: bool,
@@ -246,7 +305,7 @@ fn run_world(w: Exam, p: &Params, seed: u64, deadline: Instant) -> WorldResult {
         }
         rounds += 1;
     }
-    WorldResult { first: best.first, score: best.score, playouts: n, complete: rounds > 1 }
+    WorldResult { first: best.first, score: best.score, raw: best.raw, stars: best.stars, playouts: n, complete: rounds > 1 }
 }
 
 /// W 个世界并行各跑 GNRPA，第一手投票。threads = 0 时用「CPU 核数 − 1」（至少 1）。
@@ -315,4 +374,51 @@ pub fn search(ex: &Exam, hidden: &Hidden, worlds: usize, seconds: f64, threads: 
     }
     tally.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal)));
     SearchResult { best: tally.first().map(|t| t.0), votes: tally, worlds, elapsed: t0.elapsed() }
+}
+
+
+/// 一批局面各自从当前起搜一整局（不重排隐藏信息：局面里的山札顺序就当真），返回每个局面最好路线的 (目标值, 终局分, 星)。
+/// 偶像之路编成评估用：每个编成按种子开 N 局，各搜一遍——世界内牌序固定，相当于「看得到牌序」的上限估计，分数偏乐观，
+/// 但对所有编成一视同仁，拿来排序公平。threads = 0 时用 CPU 核数 − 1。
+pub fn plan_many(exams: Vec<Exam>, seconds: f64, threads: usize, seed: u64, p: &Params) -> Vec<(i64, i64, i64)> {
+    let threads = if threads == 0 {
+        std::thread::available_parallelism().map(|n| n.get().saturating_sub(1)).unwrap_or(1).max(1)
+    } else {
+        threads
+    };
+    let n = exams.len();
+    let mut out = vec![(0i64, 0i64, 0i64); n];
+    let mut chunks: Vec<Vec<(usize, Exam)>> = (0..threads.min(n.max(1))).map(|_| vec![]).collect();
+    let k = chunks.len();
+    for (i, mut ex) in exams.into_iter().enumerate() {
+        ex.advance();
+        chunks[i % k].push((i, ex));
+    }
+    std::thread::scope(|s| {
+        let hs: Vec<_> = chunks
+            .into_iter()
+            .map(|chunk| {
+                let p = p.clone();
+                s.spawn(move || {
+                    chunk
+                        .into_iter()
+                        .map(|(i, ex)| {
+                            let w = if ex.ended {
+                                WorldResult { first: None, score: p.obj.value(&ex), raw: ex.score, stars: p.obj.stars(&ex), playouts: 0, complete: true }
+                            } else {
+                                run_world(ex, &p, seed ^ ((i as u64) << 24), Instant::now() + Duration::from_secs_f64(seconds.max(0.0)))
+                            };
+                            (i, (w.score, w.raw, w.stars))
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        for h in hs {
+            for (i, r) in h.join().expect("评估线程 panic") {
+                out[i] = r;
+            }
+        }
+    });
+    out
 }

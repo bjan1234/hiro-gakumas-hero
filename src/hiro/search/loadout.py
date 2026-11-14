@@ -78,7 +78,12 @@ def customize_counts(card_id: str, upgrade: int, customize: dict | None) -> list
 
 
 def parse_deck_entry(s: str) -> tuple:
-    """「卡ID+强化/定制ID*次数」（gakumas-bench 题目写法）→ (card_id, upgrade, {定制 ID: 次数})。"""
+    """「卡ID+强化/定制ID*次数」（gakumas-bench 题目写法）或 {id, upgrade_count, customizes}（bench 公开编成）→ (card_id, upgrade, {定制 ID: 次数})。"""
+    if isinstance(s, dict):  # bench 交给算法的公开编成：{id, upgrade_count?, customizes?: [{id, customize_count}]}
+        cz = {}
+        for c in s.get("customizes") or []:
+            cz[c["id"]] = cz.get(c["id"], 0) + int(c.get("customize_count") or 1)
+        return s["id"], int(s.get("upgrade_count") or 0), cz
     head, _, cz = str(s).partition("/")
     cid, _, u = head.partition("+")
     out: dict = {}

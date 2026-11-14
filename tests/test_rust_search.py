@@ -89,3 +89,18 @@ def test_set_card_upgrade_adjusts_support_part(rs, rx):
     assert rx.set_card_upgrade(g, up + 1) and rx.card_info(g)[1] == up + 1
     assert rx.set_card_upgrade(g, up) and rx.card_info(g)[1] == up
     assert not rx.set_card_upgrade(g, up)  # 没变化
+
+
+def test_objective_stars_by_rivals(rs, rx):
+    """三星目标（偶像之路）：给了对手分数，每个世界返回终局分和星；名次 = 1 + 分数不超过对手的个数。"""
+    r = rs.search(rx, 0, [], worlds=2, seconds=0.3, threads=2, seed=5, rivals=[10 ** 12, 1])
+    for w in r["worlds"]:
+        raw, stars = w[4], w[5]
+        assert stars == 2 and raw > 1  # 赢不了 10¹² 那个、赢得了 1 分那个：第 2 名 → ★2
+    r = rs.search(rx, 0, [], worlds=2, seconds=0.3, threads=2, seed=5, rivals=[1, 0], lost_ssr_max=-1)
+    assert all(w[5] == 2 for w in r["worlds"])  # 第 1 名但通关条件（除外 SSR ≤ −1）不可能满足：★2
+
+
+def test_plan_many_returns_best_line(rs, rx):
+    out = rs.plan_many([rx.clone(), rx.clone()], seconds=0.2, threads=2, rivals=[1])
+    assert len(out) == 2 and all(v >= 3 * 10 ** 10 and raw > 1 and st == 3 for v, raw, st in out)
