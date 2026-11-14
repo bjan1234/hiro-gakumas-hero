@@ -82,7 +82,9 @@ def parse_deck_entry(s: str) -> tuple:
     head, _, cz = str(s).partition("/")
     cid, _, u = head.partition("+")
     out: dict = {}
-    for part in filter(None, cz.split(",")):
+    # 一张卡可以带多个定制，用「/」（bench 题目）或「,」连起来：卡ID+1/定制A/定制B（偶像之路对拍：只认逗号时两个定制都没生效，
+    # 「強気に変更」→「強気 2 段」那个定制丢了，集中机制分数偏差就是它）
+    for part in filter(None, re.split(r"[/,]", cz)):
         k, _, n = part.partition("*")
         out[k] = out.get(k, 0) + int(n or 1)
     return cid, int(u or 0), out

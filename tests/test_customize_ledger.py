@@ -32,3 +32,14 @@ def test_customize_counts_follow_master_order():
     assert (cid, up, cz) == ("p_card-02-act-1_037", 1, {CZ: 3})
     counts = customize_counts(cid, up, cz)
     assert counts is not None and sum(counts) == 3 and customize_counts(cid, up, {}) is None
+
+
+
+def test_parse_deck_entry_multiple_customizations():
+    from hiro.search.loadout import parse_deck_entry
+
+    s = "p_card-03-act-2_070+1/p_card_custom-070-g_effect-effect_change-e_effect-exam_concentration-0001-e_effect-exam_concentration-0002/p_card_custom-040_070-g_effect-lesson_add-6-g_effect-lesson_add-22*2"
+    cid, up, cz = parse_deck_entry(s)
+    assert (cid, up) == ("p_card-03-act-2_070", 1)
+    assert cz == {"p_card_custom-070-g_effect-effect_change-e_effect-exam_concentration-0001-e_effect-exam_concentration-0002": 1,
+                  "p_card_custom-040_070-g_effect-lesson_add-6-g_effect-lesson_add-22": 2}
