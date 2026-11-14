@@ -680,3 +680,27 @@ def test_tower_bonus_permils_accepts_list_and_template_dict():
     assert bonus_permils([42790, 8910, 22630]) == want
     assert bonus_permils({"1": 42790, "2": 8910, "3": 22630}) == want
     assert bonus_permils({1: 42790, 2: 8910, 3: 22630}) == want
+
+
+def test_tower_loadout_gets_initial_cards(monkeypatch):
+    """编成页牌组不含开局另加的 2 张基本卡（11-14 Mac 实机：TowerGnrpa 对齐时手牌里的 act-0_028 / men-0_008 对不上）。"""
+    from types import SimpleNamespace
+
+    from hiro.search import tower as st
+
+    monkeypatch.setattr("hiro.bench_bridge.tower.master", lambda: SimpleNamespace(idol_initial_cards=lambda idol: ["p_card-b0", "p_card-b1"]))
+    assert st.with_initial_cards(["p_card-a+1", "p_card-b1"], "i_card-x") == ["p_card-a+1", "p_card-b1", "p_card-b0"]
+    assert st.with_initial_cards(["p_card-a+1"], None) == ["p_card-a+1"]
+
+
+def test_tower_formation_idol_falls_back_to_tower_loadout(monkeypatch, tmp_path):
+    """编成页 page_fields 没给 idol_card_id：用 HIRO_TOWER_LOADOUT（同塔同层）里的（11-14 编成评估报 KeyError IdolCard:None）。"""
+    import json
+
+    from hiro.brain.deciders import _tower_idol
+
+    p = tmp_path / "lo.json"
+    p.write_text(json.dumps({"tower_id": "tower_001-ttmr", "layer": 15, "idol_card_id": "i_card-ttmr-2-000"}))
+    monkeypatch.setenv("HIRO_TOWER_LOADOUT", str(p))
+    assert _tower_idol("tower_001-ttmr", 15) == "i_card-ttmr-2-000"
+    assert _tower_idol("tower_001-ttmr", 16) is None

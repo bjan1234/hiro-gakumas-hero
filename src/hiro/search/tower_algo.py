@@ -78,6 +78,7 @@ class TowerGnrpa:
         seed = random.Random(json.dumps(self.lo.get("produce_cards"), sort_keys=True)).randrange(1, 2 ** 31)
         self.rx = tower_env(self.lo, seed).rx
         self.rx.advance()
+        self.prev = None  # 上一步对齐后、执行动作前的局面（引擎跑到画面前面时退回用）
         # 只用第一轮（牌组张数以内）：洗牌后的顺序和当时弃牌堆的内容有关，打法不同就分叉（平台模块 11-14 回放 r1 / r3：前 12 张一样、
         # 第 13 张起不同），洗牌后交给搜索当随机
         known = [(d["id"], int(d.get("u") or 0)) for d in (getattr(ctx, "known_draws", None) or [])]
@@ -98,22 +99,31 @@ class TowerGnrpa:
             for g in rx.zone(z):
                 pools[z][rx.card_info(g)[0]].append(g)
 
-        def take(cid, zone):
+        def take(cid, zone, u=0):
             for z in [zone] + [x for x in pools if x != zone]:
                 if pools[z].get(cid):
                     return pools[z][cid].pop(0)
+            # 引擎牌组里没有：眠気这类机关 / 效果生成的卡（或编成没读到的牌），按画面新建一张接住
+            if hasattr(rx, "new_card"):
+                try:
+                    g = rx.new_card(cid, int(u or 0))
+                except KeyError:
+                    return None
+                self.stats["new_card"] += 1
+                return g
             return None
 
-        hand = [take(c["id"], "hand") for c in obs["hand"]]
-        grave = [take(c["id"], "grave") for c in obs.get("grave") or []]
-        lost = [take(c["id"], "lost") for c in obs.get("lost") or []]
+        hand = [take(c["id"], "hand", c.get("u")) for c in obs["hand"]]
+        grave = [take(c["id"], "grave", c.get("u")) for c in obs.get("grave") or []]
+        lost = [take(c["id"], "lost", c.get("u")) for c in obs.get("lost") or []]
+        ups = {c["id"]: c.get("u") for c in obs.get("deck") or []}
         deck_ids = [c["id"] for c in obs.get("deck") or []]
         # 已知抽牌顺序（ctx.known_draws：编成牌组里的牌按抽到先后、含开局起手；生成卡（眠気等）不在里面，8a3a1e7 11-14）
         if self.known:
             self.drawn, prefix = known_prefix([c for c, _ in self.known], deck_ids, self.drawn)
         else:
             prefix = []
-        deck = [take(c, "deck") for c in prefix] + [take(c, "deck") for c in (collections.Counter(deck_ids) - collections.Counter(prefix)).elements()]
+        deck = [take(c, "deck", ups.get(c)) for c in prefix] + [take(c, "deck", ups.get(c)) for c in (collections.Counter(deck_ids) - collections.Counter(prefix)).elements()]
         if None in hand:
             raise RuntimeError(f"手牌对不上引擎牌组：{[c['id'] for c, g in zip(obs['hand'], hand) if g is None]}")
         rx.set_zone("hand", hand)
@@ -141,7 +151,12 @@ class TowerGnrpa:
 
         obs = ctx.obs
         t0 = time.monotonic()
+        # 引擎比画面快（上一步我们选的动作实际没执行：退回了规则 / 画面上没生效）：回到上一步对齐后的局面再对齐
+        if self.prev is not None and (self.rx.ended or int(self.rx.current_turn) > int(obs["exam"]["turn"])):
+            self.rx = self.prev
+            self.stats["rewind"] += 1
         self._align(obs)
+        self.prev = self.rx.clone()
         secs = self.seconds if self.seconds is not None else float(getattr(ctx, "budget", None) or STEP_SECONDS)
         legal = {tuple(a) for a in obs.get("legal") or []}
         free = [] if obs["exam"].get("types") else list(range(int(self.rx.current_turn), int(self.rx.limit_turn)))
