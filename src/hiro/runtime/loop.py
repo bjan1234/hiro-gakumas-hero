@@ -131,7 +131,7 @@ class Runtime:
         while True:
             t1 = self.clock()
             f, done = self.tick()
-            if done is None and pred(f):
+            if done is None and self._guarded(pred, f, "等待条件"):
                 return True, f
             if done is not None:
                 paused = min(paused + self.clock() - t1 + every, timeout * INTERRUPT_EXTRA)  # 处理中断的那拍不算等待时间
@@ -146,7 +146,7 @@ class Runtime:
         while True:
             t1 = self.clock()
             f, done = self.tick()
-            if done is None and (r := step(f)) is not None:
+            if done is None and (r := self._guarded(step, f, what)) is not None:
                 return r
             if done is not None:
                 paused = min(paused + self.clock() - t1 + every, timeout * INTERRUPT_EXTRA)  # 处理中断的那拍不算这一段的时间
@@ -168,6 +168,19 @@ class Runtime:
             return STAY
         self._err = None
         return out
+
+    def _guarded(self, fn, f: Frame, where: str):
+        """drive / wait_until 里调流程自己的 step / pred（开局、收尾的点击和判断）：普通异常接住（absorb），这一拍当没完成（None），
+        下一拍重来；同一异常连续 ERROR_LIMIT 次停机。停机类照常抛。"""
+        try:
+            r = fn(f)
+        except Exception as e:  # noqa: BLE001
+            if isinstance(e, _pass_through()):
+                raise
+            self.absorb(e, where, f)
+            return None
+        self._err = None
+        return r
 
     def absorb(self, e: Exception, where: str, f: Frame | None) -> None:
         """接住一个普通异常：日志带栈，trace 记备注（异常、栈的最后几行、存帧路径）；同一处同一异常连续 ERROR_LIMIT 次抛 ResumeBlocked 停机。"""

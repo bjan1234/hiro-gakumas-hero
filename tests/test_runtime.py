@@ -479,3 +479,25 @@ def test_interrupt_exception_absorbed_in_tick():
     rt, _ = runtime([frame()], interrupts=(bad,), session=sess)
     f, done = rt.tick()
     assert done and "IndexError" in done and rec and "中断层" in rec[0][1]
+
+
+def test_drive_step_exception_absorbed_then_stops_after_limit():
+    """开局 / 收尾流程 drive(step) 里 step 自己抛的普通异常也接住、记 trace、下一拍重来；连续 ERROR_LIMIT 次停机（协调 11-15）。"""
+    from hiro.runtime import loop
+
+    sess, rec, _ = _fake_session()
+    rt, _ = runtime([frame()], session=sess)
+    calls = {"n": 0}
+
+    def flaky(f):
+        calls["n"] += 1
+        if calls["n"] <= 3:
+            raise KeyError("box")
+        return "ok"
+
+    assert rt.drive(flaky, 60, "开局第 1 步") == "ok" and len(rec) == 3 and "开局第 1 步" in rec[0][1]
+    ok, _ = rt.wait_until(lambda f: (_ for _ in ()).throw(KeyError("x")) if calls["n"] < 5 and not calls.update(n=calls["n"] + 1) else True, 60)
+    assert ok
+    rt, _ = runtime([frame()], session=_fake_session()[0])
+    with pytest.raises(ResumeBlocked, match=f"连续 {loop.ERROR_LIMIT} 次"):
+        rt.drive(lambda f: (_ for _ in ()).throw(ValueError("坏")), 600, "收尾")
