@@ -7,23 +7,44 @@ bench Algorithm 接口（hiro.bench_bridge 的 tower 场次按 HIRO_TOWER_ALGO �
               分数 / 体力 / 元気 / やる気 / 好印象 / 饮料 / 回合；ctx.known_draws（用户 11-14：同一编成重试可以用上一次画面上看到的
               抽牌顺序）有就把还没抽到的那段排在山札最前、设成已知前缀；然后 gakumas_exam_rs.search（三星目标）→ 动作；
               这个动作也在我们的引擎里执行，状态 / 附魔由引擎演化。
-不读种子、不读存档；ctx.worlds（GKMS 世界）不用。出错就抛异常，由调用方退回 uinet（写明原因）。
+不读种子、不读存档；ctx.worlds（GKMS 世界）不用。出错就抛异常，由调用方退回 uinet（写明原因）；Rust 后端没有 search / plan_many 时构造就抛（加载失败 → 退回 uinet）。
 """
 
 from __future__ import annotations
 
 import collections
 import json
-import os
 import random
 import time
 from dataclasses import dataclass, field
+
+
+STEP_SECONDS = 5.0  # 每步搜索秒数（用户 11-14 定 5 秒）；ctx.budget 有就用它
 
 
 @dataclass
 class Decision:
     action: tuple
     meta: dict = field(default_factory=dict)
+
+
+def known_prefix(known: list[str], deck_ids: list[str], start: int = 0) -> tuple[int, list[str]]:
+    """已知抽牌顺序 known（编成牌组的卡 id，按抽到先后）和现在的山札 deck_ids（画面读到的，可能有生成卡）对位：
+    找最小的 k ≥ start，使 known[k:] 开头那一段（最多山札里编成牌的张数）都在山札里、并且 known 没到头时正好就是山札里的编成牌
+    → (k, 那一段)。用山札内容对位，不靠数手牌：生成卡进手牌、抽到和刚打出的同名卡都不会数错；洗牌后接着对（顺序跟种子走，
+    越往后越依赖这期间除外 / 生成的牌一样，8a3a1e7 11-14）。对不上 / 已知的抽完了返回 (start, [])。"""
+    ids = set(known)
+    left = collections.Counter(c for c in deck_ids if c in ids)  # 山札里的编成牌（生成卡不算）
+    n = sum(left.values())
+    for k in range(max(0, start), len(known)):
+        seg = known[k:k + n]
+        got = collections.Counter(seg)
+        if got - left:
+            continue
+        if len(seg) == n and got != left:
+            continue
+        return k, seg
+    return start, []
 
 
 class TowerGnrpa:
@@ -34,6 +55,13 @@ class TowerGnrpa:
     sees_seed = False
 
     def __init__(self, seconds: float | None = None, worlds: int = 8, threads: int = 0, **params):
+        try:
+            import gakumas_exam_rs as rs
+        except ImportError as e:
+            raise RuntimeError(f"没装 Rust 后端 gakumas_exam_rs（{e}）") from None
+        missing = [f for f in ("search", "plan_many") if not hasattr(rs, f)]
+        if missing:
+            raise RuntimeError(f"Rust 后端 gakumas_exam_rs 是旧版本，没有 {' / '.join(missing)}（要带搜索的新包）")
         self.seconds = None if seconds is None else float(seconds)
         self.worlds, self.threads = int(worlds), int(threads)
         self.params = dict(params, seconds=seconds, worlds=worlds, threads=threads)
@@ -52,9 +80,7 @@ class TowerGnrpa:
         self.rx = tower_env(self.lo, seed).rx
         self.rx.advance()
         self.known = [(d["id"], int(d.get("u") or 0)) for d in (getattr(ctx, "known_draws", None) or [])]
-        self.drawn = 0  # 这局已经从山札抽到手里的张数（对 known_draws 用）
-        self.last_hand: list = []
-        self.first = True
+        self.drawn = 0  # known_draws 里已经抽过的张数（每步按山札内容重新对位）
         self.stats = collections.Counter()
 
     # ---------------------------------------------------------------- 对齐
@@ -80,18 +106,11 @@ class TowerGnrpa:
         grave = [take(c["id"], "grave") for c in obs.get("grave") or []]
         lost = [take(c["id"], "lost") for c in obs.get("lost") or []]
         deck_ids = [c["id"] for c in obs.get("deck") or []]
-        # 已知抽牌顺序（ctx.known_draws：按抽到先后、含开局起手）：已经抽了几张按手牌里新出现的张数累计，还没抽到的那段排在山札最前
-        prefix: list = []
+        # 已知抽牌顺序（ctx.known_draws：编成牌组里的牌按抽到先后、含开局起手；生成卡（眠気等）不在里面，8a3a1e7 11-14）
         if self.known:
-            cur = collections.Counter(c["id"] for c in obs["hand"])
-            self.drawn = len(obs["hand"]) if self.first else self.drawn + sum((cur - collections.Counter(self.last_hand)).values())
-            left = collections.Counter(deck_ids)
-            for cid, _ in self.known[self.drawn:]:
-                if left.get(cid):
-                    prefix.append(cid)
-                    left[cid] -= 1
-                else:
-                    break  # 记录和山札对不上：后面的不当已知
+            self.drawn, prefix = known_prefix([c for c, _ in self.known], deck_ids, self.drawn)
+        else:
+            prefix = []
         deck = [take(c, "deck") for c in prefix] + [take(c, "deck") for c in (collections.Counter(deck_ids) - collections.Counter(prefix)).elements()]
         if None in hand:
             raise RuntimeError(f"手牌对不上引擎牌组：{[c['id'] for c, g in zip(obs['hand'], hand) if g is None]}")
@@ -113,8 +132,6 @@ class TowerGnrpa:
         if types and len(types) >= int(rx.limit_turn):
             rx.turn_types = [int(t) for t in types]
         self.prefix = len(prefix)
-        self.last_hand = [c["id"] for c in obs["hand"]]
-        self.first = False
 
     # ---------------------------------------------------------------- 一步
     def decide(self, ctx) -> Decision:
@@ -123,7 +140,7 @@ class TowerGnrpa:
         obs = ctx.obs
         t0 = time.monotonic()
         self._align(obs)
-        secs = self.seconds if self.seconds is not None else float(getattr(ctx, "budget", None) or os.environ.get("HIRO_TOWER_SEARCH_S", 5))
+        secs = self.seconds if self.seconds is not None else float(getattr(ctx, "budget", None) or STEP_SECONDS)
         legal = {tuple(a) for a in obs.get("legal") or []}
         free = [] if obs["exam"].get("types") else list(range(int(self.rx.current_turn), int(self.rx.limit_turn)))
         r = rs.search(self.rx.clone(), self.prefix, free, worlds=self.worlds, seconds=max(0.2, secs - 0.3), threads=self.threads,

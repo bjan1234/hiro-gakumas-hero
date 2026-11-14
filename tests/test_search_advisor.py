@@ -19,12 +19,13 @@ def adv(monkeypatch):
     if not hasattr(rs, "search"):
         pytest.skip("Rust 后端没有 search")
     monkeypatch.setenv("HIRO_BENCH_ADVISOR", "0")  # 退回时用规则，不加载 UINet
-    monkeypatch.setenv("HIRO_EXAM_SEARCH_S", "0.3")
-    monkeypatch.setenv("HIRO_EXAM_SEARCH_WORLDS", "2")
     from hiro.bench_bridge.advisor import BenchAdvisor
     from hiro.brain.state import CAMPUS_HIRO
     from hiro.contracts import Decision
+    from hiro.search import advisor as sa
     from hiro.search.advisor import SearchAdvisor
+
+    monkeypatch.setattr(sa, "BUDGET", {"seconds": 0.3, "worlds": 2, "threads": 0})
 
     # 退回的那一层（UINet → 规则）要完整的考试局面；这里只验搜索插件，退回换成桩
     monkeypatch.setattr(BenchAdvisor, "decide", lambda self, *a, **k: Decision(Action.skip(), "退回", "rule", None))
@@ -82,3 +83,19 @@ def test_no_engine_state_falls_back(adv):
     state, legal = _screen(_game())
     state.sim_game = None
     assert adv.decide(state, SimpleNamespace(turn=1), None, legal).source != "search"
+
+
+def test_without_rust_search_falls_back_and_says_why(monkeypatch):
+    """用户 11-14：H.I.F 缺省用搜索；没有带 search 的 Rust 包时每步退回 bench 中转层，理由里写明（不要求装新 Rust 包）。"""
+    monkeypatch.setenv("HIRO_BENCH_ADVISOR", "0")
+    from hiro.bench_bridge.advisor import BenchAdvisor
+    from hiro.brain.state import CAMPUS_HIRO
+    from hiro.contracts import Decision
+    from hiro.search import advisor as sa
+
+    monkeypatch.setattr(BenchAdvisor, "decide", lambda self, *a, **k: Decision(Action.skip(), "退回", "rule", None))
+    monkeypatch.setattr(sa, "_rs", lambda: None)
+    a = sa.SearchAdvisor(CAMPUS_HIRO, None)
+    a.on_round_start(1, {"exam": "r2", "idol": "i_card-shro-3-007", "deck": [list(c) for c in DECK]})
+    d = a.decide(SimpleNamespace(), SimpleNamespace(turn=1), None, [Action.skip()])
+    assert d.source == "rule" and any(sa.NO_RS in w for w in d.warnings)

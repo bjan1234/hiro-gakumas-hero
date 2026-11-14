@@ -6,18 +6,14 @@
 退回顺序（每次写明原因）：没有对齐的引擎局面 / 和画面核不上 / 搜索出错或没结果 → bench 中转层（UINet）→ 规则。
 一场里连续 3 步核不上，这场剩下的步都退回（日志写明）。
 
-开关（缺省开，用户 11-12 定；开关用来回退）：
-  HIRO_EXAM_SEARCH=0          关掉，回到 bench 中转层（UINet）
-  HIRO_EXAM_SEARCH_S          每步搜索秒数，缺省 15
-  HIRO_EXAM_SEARCH_WORLDS     世界数，缺省 8
-  HIRO_EXAM_SEARCH_THREADS    线程数，缺省 0 = CPU 核数 − 1
+缺省出招插件（用户 11-14：「我们允许切换」）；换回 bench 中转层用插件选择 HIRO_EXAM_ADVISOR=hiro.bench_bridge.advisor:BenchAdvisor。
+每步 15 秒、8 个世界、CPU 核数 − 1 个线程（BUDGET，不设开关）。
 只在有合成模板的本战 R1 / R2 搜（选拔考试没有跟踪，走 UINet）。不读种子、不读存档的隐藏信息。
 """
 
 from __future__ import annotations
 
 import logging
-import os
 import time
 from typing import Any
 
@@ -26,16 +22,15 @@ from hiro.contracts import Action, Candidate, Decision
 
 logger = logging.getLogger("hiro.search")
 
+NO_RS = "Rust 后端没装或是不带 search 的旧版本"
 MISS_LIMIT = 3  # 一场里连续这么多步和画面核不上：剩下的步不再搜
 
 
-def enabled() -> bool:
-    return os.environ.get("HIRO_EXAM_SEARCH", "1").strip().lower() not in ("0", "false", "off", "no")
+BUDGET = {"seconds": 15.0, "worlds": 8, "threads": 0}  # 每步搜索预算（threads 0 = CPU 核数 − 1）
 
 
 def budget() -> dict:
-    return {"seconds": float(os.environ.get("HIRO_EXAM_SEARCH_S", "15")), "worlds": int(os.environ.get("HIRO_EXAM_SEARCH_WORLDS", "8")),
-            "threads": int(os.environ.get("HIRO_EXAM_SEARCH_THREADS", "0"))}  # fmt: skip
+    return dict(BUDGET)
 
 
 def _rs():
@@ -79,12 +74,12 @@ class SearchAdvisor(BenchAdvisor):
 
     def __init__(self, profile=None, llm=None):
         super().__init__(profile, llm)
-        self.rs = _rs() if enabled() else None
+        self.rs = _rs()
         self.misses = 0
         self.off_why: str | None = None
         self.search_stats = {"search": 0, "fallback": 0}
-        if enabled() and self.rs is None:
-            logger.warning("考试出牌搜索不可用（Rust 后端没装或是不带 search 的旧版本），用 bench 中转层")
+        if self.rs is None:
+            logger.warning("考试出牌搜索不可用（%s），用 bench 中转层", NO_RS)
 
     def on_round_start(self, round_no: int, context: dict[str, Any]) -> None:
         super().on_round_start(round_no, context)
@@ -106,7 +101,7 @@ class SearchAdvisor(BenchAdvisor):
 
     def decide(self, state: Any, memory: Any, previews, legal: list[Action]) -> Decision:
         if self.rs is None:
-            return super().decide(state, memory, previews, legal)
+            return self._back(state, memory, previews, legal, NO_RS)
         if self.off_why:
             return self._back(state, memory, previews, legal, self.off_why)
         game = getattr(state, "sim_game", None)

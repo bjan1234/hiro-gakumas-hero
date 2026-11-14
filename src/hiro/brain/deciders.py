@@ -896,7 +896,7 @@ class ProduceDeciders:
     TOWER_WORKERS = 4  # evaluate 的进程数（开 4 个以上先跟协调说）
     TOWER_RETRY_MAX = 3  # 每层免费重试上限（协调 11-14）
     TOWER_RETRY_SAME = 0.85  # 失败分数 ≥ 过关线 × 这个比例：同编成再打；更低换下一个编成
-    TOWER_EVAL = None  # 评估函数（测试替换）；None = hiro.bench_bridge.tower.evaluate
+    TOWER_EVAL = None  # 评估函数（测试替换）；None = Rust（hiro.search.tower.evaluate_rust），Rust 包没有 plan_many 时 hiro.bench_bridge.tower.evaluate
     TOWER_SEED0 = 1000003  # 种子 = TOWER_SEED0 × (i + 1) + 17（所有候选同一批，配对比）
 
     def tower_formation(self, state: GameState) -> Decision:

@@ -23,8 +23,8 @@ PERMIL = {"Vo": 37490, "Da": 36100, "Vi": 22860}
 @pytest.fixture(scope="module")
 def rs():
     rs = pytest.importorskip("gakumas_exam_rs")
-    if not hasattr(rs, "search"):
-        pytest.skip("装的 Rust 后端没有 search（预编译包是旧版本）")
+    if not (hasattr(rs, "search") and hasattr(rs, "plan_many")):
+        pytest.skip("装的 Rust 后端没有 search / plan_many（预编译包是旧版本）")
     return rs
 
 
