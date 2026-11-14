@@ -90,3 +90,9 @@ def test_exam_over_on_ranking_not_in_exam():
             pytest.skip("需要实机截图")
         assert exam_over(cv2.imread(str(FIX / name))), name
     assert not exam_over(cv2.imread(str(FIX / "11_retry_started.png")))  # 考试中
+
+
+def test_perfect_result_page():
+    """三星（1 位）的结果页标题是「PERFECT」不是「CLEAR」（Mac 手毬 14 层 11-15，原来判成 unknown 卡住）：照样是 TOWER_RESULT，星数 3。"""
+    name, f = _hit("100_perfect_result.png")
+    assert name == "TOWER_RESULT" and (f["cleared"], f["layer"], f["stars"]) == (True, 14, 3) and f["back"] and f["retry"]

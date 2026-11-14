@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 TOWER_NO = "tower_001"  # 目前只有一座塔（主数据 Tower 表）；tower_id = tower_001-<偶像代号>
 END = Outcome("end", "偶像之路打完设定的层数")  # 处理器返回它：Runtime.run 正常结束
+ACT_WAIT_S = 5.0  # 层选择页 / 过关名次页点过一次后，页面没换就等这么久再点（实机：挑戦する 2 秒点了 4 次、同一张名次页记了两次，协调 11-15）
 
 
 def idol_code(name: str | None) -> str | None:
@@ -61,6 +62,13 @@ def loadout(fields: dict, tower_id: str | None, layer: int | None) -> dict:
           "score_bonus_permils": fields.get("score_bonus_permils"), "max_stamina": fields.get("max_stamina"),
           "idol_card_id": fields.get("idol_card_id")}  # fmt: skip
     return {k: v for k, v in lo.items() if v is not None}
+
+
+def _now(rt) -> float:
+    import time
+
+    clock = getattr(rt, "clock", None)
+    return clock() if callable(clock) else time.monotonic()
 
 
 def exam_over(img) -> bool:
@@ -100,6 +108,7 @@ class TowerPlay:
         self.finished = False
         self.loadout: dict | None = None  # 现在 HIRO_TOWER_LOADOUT 指的那份（编成页写的，或从缓存读的）
         self.exam_draws: dict | None = None  # 刚考完那场的抽牌（tower_cache.infer_draws），名次页补上对手分数后存盘
+        self._acted: tuple[str, float] | None = None  # (页面, 时刻)：这一页刚点过，页面换了之前不再点（ACT_WAIT_S 后还没换才再点）
         self.result_handled = False  # 这一次的结果页已经处理过（点了再挑戦 / 一覧に戻る）：等页面换了再处理下一次（实机 r2：同一张结果页处理了两次）
         if run.tower_id is None and (code := idol_code(idol_name)):
             run.tower_id = f"{TOWER_NO}-{code}"  # 没经过编成页（从名次页 / 结果页续跑）也有路线
@@ -112,9 +121,17 @@ class TowerPlay:
         rt.device.tap(*idol["center"])
         return DONE
 
+    def _just_acted(self, rt, page: str) -> bool:
+        return self._acted is not None and self._acted[0] == page and _now(rt) - self._acted[1] < ACT_WAIT_S
+
+    def _mark_acted(self, rt, page: str) -> None:
+        self._acted = (page, _now(rt))
+
     def on_layers(self, rt, f, hit):
         if self.finished:
             return END
+        if self._just_acted(rt, "TOWER_LAYERS"):
+            return STAY  # 刚点过挑戦する，下一页还没出来
         fields = hit.fields
         if fields.get("idol") and fields["idol"] != self.idol_name:
             raise ResumeBlocked(f"层选择页是「{fields['idol']}」，不是要打的「{self.idol_name}」")
@@ -128,6 +145,7 @@ class TowerPlay:
         self.layer = fields["stage"]  # 第一次实机：只打层选择页居中那一层（「挑戦する」对着的那层）
         logger.info("偶像之路：第 %s 层，点挑戦する", self.layer)
         rt.device.tap(*fields["challenge"])
+        self._mark_acted(rt, "TOWER_LAYERS")
         return DONE
 
     def on_layer_info(self, rt, f, hit):
@@ -307,13 +325,18 @@ class TowerPlay:
         if fields.get("failed"):
             return self._on_failed_ranking(rt, fields)
         self.result_handled = False
+        if self._just_acted(rt, "TOWER_RANKING"):
+            return STAY  # 刚记过、点过次へ：同一张名次页不再记一次
         layer = self.layer
         self.run.rankings.setdefault(layer, []).append({"my_rank": fields.get("my_rank"), "rows": fields.get("rows")})
         logger.info("偶像之路第 %s 层名次：第 %s 名（%s）", layer, fields.get("my_rank"), fields.get("rows"))
         if self.exam_draws is not None:
             self._save_draws(rivals(fields, self.idol_name))
             self.exam_draws = None
-        return self._tap(rt, fields.get("next"))
+        out = self._tap(rt, fields.get("next"))
+        if out is DONE:
+            self._mark_acted(rt, "TOWER_RANKING")
+        return out
 
     def _on_failed_ranking(self, rt, fields):
         if self.result_handled:
@@ -351,8 +374,16 @@ class TowerPlay:
         hs = {"TOWER_LIST": self.on_list, "TOWER_LAYERS": self.on_layers, "TOWER_LAYER_INFO": self.on_layer_info,
                 "TOWER_FORMATION": self.on_formation, "TOWER_MEMORY_SELECT": self.on_memory_select, "TOWER_EXAM": self.on_exam,
                 "TOWER_RANKING": self.on_ranking, "TOWER_RESULT": self.on_result, "TOWER_RETRY_CONFIRM": self.on_retry_confirm}  # fmt: skip
+        def track(page, fn):
+            def h(rt, f, hit):
+                if self._acted is not None and self._acted[0] != page:
+                    self._acted = None  # 换到别的页面了：刚点过的那一页下次照常处理
+                return fn(rt, f, hit)
+
+            return h
+
         # 结果页和名次页自己管 result_handled（不合格名次页上直接点再挑戦，同一张页还会被认出来）
-        return {k: (v if k in ("TOWER_RESULT", "TOWER_RANKING") else reopen(v)) for k, v in hs.items()}
+        return {k: track(k, v if k in ("TOWER_RESULT", "TOWER_RANKING") else reopen(v)) for k, v in hs.items()}
 
 
 def run(args) -> int:

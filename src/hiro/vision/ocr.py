@@ -260,7 +260,10 @@ def _pp_raw(img: MatLike, scale: float, languages) -> list[tuple[str, float, tup
 
 
 def ocr_boxes(img: MatLike, *, scale: float = 3.0, languages=("ja-JP", "en-US")) -> list[tuple[str, float, tuple[int, int, int, int]]]:
-    """每段文字、置信度和它在 img 中的外接框 (x1, y1, x2, y2)。"""
+    """每段文字、置信度和它在 img 中的外接框 (x1, y1, x2, y2)。空图（裁剪框落到画面外）返回 []，不抛异常（Mac h8 11-15：
+    弹窗标题条贴着画面底边，正文裁出空图，cv2.resize 报 !ssize.empty()，主循环崩溃）。"""
+    if img is None or getattr(img, "size", 0) == 0 or min(img.shape[:2]) < 1:
+        return []
     h, w = img.shape[:2]
     if scale != 1:
         img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)

@@ -167,3 +167,27 @@ def test_failed_ranking_retries_on_the_same_page(tmp_path):
     assert p.run.rankings[15] == [{"my_rank": 4, "rows": rows, "failed": True}] and 15 not in p.run.cleared
     h["TOWER_RETRY_CONFIRM"](rt, None, NS(fields={"cost": None, "same": [492, 1037], "ok": [509, 1160]}))
     assert h["TOWER_RANKING"](rt, None, page) is DONE and p.run.tries[15] == 2  # 第二次不合格：照样再挑戦
+
+
+def test_layers_and_ranking_act_once_until_page_changes(tmp_path):
+    """实机 11-15：层选择页「挑戦する」2 秒点了 4 次、同一张名次页记了两次。点过一次后页面没换就不再动，ACT_WAIT_S 后还没换才再点；
+    换到别的页面再回来照常处理。"""
+    p = _play(tmp_path, layers=3)
+    h = p.handlers()
+    now = [0.0]
+    taps = []
+    rt = NS(device=NS(tap=lambda x, y: taps.append((x, y))), sleep=lambda s: None, clock=lambda: now[0])
+    layers = NS(fields={"idol": "月村手毬", "stage": 15, "challenge": [446, 987]})
+    assert h["TOWER_LAYERS"](rt, None, layers) is DONE
+    now[0] = 1.0
+    assert h["TOWER_LAYERS"](rt, None, layers) is tp.STAY and taps == [(446, 987)]
+    now[0] = 1.0 + tp.ACT_WAIT_S
+    assert h["TOWER_LAYERS"](rt, None, layers) is DONE and len(taps) == 2  # 还没换页：过了等待时间再点一次
+    p.layer = 15
+    rows = [{"rank": 1, "name": "月村手毬", "score": 33229}]
+    ranking = NS(fields={"my_rank": 1, "rows": rows, "next": [361, 1160]})
+    assert h["TOWER_RANKING"](rt, None, ranking) is DONE
+    assert h["TOWER_RANKING"](rt, None, ranking) is tp.STAY
+    assert p.run.rankings[15] == [{"my_rank": 1, "rows": rows}]  # 只记一次
+    h["TOWER_LAYER_INFO"](rt, None, NS(fields={"conditions": [], "close": None}))  # 换页
+    assert h["TOWER_LAYERS"](rt, None, layers) is DONE  # 回来照常处理

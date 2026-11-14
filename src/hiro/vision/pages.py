@@ -116,7 +116,8 @@ def read_dialog(img: MatLike) -> dict | None:
         kind = next((k for key, k in DIALOG_KINDS if key in title), "other")
         # 正文总要读：标题 OCR 偶尔乱码（实测「プロデュース・リタイア確認」→「ーメリダイノ唯談」），
         # 危险弹窗不能只靠标题。danger=True 时执行侧一律只点キャンセル（不依赖 kind 判没判对）
-        body = "".join(t for t, _ in ocr(img[y2 : min(img.shape[0], y2 + 450), 20:700])).replace(" ", "")
+        crop = img[y2 : min(img.shape[0], y2 + 450), 20:700]
+        body = "".join(t for t, _ in ocr(crop)).replace(" ", "") if crop.size else ""  # 标题条贴着画面底边：没有正文可读
         if kind == "other":
             kind = next((k for key, k in DIALOG_BODY_KINDS if key in body), "other")
         danger = kind in DANGER_KINDS or (kind != "produce_resume" and any(w in title or w in body for w in DANGER_WORDS))
