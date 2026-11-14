@@ -62,7 +62,9 @@ def test_advance_only_bursts_on_safe_pages(monkeypatch):
     assert play.advance(rt, frame([]), NS(name="unknown")) is True
     assert play.advance(rt, frame([]), NS(name="HIF_FINALS_RANKING")) is False  # 认得出、但没处理器的页：不乱点
     assert play.advance(rt, frame([], landscape=True), NS(name="LIVE")) is False  # 横屏演出中：不点
-    assert len(calls) == 1
+    assert play.advance(rt, frame([]), NS(name="ACQUIRE", fields={"kind": "card", "name": "眠気"})) is True  # 判页认出的获得演出（不带快速判页）：连点
+    assert play.advance(rt, frame([]), NS(name="DIALOG", fields={})) is False  # 弹窗交给中断层 / 处理器
+    assert len(calls) == 2
 
 
 def test_run_hif_own_branch_skips_kaa_init(monkeypatch, tmp_path):

@@ -15,7 +15,10 @@ from hiro.loop.errors import ResumeBlocked
 logger = logging.getLogger(__name__)
 
 MAX_DATE_CHANGES = 2
-ADVANCE_PAGES = ("unknown", "IDLE", "TRANSITION", "LOADING", "commu", "LIVE")  # 只在这些页上安全连点
+# 只在这些页上安全连点。后一行是只展示结果、点一下就过的页（自有判页认得出、但不用决策）：旧主循环里 KAA 判不出它们，
+# 走的也是这条连点（2026-11-14 DMM 实机：外出拿到「眠気」的获得演出盖在剧情上，181 秒没人点被看门狗停机）
+ADVANCE_PAGES = ("unknown", "IDLE", "TRANSITION", "LOADING", "commu", "LIVE",
+                 "ACQUIRE", "STAR_GAIN", "UPGRADE_RESULT", "DELETE_RESULT", "CUSTOMIZE_RESULT")  # fmt: skip
 # 快速判页（hiro.vision.quick）认出的「点一下就过」的页（获得演出、结果气泡、TAP 提示、礼物箱…）带 tap 直接点；
 # 不点的页（读取 / 闪屏 / 考前说明演出）同一种连续 QUICK_WAIT_TAP_S 秒没过就点一下兜底（同旧主循环 HiroController._quick_page）
 QUICK_WAIT_TAP_S = 15.0
