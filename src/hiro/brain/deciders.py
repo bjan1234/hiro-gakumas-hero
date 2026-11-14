@@ -892,21 +892,26 @@ class ProduceDeciders:
         return rule
 
     # ---------------------------------------------------------------- 偶像之路
-    TOWER_SEEDS = 16  # 每个编成打几局（同一批种子，配对比）
-    TOWER_BUDGET_S = 300.0  # 一层编成评估的总时限
+    TOWER_BUDGET_S = 900.0  # 一层编成评估的总时限（协调 11-14：15 分钟）
+    TOWER_WORKERS = 4  # evaluate 的进程数（开 4 个以上先跟协调说）
     TOWER_RETRY_MAX = 3  # 每层免费重试上限（协调 11-14）
     TOWER_RETRY_SAME = 0.85  # 失败分数 ≥ 过关线 × 这个比例：同编成再打；更低换下一个编成
     TOWER_EVAL = None  # 评估函数（测试替换）；None = hiro.bench_bridge.tower.evaluate
+    TOWER_SEED0 = 1000003  # 种子 = TOWER_SEED0 × (i + 1) + 17（所有候选同一批，配对比）
 
     def tower_formation(self, state: GameState) -> Decision:
-        """偶像之路这一层的编成（用户 11-14：不用おまかせ，接 bench 算法；设计稿 偶像之路-编成决策-设计.md）。
+        """偶像之路这一层的编成（用户 11-14：不用おまかせ、接 bench 算法；追求三星通关、在全部回忆里选最优组合。
+        设计稿 偶像之路-编成决策-设计.md）。
 
         page_fields：tower_id、layer、idol_card_id?、mechanics?（画面上可选的考试机制，没读到时按已知的层绑定）、
           sub_slots（副回忆几格，缺省 1）、candidates：[{index, memory_id, params: [Vo, Da, Vi], max_stamina, deck: [「卡ID+强化/定制*次数」],
-          items, drinks, rank?}]（这条路偶像的回忆）。
-        算法：每种考试 × 按倍率和取前 MAIN_POOL 份主回忆（副回忆按倍率公式贪心挑）→ bench 引擎 + UINet 同种子打 TOWER_SEEDS 局，
-        按「过关率（≥ 第 1 名对手 scoreMax + 1），再看平均分」排；第一名明显更好 → sim；接近 / 模拟不了 → LLM（tower_formation）→ 兜底。
+          items, drinks, rank?}]（这条路偶像的全部回忆）。
+        算法：每种考试 × 每份主回忆（副回忆按倍率公式贪心 + 两两交换）→ bench 引擎 + UINet 同种子逐轮淘汰（tower.ROUNDS：4 局留 8 →
+        累计 16 局留 3 → 累计 48 局），按「三星概率 → 拿第 1 的概率 → 平均分」排；第一名明显更好 → sim，接近 / 模拟不了 → LLM
+        （tower_formation）→ 兜底（按倍率和）。结果按（塔, 层, 回忆库存签名）缓存，回忆有增减 / 强化变了就失效。
         输出 SelectFormation {kind: tower, mechanic, main, subs}（main / subs 是 candidates 的 index）。"""
+        import time
+
         from hiro.bench_bridge import tower as tw
         from hiro.brain import tower as tf
 
@@ -918,36 +923,34 @@ class ProduceDeciders:
         if not tower_id or layer is None or not cands:
             return stop("偶像之路编成：塔 / 层 / 候选回忆没读出来，停下等重新识别")
         mechs = list(pf.get("mechanics") or tw.layer_mechanics(tower_id, int(layer)) or [None])
-        combos, notes = [], []
-        for mech in mechs:
-            lex = tw.layer_exam(tower_id, int(layer), mech) if mech else tw.layer_exam(tower_id, int(layer))
-            if lex is None:
-                notes.append(f"考试 {mech or '（未知）'} 的设置查不到")
-                continue
-            mains = sorted(cands, key=lambda c: -sum(tf.bonus(lex, c, []) or tf._vec(c)))[: tf.MAIN_POOL]
-            for main in mains:
-                subs = tf.choose_subs(lex, main, cands, k)
-                lo = tf.loadout(lex, main, subs, pf.get("idol_card_id"))
-                combos.append({"lex": lex, "main": main, "subs": subs, "loadout": lo, "why_not": tf.evaluable(lo)})
-        if not combos:
-            return stop("偶像之路编成：这一层没有一种考试查得到设置（" + "；".join(notes) + "）")
-        ok = [c for c in combos if c["why_not"] is None]
-        seeds = [1000003 * (i + 1) + 17 for i in range(self.TOWER_SEEDS)]
-        evaluated = False
-        if ok:
-            try:
-                run = self.TOWER_EVAL or tw.evaluate
-                scores = run([c["loadout"] for c in ok], seeds, budget_s=self.TOWER_BUDGET_S)
-                for c, sc in zip(ok, scores):
-                    c["sim"] = tf.summarize(sc, c["lex"].get("border"))
-                evaluated = any(c["sim"]["n"] for c in ok)
-            except Exception as e:  # noqa: BLE001  bench / GKMS 不可用：兜底
-                notes.append(f"模拟评估不可用（{type(e).__name__}: {e}）")
-        for c in combos:
-            c.setdefault("sim", tf.summarize([], c["lex"].get("border")))
-            c["bonus_sum"] = sum(c["loadout"]["score_bonus_permils"] or tf._vec(c["main"]))
+        key = (tower_id, int(layer), tuple(sorted(str(m) for m in mechs)), k, tf.signature(cands))
+        cache = getattr(self, "_tower_cache", {})
+        notes: list[str] = []
+        if key in cache:
+            combos, evaluated, notes = cache[key]
+            notes = notes + ["用这一层的缓存评估（回忆库存没变）"]
+        else:
+            combos = []
+            for mech in mechs:
+                lex = tw.layer_exam(tower_id, int(layer), mech) if mech else tw.layer_exam(tower_id, int(layer))
+                if lex is None:
+                    notes.append(f"考试 {mech or '（未知）'} 的设置查不到")
+                    continue
+                for main in cands:
+                    subs = tf.choose_subs(lex, main, cands, k)
+                    lo = tf.loadout(lex, main, subs, pf.get("idol_card_id"))
+                    combos.append({"lex": lex, "main": main, "subs": subs, "loadout": lo, "why_not": tf.evaluable(lo), "rows": []})
+            if not combos:
+                return stop("偶像之路编成：这一层没有一种考试查得到设置（" + "；".join(notes) + "）")
+            evaluated = self._tower_rounds([c for c in combos if c["why_not"] is None], notes, time.monotonic())
+            for c in combos:
+                c["sim"] = tf.summarize(c["rows"], c["lex"].get("border"))
+                c["bonus_sum"] = sum(c["loadout"]["score_bonus_permils"] or tf._vec(c["main"]))
+            cache[key] = (combos, evaluated, list(notes))
+            self._tower_cache = cache
         if evaluated:
-            order = sorted([c for c in combos if c["sim"]["n"]], key=lambda c: tf.rank_key(c["sim"]), reverse=True)
+            # 先按撑到第几轮（局数）再按排序键：早轮被淘汰的局数少、运气好时分数虚高，不能排到决赛的前面
+            order = sorted([c for c in combos if c["sim"]["n"]], key=lambda c: (c["sim"]["n"], tf.rank_key(c["sim"])), reverse=True)
         else:
             order = sorted(combos, key=lambda c: -c["bonus_sum"])
 
@@ -957,8 +960,12 @@ class ProduceDeciders:
 
         def desc(c):
             s = c["sim"]
-            sim = (f"模拟 {s['n']} 局：过关 {s['clear']:.0%}、平均 {s['mean']:,}" if s["n"] and s["clear"] is not None
-                   else f"模拟 {s['n']} 局：平均 {s['mean']:,}（过关线未知）" if s["n"] else f"没模拟（{c['why_not'] or '评估不可用'}）")  # fmt: skip
+            if not s["n"]:
+                sim = f"没模拟（{c['why_not'] or '评估不可用'}）"
+            else:
+                parts = [f"三星 {s['p3']:.0%}" if s["p3"] is not None else None, f"第 1 名 {s['first']:.0%}" if s["first"] is not None else None,
+                         f"平均 {s['mean']:,}"]  # fmt: skip
+                sim = f"模拟 {s['n']} 局：" + "、".join(x for x in parts if x)
             return f"{c['lex']['mechanic']}·主回忆 {c['main'].get('memory_id') or c['main'].get('index')}（副 {[x.get('index') for x in c['subs']]}）：{sim}"
 
         self._tower_rank = {"key": (tower_id, int(layer)), "order": order}
@@ -974,7 +981,40 @@ class ProduceDeciders:
                              "模拟": c["sim"]}) for c in order[:4]]  # fmt: skip
         why = "前两名在模拟噪声内" if evaluated else ("；".join(notes) or "这一层的编成没法模拟")
         return self._ask_choice("tower_formation", rule, options, f"偶像之路第 {layer} 层：选考哪种考试、带哪份主回忆（副回忆已按倍率挑好）", why, state,
-                                {"说明": "过关要拿第 1 名（分数 ≥ 过关线）；模拟用的出牌算法 UINet 没在偶像之路上训练过，数值只作参考"})  # fmt: skip
+                                {"说明": "目标三星通关（第 1 名 + 本层条件），其次拿第 1、再看分数；模拟用的出牌算法 UINet 没在偶像之路上训练过，数值只作参考"})  # fmt: skip
+
+    def _tower_rounds(self, ok: list[dict], notes: list[str], t0: float) -> bool:
+        """逐轮淘汰（tower.ROUNDS）：每轮给还留着的组合补打到累计局数，按排序键留前几个。超时 TOWER_BUDGET_S 停在已跑完的结果。
+        evaluate 不支持 detail / workers（旧版中转层）时退回只要分数。返回有没有评估出结果。"""
+        import time
+
+        from hiro.bench_bridge import tower as tw
+        from hiro.brain import tower as tf
+
+        if not ok:
+            return False
+        run = self.TOWER_EVAL or tw.evaluate
+        alive, done = list(ok), 0
+        for upto, keep in tf.ROUNDS:
+            left = self.TOWER_BUDGET_S - (time.monotonic() - t0)
+            if left <= 0:
+                notes.append(f"评估到时间（{self.TOWER_BUDGET_S:.0f} 秒），用已跑完的 {done} 局")
+                break
+            seeds = [self.TOWER_SEED0 * (i + 1) + 17 for i in range(done, upto)]
+            try:
+                try:
+                    res = run([c["loadout"] for c in alive], seeds, budget_s=left, detail=True, workers=self.TOWER_WORKERS)
+                except TypeError:  # 旧版 evaluate：只有分数
+                    res = run([c["loadout"] for c in alive], seeds, budget_s=left)
+            except Exception as e:  # noqa: BLE001  bench / GKMS 不可用：兜底
+                notes.append(f"模拟评估不可用（{type(e).__name__}: {e}）")
+                return any(c["rows"] for c in ok)
+            for c, rows in zip(alive, res):
+                c["rows"] = c["rows"] + list(rows)
+            done = upto
+            alive.sort(key=lambda c: tf.rank_key(tf.summarize(c["rows"], c["lex"].get("border"))), reverse=True)
+            alive = alive[:keep]
+        return any(c["rows"] for c in ok)
 
     def tower_retry(self, state: GameState) -> Decision:
         """偶像之路这一层失败后（每层免费重试上限 TOWER_RETRY_MAX 次，不花资源）：

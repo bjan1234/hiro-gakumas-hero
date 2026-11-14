@@ -33,9 +33,21 @@ def _state(n=4, sub_slots=1):
                                   "candidates": _cands(n)})
 
 
-def _eval(table, noise=1000):
-    def run(loadouts, seeds, **kw):
-        return [[table[lo["produce_cards"][0][-1]] + ((i * 7) % 5 - 2) * noise for i in range(len(seeds))] for lo in loadouts]
+CALLS = []
+
+
+def _eval(table, noise=1000, star_line=530000):
+    """假评估：分数 = 表里的值 + 波动；≥ 过关线算第 1，≥ star_line 算三星。"""
+    def run(loadouts, seeds, detail=False, workers=1, **kw):
+        CALLS.append(len(loadouts) * len(seeds))
+        out = []
+        for lo in loadouts:
+            row = []
+            for i, sd in enumerate(seeds):
+                sc = table[lo["produce_cards"][0][-1]] + ((sd * 7) % 5 - 2) * noise
+                row.append({"score": sc, "first": sc >= LEX["border"], "stars": 3 if sc >= star_line else 2 if sc >= LEX["border"] else 1} if detail else sc)
+            out.append(row)
+        return out
     return run
 
 
@@ -46,6 +58,39 @@ def test_clear_winner_picked_by_sim(monkeypatch):
     a = d.action.args
     assert a["main"] == 1 and a["mechanic"] == "exam_lesson_buff" and a["subs"] and 1 not in a["subs"]
     assert a["subs"] == [3]  # 副回忆按倍率和挑：属性最高的（主回忆除外）
+    assert "三星" in d.reason
+
+
+def test_three_star_rate_beats_higher_mean(monkeypatch):
+    """1 号平均分高（90 万 / 30 万交替，均 60 万）但三星只有一半；2 号每局 54.5 万稳定三星：按三星概率选 2 号。"""
+    def run(loadouts, seeds, detail=False, workers=1, **kw):
+        out = []
+        for lo in loadouts:
+            m = lo["produce_cards"][0][-1]
+            row = []
+            for i, sd in enumerate(seeds):
+                sc = {"1": 900000 if sd % 2 else 300000, "2": 545000}.get(m, 100000)
+                row.append({"score": sc, "first": sc >= LEX["border"], "stars": 3 if sc >= 540000 else 1})
+            out.append(row)
+        return out
+
+    monkeypatch.setattr(ProduceDeciders, "TOWER_EVAL", staticmethod(run))
+    d = ProduceDeciders(CAMPUS_HIRO, None).decide("TOWER_FORMATION", _state())
+    assert d.action.args["main"] == 2 and d.source == "sim"
+
+
+def test_cache_reused_until_inventory_changes(monkeypatch):
+    monkeypatch.setattr(ProduceDeciders, "TOWER_EVAL", staticmethod(_eval({"0": 300000, "1": 520000, "2": 450000, "3": 200000})))
+    dec = ProduceDeciders(CAMPUS_HIRO, None)
+    CALLS.clear()
+    dec.decide("TOWER_FORMATION", _state())
+    n = len(CALLS)
+    dec.decide("TOWER_FORMATION", _state())
+    assert len(CALLS) == n  # 同一层、回忆没变：不重算
+    st = _state()
+    st.page_fields["candidates"][0]["params"] = [9999, 9999, 9999]  # 回忆强化了
+    dec.decide("TOWER_FORMATION", st)
+    assert len(CALLS) > n
 
 
 def test_close_call_goes_to_llm(monkeypatch):
