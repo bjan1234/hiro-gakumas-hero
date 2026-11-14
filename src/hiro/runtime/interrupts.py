@@ -136,8 +136,28 @@ def tutorial(frame, rt) -> str | None:
     return f"教程框：点「{word}」"
 
 
+def reroll_confirm(frame, rt) -> str | None:
+    """「スキルカード再抽選確認」开着（选卡处理器点了再抽選后进程停了、续跑时框已经在；或在页面之间撞上）：点「再抽選する」；
+    框上有ジュエル等消耗字样点キャンセル，读不到キャンセル 停机。「次回以降表示しない」勾着也每次刷新都弹（协调 11-14）。"""
+    from hiro.produce.ops import reroll_confirm_action
+
+    if not frame.has_dialog or "再抽選確認" not in ((frame.dialog or {}).get("title") or ""):
+        return None
+    act = reroll_confirm_action(frame.texts)
+    if act is None:
+        return None
+    kind, hit, cost = act
+    if kind == "cost":
+        if hit is None:
+            raise ResumeBlocked(f"再抽選确认框上有消耗字样「{cost}」，又没读到キャンセル：不点，停机")
+        rt.device.tap(*hit.rect.center)
+        return f"再抽選确认框有消耗字样「{cost}」：点キャンセル"
+    rt.device.tap(*hit.rect.center)
+    return f"再抽選确认框：点「{hit.text}」"
+
+
 Interrupt = Callable[[object, object], "str | None"]
-DEFAULT: tuple[Interrupt, ...] = (red_line, comm, stop_notice, date_changed, settings, customize_confirm, tutorial)
+DEFAULT: tuple[Interrupt, ...] = (red_line, comm, stop_notice, date_changed, settings, customize_confirm, tutorial, reroll_confirm)
 
 
 def check(frame, rt, interrupts: tuple[Interrupt, ...] = DEFAULT) -> str | None:

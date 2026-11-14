@@ -77,7 +77,7 @@ def _confirm_env(monkeypatch, texts):
     monkeypatch.setattr(hif, "device", NS(screenshot=lambda: "img", click=lambda x, y: clicks.append((x, y))))
     monkeypatch.setattr(hif, "sleep", lambda s: None)
     monkeypatch.setattr(hif, "screen_texts", lambda img: texts)
-    fake = NS(s=NS(note=notes.append), REROLL_CONFIRM=hif.HifCore.REROLL_CONFIRM, REROLL_COST_WORDS=hif.HifCore.REROLL_COST_WORDS)
+    fake = NS(s=NS(note=notes.append))
     d = Decision(Action(ActionKind.REROLL), "刷新", "rule", 0.8)
     return hif, fake, d, clicks
 
