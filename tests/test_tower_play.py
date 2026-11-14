@@ -68,21 +68,43 @@ def test_formation_change_stops(tmp_path, monkeypatch):
 def test_result_retry_until_three_stars_then_stop_after_one_layer(tmp_path):
     p = _play(tmp_path)
     p.layer = 15
+    h = p.handlers()
     rt, taps = _rt()
     res = {"cleared": True, "layer": 15, "stars": 1, "retry": [129, 1160], "back": [350, 1160]}
-    assert p.on_result(rt, None, NS(fields=res)) is DONE and taps == [(129, 1160)]  # 没满三星：再挑戦
-    assert p.on_result(rt, None, NS(fields={**res, "stars": 3})) is tp.END and p.finished  # 三星：这一层打完，停在结果页
-    assert taps == [(129, 1160)]
+    assert h["TOWER_RESULT"](rt, None, NS(fields=res)) is DONE and taps == [(129, 1160)]  # 没满三星：再挑戦
+    # 实机 r2：确认框正在弹出时同一张结果页又被认出来——不再算一次、不再点
+    assert h["TOWER_RESULT"](rt, None, NS(fields=res)) is tp.STAY and p.run.tries[15] == 1 and taps == [(129, 1160)]
+    h["TOWER_RETRY_CONFIRM"](rt, None, NS(fields={"cost": None, "same": [492, 1037], "ok": [509, 1160]}))  # 换页：开门
+    assert h["TOWER_RESULT"](rt, None, NS(fields={**res, "stars": 3})) is tp.END and p.finished  # 三星：这一层打完，停在结果页
+    assert p.run.tries[15] == 2 and taps[-1] == (509, 1160)
 
 
 def test_result_never_cleared_stops(tmp_path):
     p = _play(tmp_path)
+    h = p.handlers()
     rt, _ = _rt()
     res = {"cleared": False, "layer": 15, "stars": 0, "retry": [129, 1160]}
-    p.on_result(rt, None, NS(fields=res))
-    p.on_result(rt, None, NS(fields=res))
+    confirm = NS(fields={"cost": None, "same": [492, 1037], "ok": [509, 1160]})
+    h["TOWER_RESULT"](rt, None, NS(fields=res))
+    h["TOWER_RETRY_CONFIRM"](rt, None, confirm)
+    h["TOWER_RESULT"](rt, None, NS(fields=res))
+    h["TOWER_RETRY_CONFIRM"](rt, None, confirm)
     with pytest.raises(ResumeBlocked, match="没过关"):
-        p.on_result(rt, None, NS(fields=res))
+        h["TOWER_RESULT"](rt, None, NS(fields=res))
+
+
+def test_tower_id_from_idol_name_without_formation(tmp_path, monkeypatch):
+    monkeypatch.setattr(tp, "idol_code", lambda name: "ttmr")
+    p = tp.TowerPlay(NS(), TowerRun(None), idol_name="月村手毬", layers=1, loadout_path=tmp_path / "lo.json")
+    assert p.run.tower_id == "tower_001-ttmr"  # 从名次页 / 结果页续跑也有路线（实机 r2 汇总里是 None）
+
+
+def test_result_page_not_recognized_while_retry_confirm_opening():
+    from hiro.vision.tower import tower_page
+
+    boxes = [("CLEAR", (300, 210, 420, 240)), ("再挑戦", (90, 1145, 160, 1175)), ("一覧に戻る", (300, 1145, 400, 1175)),
+             ("ステージを再挑戦しますか?", (100, 960, 320, 990))]  # fmt: skip
+    assert tower_page(None, boxes) is None  # 确认框正文已经出来、标题条还没认出：不当结果页
 
 
 def test_retry_confirm_free_only(tmp_path):
