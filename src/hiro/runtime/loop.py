@@ -24,10 +24,27 @@ from hiro.vision.classify import UNKNOWN, PageHit
 
 logger = logging.getLogger(__name__)
 
+
+_PASS: list = []
+
+
+def _pass_through() -> tuple[type[BaseException], ...]:
+    """总兜底不接的异常：停机类、日切换 / 通信错误回标题（run_hif 回首页续跑）、设备没了、日常单项超时（Deadline 用异常打断）。
+    第一次用到时才 import（hiro.daily 反过来要 import 主循环）。"""
+    if not _PASS:
+        from hiro.daily.common import TaskTimeout
+        from hiro.devices.base import DeviceError
+        from hiro.loop.date_change import DateChanged
+
+        _PASS.extend((ResumeBlocked, DateChanged, DeviceError, TaskTimeout))
+    return tuple(_PASS)
+
 TICK = 0.3  # wait_until 两拍之间至少隔这么久
 UNKNOWN_ALERT_S = 30.0  # 认不出的画面连续这么久起报警
 INTERRUPT_EXTRA = 3.0  # drive / wait_until：处理中断（设置弹窗等）花的时间不算超时，最多顺延 timeout 的这么多倍
 # （DMM own 本战开局 11-14：三个设置弹窗各约 6 秒，把「本战第 1 步点次へ」的 20 秒用完，最后一个弹窗处理完当拍就超时停机）
+ERROR_LIMIT = 10  # 识别 / 中断 / 处理器抛的普通异常：接住、记 trace、这一拍按认不出处理；同一处同一异常连续这么多次才停机
+# （用户 11-15 测稳定性：一处识别异常不能让整局退出，Mac h8 read_dialog 空图那次 exit 1）
 STALL_S = 180.0  # 页面没变、画面也没变（缩略图差 < repeat_guard.SCREEN_DIFF）这么久就停机；认不出的画面同样适用
 
 
@@ -86,6 +103,7 @@ class Runtime:
         self.device = GuardedDevice(self.raw_device, self.screen, self.dialog_words)
         self._unknown_since: float | None = None
         self._base: tuple[str, object, float] | None = None  # 进展看门狗的基准：(页面, 缩略图, 时刻)
+        self._err: tuple[str, int] | None = None  # 上一个接住的异常（签名, 连续次数）
 
     # ---------------------------------------------------------------- 等待
     def checkpoint(self) -> None:
@@ -96,7 +114,13 @@ class Runtime:
         """一拍：检查点 → 截图 → 中断层。返回 (帧, 中断说明或 None)。"""
         self.checkpoint()
         f = self.screen.shot()
-        done = _interrupts.check(f, self, self.interrupts)
+        try:
+            done = _interrupts.check(f, self, self.interrupts)
+        except Exception as e:  # noqa: BLE001  中断层的识别异常：记下来，这一拍当「处理过」（不拿这一帧做判断），下一拍重截
+            if isinstance(e, _pass_through()):
+                raise
+            self.absorb(e, "中断层", f)
+            done = f"中断层异常（{type(e).__name__}）"
         if done is not None:
             logger.info("中断：%s", done)
         return f, done
@@ -107,7 +131,7 @@ class Runtime:
         while True:
             t1 = self.clock()
             f, done = self.tick()
-            if done is None and pred(f):
+            if done is None and self._guarded(pred, f, "等待条件"):
                 return True, f
             if done is not None:
                 paused = min(paused + self.clock() - t1 + every, timeout * INTERRUPT_EXTRA)  # 处理中断的那拍不算等待时间
@@ -122,7 +146,7 @@ class Runtime:
         while True:
             t1 = self.clock()
             f, done = self.tick()
-            if done is None and (r := step(f)) is not None:
+            if done is None and (r := self._guarded(step, f, what)) is not None:
                 return r
             if done is not None:
                 paused = min(paused + self.clock() - t1 + every, timeout * INTERRUPT_EXTRA)  # 处理中断的那拍不算这一段的时间
@@ -132,7 +156,55 @@ class Runtime:
 
     # ---------------------------------------------------------------- 主循环
     def step(self) -> Outcome:
-        """主循环一拍。stop 时抛 ResumeBlocked。"""
+        """主循环一拍。stop 时抛 ResumeBlocked。识别 / 处理器抛的普通异常接住（absorb），这一拍按认不出处理，下一拍重来；
+        停机类（ResumeBlocked）、日切换 / 通信错误回标题（DateChanged）、设备没了（DeviceError）照常抛出。"""
+        try:
+            out = self._step()
+        except Exception as e:  # noqa: BLE001  总兜底：一处异常不打死整局
+            if isinstance(e, _pass_through()):
+                raise
+            self.absorb(e, "判页 / 处理器", self.screen.frame)
+            self.sleep(TICK)
+            return STAY
+        self._err = None
+        return out
+
+    def _guarded(self, fn, f: Frame, where: str):
+        """drive / wait_until 里调流程自己的 step / pred（开局、收尾的点击和判断）：普通异常接住（absorb），这一拍当没完成（None），
+        下一拍重来；同一异常连续 ERROR_LIMIT 次停机。停机类照常抛。"""
+        try:
+            r = fn(f)
+        except Exception as e:  # noqa: BLE001
+            if isinstance(e, _pass_through()):
+                raise
+            self.absorb(e, where, f)
+            return None
+        self._err = None
+        return r
+
+    def absorb(self, e: Exception, where: str, f: Frame | None) -> None:
+        """接住一个普通异常：日志带栈，trace 记备注（异常、栈的最后几行、存帧路径）；同一处同一异常连续 ERROR_LIMIT 次抛 ResumeBlocked 停机。"""
+        import traceback
+
+        sig = f"{where}|{type(e).__name__}|{str(e)[:120]}"
+        n = self._err[1] + 1 if self._err is not None and self._err[0] == sig else 1
+        self._err = (sig, n)
+        tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))
+        logger.error("%s抛了异常（连续第 %d 次，到 %d 次停机）：%s: %s\n%s", where, n, ERROR_LIMIT, type(e).__name__, e, tb)
+        if self.session is not None:
+            shot = None
+            try:
+                img = getattr(f, "img", None)
+                if img is not None:
+                    shot = self.session.trace.save_frame(self.session.trace.next_seq(), img)
+            except Exception:  # noqa: BLE001  存帧失败不影响
+                pass
+            tail = " | ".join(line.strip() for line in tb.strip().splitlines()[-4:])
+            self.session.recover("unhandled", f"{where}异常（连续第 {n} 次）{type(e).__name__}: {e}；帧 {shot}；栈尾 {tail}")
+        if n >= ERROR_LIMIT:
+            raise ResumeBlocked(f"{where}同一异常连续 {n} 次，停机：{type(e).__name__}: {e}") from e
+
+    def _step(self) -> Outcome:
         f, done = self.tick()
         if done is not None:
             return STAY
