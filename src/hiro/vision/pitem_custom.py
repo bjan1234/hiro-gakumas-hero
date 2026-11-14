@@ -21,6 +21,7 @@ FLOWER_MIN = 800  # 红花像素：花约 1640，其他 0（第一段インコ�
 WINGS_MIN = 3000  # 格子顶部白色像素：羽约 5440，其他 ≤ 1440
 RIBBON_MIN = 3500  # 浅蓝（低饱和）像素：リボン约 6540，其他 ≤ 1330
 
+CANDIDATE_WHITE_MIN = 2000  # 候选格里白色（低饱和高亮）像素：有候选背包 6600–11600，进场动画还没出候选 0–18（DMM 11-14 own2）
 PLUSH_BY_HUE = {"blue": "ロボ", "yellow": "うさぎ", "green": "インコ", "purple": "もじゃ"}
 
 
@@ -49,6 +50,16 @@ def _plush_hue(hsv: np.ndarray, x: int) -> str | None:
     }
     best = max(counts, key=counts.get)
     return best if counts[best] > PLUSH_MIN else None
+
+
+def candidates_present(img: np.ndarray) -> list[bool]:
+    """三个候选格里有没有候选背包（白色外框）。定制页刚进场时候选还没出来，格里只有蓝色背景，会被当成蓝色的ロボ。"""
+    hsv = _hsv(img)
+    out = []
+    for x in SLOTS_X:
+        r = hsv[760:1000, x - 90 : x + 90]
+        out.append(int(((r[..., 1] < 40) & (r[..., 2] > 215)).sum()) >= CANDIDATE_WHITE_MIN)
+    return out
 
 
 def plush_kinds(img: np.ndarray) -> list[str | None]:
@@ -83,9 +94,10 @@ def decoration_kinds(img: np.ndarray) -> list[str | None]:
 
 
 def custom_names(img: np.ndarray, pouch_kanji: str) -> list[str | None]:
-    """候选的道具名，格式同 hiro.brain.pitem（「ロボ（黄）」「花ロボ（黄）」）；认不出的格为 None。"""
-    plush = plush_kinds(img)
+    """候选的道具名，格式同 hiro.brain.pitem（「ロボ（黄）」「花ロボ（黄）」）；认不出的格、还没出候选的格为 None。"""
+    present = candidates_present(img)
+    plush = [p if ok else None for p, ok in zip(plush_kinds(img), present)]
     if not is_decoration_stage(img):
         return [f"{p}（{pouch_kanji}）" if p else None for p in plush]
     base = next((p for p in plush if p), None)  # 三格是同一只毛绒（装饰可能盖住一部分，取认出来的那个）
-    return [f"{d}{base}（{pouch_kanji}）" if d and base else None for d in decoration_kinds(img)]
+    return [f"{d}{base}（{pouch_kanji}）" if d and base and ok else None for d, ok in zip(decoration_kinds(img), present)]

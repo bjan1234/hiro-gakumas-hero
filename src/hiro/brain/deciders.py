@@ -1998,8 +1998,12 @@ class ProduceDeciders:
         rule = Decision(Action.activate_effect(idx[best]), pitem.reason(parsed[best]), "rule", 0.9 if pitem.score(parsed[best]) >= 3 else 0.6,
                         cands, decider="select_pitem")  # fmt: skip
         if len(known) > 1 and all(parsed[i] == parsed[known[0]] for i in known):
-            # 实机 dmmt1 / dmmt2 / dmmw1 第二段定制：三个候选都读成「ロボ（黄）」——识别只认出玩偶颜色，没认出装饰（ロボ 是 花 / リボン / 羽 三选一），
-            # 规则只能按第 1 个选。LLM 也看不到装饰，不问；记成兜底，报告里能数出来
+            if any(it.get("custom") for it in items):
+                # 定制页（pitem_custom 能认装饰了）三个候选名字一样：多半是候选还没出来（DMM own2 seq 170：定制页刚进场、三格还空，
+                # 识别按背包颜色给了「ロボ（黄）」×3，按第 1 个点下去定制成了 うさぎ）。停下重读，不盲选
+                why = f"P 道具定制 {len(known)} 个候选识别成一样的（{items[known[0]].get('name')}）：候选像是还没出来 / 没认出，重读"
+                return Decision(Action.ui(ActionKind.WAIT, why=why), why, "fallback", 0.1, cands, warnings=[why], decider="select_pitem")
+            # 非定制页（旧识别）：第二段装饰没认出时规则只能按第 1 个选。LLM 也看不到装饰，不问；记成兜底，报告里能数出来
             return replace(rule, source="fallback", confidence=0.3,
                            warnings=[f"P 道具 {len(known)} 个候选识别成一样的（{items[known[0]].get('name')}）：多半是第二段装饰没认出，按第 1 个选"])
         top = pitem.score(parsed[best])
