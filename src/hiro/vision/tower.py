@@ -214,15 +214,22 @@ def read_formation_deck(img: np.ndarray) -> dict:
     return {"cards": cards, "rows": rows, "unread": unread}
 
 
+RESULT_TITLES = ("CLEAR", "PERFECT")  # 过关结果页的大标题：三星（1 位）是「PERFECT」（Mac 手毬 14 层 11-15，原来判成 unknown）
+
+
+def _result_title(boxes):
+    return next((b for w in RESULT_TITLES if (b := _find(boxes, w, (150, 320))) is not None), None)
+
+
 def _result_fields(img: np.ndarray, boxes) -> dict:
-    """结果页：过关（CLEAR）、层号（大字）、本次星数（三颗星里粉色的个数）、按钮。"""
+    """结果页：过关（CLEAR / 三星时 PERFECT）、层号（大字）、本次星数（三颗星里粉色的个数）、按钮。"""
     hsv = cv2.cvtColor(img[550:660], cv2.COLOR_BGR2HSV)
     stars = 0
     for x in STAR_X:  # 三颗星：拿到的粉色（约 0.46–0.50），没拿到的灰色（0）
         cell = hsv[:, x - 45 : x + 45]
         stars += int((((cell[..., 0] >= 150) | (cell[..., 0] <= 8)) & (cell[..., 1] >= 80) & (cell[..., 2] >= 150)).mean() >= STAR_PINK_MIN)
     layer = read_number(img, LAYER_BOX)  # 「CLEAR」下面的大号层号
-    out = {"cleared": _find(boxes, "CLEAR", (150, 320)) is not None, "layer": layer, "stars": stars}
+    out = {"cleared": _result_title(boxes) is not None, "layer": layer, "stars": stars}
     for key, word in (("retry", "再挑戦"), ("back", "一覧に戻る"), ("next", "次へ")):
         if (b := _find(boxes, word, (1080, 1260))) is not None:
             out[key] = _center(b)
@@ -326,6 +333,6 @@ def tower_page(img: np.ndarray, boxes) -> tuple[str, dict] | None:
             if (b := _find(boxes, word, (1080, 1260))) is not None:
                 f[key] = _center(b)
         return "TOWER_RANKING", f
-    if _find(boxes, "CLEAR", (150, 320)) and (_find(boxes, "一覧に戻る", (1080, 1260)) or _find(boxes, "再挑戦", (1080, 1260))):
+    if _result_title(boxes) and (_find(boxes, "一覧に戻る", (1080, 1260)) or _find(boxes, "再挑戦", (1080, 1260))):
         return "TOWER_RESULT", _result_fields(img, boxes)
     return None
