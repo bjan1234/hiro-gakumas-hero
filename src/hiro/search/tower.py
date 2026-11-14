@@ -29,6 +29,14 @@ def complete_loadout(lo: dict) -> dict:
     return lo
 
 
+def bonus_permils(b) -> dict:
+    """考试倍率 → {1: Vo, 2: Da, 3: Vi}。题目文件写成列表 [Vo, Da, Vi]，bench 模板（problems.load_set(template=True)，实打时
+    ctx.loadout 就是它）写成 {"1": Vo, "2": Da, "3": Vi}：两种都认（字典直接 zip 会拿到键，倍率变成 1 / 2 / 3）。"""
+    if isinstance(b, dict):
+        return {t: int(b[k]) for t in (1, 2, 3) for k in (t, str(t)) if k in b}
+    return {t: int(v) for t, v in zip((1, 2, 3), b)}
+
+
 def tower_env(lo: dict, seed: int):
     """编成 → 我们的引擎对局（FidelityBattle，Rust 后端时是 NativeBattle，.rx 是 gakumas_exam_rs.Exam）。"""
     import hiro.sim  # noqa: F401  引擎路径
@@ -55,7 +63,7 @@ def tower_env(lo: dict, seed: int):
     plan = catalog().one("IdolCard", lo["idol_card_id"])["planType"]
     plan_type = {"ProducePlanType_Plan1": 1, "ProducePlanType_Plan2": 2, "ProducePlanType_Plan3": 3}.get(plan, 0)
     weights = {1: cfg["vocal"], 2: cfg["dance"], 3: cfg["visual"], "turns": int(cfg["turn"])}
-    bonus = dict(zip((1, 2, 3), lo["score_bonus_permils"]))
+    bonus = bonus_permils(lo["score_bonus_permils"])
     hp = int(lo.get("starting_stamina") or lo["max_stamina"])
     ex = new_exam(None, m, seed, deck=deck, items=list(lo.get("produce_item_ids") or []), stamina=hp, max_stamina=int(lo["max_stamina"]),
                   randomize_turns=True, config_weights=weights, bonus_permil=bonus, drinks=list(lo.get("drink_ids") or []),
