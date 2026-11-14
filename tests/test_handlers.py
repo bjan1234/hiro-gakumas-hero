@@ -36,7 +36,7 @@ def test_pages_call_core_methods():
     h = make_handlers(core)
     assert _run(h, "CONSULT") is DONE and _run(h, "SKILL_CARD_REMOVAL") is DONE and _run(h, "PDRINK_MAX_CONFIRM") is DONE
     assert core.calls == ["consult", "skill_card_removal", "pdrink_max_confirm"]
-    assert "ACTION_SELECT" not in h  # 还要 KAA ctx 的页没登记，交给 advance
+    assert "LOADING" not in h and "unknown" not in h  # 不需要处理的页没登记，交给 advance
 
 
 def test_exam_entered_once_until_another_page():
@@ -129,3 +129,16 @@ def test_action_commit_taps_three_times_then_waits_button_gone(monkeypatch):
     monkeypatch.setattr(ac, "tpl", tpl)
     ac.action_commit(ActionButton("rest", None, None, Box(620, 820, 670, 860), "InProduce.Rest"), clock=lambda: t[0])
     assert clicks == [(640, 840), (500, 1160)]
+
+
+def test_handlers_and_core_import_no_kaa():
+    """新主循环用的处理器和 HifCore 不 import KAA / kotonebot（HiroHifStrategy 壳懒加载，用到才 import KAA）。"""
+    import os
+    import subprocess
+    import sys
+
+    code = ("import sys, hiro.produce.handlers, hiro.produce.hif, hiro.produce.card_ops, hiro.produce.action_select; "
+            "print([m for m in sys.modules if m.split('.')[0] in ('kaa', 'kotonebot')])")  # fmt: skip
+    env = {k: v for k, v in os.environ.items() if k != "HIRO_KAA_GAME_DATA"}
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True, env=env).stdout.strip()
+    assert out == "[]"

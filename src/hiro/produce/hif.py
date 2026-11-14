@@ -15,9 +15,6 @@ from pathlib import Path
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from kaa.config.const import HifScenario
-from kaa.kaa_context import produce_solution
-from kaa.tasks.produce.new.strategies.hif_grind import HifGrindStrategy
 import logging
 from hiro.devices.active import Loop, device, sleep
 
@@ -27,7 +24,7 @@ from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.llm import from_spec
 from hiro.brain.state import profile_for
 from hiro.contracts import Action, ActionKind, Candidate, Decision, ExecutionResult
-from hiro.loop.resume import ResumeBlocked
+from hiro.loop.errors import ResumeBlocked
 from hiro.loop.session import Session
 from hiro.produce import ops
 from hiro.produce.ops import button_text
@@ -1004,10 +1001,10 @@ class HifCore:
             self.s.record(obs, decision=d, timings_ms={"total": (time.monotonic() - t0) * 1000})
             return
         self._confirm_unknown = 0
-        from kaa.tasks.produce.shared.common import ProduceInterrupt
-
         act = d.action
-        ProduceInterrupt._check_pdrink_max_confirm(device.screenshot())
+        img = device.screenshot()  # 确认框标题连判两帧再点「確定」（同 KAA ProduceInterrupt._check_pdrink_max_confirm）
+        if tpl("InProduce.TextPDrinkMaxConfirmTitle").exists(img) and tpl("InProduce.TextPDrinkMaxConfirmTitle").exists(img := device.screenshot()):
+            tap("Common.ButtonConfirm", img, device.click)
         self._skip_incoming_drink = False
         result = self.s.verify(act, page_before="PDRINK_MAX_CONFIRM", taps=[])
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
@@ -1791,10 +1788,28 @@ class HifCore:
             ops.wait_stable(timeout=EXAM_END_SETTLE)  # 转场中间帧找不到「次へ」会提前退出循环，等画面停稳再判断
 
 
-class HiroHifStrategy(HifCore, HifGrindStrategy):
-    """KAA 主循环用的策略：KAA 的 _dispatch 调这些 on_* 钩子（钩子本身在 HifCore 里）。去 KAA 收尾时整个删掉。"""
+def _kaa_strategy():
+    """KAA 主循环用的策略：KAA 的 _dispatch 调这些 on_* 钩子（钩子本身在 HifCore 里）。去 KAA 收尾时整个删掉。
+    懒加载（PEP 562 模块 __getattr__）：只有用到 HiroHifStrategy 时才 import KAA，新主循环只用 HifCore，不碰 KAA。"""
+    from kaa.config.const import HifScenario
+    from kaa.kaa_context import produce_solution
+    from kaa.tasks.produce.new.strategies.hif_grind import HifGrindStrategy
 
-    def __init__(self, controller: "ProduceController") -> None:
-        HifGrindStrategy.__init__(self, controller)
-        solution = produce_solution().data
-        HifCore.__init__(self, scenario="qualify" if solution.mode == HifScenario.QUALIFY else "main", idol=solution.idol)
+    class HiroHifStrategy(HifCore, HifGrindStrategy):
+        def __init__(self, controller: "ProduceController") -> None:
+            HifGrindStrategy.__init__(self, controller)
+            solution = produce_solution().data
+            HifCore.__init__(self, scenario="qualify" if solution.mode == HifScenario.QUALIFY else "main", idol=solution.idol)
+
+    HiroHifStrategy.__module__, HiroHifStrategy.__qualname__ = __name__, "HiroHifStrategy"
+    return HiroHifStrategy
+
+
+def __getattr__(name: str):
+    if name in ("HiroHifStrategy", "HifGrindStrategy"):
+        if "HiroHifStrategy" not in globals():
+            cls = _kaa_strategy()
+            globals()["HiroHifStrategy"] = cls
+            globals()["HifGrindStrategy"] = cls.__mro__[2]
+        return globals()[name]
+    raise AttributeError(name)

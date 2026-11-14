@@ -91,18 +91,18 @@ def test_reward_skip_without_decision_cancels_then_stops(monkeypatch):
 
 def test_reward_skip_confirmed_after_own_full_skip(monkeypatch):
     """饮料满时我们勾了「受け取らない」（_skip_incoming_drink）→「報酬スキップ」确认放行（qualify6 00:08 实机：之前误停）。"""
-    import importlib
+    from types import SimpleNamespace as NS
 
     import hiro.produce.hif as hif
 
-    common = importlib.import_module("kaa.tasks.produce.shared.common")
     clicked = []
-    monkeypatch.setattr(common.ProduceInterrupt, "_check_pdrink_max_confirm", staticmethod(lambda img: clicked.append(1)))
-    monkeypatch.setattr(hif, "device", type("D", (), {"screenshot": staticmethod(lambda: None)}))
+    monkeypatch.setattr(hif, "tpl", lambda name: NS(exists=lambda img: True))  # 确认框标题两帧都在
+    monkeypatch.setattr(hif, "tap", lambda name, img, click: clicked.append(name) or True)
+    monkeypatch.setattr(hif, "device", type("D", (), {"screenshot": staticmethod(lambda: None), "click": staticmethod(lambda *a: None)}))
     st = _strategy()
     st._skip_incoming_drink = True
     st.on_pdrink_max_confirm(object())
-    assert clicked == [1] and st._skip_incoming_drink is False
+    assert clicked == ["Common.ButtonConfirm"] and st._skip_incoming_drink is False
 
 
 def test_practice_page_stops():
