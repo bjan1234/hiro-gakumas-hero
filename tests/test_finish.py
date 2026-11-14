@@ -36,6 +36,28 @@ def test_finish_stops_at_start_confirm_and_never_presses_start(monkeypatch):
     assert rt.raw_device.taps == [(85, 1185)]  # go_home：点左下首页图标，不点「本戦へ」
 
 
+def test_finish_go_home_from_menu_page_uses_toolbar_home(monkeypatch):
+    """メモリー編成 等菜单页：左下工具栏 ⌂（Common.ButtonToolbarHome）回首页，不再一直点 (12,12) 到 180 秒超时（Mac 账号 2，11-14）。"""
+    menu = frame({"Common.ButtonToolbarHome": (85, 1211)}, [T("メモリー編成1", 360, 125), T("サポート編成", 130, 1092)])
+    rt, _ = rig(monkeypatch, [menu], on_tap=lambda taps: [frame(HOME)])
+    assert finish.finish_produce_end(rt, go_home=True) is True and rt.raw_device.taps == [(85, 1211)]
+
+
+def test_toolbar_home_template_on_real_menu_page():
+    import os
+    from pathlib import Path
+
+    import cv2
+
+    from hiro.vision.ui_templates import tpl
+
+    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "menu-memory-formation-acct2.png"
+    if not path.exists():
+        pytest.skip("需要实机截图 pages/menu-memory-formation-acct2.png")
+    m = tpl("Common.ButtonToolbarHome").find(cv2.imread(str(path)))
+    assert m is not None and abs(m.rect.center.x - 85) < 15 and abs(m.rect.center.y - 1211) < 15
+
+
 def test_finish_clicks_through_result_screens(monkeypatch):
     pages = [frame({}, [T("プロデュース完了", 360, 300), T("次へ", 360, 1160)]),
              frame({"InProduce.End.ButtonGenerate": (360, 1100)}),
