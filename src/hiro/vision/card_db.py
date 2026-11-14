@@ -1,8 +1,10 @@
 """卡面图库（选卡弹窗、相談货架、牌组卡格认卡）：和 KAA image_db 的 skill_cards_dialog 同一套做法，不依赖 KAA。
 
 图：AssetSource.game_data("skill_cards")（KAA 公开数据 skill_cards/，按 IMREAD_COLOR 读，同 KAA）。描述子：OpenCV SIFT，nfeatures=500，
-其余参数缺省（同 KAA SiftDescriptor(nfeatures=500)）。检索：所有卡的描述子放进 faiss 精确 L2 索引；KAA 用 IVFFlat、
-nprobe = nlist = 100，等于全量搜索，所以结果相同。查询：截图每个描述子找 1 个最近邻，距离（L2 平方）≤ GOOD_MATCH_MAX_DIST
+其余参数缺省（同 KAA SiftDescriptor(nfeatures=500)）。检索：所有卡的描述子（约 47 万个）放进 faiss IVFFlat，
+nlist = 1024、nprobe = 16。KAA 用 IVFFlat、nprobe = nlist = 100，等于全量搜索，每张卡要 1.4 秒（换卡弹窗一屏 12 张 20 多秒）；
+这里只搜最近的 16 个簇，每张约 40 ms，fixtures 上 60 张卡和全量搜索结果全一致（.temp/goal-progress/card_db/ivf_probe.py）。
+描述子少于 IVF_MIN 个（测试用的小图库）时用精确索引。查询：截图每个描述子找 1 个最近邻，距离（L2 平方）≤ GOOD_MATCH_MAX_DIST
 的给那张图投一票；按「票数多、其次最小距离小」排序（同 KAA ImageDatabase.query）。match：同一张卡的角色专属图（-hmsz 等后缀）
 合并计票，最高 < MIN_VOTES 票不认（同 KAA match_card_region）。
 
@@ -25,6 +27,8 @@ logger = logging.getLogger(__name__)
 NFEATURES = 500
 GOOD_MATCH_MAX_DIST = 20000.0
 MIN_VOTES = 3
+NLIST, NPROBE = 1024, 16
+IVF_MIN = NLIST * 39  # faiss 训练每个簇至少要 39 个点
 CACHE = Path(__file__).resolve().parents[3] / "cache" / "card_sift.npz"
 
 
@@ -89,13 +93,35 @@ def _db() -> tuple[tuple[str, ...], np.ndarray, object]:
         np.savez(CACHE, sig=sig, keys=np.array(keys), owner=owner, vecs=vecs)
     if not keys:
         return (), np.zeros(0, np.int32), None
-    index = faiss.IndexFlatL2(128)
-    index.add(np.ascontiguousarray(vecs, dtype=np.float32))
+    vecs = np.ascontiguousarray(vecs, dtype=np.float32)
+    if len(vecs) < IVF_MIN:
+        index = faiss.IndexFlatL2(128)
+    else:
+        index = faiss.IndexIVFFlat(faiss.IndexFlatL2(128), 128, NLIST)
+        sample = vecs[np.random.default_rng(0).choice(len(vecs), min(len(vecs), NLIST * 100), replace=False)]
+        index.train(sample)  # 固定抽样，每次建出来的簇一样（约 6 秒，进程内只建一次）
+        index.nprobe = NPROBE
+    index.add(vecs)
     return keys, owner, index
+
+
+_MEMO: dict[bytes, list[Hit]] = {}
+MEMO_SIZE = 512  # 轮询时同一屏反复读：同样的卡区像素直接用上次的结果
 
 
 def query(img: np.ndarray) -> list[Hit]:
     """全部有票的图，按票数降序、最小距离升序（同 KAA ImageDatabase.query 的局部描述子分支）。"""
+    key = hashlib.blake2b(np.ascontiguousarray(img).tobytes() + repr(img.shape).encode(), digest_size=16).digest()
+    if (hit := _MEMO.get(key)) is not None:
+        return list(hit)
+    hits = _query(img)
+    if len(_MEMO) >= MEMO_SIZE:
+        _MEMO.pop(next(iter(_MEMO)))
+    _MEMO[key] = hits
+    return list(hits)
+
+
+def _query(img: np.ndarray) -> list[Hit]:
     keys, owner, index = _db()
     q = descriptors(img)
     if index is None or not len(q):

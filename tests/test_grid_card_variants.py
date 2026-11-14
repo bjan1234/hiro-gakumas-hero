@@ -31,3 +31,20 @@ def test_card_db_merges_character_variants(monkeypatch):
     assert card_db.match(None) == "img_general_skillcard_men-3_041"  # 2 + 2 票 > 3 票
     monkeypatch.setattr(card_db, "query", lambda img: [card_db.Hit("img_general_skillcard_men-3_041-hmsz", 2, 800.0)])
     assert card_db.match(None) is None  # 不到 3 票不认
+
+
+def test_card_db_ivf_finds_library_card():
+    """整库（约 47 万个描述子）走 IVF（nprobe 16）：图库里的卡图拿去查，第一名是它自己。以前全量搜索每张 1.4 秒，换卡弹窗翻屏要几分钟。"""
+    import cv2
+    import pytest
+
+    from hiro.vision import card_db
+
+    keys, _, index = card_db._db()
+    if not keys:
+        pytest.skip("没有卡图（KAA 公开数据 skill_cards/，HIRO_KAA_GAME_DATA）")
+    if index.ntotal >= card_db.IVF_MIN:
+        assert index.nprobe == card_db.NPROBE
+    key = keys[len(keys) // 2]
+    img = cv2.imread(str(card_db._card_dir() / f"{key}.png"), cv2.IMREAD_COLOR)
+    assert card_db.query(img)[0].key == key
