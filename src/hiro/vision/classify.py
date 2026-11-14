@@ -218,6 +218,10 @@ def classify_scene(img) -> PageHit:
         return PageHit("LIVE", "landscape")  # 横屏（LIVE 演出，或游戏被杀后的安卓桌面）：竖屏判据都不适用
     if is_hif_exam(img):
         return PageHit("HIF_EXAM", "exam_ocr")
+    from hiro.vision.tower import is_tower_exam
+
+    if is_tower_exam(img):
+        return PageHit("TOWER_EXAM", "tower_ocr")  # 偶像之路考试页：先于 KAA 的 EXAM 模板（否则会当成 H.I.F 考试进 run_exam 的 H.I.F 流程）
     if is_hif_result(img):
         return PageHit("HIF_EXAM_RESULT", "exam_ocr")
     if is_select_pitem(img):

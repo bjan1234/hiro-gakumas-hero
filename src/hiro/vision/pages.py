@@ -192,11 +192,17 @@ def page_fields(page: str, img: MatLike) -> dict:
 
 
 def _classify_page(img: MatLike) -> tuple[str, dict] | None:
+    from hiro.vision.tower import tower_dialog, tower_page
+
     dialog = read_dialog(img)
     if dialog is not None:
+        if (t := tower_dialog(dialog, _texts(img))) is not None:
+            return t  # 偶像之路：层详情「条件」/ 再挑戦确认（和 H.I.F 的再挑戦確認同标题，按正文分开）
         return "DIALOG", dialog
     boxes = _texts(img)
     texts = [t for t, _ in boxes]
+    if (t := tower_page(img, boxes)) is not None:
+        return t
 
     # 获得演出：名称栏居中、精确命中卡 / 饮料 / P 道具表（hiro.vision.deck.read_acquire_popup 同一规则）
     from hiro.vision.deck import ACQUIRE_BAR, read_acquire_popup
