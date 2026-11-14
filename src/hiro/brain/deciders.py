@@ -905,7 +905,8 @@ class ProduceDeciders:
 
         page_fields：tower_id、layer、idol_card_id?、mechanics?（画面上可选的考试机制，没读到时按已知的层绑定）、
           sub_slots（副回忆几格，缺省 1）、candidates：[{index, memory_id, params: [Vo, Da, Vi], max_stamina, deck: [「卡ID+强化/定制*次数」],
-          items, drinks, rank?}]（这条路偶像的全部回忆）。
+          items, drinks, rank?, current?}]（这条路偶像的全部回忆；回忆选择页没接上之前只给当前编成一组、current=True）、
+          shown_bonus? / shown_stamina?（编成页画面读到的三属性倍率 / 体力：只有当前编成一组时以它为准）。
         算法：每种考试 × 每份主回忆（副回忆按倍率公式贪心 + 两两交换）→ bench 引擎 + UINet 同种子逐轮淘汰（tower.ROUNDS：4 局留 8 →
         累计 16 局留 3 → 累计 48 局），按「三星概率 → 拿第 1 的概率 → 平均分」排；第一名明显更好 → sim，接近 / 模拟不了 → LLM
         （tower_formation）→ 兜底（按倍率和）。结果按（塔, 层, 回忆库存签名）缓存，回忆有增减 / 强化变了就失效。
@@ -939,6 +940,15 @@ class ProduceDeciders:
                 for main in cands:
                     subs = tf.choose_subs(lex, main, cands, k)
                     lo = tf.loadout(lex, main, subs, pf.get("idol_card_id"))
+                    if main.get("current") and len(cands) == 1:
+                        # 当前编成（只有这一组时）：倍率 / 体力以编成页画面读到的为准，公式算的只作对照
+                        shown, hp = pf.get("shown_bonus"), pf.get("shown_stamina")
+                        if shown and len(shown) == 3:
+                            if lo["score_bonus_permils"] and list(lo["score_bonus_permils"]) != list(shown):
+                                notes.append(f"倍率按画面 {list(shown)}（公式算的 {lo['score_bonus_permils']}）")
+                            lo["score_bonus_permils"] = [int(x) for x in shown]
+                        if hp:
+                            lo["max_stamina"] = lo["starting_stamina"] = int(hp)
                     combos.append({"lex": lex, "main": main, "subs": subs, "loadout": lo, "why_not": tf.evaluable(lo), "rows": []})
             if not combos:
                 return stop("偶像之路编成：这一层没有一种考试查得到设置（" + "；".join(notes) + "）")
