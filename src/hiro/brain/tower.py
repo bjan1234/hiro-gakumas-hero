@@ -102,6 +102,42 @@ def loadout(lex: dict, main: dict, subs: list[dict], idol_card_id: str | None = 
     return out
 
 
+def lost_ssr_count(deck: list) -> int | None:
+    """牌组里「SSR、打出后进除外区」的张数（主数据 rarity = Ssr、playMovePositionType = Lost）。27 层 ★3 要「クリア時に除外にある
+    スキルカード(SSR)が5枚以下」：这类卡多了，条件和拿第 1 兼顾不了（8a3a1e7 11-14 筛选）。读不到主数据时 None。"""
+    try:
+        from hiro.state.context import catalog
+    except Exception:  # noqa: BLE001
+        return None
+    n = 0
+    for s in deck or []:
+        head = str(s).split("/", 1)[0]
+        cid, _, u = head.partition("+")
+        try:
+            row = catalog().card(cid, int(u or 0))
+        except Exception:  # noqa: BLE001
+            continue
+        if row and row.get("rarity") == "ProduceCardRarity_Ssr" and row.get("playMovePositionType") == "ProduceCardMovePositionType_Lost":
+            n += 1
+    return n
+
+
+LOST_SSR_SLACK = 1  # 硬筛选留的余地：牌组里的卡不一定都打出（27 层 AS-EGTW6Z2W 牌组 6 张、实际打完除外 5–6 张，拿过三星）
+
+
+def static_check(lo: dict, conds: list | None) -> dict:
+    """编成本身能不能留出条件余量（不模拟）：{ok, margin}。现在只认「除外 SSR ≤ N」：牌组里打出即除外的 SSR 不超过
+    N + LOST_SSR_SLACK 才算可行（27 层 8 张的两题拿得到第 1 但条件满足不了，6 张的那题拿过三星）；margin = N − 张数（排序用）。
+    没有这类条件时 {ok: None, margin: None}。"""
+    for c in conds or []:
+        if c.get("field") == "lost_ssr" and c.get("op") == "<=" and c.get("value") is not None:
+            n = lost_ssr_count(lo.get("produce_cards") or [])
+            if n is None:
+                return {"ok": None, "margin": None, "lost_ssr": None}
+            return {"ok": n <= c["value"] + LOST_SSR_SLACK, "margin": c["value"] - n, "lost_ssr": n}
+    return {"ok": None, "margin": None, "lost_ssr": None}
+
+
 def evaluable(lo: dict) -> str | None:
     """编成能不能拿去模拟：不能返回原因。"""
     ex = lo.get("exam") or {}
@@ -170,7 +206,7 @@ def summarize(rows: list, border: int | None, conds: list | None = None) -> dict
     return out
 
 
-RANK = ("p3", "est3", "first", "margin", "mean")
+RANK = ("p3", "est3", "first", "margin", "static_margin", "mean")
 
 
 def rank_key(s: dict) -> tuple:
