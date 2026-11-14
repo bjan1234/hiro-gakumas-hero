@@ -160,10 +160,30 @@ DECK_DIM_V = 160  # 卡面平均亮度低于这个算灰掉（重複 / 制限）
 DECK_PLUS_MIN = 15  # 右上角红色像素：强化 20–60，没强化 ≤ 8
 
 
+DECK_MIN_VOTES = 2  # 编成页的卡图只有 84 像素，特征点少：卡格认卡没把握时，最高票 ≥ 2 且严格多于第二名也算
+
+
+def _deck_card(crop: np.ndarray):
+    """编成页小卡图认卡：先用卡格缩略图的规则（deck.match_grid_card）；没把握时，最高票 ≥ DECK_MIN_VOTES 且严格多于第二名就认
+    （38 号帧带「12」等级和「7」角标的 スタンドプレー+：act-2_032 两票、其余一票，8a3a1e7 对过考试帧）。"""
+    from hiro import master
+    from hiro.vision import card_db
+    from hiro.vision.deck import base_asset, match_grid_card
+
+    if (card := match_grid_card(crop)) is not None:
+        return card
+    votes: dict[str, int] = {}
+    for h in card_db.query(crop):
+        a = base_asset(h.key)
+        votes[a] = votes.get(a, 0) + h.votes
+    ranked = sorted(votes.values(), reverse=True)
+    if not ranked or ranked[0] < DECK_MIN_VOTES or (len(ranked) > 1 and ranked[0] == ranked[1]):
+        return None
+    return master.card_by_asset(max(votes, key=votes.get))
+
+
 def read_formation_deck(img: np.ndarray) -> dict:
     """编成页第 2/2 页 → {"cards": [「卡ID」或「卡ID+1」…]（亮着的、认得出的）, "rows": [[{name, card_id, upgrade, dim}…]×3], "unread": 亮着但认不出的张数}。"""
-    from hiro.vision.deck import match_grid_card
-
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     rows, cards, unread = [], [], 0
     for y, xs in DECK_ROWS:
@@ -173,7 +193,7 @@ def read_formation_deck(img: np.ndarray) -> dict:
             dim = float(cell[..., 2].mean()) < DECK_DIM_V
             corner = hsv[y - 22 : y + 2, x + 15 : x + 45]
             upgrade = int(int((((corner[..., 0] <= 8) | (corner[..., 0] >= 172)) & (corner[..., 1] >= 150) & (corner[..., 2] >= 170)).sum()) >= DECK_PLUS_MIN)
-            card = None if dim else match_grid_card(img[y - DECK_HALF : y + DECK_HALF, x - DECK_HALF : x + DECK_HALF])
+            card = None if dim else _deck_card(img[y - DECK_HALF : y + DECK_HALF, x - DECK_HALF : x + DECK_HALF])
             row.append({"name": card.name if card else None, "card_id": card._id if card else None, "upgrade": upgrade, "dim": dim})
             if not dim:
                 if card is None:

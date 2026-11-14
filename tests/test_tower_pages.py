@@ -59,3 +59,4 @@ def test_formation_page2_reads_deck():
     d = f["deck"]
     assert [sum(c["dim"] for c in r) for r in d["rows"]] == [1, 3, 4]
     assert "p_card-01-ido-2_017+1" in d["cards"] and "p_card-00-sup-3_027" in d["cards"] and len(d["cards"]) + d["unread"] == 10
+    assert "p_card-01-act-2_032+1" in d["cards"] and d["unread"] == 0  # スタンドプレー+：带等级 / 角标，卡格规则没把握，两票对一票认出
