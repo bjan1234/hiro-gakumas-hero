@@ -21,7 +21,7 @@ RECOVER_KINDS = ("page_misjudged", "missing_fields", "llm_invalid", "tap_no_effe
 
 
 def _default_shoot():
-    from kotonebot.backend.context import device
+    from hiro.devices.active import device
 
     return device.screenshot()
 

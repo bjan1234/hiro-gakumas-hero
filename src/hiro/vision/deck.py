@@ -820,9 +820,11 @@ def base_asset(asset_id: str) -> str:
 @cache
 def _grid_art_index() -> tuple[list[str], np.ndarray]:
     """KAA 卡格缩略图库（游戏数据 skill_cards/*.png，正方形图标）→ (base asset_id 列表, 归一化矩阵)。角色专属变体各占一行、同一个 base。"""
-    from kaa.game_data.paths import sprites_path
+    from hiro import plugins
 
-    folder = str(sprites_path("skill_cards"))
+    src = plugins.get("asset_source")
+    d = src.game_data("skill_cards") if src is not None and hasattr(src, "game_data") else None
+    folder = str(d) if d is not None else ""
     if not os.path.isdir(folder):
         return [], np.zeros((0, GRID_ART_SIZE * GRID_ART_SIZE), np.float32)
     names = sorted(n for n in os.listdir(folder) if n.endswith(".png"))

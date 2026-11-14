@@ -1,6 +1,6 @@
 """卡面图库（选卡弹窗、相談货架、牌组卡格认卡）：和 KAA image_db 的 skill_cards_dialog 同一套做法，不依赖 KAA。
 
-图：AssetSource.skill_card_dir()（KAA 公开数据 skill_cards/，按 IMREAD_COLOR 读，同 KAA）。描述子：OpenCV SIFT，nfeatures=500，
+图：AssetSource.game_data("skill_cards")（KAA 公开数据 skill_cards/，按 IMREAD_COLOR 读，同 KAA）。描述子：OpenCV SIFT，nfeatures=500，
 其余参数缺省（同 KAA SiftDescriptor(nfeatures=500)）。检索：所有卡的描述子放进 faiss 精确 L2 索引；KAA 用 IVFFlat、
 nprobe = nlist = 100，等于全量搜索，所以结果相同。查询：截图每个描述子找 1 个最近邻，距离（L2 平方）≤ GOOD_MATCH_MAX_DIST
 的给那张图投一票；按「票数多、其次最小距离小」排序（同 KAA ImageDatabase.query）。match：同一张卡的角色专属图（-hmsz 等后缀）
@@ -39,7 +39,7 @@ def _card_dir() -> Path | None:
     from hiro import plugins
 
     src = plugins.get("asset_source")
-    return src.skill_card_dir() if src is not None and hasattr(src, "skill_card_dir") else None
+    return src.game_data("skill_cards") if src is not None and hasattr(src, "game_data") else None
 
 
 def _sift():

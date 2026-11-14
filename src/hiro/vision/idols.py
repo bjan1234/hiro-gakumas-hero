@@ -1,6 +1,6 @@
 """偶像卡图库（编成第 1 步选偶像）：和 KAA image_db 的 idols 库同一套做法，不依赖 KAA。
 
-图：AssetSource.idol_dir()（KAA 公开数据的 idol_cards/，<skin id>_<n>.png）。描述子：HSV 三通道各 8 档的直方图，
+图：AssetSource.game_data("idol_cards")（KAA 公开数据的 idol_cards/，<skin id>_<n>.png）。描述子：HSV 三通道各 8 档的直方图，
 画面均分 3×3 共 9 块分别算、各自 cv2.normalize 后拼接（同 KAA HistDescriptor(8)）；距离：卡方 0.5·Σ(a−b)²/(a+b)
 （同 KAA 的 FlatIndex CHI2）。整库第一次用时现算（几百张，约 1 秒），之后缓存。
 """
@@ -33,7 +33,7 @@ def _idol_dir() -> Path | None:
     from hiro import plugins
 
     src = plugins.get("asset_source")
-    return src.idol_dir() if src is not None and hasattr(src, "idol_dir") else None
+    return src.game_data("idol_cards") if src is not None and hasattr(src, "game_data") else None
 
 
 @cache
