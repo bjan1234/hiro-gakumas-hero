@@ -70,3 +70,23 @@ def test_ranking_page_after_exam():
     assert [(r["rank"], r["name"]) for r in f["rows"][:3]] == [(1, "白草四音"), (2, "暁美みずき"), (3, "月村手毬")] and f["rows"][2]["score"] == 54009
     name, f = _hit("06_challenge.png")
     assert (f["idol_name"], f["idol_card_title"]) == ("月村手毬", "一匹狼")
+
+
+def test_failed_ranking_page():
+    """没过关的名次页（左上「不合格」）：没有「次へ」，再挑戦 / 一覧に戻る 在这一页；自己那行的 Pt 读成「P1」也要收。"""
+    name, f = _hit("60_failed_ranking.png")
+    assert name == "TOWER_RANKING" and f["failed"] and f["retry"] and f["back"] and f["next"] is None
+    assert [(r["rank"], r["name"], r["score"]) for r in f["rows"][:5]] == [
+        (1, "白草四音", 105438), (2, "暁美みずき", 76661), (3, "鳴海ひかり", 48593), (4, "月村手毬", 45231), (5, "高円寺レイ", 24508)]  # fmt: skip
+
+
+def test_exam_over_on_ranking_not_in_exam():
+    import cv2
+
+    from hiro.runtime.tower_play import exam_over
+
+    for name in ("60_failed_ranking.png", "40_after_r1_stop.png", "09_result.png"):
+        if not (FIX / name).exists():
+            pytest.skip("需要实机截图")
+        assert exam_over(cv2.imread(str(FIX / name))), name
+    assert not exam_over(cv2.imread(str(FIX / "11_retry_started.png")))  # 考试中

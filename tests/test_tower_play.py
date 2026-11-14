@@ -149,3 +149,18 @@ def test_ranking_records_and_taps_next(tmp_path):
 
 def test_idol_card_id_from_master():
     assert tp.idol_card_id("一匹狼", "ttmr") == "i_card-ttmr-2-000" and tp.idol_card_id("一匹狼", "hski") is None
+
+
+def test_failed_ranking_retries_on_the_same_page(tmp_path):
+    """不合格名次页：没有 CLEAR 结果页，在这一页按重试规则点再挑戦；确认框出来前同一页再被认出不重复算。"""
+    p = _play(tmp_path)
+    p.layer = 15
+    h = p.handlers()
+    rt, taps = _rt()
+    rows = [{"rank": 1, "name": "白草四音", "score": 105438}, {"rank": 4, "name": "月村手毬", "score": 45231}]
+    page = NS(fields={"my_rank": None, "rows": rows, "next": None, "failed": True, "retry": [127, 1160], "back": [351, 1160]})
+    assert h["TOWER_RANKING"](rt, None, page) is DONE and taps == [(127, 1160)]
+    assert h["TOWER_RANKING"](rt, None, page) is tp.STAY and taps == [(127, 1160)] and p.run.tries[15] == 1
+    assert p.run.rankings[15] == [{"my_rank": 4, "rows": rows, "failed": True}] and 15 not in p.run.cleared
+    h["TOWER_RETRY_CONFIRM"](rt, None, NS(fields={"cost": None, "same": [492, 1037], "ok": [509, 1160]}))
+    assert h["TOWER_RANKING"](rt, None, page) is DONE and p.run.tries[15] == 2  # 第二次不合格：照样再挑戦
