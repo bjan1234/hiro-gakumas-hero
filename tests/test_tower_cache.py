@@ -39,31 +39,63 @@ def test_loadout_save_load(tmp_path):
     assert tc.save_loadout({"tower_id": "t", "layer": None}) is None
 
 
+DECK = {"p_card-a": {0, 1}, "p_card-b": {0}, "p_card-c": {0}, "p_card-d": {0}, "p_card-e": {0}}
+
+
 def test_infer_draws_turns_and_mid_turn_draw():
     a, b, c, d, e = "p_card-a", "p_card-b", "p_card-c", "p_card-d", "p_card-e"
     steps = [_st(15, _h(a + "+", b, c), played=2),  # 开局 3 张；打出 c，抽到 d（同一回合）
              _st(15, _h(d, a + "+", b), played=0),
              _st(14, _h(e, b, a + "+"))]  # 新回合：整手算抽到（同名的 b、a+ 也是新抽的）
-    draws, why = tc.infer_draws(steps)
-    assert why is None
+    draws, skipped, why = tc.infer_draws(steps, DECK)
+    assert why is None and skipped == 0
     assert draws == [{"id": a, "u": 1}, {"id": b, "u": 0}, {"id": c, "u": 0}, {"id": d, "u": 0},
                      {"id": e, "u": 0}, {"id": b, "u": 0}, {"id": a, "u": 1}]  # fmt: skip
+
+
+def test_infer_draws_skips_generated_and_in_place_upgrade():
+    a, b, c, d = "p_card-a", "p_card-b", "p_card-c", "p_card-d"
+    sleepy = "p_card-00-acc-0_002"  # 眠気：生成效果只往山札 / 弃牌堆塞，抽到时跳过、计数，继续推（8a3a1e7 11-14）
+    steps = [_st(15, _h(a, sleepy, b)),
+             _st(14, _h(c, b, sleepy, d), played=0),  # 打出 c；b 原地强化成 b+（位置没变）：同一张
+             _st(14, _h("p_card-b+", sleepy, d)),
+             _st(13, _h(a, sleepy))]  # fmt: skip
+    draws, skipped, why = tc.infer_draws(steps, DECK)
+    assert why is None and skipped == 3
+    assert [(x["id"], x["u"]) for x in draws] == [(a, 0), (b, 0), (c, 0), (b, 0), (d, 0), (a, 0)]
+
+
+def test_infer_draws_fixes_first_frame_misread():
+    """r1 T1：トークタイム+ 刚抽到那帧读成準備運動+（不在牌组里，先当生成卡跳过），同一回合下一步同一位置读对了：补回原位。"""
+    a, b, c, d = "p_card-a", "p_card-b", "p_card-c", "p_card-d"
+    ghost = "p_card-01-act-1_022"
+    steps = [_st(15, _h(ghost, b, c), played=2),  # 打出 c
+             _st(15, _h(a, b)),  # 位置 0 读对了：是 a
+             _st(14, _h(d, "p_card-00-acc-0_002", b), played=0),
+             _st(14, _h("p_card-00-acc-0_002", b))]  # 眠気一直是眠気：照样跳过
+    draws, skipped, why = tc.infer_draws(steps, DECK)
+    assert why is None and skipped == 1
+    assert [x["id"] for x in draws] == [a, b, c, d, b]
 
 
 def test_infer_draws_stops_on_doubt():
     a, b, c = "p_card-a", "p_card-b", "p_card-c"
     # 认不出的卡：停在那之前
-    draws, why = tc.infer_draws([_st(15, _h(a, b)), _st(14, _h(c), unrecognized=1)])
+    draws, _, why = tc.infer_draws([_st(15, _h(a, b)), _st(14, _h(c), unrecognized=1)], DECK)
     assert [x["id"] for x in draws] == [a, b] and "认不出" in why
-    # 同一步 a 消失、a+ 出现：强化还是换牌分不清
-    draws, why = tc.infer_draws([_st(15, _h(a, b), played=1), _st(15, _h(a + "+"))])
-    assert len(draws) == 2 and "分不清" in why
-    # 多出来的卡不在牌组里（生成卡 / 麻烦卡）
-    draws, why = tc.infer_draws([_st(15, _h(a, b), played=0), _st(15, _h(b, "p_card-00-acc-0_002"))], deck_ids={a, b, c})
-    assert len(draws) == 2 and "不在牌组" in why
+    # 同一步 a 消失、a+ 出现在别的位置：分不清
+    draws, _, why = tc.infer_draws([_st(15, _h(a, b, c), played=2), _st(15, _h(b, "p_card-a+"))], DECK)
+    assert len(draws) == 3 and "分不清" in why
     # 被效果消耗掉的卡（少了）不影响
-    draws, why = tc.infer_draws([_st(15, _h(a, b, c), played=0), _st(15, _h(c))])
+    draws, _, why = tc.infer_draws([_st(15, _h(a, b, c), played=0), _st(15, _h(c))], DECK)
     assert why is None and len(draws) == 3
+    # 强化没读到：牌组里只有一种就补，不止一种就停
+    unk = [{"slot": 0, "card_id": b, "upgrade": None}]
+    assert tc.infer_draws([_st(15, unk)], DECK) == ([{"id": b, "u": 0}], 0, None)
+    draws, _, why = tc.infer_draws([_st(15, _h(b)), _st(14, [{"slot": 0, "card_id": a, "upgrade": None}])], DECK)
+    assert len(draws) == 1 and "强化读不出" in why
+    # 牌组不知道：分不出生成卡，不记
+    assert tc.infer_draws([_st(15, _h(a))], None) == ([], 0, "编成牌组没读到，分不出生成卡")
 
 
 def test_exam_steps_from_trace(tmp_path):
@@ -105,7 +137,8 @@ def test_exam_start_without_layer_takes_latest(tmp_path):
 
 def test_draws_saved_with_rivals(tmp_path):
     p = _play(tmp_path)
-    p.loadout = {"tower_id": "tower_001-ttmr", "layer": 15, "formation_signature": "sig"}
+    p.loadout = {"tower_id": "tower_001-ttmr", "layer": 15, "formation_signature": "sig", "idol_card_id": "i_card-ttmr-2-000",
+                 "produce_cards": ["p_card-a+1", "p_card-b"]}  # fmt: skip
     steps = tmp_path / "steps.jsonl"
     steps.write_text(json.dumps({"seq": 8, "observation": {"fields": {"hand": _h("p_card-a+", "p_card-b"), "remaining_turns": 15}}}), encoding="utf-8")
     p.record_draws(steps, "tower-15", 0)
@@ -116,7 +149,7 @@ def test_draws_saved_with_rivals(tmp_path):
     p.on_ranking(NS(device=NS(tap=lambda x, y: None)), None, NS(fields={"my_rank": 3, "rows": rows, "next": [361, 1160]}))
     assert json.loads(out.read_text(encoding="utf-8")) == {
         "tower_id": "tower_001-ttmr", "layer": 15, "formation_signature": "sig",
-        "draws": [{"id": "p_card-a", "u": 1}, {"id": "p_card-b", "u": 0}], "rivals": [105438, 76661]}  # fmt: skip
+        "draws": [{"id": "p_card-a", "u": 1}, {"id": "p_card-b", "u": 0}], "rivals": [105438, 76661], "skipped_generated": 0}  # fmt: skip
 
 
 def test_rivals_unread_score_gives_empty():

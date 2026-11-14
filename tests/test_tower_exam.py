@@ -49,3 +49,11 @@ def test_status_turn_count_not_misread():
 
     st = {e["key"]: e["value"] for e in read_status_column(_img("exam-status-12turn-mac15.jpg"), cache=None) if e.get("key")}
     assert st["examparameterbuff"] == 12 and st["examlessonbuff"] == 15
+
+
+def test_hand_close_art_scores_checked_by_name():
+    """灰着的トークタイム+ 卡面和準備運動 只差 0.005（0.710 对 0.705）：差不到 ART_MARGIN 就读卡名核对，不再认成準備運動（8a3a1e7 11-14）。"""
+    from hiro.vision.hif import read_hand
+
+    hand, _ = read_hand(_img("exam-status-12turn-mac15.jpg"))
+    assert hand[2]["name"] == "トークタイム+" and hand[2]["source"] == "name" and hand[2]["art_name"] == "準備運動"

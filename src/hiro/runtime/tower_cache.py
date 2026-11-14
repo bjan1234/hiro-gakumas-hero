@@ -6,7 +6,8 @@
   同一进程重试、或从结果页 / 名次页 / 再挑戦确认页 / 考试中起跑时读这一份设 HIRO_TOWER_LOADOUT；经过编成页就覆盖（协调 11-14）。
 - `<tower_id>-<layer>-<签名>.json`：这一场实际抽到的牌（按抽到的顺序，含开局手牌）和对手分数（8a3a1e7 11-14 定的格式）：
   `{"tower_id", "layer", "formation_signature", "draws": [{"id": "p_card-…", "u": 1}, …], "rivals": [105438, …]}`。
-  抽牌从考试每一步的手牌变化推出来；有一步说不清（认不出的卡、生成卡、同一步一张消失一张同名出现）就只写到那之前，不猜。
+  抽牌从考试每一步的手牌变化推出来，只记编成牌组里的牌（生成卡跳过、计数 skipped_generated）；有一步说不清
+  （认不出的卡、同 id 消失又出现分不清是哪张）就只写到那之前，不猜。
 
 编成签名：主 / サブ1 / サブ2 回忆的 id 读不到，用偶像卡 id + 编成页三张回忆的评价值（「12075」「10773」「9978」，按主、サブ1、サブ2）；
 评价值读不全退回偶像卡 id + 三属性值。都读不到不写签名。
@@ -71,17 +72,19 @@ def draws_path(tower_id: str, layer: int, sig: str) -> Path:
     return cache_dir() / f"{tower_id}-{layer}-{sig}.json"
 
 
-def save_draws(tower_id: str, layer: int, sig: str, draws: list[dict], rivals: list[int]) -> Path:
+def save_draws(tower_id: str, layer: int, sig: str, draws: list[dict], rivals: list[int], skipped_generated: int = 0) -> Path:
     p = draws_path(tower_id, layer, sig)
     p.parent.mkdir(parents=True, exist_ok=True)
-    rec = {"tower_id": tower_id, "layer": layer, "formation_signature": sig, "draws": draws, "rivals": rivals}
+    rec = {"tower_id": tower_id, "layer": layer, "formation_signature": sig, "draws": draws, "rivals": rivals,
+           "skipped_generated": skipped_generated}  # fmt: skip
     p.write_text(json.dumps(rec, ensure_ascii=False), encoding="utf-8")
     return p
 
 
 # ---------------------------------------------------------------- 抽牌推断
-def _hand(fields: dict) -> list[tuple[str, int]] | None:
-    """一步的手牌 [(卡 id, 强化)]（按槽位从左到右）；有认不出的卡返回 None。"""
+def _hand(fields: dict, deck: dict[str, set[int]]) -> list[tuple[str, int]] | None:
+    """一步的手牌 [(卡 id, 强化)]（按槽位从左到右）。有认不出的卡返回 None；强化没读到（None）时按牌组补
+    （牌组里这张只有一种强化才补；生成卡当 0），补不了也返回 None。"""
     hand = fields.get("hand")
     if hand is None:
         return None
@@ -89,57 +92,97 @@ def _hand(fields: dict) -> list[tuple[str, int]] | None:
     for c in sorted(hand, key=lambda c: c.get("slot", 0)):
         if not c.get("card_id"):
             return None
-        out.append((c["card_id"], int(c.get("upgrade") or 0)))
+        u = c.get("upgrade")
+        if u is None:
+            us = deck.get(c["card_id"], {0})
+            if len(us) != 1:
+                return None
+            u = next(iter(us))
+        out.append((c["card_id"], int(u)))
     return out
 
 
-def infer_draws(steps: list[dict], deck_ids: set[str] | None = None) -> tuple[list[dict], str | None]:
+def infer_draws(steps: list[dict], deck_ids: dict[str, set[int]] | None) -> tuple[list[dict], int, str | None]:
     """考试各步（{"remaining_turns", "hand": [...], "played": 槽位或 None, "unrecognized": 认不出的卡数}，按时间顺序）→
-    (抽到的牌 [{"id", "u"}]，停在哪儿的原因；全程说得清时原因是 None)。
+    (抽到的编成牌组里的牌 [{"id", "u"}]，跳过的生成卡张数，停在哪儿的原因；全程说得清时原因是 None)。
 
-    规则（只写有把握的前缀）：
+    规则（8a3a1e7 11-14 定）：
+    - draws 只记编成牌组里的牌（deck_ids：卡 id → 牌组里的强化值，编成页读到的 + 2 张基本卡），按抽到的先后排。不在牌组里的（眠気等生成卡：主数据里
+      生成效果只往山札顶 / 随机位置 / 弃牌堆塞，不直接进手牌）跳过、计数，继续往下推——原有牌之间的先后不受影响。
     - 第一步的整手牌是开局手牌，全算抽到（槽位从左到右）。
     - 回合变了（残りターン 变小）：上回合剩下的手牌进弃牌堆，新手牌整手算抽到。
     - 同一回合内：上一步的手牌去掉打出的那张，多出来的算抽到（卡效果抽牌）；少了的（消耗 / 弃牌效果）不管。
-    - 说不清就停：认不出的卡、多出来的卡不在牌组里（生成卡 / 麻烦卡，deck_ids 给了才查）、
-      同一步一张消失又出现同 id 的卡（强化 / 换牌分不清）、残りターン 读不到。
+      同一张卡原地强化（同 id、u 变了、位置没变）当同一张，不算抽牌也不算消失。
+    - 认错的更正：刚抽到时读成不在牌组里的卡（当生成卡跳过了），同一回合后面同一位置读成牌组里的卡——是第一帧认错
+      （r1 T1：トークタイム+ 先读成準備運動+，8a3a1e7 11-14）。补回到当初跳过的位置，跳过数减一。
+    - 说不清就停，只留前面的：认不出的卡（或强化没读到、牌组里这张又不止一种强化）、残りターン 读不到 / 变大、同 id 消失又出现而分不清是哪张。
+    - 牌组不知道（编成页第 2 页没读到）时分不出生成卡：不记。
     """
+    if not deck_ids:
+        return [], 0, "编成牌组没读到，分不出生成卡"
     draws: list[dict] = []
+    skipped = 0
     prev: list[tuple[str, int]] | None = None
     prev_turn = None
+    ghosts: list[list] = []  # 这一回合跳过的、还在手里的非牌组卡：[手牌里的位置, 卡, 当初在 draws 里该在的下标]
     for i, st in enumerate(steps):
-        hand = None if st.get("unrecognized") else _hand(st)
+        hand = None if st.get("unrecognized") else _hand(st, deck_ids)
         if hand is None:
-            return draws, f"第 {i} 步手牌有认不出的卡"
+            return draws, skipped, f"第 {i} 步手牌有认不出的卡（或强化读不出）"
         turn = st.get("remaining_turns")
         if turn is None:
-            return draws, f"第 {i} 步残りターン读不到"
+            return draws, skipped, f"第 {i} 步残りターン读不到"
         if prev is None or turn < prev_turn:
-            added = hand
+            added, ghosts = list(enumerate(hand)), []
         elif turn > prev_turn:
-            return draws, f"第 {i} 步残りターン变大（{prev_turn} → {turn}）"
+            return draws, skipped, f"第 {i} 步残りターン变大（{prev_turn} → {turn}）"
         else:
-            expect = Counter(prev)
+            expect = list(prev)
             slot = steps[i - 1].get("played")
             if slot is not None:
                 if not 0 <= slot < len(prev):
-                    return draws, f"第 {i - 1} 步打出的槽位 {slot} 不在手牌里"
-                expect[prev[slot]] -= 1
-            extra = Counter(hand) - expect
-            gone = expect - Counter(hand)
-            if {cid for cid, _ in extra} & {cid for cid, _ in gone}:
-                return draws, f"第 {i} 步同一张卡消失又出现（强化 / 换牌分不清）"
-            left = Counter(extra)
+                    return draws, skipped, f"第 {i - 1} 步打出的槽位 {slot} 不在手牌里"
+                del expect[slot]
+                for g in ghosts:
+                    g[0] = -1 if g[0] == slot else g[0] - (g[0] > slot)  # 打出的是它就不在手里了；右边的左移一格
+            for g in [g for g in ghosts if 0 <= g[0] < min(len(expect), len(hand))]:
+                k = g[0]
+                if expect[k] == g[1] and hand[k] != g[1] and hand[k][0] in deck_ids:  # 同一位置换成了牌组里的卡：第一帧认错
+                    draws.insert(g[2], {"id": hand[k][0], "u": hand[k][1]})
+                    skipped -= 1
+                    for h in ghosts:
+                        h[2] += h is not g and h[2] >= g[2]
+                    expect[k] = hand[k]
+                    g[0] = -1
+            ghosts = [g for g in ghosts if g[0] >= 0]
+            extra = Counter(hand) - Counter(expect)
+            gone = Counter(expect) - Counter(hand)
+            for cid in {c for c, _ in extra} & {c for c, _ in gone}:
+                ge = [c for c in gone.elements() if c[0] == cid]
+                xe = [c for c in extra.elements() if c[0] == cid]
+                # 原地强化：这个 id 正好消失一张、出现一张，位置没变
+                pos_old = [k for k, c in enumerate(expect) if c == ge[0]] if len(ge) == 1 else []
+                pos_new = [k for k, c in enumerate(hand) if c == xe[0]] if len(xe) == 1 else []
+                if len(ge) == len(xe) == 1 and len(pos_old) == len(pos_new) == 1 and pos_old == pos_new:
+                    extra[xe[0]] -= 1
+                    gone[ge[0]] -= 1
+                    continue
+                return draws, skipped, f"第 {i} 步 {cid} 消失又出现，分不清是哪张"
+            left = Counter(+extra)
             added = []
-            for c in hand:  # 多出来的按槽位从左到右
-                if left[c] > 0:
-                    added.append(c)
-                    left[c] -= 1
-        if deck_ids and (odd := [cid for cid, _ in added if cid not in deck_ids]):
-            return draws, f"第 {i} 步多出来的卡不在牌组里（{odd}，生成卡 / 麻烦卡）"
-        draws.extend({"id": cid, "u": u} for cid, u in added)
+            for k in range(len(hand) - 1, -1, -1):  # 同样的卡有几张时，新抽的在右边
+                if left[hand[k]] > 0:
+                    added.append((k, hand[k]))
+                    left[hand[k]] -= 1
+            added.reverse()  # 多出来的按槽位从左到右
+        for pos, (cid, u) in added:
+            if cid in deck_ids:
+                draws.append({"id": cid, "u": u})
+            else:
+                skipped += 1  # 生成卡（眠気等）：不记，继续；同一回合后面同一位置读成牌组里的卡就补回来
+                ghosts.append([pos, (cid, u), len(draws)])
         prev, prev_turn = hand, turn
-    return draws, None
+    return draws, skipped, None
 
 
 def exam_steps(steps_jsonl: Path, label: str, after_seq: int = 0) -> list[dict]:

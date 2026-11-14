@@ -183,19 +183,29 @@ class TowerPlay:
         logger.info("偶像之路：用缓存的编成（第 %s 层，签名 %s）", lo.get("layer"), lo.get("formation_signature"))
         return lo
 
-    def _deck_ids(self) -> set[str] | None:
-        """这一场牌组里的卡 id（编成页读到的 + 偶像的 2 张基本卡）；牌组没读到返回 None（不查生成卡）。"""
+    def _deck_ids(self) -> dict[str, set[int]] | None:
+        """这一场牌组里的卡 id → 强化值（编成页读到的 + 偶像的 2 张基本卡）。牌组没读到、或基本卡查不到（会被当成生成卡跳过，
+        顺序就错了）返回 None：分不出生成卡，这场抽牌不记。"""
         cards = (self.loadout or {}).get("produce_cards")
         if not cards:
             return None
-        ids = {str(c).split("/", 1)[0].partition("+")[0] for c in cards}
+        deck: dict[str, set[int]] = {}
+        for c in cards:
+            cid, _, up = str(c).split("/", 1)[0].partition("+")
+            deck.setdefault(cid, set()).add(int(up or 0))
         try:
             from hiro.bench_bridge.tower import master
 
-            ids |= set(master().idol_initial_cards(self.loadout.get("idol_card_id") or ""))
-        except Exception as e:  # noqa: BLE001  没有主数据：基本卡补不上，抽到基本卡时会停在那之前
-            logger.warning("偶像之路：基本卡查不到（%s）", e)
-        return ids
+            basics = master().idol_initial_cards(self.loadout.get("idol_card_id") or "")
+        except Exception as e:  # noqa: BLE001  没有主数据
+            logger.warning("偶像之路：基本卡查不到（%s），这场抽牌不记", e)
+            return None
+        if not basics:
+            logger.warning("偶像之路：%s 的基本卡查不到，这场抽牌不记", self.loadout.get("idol_card_id"))
+            return None
+        for cid in basics:
+            deck.setdefault(cid, set()).add(0)
+        return deck
 
     def record_draws(self, steps_jsonl: Path, label: str, after_seq: int) -> None:
         """刚考完的那场：从 trace 的手牌变化推抽牌顺序（只留有把握的前缀），等名次页补对手分数再存。"""
@@ -205,16 +215,16 @@ class TowerPlay:
             logger.warning("偶像之路：编成签名 / 层号不全（%s / %s），这场的抽牌不记", sig, layer)
             self.exam_draws = None
             return
-        draws, why = tower_cache.infer_draws(tower_cache.exam_steps(steps_jsonl, label, after_seq), self._deck_ids())
-        logger.info("偶像之路第 %s 层抽牌：记下 %d 张%s", layer, len(draws), f"，停在：{why}" if why else "（全程）")
-        self.exam_draws = {"tower_id": self.run.tower_id, "layer": layer, "sig": sig, "draws": draws}
+        draws, skipped, why = tower_cache.infer_draws(tower_cache.exam_steps(steps_jsonl, label, after_seq), self._deck_ids())
+        logger.info("偶像之路第 %s 层抽牌：记下 %d 张、跳过生成卡 %d 张%s", layer, len(draws), skipped, f"，停在：{why}" if why else "（全程）")
+        self.exam_draws = {"tower_id": self.run.tower_id, "layer": layer, "sig": sig, "draws": draws, "skipped": skipped}
         self._save_draws([])  # 先存一份；名次页读到对手分数再覆盖
 
     def _save_draws(self, rivals: list[int]) -> None:
         d = self.exam_draws
         if not d:
             return
-        path = tower_cache.save_draws(d["tower_id"], d["layer"], d["sig"], d["draws"], rivals)
+        path = tower_cache.save_draws(d["tower_id"], d["layer"], d["sig"], d["draws"], rivals, d["skipped"])
         logger.info("偶像之路抽牌记录 → %s", path)
 
     def _tap(self, rt, pos):
