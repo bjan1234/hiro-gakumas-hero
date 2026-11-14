@@ -49,3 +49,18 @@ def test_all_unknown_waits():
     held = [{"index": 0, "drink_id": None}, {"index": 1, "drink_id": None, "partial": True, "candidates": [BOOST, WHEY]}]
     d = _decide(held, {"index": 0, "drink_id": TOKUSEI}, None)
     assert d.action.kind is ActionKind.WAIT
+
+
+def test_two_incoming_with_empty_slot_must_take_one():
+    """Mac 账号 2 11-14 #1800：Da SP 课结束随机送 2 瓶（スムージー、初星水），持有 2 瓶（ブレンド、ホエイ）+ 空 1 格。
+    页面「あと1個選択」：要留 3 瓶，「不收」不是可选项（「残す」灰着、没有「離れる」）。原来按满了算（容量 2）选了「不收」，3 次找不到「離れる」停机。"""
+    SMOOTHIE, WATER = "pdrink_00-2-001", "pdrink_00-1-001"
+    held = [{"index": 0, "drink_id": BLEND, "name": "厳選初星ブレンド"}, {"index": 1, "drink_id": WHEY, "name": "初星ホエイプロテイン"}]
+    incomings = [{"index": 0, "drink_id": SMOOTHIE, "name": "ミックススムージー"}, {"index": 1, "drink_id": WATER, "name": "初星水"}]
+    pf = {"held": held, "incoming": incomings[-1], "incomings": incomings, "select_left": 1, "complete": True}
+    st = GameState(page={"name": "PDRINK_MAX"}, page_fields=pf, produce={"mode": "produce-007", "drink_capacity": 3, "drinks": [BLEND, WHEY]})
+    d = ProduceDeciders(CAMPUS_HIRO, None).decide("PDRINK_MAX", st)
+    args = d.action.args
+    assert d.action.kind is ActionKind.DISCARD_DRINK and args["receive"] is True, d.reason
+    kept = 2 - len(args["discard"]) + len(args["receive_indexes"])
+    assert kept == 3, (args, d.reason)  # 留满 3 瓶
