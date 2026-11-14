@@ -127,6 +127,11 @@ def _formation_fields(boxes) -> dict:
     pcts = sorted(((_center(b)[1], int(m.group(1))) for t, b in boxes if (m := re.fullmatch(r"\D?(\d{2,5})%", t)) and _center(b)[0] > 560), key=lambda x: x[0])
     if len(pcts) == 3:
         out["score_bonus_permils"] = [p * 10 for _, p in pcts]
+        # 同一行左边的属性值（「2348」「•1701」「A611」：前面的评价记号 OCR 常读成杂字，只取数字）
+        params = [next((v for t, b in boxes if 480 <= _center(b)[0] <= 600 and abs(_center(b)[1] - y) <= 20
+                        and (v := _int(t)) is not None and v >= 10), None) for y, _ in pcts]  # fmt: skip
+        if all(v is not None for v in params):
+            out["params"] = params
     hp = _find(boxes, "体力", (500, 600))
     if hp is not None:
         out["max_stamina"] = next((int(t) for t, b in boxes if t.isdigit() and abs(_center(b)[0] - _center(hp)[0]) < 30 and 15 <= _center(b)[1] - _center(hp)[1] <= 50), None)
@@ -156,6 +161,29 @@ def _result_fields(img: np.ndarray, boxes) -> dict:
     return out
 
 
+NODE_STAR_X = (382, 462, 540)  # 层选择页居中放大那一层的三颗星（y≈795）；下面 y≥840 是粉色的报酬水晶，不算
+NODE_STAR_Y = (765, 825)
+LOCK_ORANGE_MIN = 0.55  # 「挑戦する」按钮橙色比例：能打 0.74，锁着（灰、带锁）0.37
+
+
+def _layers_fields(img: np.ndarray, boxes) -> dict:
+    """层选择页：偶像名（左上）、居中放大那一层的层号（大数字）、它的星数、「挑戦する」位置和是不是锁着的。
+    左栏的「STAGE n 報酬」是最前沿的报酬，滑动后不跟着变，不能当层号。"""
+    b = _find(boxes, "挑戦する", (900, 1100))
+    name = next((t for t, bb in boxes if _center(bb)[1] < 200 and _center(bb)[0] < 220 and len(t) >= 3), None)
+    layer = next((int(t) for t, bb in boxes if t.isdigit() and 690 <= _center(bb)[1] <= 745 and 380 <= _center(bb)[0] <= 560), None)
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    y1, y2 = NODE_STAR_Y
+    stars = 0
+    for x in NODE_STAR_X:
+        cell = hsv[y1:y2, x - 30 : x + 30]
+        stars += int((((cell[..., 0] >= 150) | (cell[..., 0] <= 8)) & (cell[..., 1] >= 90) & (cell[..., 2] >= 150)).mean() >= STAR_PINK_MIN)
+    cx, cy = _center(b)
+    btn = hsv[cy - 20 : cy + 20, max(0, cx - 120) : cx + 80]
+    orange = float(((btn[..., 0] >= 5) & (btn[..., 0] <= 22) & (btn[..., 1] >= 150)).mean())
+    return {"idol": name, "stage": layer, "stars": stars, "locked": orange < LOCK_ORANGE_MIN, "challenge": [cx, cy]}
+
+
 def tower_dialog(dialog: dict, boxes) -> tuple[str, dict] | None:
     """偶像之路的弹窗：层详情「条件」（每颗星的条件原文，8a3a1e7 按原文查表）、再挑戦确认（选项 / 按钮 / 消耗词）。"""
     from hiro.runtime.tower import retry_cost
@@ -183,10 +211,7 @@ def tower_page(img: np.ndarray, boxes) -> tuple[str, dict] | None:
     if _find(boxes, "アイドルへの道", (0, 120)) and _find(boxes, "STAGE", (600, 1100)):
         return "TOWER_LIST", _list_fields(boxes)
     if _find(boxes, "挑戦する", (900, 1100)) and _find(boxes, "ステージ別ランキング"):
-        b = _find(boxes, "挑戦する", (900, 1100))
-        name = next((t for t, bb in boxes if _center(bb)[1] < 200 and _center(bb)[0] < 220 and len(t) >= 3), None)
-        stage = next((int(t[5:]) for t, _ in boxes if t.startswith("STAGE") and t[5:].isdigit()), None)
-        return "TOWER_LAYERS", {"idol": name, "stage": stage, "challenge": _center(b)}
+        return "TOWER_LAYERS", _layers_fields(img, boxes)
     if _find(boxes, "応援/トラブル", (0, 60)) and _find(boxes, "審査基準") and _find(boxes, "ターン", (60, 130)):
         return "TOWER_FORMATION", _formation_fields(boxes)
     if _find(boxes, "編成中") and _find(boxes, "審査基準"):
