@@ -36,6 +36,7 @@ class TowerRun:
     best: dict[int, int] = field(default_factory=dict)
     cleared: set[int] = field(default_factory=set)  # 结果页判过关（クリア）的层；过关和星数分开记，不从星数推
     gave_up_three: list[int] = field(default_factory=list)  # 过关但次数用完没满三星的层（往下走，报告里列出）
+    rankings: dict[int, list[dict]] = field(default_factory=dict)  # 每层每次考完的名次页读数（名次 + 各人分数）
 
     def pick_layer(self, layers: list[dict]) -> int | None:
         """层选择页读到的各层 [{layer, stars, unlocked}] → 要打的层；没有可打的（都满三星 / 没解锁 / 超过上限 / 放弃）返回 None。"""
@@ -66,4 +67,5 @@ class TowerRun:
         return "stop"
 
     def summary(self) -> dict:
-        return {"tower_id": self.tower_id, "tries": dict(self.tries), "best_stars": dict(self.best), "cleared": sorted(self.cleared), "gave_up_three": list(self.gave_up_three)}
+        return {"tower_id": self.tower_id, "tries": dict(self.tries), "best_stars": dict(self.best), "cleared": sorted(self.cleared), "gave_up_three": list(self.gave_up_three),
+                "rankings": dict(self.rankings)}

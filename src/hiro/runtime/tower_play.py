@@ -39,10 +39,21 @@ def idol_code(name: str | None) -> str | None:
     return row[0] if row else None
 
 
+def idol_card_id(title: str | None, code: str | None) -> str | None:
+    """偶像卡名（「一匹狼」）+ 偶像代号（ttmr）→ IdolCard.id（i_card-ttmr-2-000）；查不到 None。"""
+    from hiro import master
+
+    if not title or not code:
+        return None
+    row = next(iter(master.rows("SELECT id FROM IdolCard WHERE name = ? AND characterId = ?", title.strip(), code)), None)
+    return row[0] if row else None
+
+
 def loadout(fields: dict, tower_id: str | None, layer: int | None) -> dict:
     """编成页字段 → HIRO_TOWER_LOADOUT（gkms.exam_loadout.v1；读不到的不写，8a3a1e7 11-14）。"""
     lo = {"produce_id": "tower", "tower_id": tower_id, "layer": layer, "turns": fields.get("turns"),
-          "score_bonus_permils": fields.get("score_bonus_permils"), "max_stamina": fields.get("max_stamina")}  # fmt: skip
+          "score_bonus_permils": fields.get("score_bonus_permils"), "max_stamina": fields.get("max_stamina"),
+          "idol_card_id": fields.get("idol_card_id")}  # fmt: skip
     return {k: v for k, v in lo.items() if v is not None}
 
 
@@ -52,6 +63,8 @@ class TowerPlay:
     def __init__(self, core, run: TowerRun, *, idol_name: str, layers: int, loadout_path: Path):
         self.core, self.run, self.idol_name, self.layers, self.loadout_path = core, run, idol_name, layers, loadout_path
         self.layer: int | None = None
+        self.page1: dict | None = None  # 编成页第 1 页的字段（回合 / 倍率 / 体力 / 三属性）
+        self.deck: dict | None = None  # 编成页第 2 页的牌组（hiro.vision.tower.read_formation_deck）
         self.done_layers = 0
         self.finished = False
 
@@ -88,26 +101,46 @@ class TowerPlay:
         return DONE
 
     def on_formation(self, rt, f, hit):
+        """编成页：第 1 页读回合 / 倍率 / 体力 / 三属性，翻到第 2 页读牌组（亮着的卡），合起来写 HIRO_TOWER_LOADOUT，
+        交 TOWER_FORMATION 决策（只给当前编成），保持就点挑戦する。"""
         from dataclasses import replace
 
         fields = hit.fields
-        self.layer = fields.get("layer") or self.layer
+        if fields.get("page") == 2:
+            self.deck = fields.get("deck")
+            if self.page1 is None:  # 直接落在第 2 页（续跑）：先翻回第 1 页读倍率 / 体力
+                return self._tap(rt, fields.get("prev_page"))
+        else:
+            self.page1 = fields
+            if self.deck is None and fields.get("next_page"):
+                return self._tap(rt, fields["next_page"])  # 翻到第 2 页读牌组
+        p1 = self.page1
+        self.layer = p1.get("layer") or self.layer
         tower_id = f"{TOWER_NO}-{code}" if (code := idol_code(self.idol_name)) else None
-        lo = loadout(fields, tower_id, self.layer)
+        self.run.tower_id = tower_id
+        p1 = {**p1, "idol_card_id": idol_card_id(p1.get("idol_card_title"), code)}
+        lo = loadout(p1, tower_id, self.layer)
+        if self.deck and self.deck.get("cards"):
+            lo["produce_cards"] = list(self.deck["cards"])  # 基本 2 张由中转层按偶像补（8a3a1e7 069d34c）
+            if self.deck.get("unread"):
+                logger.warning("偶像之路编成：牌组里有 %d 张亮着但认不出，没写进 produce_cards", self.deck["unread"])
         self.loadout_path.write_text(json.dumps(lo, ensure_ascii=False), encoding="utf-8")
         os.environ["HIRO_TOWER_LOADOUT"] = str(self.loadout_path)
-        current = {"index": 0, "current": True, "memory_id": None, "params": fields.get("params"), "max_stamina": fields.get("max_stamina"),
-                   "deck": None, "items": [], "drinks": []}  # fmt: skip
+        current = {"index": 0, "current": True, "memory_id": None, "params": p1.get("params"), "max_stamina": p1.get("max_stamina"),
+                   "deck": lo.get("produce_cards"), "items": [], "drinks": []}  # fmt: skip
         pf = {"tower_id": tower_id, "layer": self.layer, "sub_slots": 0, "candidates": [current],
-              "shown_bonus": fields.get("score_bonus_permils"), "shown_stamina": fields.get("max_stamina")}  # fmt: skip
+              "shown_bonus": p1.get("score_bonus_permils"), "shown_stamina": p1.get("max_stamina")}  # fmt: skip
         d = self.core.deciders.decide("TOWER_FORMATION", replace(self.core.s.state, page_fields=pf))
         args = d.action.args or {}
         logger.info("偶像之路编成决策 ← %s：%s", d.source, d.reason)
         if args.get("main") not in (0, None) or args.get("subs"):
             raise ResumeBlocked(f"编成决策要换编成（{args}）：第一次实机不换编成，停下报告。理由：{d.reason}")
-        if fields.get("challenge") is None:
-            return STAY
-        rt.device.tap(*fields["challenge"])  # 保持当前编成，直接挑戦する（おまかせ 不点）
+        return self._tap(rt, fields.get("challenge"))  # 保持当前编成，直接挑戦する（おまかせ 不点）
+
+    def _tap(self, rt, pos):
+        if pos is None:
+            return STAY  # 按钮还没读到：等下一帧
+        rt.device.tap(*pos)
         return DONE
 
     def on_memory_select(self, rt, f, hit):
@@ -153,6 +186,14 @@ class TowerPlay:
             rt.device.tap(*fields["back"])
         return DONE
 
+    def on_ranking(self, rt, f, hit):
+        """考完的名次页：记下名次和各人分数（TowerRun.rankings），点「次へ」到 CLEAR 结果页（重试规则在结果页按星数走）。"""
+        fields = hit.fields
+        layer = self.layer
+        self.run.rankings.setdefault(layer, []).append({"my_rank": fields.get("my_rank"), "rows": fields.get("rows")})
+        logger.info("偶像之路第 %s 层名次：第 %s 名（%s）", layer, fields.get("my_rank"), fields.get("rows"))
+        return self._tap(rt, fields.get("next"))
+
     def on_retry_confirm(self, rt, f, hit):
         fields = hit.fields
         if fields.get("cost"):
@@ -167,7 +208,7 @@ class TowerPlay:
     def handlers(self) -> dict:
         return {"TOWER_LIST": self.on_list, "TOWER_LAYERS": self.on_layers, "TOWER_LAYER_INFO": self.on_layer_info,
                 "TOWER_FORMATION": self.on_formation, "TOWER_MEMORY_SELECT": self.on_memory_select, "TOWER_EXAM": self.on_exam,
-                "TOWER_RESULT": self.on_result, "TOWER_RETRY_CONFIRM": self.on_retry_confirm}  # fmt: skip
+                "TOWER_RANKING": self.on_ranking, "TOWER_RESULT": self.on_result, "TOWER_RETRY_CONFIRM": self.on_retry_confirm}  # fmt: skip
 
 
 def run(args) -> int:
