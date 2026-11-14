@@ -427,12 +427,21 @@ STALE_MAX = 3
 
 
 def _stale_before_tap(frame) -> str | None:
-    """点击前重新截图，与决策帧比剩余回合和手牌位置（_lite_sig，约 25ms）。不一致返回原因，一致或判断不了返回 None。"""
+    """点击前重新截图，与决策帧比剩余回合和手牌位置（_lite_sig，约 25ms）。不一致返回原因，一致或判断不了返回 None。
+    决策帧或点击前的画面里刚打出的牌还停在中间（hand_slots.played_card_floating）：那是出牌 / 回合切换的过渡帧，也算过时
+    （偶像之路 Mac 15 层 11-14：100 个决策帧里 24 个是这样，回合正在结束时又点了一次）。"""
+    from hiro.vision.hand_slots import played_card_floating
+
     try:
         a = _lite_sig(frame.img)
         if a is None:
             return None  # 决策帧本身读不出（截图兜底等）：不拦
-        b = _lite_sig(device.screenshot())
+        if played_card_floating(frame.img):
+            return "刚打出的牌还停在画面中间（过渡帧）"
+        img = device.screenshot()
+        if played_card_floating(img):
+            return "点击前刚打出的牌还停在画面中间（过渡帧）"
+        b = _lite_sig(img)
     except Exception:
         return None
     if b is None:

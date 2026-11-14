@@ -60,3 +60,32 @@ def hand_slots(img: np.ndarray) -> list[HandSlot]:
         x2, y2 = letter.center.x, letter.y1
         out.append(HandSlot(Box(x2 - CARD_OFFSET[0], y2 - CARD_OFFSET[1], x2, y2), letter, not has_color(img, letter, DISABLED_RGB)))
     return sorted(out, key=lambda s: s.rect.x1)
+
+
+RAISED_REGION = (150, 760, 420, 100)  # (x, y, w, h)：手牌行上方，被选中 / 刚打出的卡底部字母框所在的带（字母中心 y≈810）
+RAISED_MIN = 0.85  # 字母模板：抬起的卡 0.90–0.97，背景误命中 ≤ 0.66
+PREVIEW_PINK_MIN = 300  # 选中态卡面上方粉色得分预览（如「9260」）的像素：选中 ~1400，刚打出 0
+
+
+def raised_card(img: np.ndarray):
+    """手牌行上方抬起的那张卡（选中待确认 / 刚打出正在飞走）底部字母框中心 (x, y)；没有返回 None。"""
+    img = normalize(img)
+    hits = [m for name in ("InProduce.A", "InProduce.M") for m in tpl(name).find_all(img, threshold=RAISED_MIN, region=RAISED_REGION)]
+    if not hits:
+        return None
+    best = max(hits, key=lambda m: m.score)
+    return best.rect.center.x, best.rect.center.y
+
+
+def played_card_floating(img: np.ndarray) -> bool:
+    """刚打出的牌还停在画面中间（手牌行上方、卡面上没有选中态的粉色得分预览）：这一帧在回合 / 出牌的过渡里，不该拿来决策。
+    偶像之路 Mac 15 层（11-14，8a3a1e7）：出牌次数用完、回合正在结束时又决策了一次（frames/00038）。"""
+    import cv2
+
+    pos = raised_card(img)
+    if pos is None:
+        return False
+    cx, ly = pos
+    hsv = cv2.cvtColor(normalize(img)[max(0, ly - 215) : ly - 160, max(0, cx - 95) : cx + 95], cv2.COLOR_BGR2HSV)
+    pink = ((hsv[..., 0] >= 160) | (hsv[..., 0] <= 5)) & (hsv[..., 1] >= 120) & (hsv[..., 2] >= 180)
+    return int(pink.sum()) < PREVIEW_PINK_MIN
