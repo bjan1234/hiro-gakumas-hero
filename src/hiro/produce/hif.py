@@ -800,8 +800,9 @@ class HifCore:
             self._stop("PDRINK_MAX", f"决策重试 {self.PDRINK_DECIDE_RETRIES} 次仍没给出换 / 不换（{d.action}，{d.reason}）", obs=obs, decision=d)
         for attempt in range(self.PDRINK_SWAP_RETRIES + 1):
             discard = d.action.args.get("discard") or []
-            if not (discard and d.action.args.get("receive")):
-                break  # 决策是不要新饮料：走下面 KAA 的跳过
+            if not d.action.args.get("receive"):
+                break  # 决策是不要新饮料：走下面的跳过（「離れる」）
+            # 收新饮料：可能不丢任何已有的（栏里本来有空格，2 瓶新来只留 1 瓶：discard=[]、receive_indexes=[j]）
             pf = self.s.state.page_fields
             recv = d.action.args.get("receive_indexes")
             res = resolve_overflow([int(i) for i in discard], receive_indexes=recv, action=d.action, held=pf.get("held"), incoming=pf.get("incoming"))

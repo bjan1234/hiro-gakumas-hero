@@ -80,3 +80,12 @@ def test_keep_decision_still_uses_kaa_skip(monkeypatch):
     strat, calls = _strategy(monkeypatch, _state(), lambda st: d, [])
     strat.on_pdrink_max(None)
     assert calls["kaa"] == 1 and calls["resolve"] == [] and strat._skip_incoming_drink
+
+
+def test_take_new_without_discarding_goes_to_resolve_not_skip(monkeypatch):
+    """栏里有空格、2 瓶新来只留 1 瓶：决策 discard=[]、receive=True、receive_indexes=[0]。要走 resolve_overflow（勾新饮料、点「残す」），
+    不能当成「不要新饮料」去找「離れる」（这一页没有，Mac 账号 2 11-14 停机）。"""
+    d = Decision(Action(ActionKind.DISCARD_DRINK, {"discard": [], "receive": True, "receive_indexes": [0]}), "收スムージー", "rule", 0.8)
+    strat, calls = _strategy(monkeypatch, _state(), lambda st: d, [True])
+    strat.on_pdrink_max()
+    assert calls["resolve"] == [[]] and calls["kaa"] == 0 and calls["stops"] == []

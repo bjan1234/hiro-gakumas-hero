@@ -1355,7 +1355,10 @@ class ProduceDeciders:
 
         visible = [h for h in held if h.get("visible") is not False]
         hidden = [h for h in held if h.get("visible") is False]  # 画面上点不到的持有：只能留着
-        cap = len(held)  # 满了：容量 = 现有持有数
+        # 要留几瓶：持有默认全勾着，页面「あと N 個選択」还差 N 瓶 → 留 持有数 + N。栏里本来有空格时（Da SP 课结束随机送 2 瓶，
+        # 持有 2 + 空 1：要留 3 瓶），「不收」不是可选项（「残す」灰着点不了，也没有「離れる」，Mac 账号 2 11-14 停机）。读不到按满了算
+        left = state.page_fields.get("select_left")
+        cap = len(held) + (int(left) if isinstance(left, int) and left > 0 else 0)
         pool = [("h", h) for h in visible] + [("n", x) for x in incomings]
         k = cap - len(hidden)
         opts = []
