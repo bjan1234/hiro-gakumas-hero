@@ -310,6 +310,31 @@ def _tower_loadout(ctx: dict) -> dict | None:
     return doc.get("loadout", doc)  # 题目存档（带 loadout）或编成本身都行
 
 
+def tower_cache_dir() -> Path:
+    return Path(os.environ.get("HIRO_TOWER_CACHE") or Path.home() / ".cache" / "hiro" / "tower").expanduser()
+
+
+def known_draws(loadout: dict | None) -> list | None:
+    """偶像之路同一编成重试时，上一次挑战在画面上看到的抽牌顺序（用户 2026-11-14 定：可以交给搜索；只限偶像之路同一编成）。
+    记录由执行层写在 <HIRO_TOWER_CACHE>/<tower_id>-<layer>-<编成签名>.json：
+    {"tower_id", "layer", "formation_signature", "draws": [{"id", "u"}, …（按抽到的先后，跨回合）]}。
+    编成签名（主 / サブ1 / サブ2 回忆按顺序）由编成页写进 loadout 的 formation_signature；对不上、没记录或格式不对返回 None。"""
+    lo = loadout or {}
+    sig, tower, layer = lo.get("formation_signature"), lo.get("tower_id"), lo.get("layer")
+    if not (sig and tower and layer):
+        return None
+    path = tower_cache_dir() / f"{tower}-{int(layer)}-{sig}.json"
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if doc.get("formation_signature") != sig or doc.get("tower_id") != tower or int(doc.get("layer") or 0) != int(layer):
+        logger.warning("偶像之路抽牌记录 %s 和本场编成对不上，不用", path)
+        return None
+    draws = [{"id": d["id"], "u": int(d.get("u") or 0)} for d in doc.get("draws") or () if isinstance(d, dict) and d.get("id")]
+    return draws or None
+
+
 def _engine_state(game) -> dict | None:
     """SimGame → 引擎导出局面（Python / Rust 后端同一格式）。"""
     env = getattr(game, "env", None)
@@ -346,6 +371,7 @@ class BenchAdvisor:
         self.round_note = ""  # 兜底说明：偶像之路没用上指定算法时写原因
         self._tower_algos: dict = {}  # spec → 算法或加载失败的说明（同一进程多场只载一次）
         self.tower_loadout: dict | None = None
+        self.known_draws: list | None = None
         self.load_error: str | None = None
         self.exam: dict = {}
         self.label: str | None = None
@@ -390,10 +416,14 @@ class BenchAdvisor:
         self.exam = exam_fields(self.label, idol=idol, plan=_plan_number(idol))
         self.exam["permil_default"], self.exam["allocation"] = _round_defaults(self.label, self.deck)
         self.tower_loadout = None
+        self.known_draws = None
         if str(self.label or "").lower().startswith("tower") and (lo := _tower_loadout(ctx)) is not None:
             from hiro.bench_bridge.screen import tower_context
 
             self.tower_loadout = lo  # 搜索类算法（GNRPA）要整份编成：ctx.loadout
+            self.known_draws = known_draws(lo)
+            if self.known_draws:
+                logger.info("[%s] 同一编成重试：上一次看到的抽牌顺序 %d 张交给算法（ctx.known_draws）", self.label, len(self.known_draws))
             tc = tower_context(lo)
             self.exam.update({k: tc[k] for k in ("turns", "permil_fixed", "max_stamina") if tc[k]})
             self.exam["idol"] = tc["idol"] or self.exam.get("idol")
@@ -476,8 +506,8 @@ class BenchAdvisor:
         meta = {"produce_id": self.exam.get("produce"), "step_type": self.exam.get("step"), "plan_type": self.exam.get("plan"),
                 "idol_card_id": self.exam.get("idol")}
         loadout = dict(self.tower_loadout or {}) if self.tower_loadout else {"idol_card_id": self.exam.get("idol")}
-        return SimpleNamespace(obs=obs, budget=DECIDE_BUDGET_S, loadout=loadout, meta=meta,
-                               rng=self.rng, worlds=worlds, true_session=None, seed=None)
+        return SimpleNamespace(obs=obs, budget=DECIDE_BUDGET_S, loadout=loadout, meta=meta, known_draws=self.known_draws,
+                               rng=self.rng, worlds=worlds, true_session=None, seed=None)  # fmt: skip
 
     def _fallback(self, state, memory, previews, legal, why: str) -> Decision:
         self.stats["rules"] += 1

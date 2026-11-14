@@ -592,3 +592,38 @@ def test_hif_round_ignores_tower_algo(monkeypatch):
     st, mem = _state([_card(0, "p_card-a")])
     d = adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
     assert len(algo.seen) == 1 and "兜底" not in d.reason
+
+
+def test_known_draws_only_for_same_formation(tmp_path, monkeypatch):
+    """用户 11-14 定：偶像之路同一编成重试，可以把上一次画面上看到的抽牌顺序交给搜索。编成签名对不上就不给。"""
+    monkeypatch.setenv("HIRO_TOWER_CACHE", str(tmp_path))
+    lo = {"tower_id": "tower_001-ttmr", "layer": 15, "formation_signature": "m1-s2-s3"}
+    rec = {"tower_id": "tower_001-ttmr", "layer": 15, "formation_signature": "m1-s2-s3",
+           "draws": [{"id": "p_card-a", "u": 1}, {"id": "p_card-b"}, {"bad": 1}]}  # fmt: skip
+    (tmp_path / "tower_001-ttmr-15-m1-s2-s3.json").write_text(__import__("json").dumps(rec))
+    assert A.known_draws(lo) == [{"id": "p_card-a", "u": 1}, {"id": "p_card-b", "u": 0}]
+    assert A.known_draws({**lo, "formation_signature": "m1-s3-s2"}) is None  # 副回忆换了顺序：种子不同
+    assert A.known_draws({k: v for k, v in lo.items() if k != "formation_signature"}) is None
+    (tmp_path / "tower_001-ttmr-15-x.json").write_text(__import__("json").dumps({**rec, "formation_signature": "y"}))
+    assert A.known_draws({**lo, "formation_signature": "x"}) is None  # 文件内容和文件名对不上
+
+
+@pytest.mark.bench_on
+def test_tower_ctx_carries_known_draws(monkeypatch, tmp_path):
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    monkeypatch.setenv("HIRO_TOWER_CACHE", str(cache))
+    sig = {"formation_signature": "m1-s2", "tower_id": "tower_001-ttmr", "layer": 15}
+    (cache / "tower_001-ttmr-15-m1-s2.json").write_text(__import__("json").dumps({**sig, "draws": [{"id": "p_card-a", "u": 1}]}))
+    global TOWER_LO
+    saved = TOWER_LO
+    TOWER_LO = {**saved, **sig}
+    try:
+        adv, hif, tower = _tower_advisor(monkeypatch, tmp_path, "my.gnrpa:Search")
+    finally:
+        TOWER_LO = saved
+    st, mem = _state([_card(0, "p_card-a", 1)], remaining=15, turn=1)
+    adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    assert tower.ctx.known_draws == [{"id": "p_card-a", "u": 1}]
+    adv.on_round_start(1, {"exam": "r1", "idol": "i_card-shro-3-007", "deck": [("p_card-x", 0)]})  # H.I.F：不给
+    assert adv.known_draws is None
