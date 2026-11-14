@@ -373,7 +373,33 @@ class HifCore:
     exclude_failures = 0  # カード除去 连续失败次数（进程内）；≥2 后本局不再尝试，直接再抽選
     _rerolls_this_page = 0
     REROLL_CONFIRM = ("再抽選する", "決定", "はい", "OK")
+    REROLL_COST_WORDS = ("ジュエル",)  # 确认框上出现这些就点キャンセル（绝不用ジュエル）
     REROLL_BUTTON = (611, 1096)  # 720x1280，三选一右下「再抽選」（实机帧实测）
+
+    def _reroll_confirm(self, d: Decision, timeout: float = 4.0) -> bool:
+        """点了「再抽選」之后可能弹的确认框（第一次刷新弹「スキルカード再抽選確認」，「次回以降表示しない」默认勾着，不动它）：
+        点「再抽選する」。按钮左边的「→」会和字连在一起读成「→ 再抽選する」，比对前去掉符号和空格（Mac 账号 2 原来认不出，协调 11-14）。
+        框上有ジュエル等消耗字样就点キャンセル，返回 False（不算刷新）。没弹框返回 True。"""
+        import re
+
+        norm = lambda t: re.sub(r"[^\u3040-\u30ff\u4e00-\u9fffA-Za-z0-9]", "", t)  # noqa: E731
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            sleep(0.8)
+            texts = [t for t in screen_texts(device.screenshot()) if t.rect.center.y > 600]
+            if (cost := next((t.text for t in texts if any(w in t.text for w in self.REROLL_COST_WORDS)), None)) is not None:
+                cancel = next((t for t in texts if "キャンセル" in t.text), None)
+                if cancel is None:
+                    raise ResumeBlocked(f"再抽選确认框上有消耗字样「{cost}」，又没读到キャンセル：不点，停下")
+                device.click(*cancel.rect.center)
+                d.warnings.append(f"再抽選确认框上有消耗字样「{cost}」：点了キャンセル，不刷新")
+                self.s.note(f"再抽選确认框上有消耗字样「{cost}」，点キャンセル")
+                return False
+            hit = next((t for t in texts if norm(t.text) in self.REROLL_CONFIRM), None)
+            if hit:
+                device.click(*hit.rect.center)
+                return True
+        return True
 
     def _reroll(self, obs, d: Decision, t0: float) -> bool:
         """三选一点「再抽選」（KAA 没有这个操作）。按钮用整帧 OCR 找（底部右侧），可能的确认框按文字点。返回是否已刷新。"""
@@ -391,13 +417,8 @@ class HifCore:
             d.warnings.append("没找到「再抽選」按钮且刷新次数未识别，改为拿卡")
             return False
         device.click(*pos)
-        end = time.monotonic() + 4.0
-        while time.monotonic() < end:
-            sleep(0.8)
-            hit = next((t for t in screen_texts(device.screenshot()) if t.text.strip() in self.REROLL_CONFIRM and t.rect.center.y > 600), None)
-            if hit:
-                device.click(*hit.rect.center)
-                break
+        if not self._reroll_confirm(d):
+            return False
         sleep(1.5)
         self._rerolls_this_page += 1
         logger.info("选卡 再抽選（本页第 %d 次）← %s：%s", self._rerolls_this_page, d.source, d.reason)
