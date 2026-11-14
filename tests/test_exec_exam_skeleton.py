@@ -163,3 +163,20 @@ def test_schedule_probe_once_per_exam_before_first_move(env, monkeypatch):
     done = iter([False, True])
     ex.run_exam(Brain(), "r1", Rec(), lambda img: next(done), source=src, advisor=adv)  # 再挑戦同一场
     assert calls == ["r1"]
+
+
+def test_stall_watchdog_returns_to_main_loop(env, monkeypatch):
+    """偶像之路不合格名次页认不出「结束」，run_exam 在弹窗检查里空转 5 分钟（Mac 稳定性测试 11-14）：
+    EXAM_STALL_S 没有进展就退出，交回主循环；记忆不标成打完。"""
+    t = env
+    monkeypatch.setattr(ex, "_handle_dialogs", lambda img, slow=False: True)  # 每一拍都当弹窗处理
+    monkeypatch.setattr(ex, "_guard_dialog_loop", lambda *a: None)
+
+    def shot():
+        t[0] += 20.0
+        return "img"
+
+    monkeypatch.setattr(ex, "device", NS(screenshot=shot, click=lambda *a: None))
+    rec, src, adv = Rec(), Source([]), Advisor()
+    ex.run_exam(Brain(), "tower-15", rec, lambda img: False, source=src, advisor=adv)
+    assert "exam_stalled" in rec.events and src.calls[-1] == "end" and t[0] < 300

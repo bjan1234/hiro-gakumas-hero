@@ -252,18 +252,26 @@ def _layers_fields(img: np.ndarray, boxes) -> dict:
     return {"idol": name, "stage": layer, "stars": stars, "locked": orange < LOCK_ORANGE_MIN, "challenge": [cx, cy]}
 
 
+PT_RE = r"(\d{1,3}(?:,\d{3})+|\d+)[Pp][tTlI1]?"  # 「105,438Pt」「54,009pt」；高亮那行（自己）的 Pt 常读成「P1」（Mac 不合格页 11-14）
+RANK_RE = r"([1-6IlS])(st|nd|rd|th)"  # 名次标签：「1st」常读成「Ist」、「5th」读成「Sth」
+
+
 def _ranking_fields(boxes) -> dict:
-    """考完的名次页（左上「3位」徽章 + 6 行「名次 名字 分数Pt」+「次へ」）：各行（按 y 排）、自己的名次（徽章数字）。
+    """考完的名次页（左上「3位」徽章 / 「不合格」+ 6 行「名次 名字 分数Pt」+「次へ」或 再挑戦 / 一覧に戻る）：各行（按 y 排）、
+    自己的名次（徽章数字）。名次取同一行左边的「1st」「2nd」标签，标签没读到按行序。
     分数是 OCR 读的，偶尔错一位（105,438 → 105,458），只做记录；星数以结果页为准。"""
     import re
 
-    pts = sorted(((b[1], _int(t)) for t, b in boxes if t.lower().endswith("pt") and _int(t) is not None), key=lambda x: x[0])
-    names = sorted(((b[1], t) for t, b in boxes if 200 <= _center(b)[0] <= 400 and not t.lower().endswith("pt") and not re.search(r"\d", t)
+    pts = sorted(((b[1], int(m.group(1).replace(",", ""))) for t, b in boxes if (m := re.fullmatch(PT_RE, t))), key=lambda x: x[0])
+    labels = [(_center(b)[1], {"I": 1, "l": 1, "S": 5}.get(m.group(1)) or int(m.group(1))) for t, b in boxes
+              if _center(b)[0] < 150 and (m := re.fullmatch(RANK_RE, t))]  # fmt: skip
+    names = sorted(((b[1], t) for t, b in boxes if 200 <= _center(b)[0] <= 400 and not re.fullmatch(PT_RE, t) and not re.search(r"\d", t)
                     and _center(b)[1] > 300), key=lambda x: x[0])  # fmt: skip
     rows = []
     for i, (y, score) in enumerate(pts):
         name = next((t for ny, t in names if 0 < y - ny < 70), None)
-        rows.append({"rank": i + 1, "name": name, "score": score})
+        rank = next((r for ly, r in labels if -60 < ly - y < 30), i + 1)
+        rows.append({"rank": rank, "name": name, "score": score})
     badge = next((int(t) for t, b in boxes if t.isdigit() and len(t) == 1 and _center(b)[1] < 260 and _center(b)[0] < 200), None)
     nxt = _find(boxes, "次へ", (1080, 1260))
     return {"my_rank": badge, "rows": rows, "next": _center(nxt) if nxt else None}
@@ -309,6 +317,15 @@ def tower_page(img: np.ndarray, boxes) -> tuple[str, dict] | None:
         return "TOWER_RANKING", _ranking_fields(boxes)
     if _find(boxes, "再挑戦確認") or _find(boxes, "ステージを再挑戦"):
         return None  # 再挑戦确认框正在弹出（标题条还没认出来）：结果页在框后面还看得见，不能当结果页再处理一次（实机 r2）
+    if (_find(boxes, "不合格", (100, 260)) and sum(1 for t, _ in boxes if __import__("re").fullmatch(PT_RE, t)) >= 3
+            and (_find(boxes, "一覧に戻る", (1080, 1260)) or _find(boxes, "再挑戦", (1080, 1260)))):  # fmt: skip
+        # 没过关的名次页（左上「不合格」，4–6 位）：没有「次へ」也没有 CLEAR 结果页，再挑戦 / 一覧に戻る 直接在这一页（Mac 稳定性测试 11-14）
+        f = _ranking_fields(boxes)
+        f["failed"] = True
+        for key, word in (("retry", "再挑戦"), ("back", "一覧に戻る")):
+            if (b := _find(boxes, word, (1080, 1260))) is not None:
+                f[key] = _center(b)
+        return "TOWER_RANKING", f
     if _find(boxes, "CLEAR", (150, 320)) and (_find(boxes, "一覧に戻る", (1080, 1260)) or _find(boxes, "再挑戦", (1080, 1260))):
         return "TOWER_RESULT", _result_fields(img, boxes)
     return None

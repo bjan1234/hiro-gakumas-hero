@@ -21,6 +21,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 from hiro.loop.errors import ResumeBlocked
 from hiro.runtime import tower_cache
@@ -60,6 +61,19 @@ def loadout(fields: dict, tower_id: str | None, layer: int | None) -> dict:
           "score_bonus_permils": fields.get("score_bonus_permils"), "max_stamina": fields.get("max_stamina"),
           "idol_card_id": fields.get("idol_card_id")}  # fmt: skip
     return {k: v for k, v in lo.items() if v is not None}
+
+
+def exam_over(img) -> bool:
+    """偶像之路考试结束了：左上「残りターン」不见了，并且画面是考完的名次页（过关 / 不合格）或 CLEAR 结果页。
+    原来只认「次へ」模板，不合格名次页没有「次へ」，run_exam 一直不退出（Mac 稳定性测试 11-14）。"""
+    from hiro.vision import hif
+    from hiro.vision.pages import _texts
+    from hiro.vision.tower import TURNS_MIN, tower_page
+
+    if hif._match(img, "hif_exam_remaining_turns", (0, 0, 160, 45))[0] >= TURNS_MIN:
+        return False  # 还在考试（先用模板，便宜）
+    page = tower_page(img, _texts(img))
+    return page is not None and page[0] in ("TOWER_RANKING", "TOWER_RESULT")
 
 
 def rivals(ranking: dict, idol_name: str | None) -> list[int]:
@@ -240,8 +254,6 @@ class TowerPlay:
         """考试：同 HifCore.on_exam_entered，只是标签按层、不走 H.I.F 的再挑戦（重试由结果页按 TowerRun 规则定）。"""
         from hiro.exec.exam import run_exam
         from hiro.devices.active import device
-        from hiro.vision.ocr import find_text
-        from hiro.vision.ui_templates import box, tpl
 
         core = self.core
         self.ensure_loadout()
@@ -251,7 +263,7 @@ class TowerPlay:
         after_seq = core.s.trace.seq
 
         def ended(img) -> bool:
-            return tpl("Common.ButtonNext").exists(img) and find_text(device.screenshot(), "残りターン", rect=box("InProduce.BoxExamTop")) is None
+            return exam_over(img)
 
         run_exam(core.brain, label, core.rec, ended, session=core.s, advisor=core.advisor)
         core.rec.log("exam_end", image=device.screenshot(), exam=label)
@@ -289,8 +301,12 @@ class TowerPlay:
         return DONE
 
     def on_ranking(self, rt, f, hit):
-        """考完的名次页：记下名次和各人分数（TowerRun.rankings），点「次へ」到 CLEAR 结果页（重试规则在结果页按星数走）。"""
+        """考完的名次页：记下名次和各人分数（TowerRun.rankings），点「次へ」到 CLEAR 结果页（重试规则在结果页按星数走）。
+        没过关（左上「不合格」，4–6 位）时没有「次へ」也没有结果页：在这一页按 TowerRun 的规则定再挑戦 / 回列表。"""
         fields = hit.fields
+        if fields.get("failed"):
+            return self._on_failed_ranking(rt, fields)
+        self.result_handled = False
         layer = self.layer
         self.run.rankings.setdefault(layer, []).append({"my_rank": fields.get("my_rank"), "rows": fields.get("rows")})
         logger.info("偶像之路第 %s 层名次：第 %s 名（%s）", layer, fields.get("my_rank"), fields.get("rows"))
@@ -298,6 +314,19 @@ class TowerPlay:
             self._save_draws(rivals(fields, self.idol_name))
             self.exam_draws = None
         return self._tap(rt, fields.get("next"))
+
+    def _on_failed_ranking(self, rt, fields):
+        if self.result_handled:
+            return STAY  # 刚点过再挑戦 / 一覧に戻る：确认框 / 下一页还没出来，不再算一次
+        mine = next((r for r in fields.get("rows") or [] if r.get("name") == (self.idol_name or "").replace(" ", "")), None)
+        my_rank = mine["rank"] if mine else None
+        self.run.rankings.setdefault(self.layer, []).append({"my_rank": my_rank, "rows": fields.get("rows"), "failed": True})
+        logger.info("偶像之路第 %s 层不合格：第 %s 名（%s）", self.layer, my_rank, fields.get("rows"))
+        if self.exam_draws is not None:
+            self._save_draws(rivals({**fields, "my_rank": my_rank}, self.idol_name))
+            self.exam_draws = None
+        res = {"cleared": False, "layer": self.layer, "stars": 0, "retry": fields.get("retry"), "back": fields.get("back")}
+        return self.on_result(rt, None, SimpleNamespace(fields=res))
 
     def on_retry_confirm(self, rt, f, hit):
         fields = hit.fields
@@ -322,7 +351,8 @@ class TowerPlay:
         hs = {"TOWER_LIST": self.on_list, "TOWER_LAYERS": self.on_layers, "TOWER_LAYER_INFO": self.on_layer_info,
                 "TOWER_FORMATION": self.on_formation, "TOWER_MEMORY_SELECT": self.on_memory_select, "TOWER_EXAM": self.on_exam,
                 "TOWER_RANKING": self.on_ranking, "TOWER_RESULT": self.on_result, "TOWER_RETRY_CONFIRM": self.on_retry_confirm}  # fmt: skip
-        return {k: (v if k == "TOWER_RESULT" else reopen(v)) for k, v in hs.items()}
+        # 结果页和名次页自己管 result_handled（不合格名次页上直接点再挑戦，同一张页还会被认出来）
+        return {k: (v if k in ("TOWER_RESULT", "TOWER_RANKING") else reopen(v)) for k, v in hs.items()}
 
 
 def run(args) -> int:

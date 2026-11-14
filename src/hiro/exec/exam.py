@@ -46,6 +46,8 @@ NO_WAIT = ("save_playing", "hand_count_1", "sim_error", "hand_cards", "save_stal
 CHANGE_POLL = 0.2  # 等变化时的轮询间隔（每轮一张截图 + 一次 HUD 读取）
 DIALOG_SETTLE = 2.0  # 处理弹窗后等画面稳定的上限
 STABLE_WAIT_S = 6.0  # 画面一直不稳定时最多等这么久，之后用单帧出决策（第十八局 12 次等满 10s，见 _stable_frame）
+EXAM_STALL_S = 180.0  # 考试里这么久没有进展（没有一个动作生效、残りターン 也没变）就退出 run_exam，交回主循环（主循环有自己的看门狗）。
+# 偶像之路不合格名次页认不出「结束」时 run_exam 空转 5 分钟没日志（Mac 稳定性测试 11-14）；不看画面变不变：名次页背景是动的
 SLOW_DIALOG_AFTER = 5.0  # 画面不像考试帧超过这么久（回合切换动画约 2–3s 不算），弹窗检查才退回整帧 OCR（横屏 LIVE 开始提示等没有标题条的页面）
 
 
@@ -1129,8 +1131,16 @@ def run_exam(
     UNPLAYABLE["hit"] = False
     result_info: dict = {}
     last_state = None
+    progress_t, progress_remaining, stalled = time.monotonic(), None, False
     try:
         for _ in Loop(interval=0.1):
+            if (idle := time.monotonic() - progress_t) >= EXAM_STALL_S:
+                stalled = True
+                logger.error("[%s] 考试 %.0fs 没有进展（没有动作生效、残りターン 没变），退出考试循环交回主循环", exam, idle)
+                rec.log("exam_stalled", exam=exam, idle_s=round(idle, 1), turn=memory.turn, remaining=progress_remaining)
+                if session is not None:
+                    session.recover("unhandled", f"考试 {idle:.0f}s 没有进展，退出考试循环交回主循环")
+                break
             img = device.screenshot()
             with _phase("dialogs"):
                 slow = unusable_since is not None and time.monotonic() - unusable_since >= SLOW_DIALOG_AFTER
@@ -1158,6 +1168,8 @@ def run_exam(
                     unusable_since = time.monotonic()
                 continue
             unusable_since = None
+            if frame.remaining is not None and frame.remaining != progress_remaining:
+                progress_t, progress_remaining = time.monotonic(), frame.remaining
             if UNPLAYABLE.pop("hit", False) and last_action is not None:
                 memory.block(last_action)
                 why = UNPLAYABLE.pop("why", None) or "使用条件不满足（一直停在选中态）"
@@ -1267,6 +1279,7 @@ def run_exam(
                     session.recover("tap_no_effect", f"{d.action} {missed}")
                     session.note(f"blunder:play_missed_turn_end D34 {d.action}")
             elif changed:
+                progress_t = time.monotonic()
                 brain.commit(state, memory, d)
                 source.executed(Action.from_legal(d.action), result)
                 failures = 0
@@ -1294,7 +1307,8 @@ def run_exam(
             _anim["taps"] = 0
             t_cycle = t_done
             animating = animating or changed
-        result_info = {"exam": exam, "turns": memory.turn, "history": memory.history}
+        if not stalled:
+            result_info = {"exam": exam, "turns": memory.turn, "history": memory.history}
     finally:
         rec.log("exam_brain_end", exam=exam, turns=memory.turn, history=memory.history)
         if last_state is not None:  # 本战 R1：剩下的饮料和三属性倍率记进 finals_context，轮间 / R2 决策用（只记 r1）
@@ -1308,5 +1322,5 @@ def run_exam(
         source.end(result_info or None)
         advisor.on_round_end(result_info or None)
         if session is not None:
-            save_exam_memory(session.trace.dir, memory, finished=True)
+            save_exam_memory(session.trace.dir, memory, finished=not stalled)  # 卡住退出的不算打完：主循环再进考试时读回记忆
     return memory

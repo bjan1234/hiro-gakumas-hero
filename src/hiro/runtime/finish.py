@@ -97,9 +97,13 @@ def finish_produce_end(rt, *, go_home: bool = False, timeout: float = FINISH_TIM
             ok = first(f, ("決定",))
             rt.device.tap(*(ok.rect.center if ok is not None else (500, 1157)))
             return None
-        if go_home and (m := nav.find(f, "Common.ButtonHome")) is not None:
-            nav.tap_match(rt, m)
-            return None
+        if go_home:
+            # 编成页 / 偶像一览 / 设置这类菜单页：左下工具栏的 ⌂ 是 Common.ButtonToolbarHome（Mac 账号 2 的メモリー編成页 0.87，
+            # Common.ButtonHome 只有 0.36）。原来只认 ButtonHome，认不到就一直点 (12,12)，180 秒超时停机（协调 11-14）
+            for name in nav.HOME_BUTTONS:
+                if (m := nav.find(f, name)) is not None:
+                    nav.tap_match(rt, m)
+                    return None
         for name in ("InProduce.End.ButtonGenerate", "Produce.SaveMemoPic.ButtonConfirm", "Common.ButtonIconClose",
                      "InProduce.ButtonNextNoIcon", "Common.ButtonNext"):  # fmt: skip
             if (m := nav.find(f, name)) is not None:
