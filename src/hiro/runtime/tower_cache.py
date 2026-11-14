@@ -113,6 +113,8 @@ def infer_draws(steps: list[dict], deck_ids: dict[str, set[int]] | None) -> tupl
     - 回合变了（残りターン 变小）：上回合剩下的手牌进弃牌堆，新手牌整手算抽到。
     - 同一回合内：上一步的手牌去掉打出的那张，多出来的算抽到（卡效果抽牌）；少了的（消耗 / 弃牌效果）不管。
       同一张卡原地强化（同 id、u 变了、位置没变）当同一张，不算抽牌也不算消失。
+    - 认错的更正：刚抽到时读成不在牌组里的卡（当生成卡跳过了），同一回合后面同一位置读成牌组里的卡——是第一帧认错
+      （r1 T1：トークタイム+ 先读成準備運動+，8a3a1e7 11-14）。补回到当初跳过的位置，跳过数减一。
     - 说不清就停，只留前面的：认不出的卡（或强化没读到、牌组里这张又不止一种强化）、残りターン 读不到 / 变大、同 id 消失又出现而分不清是哪张。
     - 牌组不知道（编成页第 2 页没读到）时分不出生成卡：不记。
     """
@@ -122,6 +124,7 @@ def infer_draws(steps: list[dict], deck_ids: dict[str, set[int]] | None) -> tupl
     skipped = 0
     prev: list[tuple[str, int]] | None = None
     prev_turn = None
+    ghosts: list[list] = []  # 这一回合跳过的、还在手里的非牌组卡：[手牌里的位置, 卡, 当初在 draws 里该在的下标]
     for i, st in enumerate(steps):
         hand = None if st.get("unrecognized") else _hand(st, deck_ids)
         if hand is None:
@@ -130,7 +133,7 @@ def infer_draws(steps: list[dict], deck_ids: dict[str, set[int]] | None) -> tupl
         if turn is None:
             return draws, skipped, f"第 {i} 步残りターン读不到"
         if prev is None or turn < prev_turn:
-            added = hand
+            added, ghosts = list(enumerate(hand)), []
         elif turn > prev_turn:
             return draws, skipped, f"第 {i} 步残りターン变大（{prev_turn} → {turn}）"
         else:
@@ -140,6 +143,18 @@ def infer_draws(steps: list[dict], deck_ids: dict[str, set[int]] | None) -> tupl
                 if not 0 <= slot < len(prev):
                     return draws, skipped, f"第 {i - 1} 步打出的槽位 {slot} 不在手牌里"
                 del expect[slot]
+                for g in ghosts:
+                    g[0] = -1 if g[0] == slot else g[0] - (g[0] > slot)  # 打出的是它就不在手里了；右边的左移一格
+            for g in [g for g in ghosts if 0 <= g[0] < min(len(expect), len(hand))]:
+                k = g[0]
+                if expect[k] == g[1] and hand[k] != g[1] and hand[k][0] in deck_ids:  # 同一位置换成了牌组里的卡：第一帧认错
+                    draws.insert(g[2], {"id": hand[k][0], "u": hand[k][1]})
+                    skipped -= 1
+                    for h in ghosts:
+                        h[2] += h is not g and h[2] >= g[2]
+                    expect[k] = hand[k]
+                    g[0] = -1
+            ghosts = [g for g in ghosts if g[0] >= 0]
             extra = Counter(hand) - Counter(expect)
             gone = Counter(expect) - Counter(hand)
             for cid in {c for c, _ in extra} & {c for c, _ in gone}:
@@ -155,15 +170,17 @@ def infer_draws(steps: list[dict], deck_ids: dict[str, set[int]] | None) -> tupl
                 return draws, skipped, f"第 {i} 步 {cid} 消失又出现，分不清是哪张"
             left = Counter(+extra)
             added = []
-            for c in hand:  # 多出来的按槽位从左到右
-                if left[c] > 0:
-                    added.append(c)
-                    left[c] -= 1
-        for cid, u in added:
+            for k in range(len(hand) - 1, -1, -1):  # 同样的卡有几张时，新抽的在右边
+                if left[hand[k]] > 0:
+                    added.append((k, hand[k]))
+                    left[hand[k]] -= 1
+            added.reverse()  # 多出来的按槽位从左到右
+        for pos, (cid, u) in added:
             if cid in deck_ids:
                 draws.append({"id": cid, "u": u})
             else:
-                skipped += 1  # 生成卡（眠気等）：不记，继续
+                skipped += 1  # 生成卡（眠気等）：不记，继续；同一回合后面同一位置读成牌组里的卡就补回来
+                ghosts.append([pos, (cid, u), len(draws)])
         prev, prev_turn = hand, turn
     return draws, skipped, None
 

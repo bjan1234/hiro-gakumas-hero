@@ -65,6 +65,19 @@ def test_infer_draws_skips_generated_and_in_place_upgrade():
     assert [(x["id"], x["u"]) for x in draws] == [(a, 0), (b, 0), (c, 0), (b, 0), (d, 0), (a, 0)]
 
 
+def test_infer_draws_fixes_first_frame_misread():
+    """r1 T1：トークタイム+ 刚抽到那帧读成準備運動+（不在牌组里，先当生成卡跳过），同一回合下一步同一位置读对了：补回原位。"""
+    a, b, c, d = "p_card-a", "p_card-b", "p_card-c", "p_card-d"
+    ghost = "p_card-01-act-1_022"
+    steps = [_st(15, _h(ghost, b, c), played=2),  # 打出 c
+             _st(15, _h(a, b)),  # 位置 0 读对了：是 a
+             _st(14, _h(d, "p_card-00-acc-0_002", b), played=0),
+             _st(14, _h("p_card-00-acc-0_002", b))]  # 眠気一直是眠気：照样跳过
+    draws, skipped, why = tc.infer_draws(steps, DECK)
+    assert why is None and skipped == 1
+    assert [x["id"] for x in draws] == [a, b, c, d, b]
+
+
 def test_infer_draws_stops_on_doubt():
     a, b, c = "p_card-a", "p_card-b", "p_card-c"
     # 认不出的卡：停在那之前
