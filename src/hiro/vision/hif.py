@@ -70,12 +70,19 @@ def _match_white(img: MatLike, name: str, box) -> tuple[float, tuple[int, int]]:
     return float(score), (loc[0] + x1, loc[1] + y1)
 
 
+BREAKTHROUGH_STRONG = 0.75  # 「突破ライン」条匹配到这个分数，「残りターン」可放宽到 FINALS_TURNS_MIN（考试帧 0.80–0.82）
+
+
 def is_hif_exam(img: MatLike, threshold: float = 0.6) -> bool:
     # 考试帧经 JPG 压缩后低至 0.72，其余培育画面最高 0.21
     score, _ = _match(img, "hif_exam_remaining_turns", (0, 0, 160, 45))
     if score < threshold:
-        # 本战 R2 开局画面压暗，「残りターン」只有 0.57：顶部有本战名次条时放宽到 0.45
-        return score >= FINALS_TURNS_MIN and is_finals_strip(img)
+        # 本战 R2 开局画面压暗，「残りターン」只有 0.57：顶部有本战名次条时放宽到 0.45。
+        # 选拔③露天舞台的亮天空压在「残りターン」后面，DMM 小窗口（541x961 放大）上只有 0.50（11-14 own2，180 秒认不出停机）：
+        # 顶部「突破ライン」条匹配得很稳（0.82）时同样放宽到 0.45（非考试画面「残りターン」最高 0.21）
+        if score < FINALS_TURNS_MIN:
+            return False
+        return is_finals_strip(img) or _match_white(img, "hif_exam_breakthrough", TOP_STRIP)[0] >= BREAKTHROUGH_STRONG
     # 加分特效会压暗文字（实测低至 0.64）；非考试画面过不了上面的「残りターン」，这里只做确认
     score, _ = _match_white(img, "hif_exam_breakthrough", TOP_STRIP)
     return score >= 0.6 or is_finals_strip(img)  # 本战没有突破线，顶部是 1st / 2nd / 3rd 名次条（识别-05）
