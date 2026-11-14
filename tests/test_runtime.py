@@ -395,3 +395,28 @@ def test_reroll_confirm_interrupt_cost_cancels():
     with pytest.raises(ResumeBlocked, match="キャンセル"):
         interrupts.reroll_confirm(fr([T("ジュエルを30個消費します", 300, 760), T("→ 再抽選する", 493, 1160)]), rt)
     assert interrupts.reroll_confirm(NS(has_dialog=True, dialog={"title": "再挑戦確認"}, texts=[]), rt) is None  # 别的确认框不管
+
+
+def test_empty_crop_does_not_crash_main_loop(monkeypatch):
+    """Mac h8 11-15：弹窗标题条贴着画面底边，read_dialog 裁正文裁出空图，ocr_boxes 里 cv2.resize 抛 !ssize.empty()，主循环崩溃。
+    空图返回 []；正文裁不出来就当空正文。"""
+    import os
+    from pathlib import Path
+
+    import cv2
+    import numpy as np
+
+    from hiro.vision import pages
+    from hiro.vision.ocr import ocr_boxes
+
+    assert ocr_boxes(np.zeros((0, 680, 3), np.uint8)) == [] and ocr_boxes(None) == []
+    img = np.full((1280, 720, 3), 255, np.uint8)
+    monkeypatch.setattr(pages, "_header_bands", lambda im: [(1240, 1280)])
+    monkeypatch.setattr(pages, "_title_white", lambda im, y1, y2: True)
+    monkeypatch.setattr("hiro.vision.ocr.ocr", lambda crop, **k: [("確認", 1.0)] if crop.size else (_ for _ in ()).throw(AssertionError("空图")))
+    d = pages.read_dialog(img)
+    assert d["title"] == "確認" and d["body"] == ""
+    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "header-at-bottom-h8.jpg"
+    if path.exists():
+        monkeypatch.undo()
+        pages.read_dialog(cv2.resize(cv2.imread(str(path)), (720, 1280)))  # 实机那一帧：不抛异常
