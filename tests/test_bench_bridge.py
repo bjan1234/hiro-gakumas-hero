@@ -456,3 +456,56 @@ def test_advisor_reads_tower_loadout_file(monkeypatch, tmp_path):
     assert adv.deck == [("p_card-a", 1), ("p_card-b", 0), ("p_card-c", 2)]
     adv.on_round_start(1, {"exam": "r1", "idol": "i_card-shro-3-007", "deck": [("p_card-x", 0)]})  # H.I.F 不受影响
     assert "turns" not in adv.exam and adv.deck == [("p_card-x", 0)]
+
+
+class _Cat:
+    """Enchants 用的假主数据：one(表, 键, 变体)。"""
+
+    def __init__(self, cards, effects):
+        self.cards, self.effects = cards, effects
+
+    def one(self, table, key, variant=None):
+        return (self.cards if table == "ProduceCard" else self.effects).get(key)
+
+
+PLAY_CAT = _Cat(
+    cards={"now": {"playEffects": [{"produceExamEffectId": "add1"}]},
+           "later": {"playEffects": [{"produceExamEffectId": "timer2"}]},
+           "cond": {"playEffects": [{"produceExamEffectId": "add1", "produceExamTriggerId": "t-if"}]},
+           "plain": {"playEffects": []}},
+    effects={"add1": {"effectType": "ProduceExamEffectType_ExamPlayableValueAdd", "effectCount": 1},
+             "add2": {"effectType": "ProduceExamEffectType_ExamPlayableValueAdd", "effectCount": 2},
+             "timer2": {"effectType": "ProduceExamEffectType_ExamEffectTimer", "effectValue1": 1, "chainProduceExamEffectIds": ["draw", "add2"]},
+             "draw": {"effectType": "ProduceExamEffectType_ExamCardDraw"}},
+)  # fmt: skip
+
+
+def test_plays_added_from_master():
+    from hiro.bench_bridge.enchants import Enchants
+
+    e = Enchants(PLAY_CAT)
+    assert e.plays_added("now", 0) == ((0, 1),)
+    assert e.plays_added("later", 0) == ((1, 2),)  # 次のターン、+2
+    assert e.plays_added("cond", 0) == ()  # 带触发条件的不算
+    assert e.plays_added("plain", 0) == ()
+
+
+def test_plays_left_counts_known_extra_plays_and_never_drops_below_one():
+    """2026-11-14 run-15d：画面读不到剩余出牌次数，playable 一直填 1。现在按自己打出的卡算确定多出的次数；只是 UINet 的输入，不剪合法动作。"""
+    from hiro.bench_bridge.enchants import Enchants
+
+    t = ScreenTracker([("now", 0), ("later", 0), ("plain", 0), ("plain", 0)], enchants=Enchants(PLAY_CAT))
+    st, mem = _state([_card(0, "now"), _card(1, "plain"), _card(2, "later")], turn=1)
+    t.observe(st, mem)
+    assert t.plays_left() == 1
+    t.played_card(_card(0, "now"))  # 本回合 +1：打了一张还剩 1
+    assert t.plays_left() == 1
+    t.played_card(_card(1, "plain"))  # 两张打完：按 1 + 1 − 2 = 0，但不报 0
+    assert t.plays_left() == 1
+    t.played_card(_card(2, "later"))  # 下回合 +2
+    st2, mem2 = _state([_card(0, "plain")], turn=2)
+    t.observe(st2, mem2)
+    assert t.plays_left() == 3
+    obs, _ = from_screen(st2, mem2, st2.legal_actions(), t, exam_fields("r1", idol=None, plan=None))
+    assert obs["num"]["playable"] == 3 and obs["num"]["plays"] == 0
+    assert any(a[0] == "play" for a in obs["legal"])  # 合法动作照旧

@@ -111,6 +111,7 @@ class ScreenTracker:
         self.turn: int | None = None
         self.hand: list[list] = []  # [看到的 key, 原始 key]
         self.played: list[dict] = []
+        self.extra_plays: dict[int, int] = {}  # 回合 → 确定多出的出牌次数（自己打出的卡给的，见 Enchants.plays_added）
         self.last_play: tuple | None = None
         self.last_play_once = False
         self.started = False
@@ -237,6 +238,12 @@ class ScreenTracker:
                 if e[0] in self._item_ench and e[1] >= 0:
                     e[1] = int(charges)
 
+    def plays_left(self) -> int:
+        """本回合还能打几张：1 + 确定多出的次数 − 已经打的；至少 1（算少了也不当成 0，GKMS 里剩 0 时回合已经结束，
+        UINet 没见过 0）。只给 UINet 当输入，不剪合法动作（2026-11-14 协调定：少算会丢牌，宁可多点一下）。
+        from_screen 和规则层的估算（ExamMemory.actions_left：卡面文字的追加、固有道具、饮料）取大的；这里补的是「次のターン」计时。"""
+        return max(1, 1 + self.extra_plays.get(int(self.turn or 0), 0) - len(self.played))
+
     def num(self, key: str, value) -> int:
         """画面数值：读到就记下；这一帧没读出来（None）就用上一次的，不当成 0。"""
         if value is not None:
@@ -251,6 +258,9 @@ class ScreenTracker:
         for cid, up, n in self._fact("creates", k) or ():  # 打出时往山札塞的卡（眠気 等），画面上看不到
             self.deck[(cid, int(up))] += int(n)
         self.played.append({"id": k[0], "u": k[1]})
+        for delay, n in self._fact("plays_added", k) or ():
+            t = int(self.turn or 0) + int(delay)
+            self.extra_plays[t] = self.extra_plays.get(t, 0) + int(n)
         if self.enchants is not None:
             try:
                 for eid, n, t, once in self.enchants.card(k[0], k[1]):
@@ -359,7 +369,7 @@ def from_screen(state: Any, memory: Any, legal: list, tracker: ScreenTracker, ex
                  "types": tracker.types(turn, limit, exam.get("allocation")), "permil": permil, "crit": list(exam.get("crit") or [0, 0, 0])},
         "num": {"score": tracker.num("score", getattr(state, "score", None)), "stamina": tracker.num("stamina", getattr(state, "hp", None)),
                 "max_stamina": tracker.num("max_stamina", max_hp), "block": tracker.num("block", getattr(state, "genki", None)),
-                "playable": max(1, int(getattr(state, "actions_left", None) or 1)), "plays": len(tracker.played)},
+                "playable": max(1, int(getattr(state, "actions_left", None) or 0), tracker.plays_left()), "plays": len(tracker.played)},
         "stance": [None, 0],
         "status": _status_rows(state),
         "ench": [list(e) for e in tracker.ench],
