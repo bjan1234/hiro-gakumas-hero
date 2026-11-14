@@ -163,6 +163,17 @@ def algo_spec() -> str:
     return (os.environ.get("HIRO_BENCH_ALGO") or DEFAULT_ALGO).strip()
 
 
+# 偶像之路（tower-* 场次）的出牌算法：用户 2026-11-14 定「偶像之塔这里我们用 gnrpa 去搜索吧，这一块就不要强制性使用 uinet」。
+# HIRO_TOWER_ALGO 写法同 HIRO_BENCH_ALGO（包.模块:类名[:参数]，bench Algorithm 接口：begin(ctx) / decide(ctx) → Decision）；
+# 缺省 TOWER_DEFAULT_ALGO（3940a9 的 Rust GNRPA 接口好了填上）。没配置 / 加载失败时用 H.I.F 那个算法（uinet）兜底，
+# 每步决策的理由里写明「兜底」和原因。
+TOWER_DEFAULT_ALGO = ""
+
+
+def tower_algo_spec() -> str:
+    return (os.environ.get("HIRO_TOWER_ALGO") or TOWER_DEFAULT_ALGO).strip()
+
+
 def load_algo(spec: str | None = None, *, download: bool = True):
     """按名字加载 bench 算法。uinet 自动带上我们的主数据和模型（spec 里写了 master= / model= 就用写的）。"""
     _engine_on_path()
@@ -329,7 +340,12 @@ class BenchAdvisor:
         else:
             self.rules = RuleLLMAdvisor(profile, llm)  # 关掉 bench：就是原来的默认出招（规则 + LLM）
         self.profile = profile
-        self.algo = None
+        self.algo = None  # H.I.F 的算法（HIRO_BENCH_ALGO，缺省 uinet）；也是偶像之路的兜底
+        self.round_algo = None  # 这一场用的算法（偶像之路场次可能是 HIRO_TOWER_ALGO）
+        self.round_name = ""  # 这一场算法的名字（写进决策理由）
+        self.round_note = ""  # 兜底说明：偶像之路没用上指定算法时写原因
+        self._tower_algos: dict = {}  # spec → 算法或加载失败的说明（同一进程多场只载一次）
+        self.tower_loadout: dict | None = None
         self.load_error: str | None = None
         self.exam: dict = {}
         self.label: str | None = None
@@ -373,9 +389,11 @@ class BenchAdvisor:
             trend = None
         self.exam = exam_fields(self.label, idol=idol, plan=_plan_number(idol))
         self.exam["permil_default"], self.exam["allocation"] = _round_defaults(self.label, self.deck)
+        self.tower_loadout = None
         if str(self.label or "").lower().startswith("tower") and (lo := _tower_loadout(ctx)) is not None:
             from hiro.bench_bridge.screen import tower_context
 
+            self.tower_loadout = lo  # 搜索类算法（GNRPA）要整份编成：ctx.loadout
             tc = tower_context(lo)
             self.exam.update({k: tc[k] for k in ("turns", "permil_fixed", "max_stamina") if tc[k]})
             self.exam["idol"] = tc["idol"] or self.exam.get("idol")
@@ -393,11 +411,36 @@ class BenchAdvisor:
             except Exception as e:  # noqa: BLE001  没有主数据：持续效果不记
                 logger.info("持续效果记账不可用：%s: %s", type(e).__name__, e)
         self.tracker = ScreenTracker(self.deck, trend, enchants=ench, items=items)
+        self._pick_algo()
         self.began = False
         self.rng = random.Random(hash((self.label, round_no)) & 0xFFFFFFFF)
         self.stats = {"bench": 0, "rules": 0}
         if self.algo is None:
             logger.info("[%s] 考试出牌用规则：%s", self.label, self.load_error)
+
+    def _pick_algo(self) -> None:
+        """这一场用哪个算法：偶像之路用 HIRO_TOWER_ALGO（加载失败或没配置就用 H.I.F 的算法兜底，写明原因），其余用 H.I.F 的。"""
+        self.round_algo, self.round_name, self.round_note = self.algo, algo_spec().split(":")[0], ""
+        if not str(self.label or "").lower().startswith("tower") or not enabled():
+            return
+        spec = tower_algo_spec()
+        if not spec:
+            self.round_note = "偶像之路指定算法（GNRPA）还没接上，HIRO_TOWER_ALGO 未设"
+        else:
+            got = self._tower_algos.get(spec)
+            if got is None:
+                try:
+                    got = load_algo(spec)
+                except Exception as e:  # noqa: BLE001  缺依赖 / 写错：兜底
+                    got = f"{type(e).__name__}: {e}"
+                self._tower_algos[spec] = got
+            if isinstance(got, str):
+                self.round_note = f"偶像之路指定算法 {spec} 加载失败（{got}）"
+            else:
+                self.round_algo, self.round_name = got, spec.split(":")[-1] if ":" in spec else spec
+                logger.info("[%s] 偶像之路出牌：%s", self.label, spec)
+                return
+        logger.warning("[%s] %s，用 %s 兜底", self.label, self.round_note, self.round_name)
 
     def on_round_end(self, result: dict[str, Any] | None) -> None:
         logger.info("[%s] 考试出牌统计：bench %d 步，规则 %d 步", self.label, self.stats["bench"], self.stats["rules"])
@@ -432,7 +475,8 @@ class BenchAdvisor:
 
         meta = {"produce_id": self.exam.get("produce"), "step_type": self.exam.get("step"), "plan_type": self.exam.get("plan"),
                 "idol_card_id": self.exam.get("idol")}
-        return SimpleNamespace(obs=obs, budget=DECIDE_BUDGET_S, loadout={"idol_card_id": self.exam.get("idol")}, meta=meta,
+        loadout = dict(self.tower_loadout or {}) if self.tower_loadout else {"idol_card_id": self.exam.get("idol")}
+        return SimpleNamespace(obs=obs, budget=DECIDE_BUDGET_S, loadout=loadout, meta=meta,
                                rng=self.rng, worlds=worlds, true_session=None, seed=None)
 
     def _fallback(self, state, memory, previews, legal, why: str) -> Decision:
@@ -442,7 +486,8 @@ class BenchAdvisor:
         return out
 
     def decide(self, state: Any, memory: Any, previews: list[Preview] | None, legal: list[Action]) -> Decision:
-        if self.algo is None:
+        algo = self.round_algo if self.round_algo is not None else self.algo
+        if algo is None:
             self.stats["rules"] += 1
             return self.rules.decide(state, memory, previews, legal)
         t0 = time.monotonic()
@@ -453,9 +498,9 @@ class BenchAdvisor:
                            json.dumps(obs, ensure_ascii=False, separators=(",", ":")))
             ctx = self._ctx(obs)
             if not self.began:
-                self.algo.begin(ctx)
+                algo.begin(ctx)
                 self.began = True
-            d = self.algo.decide(ctx)
+            d = algo.decide(ctx)
             act = tuple(d.action)
         except Exception as e:  # noqa: BLE001
             logger.warning("bench 算法出错，这一步用规则：%s: %s", type(e).__name__, e)
@@ -492,7 +537,10 @@ class BenchAdvisor:
             except Exception:  # noqa: BLE001
                 continue
         q = meta.get("score_quantiles")
-        reason = f"{algo_spec().split(':')[0]}（{'引擎局面' if origin == 'engine' else '画面读数'}）：{what}"
+        name = self.round_name or algo_spec().split(":")[0]
+        reason = f"{name}（{'引擎局面' if origin == 'engine' else '画面读数'}）：{what}"
+        if self.round_note:
+            reason = f"{name}（兜底：{self.round_note}；{'引擎局面' if origin == 'engine' else '画面读数'}）：{what}"
         if q:
             reason += f"；终局分预测中位 {q.get('50%')}"
         return Decision(action=action, reason=reason, source="bench", confidence=None, candidates=cands,
