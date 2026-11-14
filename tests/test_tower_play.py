@@ -18,6 +18,11 @@ def _rt():
     return NS(device=NS(tap=lambda x, y: taps.append((x, y))), sleep=lambda s: None), taps
 
 
+@pytest.fixture(autouse=True)
+def _cache(tmp_path, monkeypatch):
+    monkeypatch.setenv("HIRO_TOWER_CACHE", str(tmp_path / "cache"))
+
+
 def _play(tmp_path, decision=None, layers=1):
     import dataclasses
 
@@ -36,7 +41,8 @@ def test_layers_then_formation_keeps_current(tmp_path, monkeypatch):
     assert p.on_layers(rt, None, NS(fields={"idol": "月村手毬", "stage": 15, "challenge": [446, 987]})) is DONE and p.layer == 15
     monkeypatch.setattr(tp, "idol_code", lambda name: "ttmr")
     f = {"layer": 15, "turns": 15, "score_bonus_permils": [23090, 11980, 2600], "params": [2348, 1701, 611], "max_stamina": 46,
-         "challenge": [381, 1091], "omakase": [643, 1090], "idol_name": "月村手毬", "idol_card_title": "一匹狼"}  # fmt: skip
+         "challenge": [381, 1091], "omakase": [643, 1090], "idol_name": "月村手毬", "idol_card_title": "一匹狼",
+         "memory_ratings": [12075, 10773, 9978]}  # fmt: skip
     monkeypatch.setattr(tp, "idol_card_id", lambda title, code: "i_card-ttmr-2-000" if (title, code) == ("一匹狼", "ttmr") else None)
     f = {**f, "page": 1, "next_page": [458, 674], "prev_page": [264, 674]}
     assert p.on_formation(rt, None, NS(fields=f)) is DONE and taps[-1] == (458, 674)  # 先翻到第 2 页读牌组
@@ -46,8 +52,10 @@ def test_layers_then_formation_keeps_current(tmp_path, monkeypatch):
     assert taps == [(446, 987), (458, 674), (381, 1091)]  # おまかせ 没点
     lo = json.loads((tmp_path / "lo.json").read_text(encoding="utf-8"))
     assert lo == {"produce_id": "tower", "tower_id": "tower_001-ttmr", "layer": 15, "turns": 15, "score_bonus_permils": [23090, 11980, 2600],
-                  "max_stamina": 46, "idol_card_id": "i_card-ttmr-2-000", "produce_cards": ["p_card-01-ido-2_017+1", "p_card-00-sup-3_027"]}  # fmt: skip
+                  "max_stamina": 46, "idol_card_id": "i_card-ttmr-2-000", "produce_cards": ["p_card-01-ido-2_017+1", "p_card-00-sup-3_027"],
+                  "formation_signature": "i_card-ttmr-2-000.12075-10773-9978"}  # fmt: skip
     assert p.run.tower_id == "tower_001-ttmr"
+    assert json.loads((tmp_path / "cache" / "tower_001-ttmr-15.json").read_text(encoding="utf-8")) == lo  # 同编成重试时读这份
 
 
 def test_formation_lands_on_page2_goes_back_first(tmp_path):

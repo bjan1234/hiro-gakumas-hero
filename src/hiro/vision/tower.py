@@ -136,6 +136,12 @@ def _formation_fields(boxes, img: np.ndarray | None = None) -> dict:
     title = next((t for t, b in boxes if 360 <= _center(b)[1] <= 390 and 180 <= _center(b)[0] <= 330), None)
     if name and title:
         out["idol_name"], out["idol_card_title"] = name, title  # 「月村手毬」「一匹狼」：查 IdolCard 得主回忆的偶像卡
+    # 主 / サブ1 / サブ2 三张回忆的评价值（y≈903 一行，x 约 183 / 412 / 650）：编成签名用（hiro.runtime.tower_cache.signature）
+    ratings = [next((v for t, b in boxes if 880 <= _center(b)[1] <= 925 and lo <= _center(b)[0] < hi
+                     and re.fullmatch(r"\d{3,6}", t) and (v := int(t))), None)
+               for lo, hi in ((60, 300), (300, 530), (530, 720))]  # fmt: skip
+    if all(ratings):
+        out["memory_ratings"] = ratings
     hp = _find(boxes, "体力", (500, 600))
     if hp is not None:
         out["max_stamina"] = next((int(t) for t, b in boxes if t.isdigit() and abs(_center(b)[0] - _center(hp)[0]) < 30 and 15 <= _center(b)[1] - _center(hp)[1] <= 50), None)
