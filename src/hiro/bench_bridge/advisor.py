@@ -257,6 +257,8 @@ def _round_defaults(label: str | None, deck: list) -> tuple[dict, dict | None]:
     dmmw1、dmmt2 的 R1 都是 Vo4 / Da3 / Vi2、末三回合 Vi → Da → Vo）。选拔考试没有模板，配额给 None。"""
     base = str(label or "").split("#", 1)[0].lower()
     permil, alloc = {}, None
+    if base.startswith("tower"):  # 偶像之路：倍率按回忆和本层算（tower.score_bonus_permils），这里没有参考值；画面读到为准
+        return permil, alloc
     try:
         if base in ("r1", "r2"):
             from hiro.state.finals_context import CONTEXT
