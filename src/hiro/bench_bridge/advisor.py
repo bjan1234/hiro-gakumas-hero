@@ -283,6 +283,22 @@ def _round_defaults(label: str | None, deck: list) -> tuple[dict, dict | None]:
     return permil, alloc
 
 
+def _tower_loadout(ctx: dict) -> dict | None:
+    """偶像之路这一场的编成（gkms.exam_loadout.v1）：context 的 tower_loadout，或 HIRO_TOWER_LOADOUT 指的 JSON 文件
+    （编成决策写出来、驱动设好）。没有就 None（只靠画面）。"""
+    if isinstance(ctx.get("tower_loadout"), dict):
+        return ctx["tower_loadout"]
+    path = os.environ.get("HIRO_TOWER_LOADOUT")
+    if not path:
+        return None
+    try:
+        doc = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        logger.warning("HIRO_TOWER_LOADOUT=%s 读不了：%s", path, e)
+        return None
+    return doc.get("loadout", doc)  # 题目存档（带 loadout）或编成本身都行
+
+
 def _engine_state(game) -> dict | None:
     """SimGame → 引擎导出局面（Python / Rust 后端同一格式）。"""
     env = getattr(game, "env", None)
@@ -357,6 +373,16 @@ class BenchAdvisor:
             trend = None
         self.exam = exam_fields(self.label, idol=idol, plan=_plan_number(idol))
         self.exam["permil_default"], self.exam["allocation"] = _round_defaults(self.label, self.deck)
+        if str(self.label or "").lower().startswith("tower") and (lo := _tower_loadout(ctx)) is not None:
+            from hiro.bench_bridge.screen import tower_context
+
+            tc = tower_context(lo)
+            self.exam.update({k: tc[k] for k in ("turns", "permil_fixed", "max_stamina") if tc[k]})
+            self.exam["idol"] = tc["idol"] or self.exam.get("idol")
+            if not self.deck and tc["deck"]:
+                self.deck = list(tc["deck"])
+            logger.info("[%s] 偶像之路编成：%d 回合，倍率 %s，最大体力 %s，开局牌组 %d 张", self.label, tc["turns"] or 0,
+                        tc["permil_fixed"], tc["max_stamina"], len(self.deck))  # fmt: skip
         ench = items = None
         if self.algo is not None:
             try:
