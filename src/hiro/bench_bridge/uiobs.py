@@ -13,7 +13,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 SCHEMA = "uiobs.v1"
 INF = -1
@@ -78,11 +79,13 @@ LAYER_KIND = {  # 每层 [种类, 数值, 剩余回合]
     "FullPowerPointAdditiveFixStatusEffect": "timed_gain",
     "GrowEffectLessonAddAdditiveStatusEffect": "timed_gain",
 }
-# 数值按千分比存、UIObs 写小数的种类（倍率类）
+# 数值按千分比存、UIObs 写小数的种类（倍率类）。照 GKMS UIObs 的实际输出核过（bench 逐步记录，2026-11-14）：
+# lesson_buff_multiple 0.05 / 0.25、lesson_parameter_multiple 0.1 / 0.3 这类是小数；enthusiastic_add（熱意獲得量増加）是绝对量
+# （GKMS 6 / 16 / 22…，主数据 effectValue1 = 1 / 2 / 3），不能除；enthusiastic_gain_permil 原样千分比（100 / 1000 / 3000）。
+# full_power_point_add：主数据是千分比（250 / 400 / 500），这里写成小数；GKMS 记录里只见过 0.0（像是读错了槽），先不跟。
 PERMIL_KINDS = {"lesson_parameter_multiple", "lesson_parameter_multiple_down", "lesson_buff_multiple", "review_multiple",
                 "full_power_lesson_multiple_add", "concentration_lesson_multiple_add", "lesson_buff_gain_multiple",
-                "parameter_buff_gain_multiple", "aggressive_gain_multiple", "review_gain_multiple", "full_power_point_add",
-                "enthusiastic_add"}
+                "parameter_buff_gain_multiple", "aggressive_gain_multiple", "review_gain_multiple", "full_power_point_add"}
 
 
 def _turns(s: dict) -> int:
