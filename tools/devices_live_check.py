@@ -150,7 +150,7 @@ def kaa_parity(out: Path, n: int) -> dict:
                     save(a, out / f"kaa-{method}-{i}-own.png")
                     save(b, out / f"kaa-{method}-{i}-kaa.png")
                     row = {"mean_diff": mean_diff(a, b), "max_diff": int(np.abs(a.astype(np.int16) - b.astype(np.int16)).max()),
-                           "psnr": _psnr(a, b), "native": list(dev.screen.native)}  # fmt: skip
+                           "psnr": _psnr(a, b), "mean_own": round(float(a.mean()), 1), "mean_kaa": round(float(b.mean()), 1), "native": list(dev.screen.native)}  # fmt: skip
                     if i == 0:  # OCR / 模板只比第一对（OCR 慢）
                         ta, tb = _texts(a), _texts(b)
                         row["ocr_only_own"] = sorted(set(ta) - set(tb))
