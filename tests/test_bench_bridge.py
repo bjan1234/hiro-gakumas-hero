@@ -134,6 +134,7 @@ class _Algo:
         from types import SimpleNamespace
 
         self.seen.append(ctx.obs)
+        self.ctx = ctx
         return SimpleNamespace(action=self.action, meta={"top": [[list(self.action), 0.9]], "score_quantiles": {"50%": 123}})
 
 
@@ -536,3 +537,58 @@ def test_idol_initial_cards_aggressive_row_name():
     m = Master(rows={"IdolCard": [{"id": "i_card-x", "examEffectType": "ProduceExamEffectType_ExamCardPlayAggressive"}],
                      "ExamInitialDeck": [{"id": "initial_deck-aggressive", "produceCardIds": ["p1", "p2"]}]})  # fmt: skip
     assert m.idol_initial_cards("i_card-x") == ["p1", "p2"]  # やる気：examEffectType 是 CardPlayAggressive，行名是 aggressive
+
+
+def _tower_advisor(monkeypatch, tmp_path, tower_spec, *, fail=False):
+    """偶像之路场次的 advisor：H.I.F 算法和偶像之路算法各一个假的。"""
+    p = tmp_path / "lo.json"
+    p.write_text(__import__("json").dumps({"loadout": TOWER_LO}))
+    monkeypatch.setenv("HIRO_TOWER_LOADOUT", str(p))
+    monkeypatch.setattr("hiro.bench_bridge.tower.master", lambda: _init_master())
+    if tower_spec is None:
+        monkeypatch.delenv("HIRO_TOWER_ALGO", raising=False)
+    else:
+        monkeypatch.setenv("HIRO_TOWER_ALGO", tower_spec)
+    hif, tower = _Algo(("play", 0)), _Algo(("play", 0))
+
+    def load(spec=None, **kw):
+        if spec and spec.startswith("my.gnrpa"):
+            if fail:
+                raise ImportError("no rust")
+            return tower
+        return hif
+
+    monkeypatch.setattr(A, "load_algo", load)
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    adv.on_round_start(1, {"exam": "tower-15", "idol": None, "deck": []})
+    return adv, hif, tower
+
+
+@pytest.mark.bench_on
+def test_tower_uses_tower_algo_with_loadout(monkeypatch, tmp_path):
+    """用户 11-14：偶像之路不强制用 uinet。HIRO_TOWER_ALGO 指的算法（GNRPA）出牌，ctx.loadout 拿到整份编成。"""
+    adv, hif, tower = _tower_advisor(monkeypatch, tmp_path, "my.gnrpa:Search")
+    st, mem = _state([_card(0, "p_card-a", 1)], remaining=15, turn=1)
+    d = adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    assert d.source == "bench" and len(tower.seen) == 1 and not hif.seen
+    assert "兜底" not in d.reason and d.reason.startswith("Search")
+    assert tower.ctx.loadout["layer"] == 15 and tower.ctx.loadout["produce_cards"]
+
+
+@pytest.mark.bench_on
+@pytest.mark.parametrize("spec, fail, why", [(None, False, "还没接上"), ("my.gnrpa:Search", True, "加载失败")])
+def test_tower_falls_back_to_hif_algo_and_says_so(monkeypatch, tmp_path, spec, fail, why):
+    adv, hif, tower = _tower_advisor(monkeypatch, tmp_path, spec, fail=fail)
+    st, mem = _state([_card(0, "p_card-a", 1)], remaining=15, turn=1)
+    d = adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    assert len(hif.seen) == 1 and not tower.seen
+    assert "兜底" in d.reason and why in d.reason
+
+
+@pytest.mark.bench_on
+def test_hif_round_ignores_tower_algo(monkeypatch):
+    monkeypatch.setenv("HIRO_TOWER_ALGO", "my.gnrpa:Search")
+    adv, algo = _advisor(monkeypatch, ("play", 0))
+    st, mem = _state([_card(0, "p_card-a")])
+    d = adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    assert len(algo.seen) == 1 and "兜底" not in d.reason
