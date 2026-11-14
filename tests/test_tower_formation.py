@@ -154,8 +154,9 @@ def test_condition_rate_breaks_tie_when_uinet_never_gets_three_stars(monkeypatch
     assert d.action.args["main"] == 2, d.reason
 
 
-def test_hard_filter_drops_decks_with_too_many_lost_ssr(monkeypatch):
-    """27 层式「除外 SSR ≤ 5」：牌组里打出即除外的 SSR 超过 5 张的编成不进模拟（协调 11-14）。"""
+def test_lost_ssr_is_soft_penalty_not_filter(monkeypatch):
+    """「除外 SSR ≤ 5」：牌组里打出即除外的 SSR 多的编成照样进模拟（协调 11-14：评估是能控牌的 GNRPA，自己判断）。
+    模拟里 1 号（8 张）三星最多 → 选 1 号。"""
     from hiro.bench_bridge import tower as tw
     from hiro.brain import tower as tf
 
@@ -164,7 +165,16 @@ def test_hard_filter_drops_decks_with_too_many_lost_ssr(monkeypatch):
     monkeypatch.setattr(tf, "lost_ssr_count", lambda deck: 8 if deck[0].endswith("1") else 3)  # 1 号牌组 8 张
     monkeypatch.setattr(ProduceDeciders, "TOWER_EVAL", staticmethod(_eval({"0": 300000, "1": 900000, "2": 450000, "3": 200000})))
     d = ProduceDeciders(CAMPUS_HIRO, None).decide("TOWER_FORMATION", _state())
-    assert d.action.args["main"] == 2 and "筛掉 1 个编成" in d.reason  # 分数最高的 1 号被筛掉
+    assert d.action.args["main"] == 1 and "不筛" in d.reason, d.reason
+
+
+def test_lost_ssr_breaks_tie(monkeypatch):
+    """模拟结果一样时，打出即除外的 SSR 少的编成排前面（软惩罚）。"""
+    from hiro.brain import tower as tf
+
+    a = {"n": 8, "p3": 0.5, "est3": 0.5, "first": 1.0, "margin": None, "mean": 600000, "static_margin": -3}
+    b = dict(a, static_margin=2)
+    assert tf.rank_key(b) > tf.rank_key(a)
 
 
 def test_current_formation_uses_shown_bonus(monkeypatch):

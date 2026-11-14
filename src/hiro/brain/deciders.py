@@ -967,17 +967,13 @@ class ProduceDeciders:
                     combos.append({"lex": lex, "main": main, "subs": subs, "loadout": lo, "why_not": tf.evaluable(lo), "rows": []})
             if not combos:
                 return stop("偶像之路编成：这一层没有一种考试查得到设置（" + "；".join(notes) + "）")
-            # 硬筛选（协调 11-14，8a3a1e7 的 27 层结论）：有「除外 SSR ≤ N」这类条件时，牌组里打出即除外的 SSR 超过 N 的编成，
-            # 条件和拿第 1 兼顾不了，不进模拟。都超了就不筛（写明），免得一份都选不出来
+            # 「除外 SSR ≤ N」这类条件：牌组里打出即除外的 SSR 张数只作排序参考（static_margin，软惩罚），不筛编成（协调 11-14：
+            # 评估换成 Rust GNRPA 后，能控牌的搜索自己判断满不满足得了；AS-FPKTEPQC 8 张的牌组 GNRPA 打到除外 5 张拿过三星）
             for c in combos:
                 c["static"] = tf.static_check(c["loadout"], c["lex"].get("star_conditions"))
-            bad = [c for c in combos if c["static"]["ok"] is False]
-            if bad and len(bad) < len(combos):
-                for c in bad:
-                    c["why_not"] = c["why_not"] or f"牌组里打出即除外的 SSR 有 {c['static']['lost_ssr']} 张，超过通关条件，条件和拿第 1 兼顾不了"
-                notes.append(f"按通关条件筛掉 {len(bad)} 个编成（打出即除外的 SSR 太多）")
-            elif bad:
-                notes.append("所有编成打出即除外的 SSR 都超过通关条件：不筛，三星希望不大，先求拿第 1")
+            over = [c for c in combos if c["static"]["ok"] is False]
+            if over:
+                notes.append(f"{len(over)} 个编成打出即除外的 SSR 超过通关条件（不筛，靠模拟判断，排序时扣分）")
             evaluated = self._tower_rounds([c for c in combos if c["why_not"] is None], notes, time.monotonic())
             for c in combos:
                 c["sim"] = tf.summarize(c["rows"], c["lex"].get("border"), c["lex"].get("star_conditions"))
