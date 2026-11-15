@@ -15,6 +15,8 @@ HIRO_FORMATION_AUTOFIX=1 才启用（默认关，2026-11-06：执行步骤还没
 
 from __future__ import annotations
 
+import json
+
 import logging
 from dataclasses import dataclass, field
 from typing import Callable
@@ -210,6 +212,14 @@ def memory_key(e: dict) -> str:
     return entry_key(e)
 
 
+def _core(key: str):
+    """内容键里稳定的部分：卡、强化、时机、三属性、体力（能力文字是 OCR 原文，同一份回忆两次读常差一两个字，不比）。"""
+    try:
+        return json.loads(key)[:7]
+    except (TypeError, ValueError):
+        return None
+
+
 def pick_memory(picker, target: dict, *, decide=PICKER_DECIDE) -> None:
     """在已打开的回忆选择页里按库存位置找到 target（cell = [行, 列]、key = entry_key），核对后「決定」。"""
     from hiro.produce.memory_picker import ROW_PITCH, page_rows, to_top
@@ -219,19 +229,24 @@ def pick_memory(picker, target: dict, *, decide=PICKER_DECIDE) -> None:
     lead = max(0, row - SEARCH_ROWS)  # 目标行停在屏幕中间：滚动有误差时上下都还看得到
     if lead > 0:
         img = picker.scroll(px=int(lead * ROW_PITCH))
-    rows = page_rows(img)
+    want_core = _core(target["key"])
     tried = 0
-    for r in rows[: SEARCH_ROWS * 2 + 1]:
-        cell = next((c for c in r if c["col"] == col), None)
-        if cell is None:
-            continue
-        picker.select(cell)
-        got = picker.read_selected()
-        tried += 1
-        if memory_key(got) == target["key"]:
-            picker.click(*decide)
-            picker.sleep(1.5)
-            return
+    for screen in range(2):  # 这一屏没找到再往下滑一屏（滚动有误差 / 扫描时有漏行，行号会偏几行）
+        if screen:
+            img = picker.scroll(px=int(SEARCH_ROWS * ROW_PITCH))
+        rows = page_rows(img)
+        for r in rows[: SEARCH_ROWS * 2 + 1]:
+            cell = next((c for c in r if c["col"] == col), None)
+            if cell is None:
+                continue
+            picker.select(cell)
+            got = picker.read_selected()
+            tried += 1
+            key = memory_key(got)
+            if key == target["key"] or (want_core is not None and _core(key) == want_core):
+                picker.click(*decide)
+                picker.sleep(1.5)
+                return
     picker.cancel()
     raise FormationWriteError(f"回忆选择页第 {row} 行附近没找到方案里的回忆（试了 {tried} 格），库存可能过期，请重扫")
 
