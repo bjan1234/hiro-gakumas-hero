@@ -105,6 +105,9 @@ def scored_best(rows: list[dict], scorer, exclude: set | None = None) -> tuple[d
     return (best[1], best[0][0]) if best else None
 
 
+RETURN_EXTRA_SCREENS = 3
+
+
 def pick_rental(attr: str = WANT_ATTR, tries: int = 3, scorer=None) -> bool:
     """挑一张；决定后租借格标「プラン不一致」就记下卡名、重开列表换下一张（第十七局：勾选没生效，租到了别的方案的卡）。
     scorer：按编成价值打分（有方案时）；None = 主属性、等级最高。"""
@@ -177,11 +180,21 @@ def _pick_once(attr: str, exclude: set, scorer=None) -> str | None:
     _, _, _, page, screen, player = best
     _goto_page(page, pager)
     _to_top()
-    for _ in range(screen):
+    # 回到那一行：滑动有惯性，滑同样次数不一定回到同一屏（11-16 Mac 实机：没找到就取消、不开局）。
+    # 从顶往下逐屏找这位玩家，最多比记下的屏数多滑 RETURN_EXTRA_SCREENS 次
+    row, lst, last_players, still = None, None, None, 0
+    for _ in range(screen + 1 + RETURN_EXTRA_SCREENS):
+        lst = _rows()
+        row = next((r for r in lst["rows"] if r.get("player") == player and r.get("card")), None)
+        if row is not None:
+            break
+        players = [r.get("player") for r in lst["rows"]]
+        still = still + 1 if players == last_players else 0
+        if still >= 2:
+            break  # 连续两次滑了画面不动 = 到底（只一次不动可能是滑动没走满）
+        last_players = players
         device.swipe(*SWIPE)
         _sleep(1.2)
-    lst = _rows()
-    row = next((r for r in lst["rows"] if r.get("player") == player and r.get("card")), None)
     if row is None:
         hit = scored_best(lst["rows"], scorer, exclude) if scorer is not None else None
         row = hit[0] if hit else (best_row(lst["rows"], attr, exclude) if scorer is None else None)

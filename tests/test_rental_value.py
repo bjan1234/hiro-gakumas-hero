@@ -133,3 +133,43 @@ def test_catalog_falls_back_to_sim_master(monkeypatch):
     assert c.by_id("NoSuchTable", "x") == []
     monkeypatch.setattr(cat, "_sim_catalog", lambda: None)
     assert c.by_id("SupportCard", "s_card-new") == []  # 没有模拟器主数据：照旧查不到
+
+
+def test_pick_once_finds_best_row_when_return_swipe_falls_short(monkeypatch):
+    """回到最佳行时滑动距离和扫描时不一样（11-16 Mac 实机：滑同样次数没回到那一屏 → 取消、不开局）：逐屏往下找到那位玩家再点。"""
+    pytest.importorskip("kotonebot")
+    from hiro.produce import rental
+
+    worst = {"support_card_id": "s_card-worst", "level": 60}
+    best = {"support_card_id": "s_card-best", "level": 60}
+
+    def score(row):  # 固定打分，不依赖素材插件的支援卡技能数据
+        return 2.0 if row["player"] == "B" else 1.0
+    screens = [[_row(worst, "A")], [_row(worst, "C")], [_row(best, "B")], [_row(best, "B")]]
+    state = {"screen": 0, "clicked": [], "returning": False, "lag": 0}
+
+    class Dev:
+        def click(self, *a):
+            state["clicked"].append(a)
+
+        def swipe(self, *a):
+            if a[1] > a[3]:
+                if state["lag"]:
+                    state["lag"] -= 1  # 回去时第一次滑动没走满一屏
+                    return
+                state["screen"] = min(state["screen"] + 1, len(screens) - 1)
+            else:
+                state["screen"] = 0
+                state["lag"] = 1
+
+        def screenshot(self):
+            return None
+
+    monkeypatch.setattr(rental, "device", Dev())
+    monkeypatch.setattr(rental, "_ensure_plan_fit", lambda: None)
+    monkeypatch.setattr(rental, "progress", lambda why: None)
+    monkeypatch.setattr(rental, "_sleep", lambda s: None)
+    monkeypatch.setattr(rental, "_to_top", lambda: Dev().swipe(0, 0, 0, 1))
+    monkeypatch.setattr(rental, "_rows", lambda: {"rows": screens[state["screen"]], "controls": {"decide": [497, 1157]},
+                                                    "pager": {"page": 1, "pages": 1}})  # fmt: skip
+    assert rental._pick_once("Da", set(), score) == best["support_card_id"]
