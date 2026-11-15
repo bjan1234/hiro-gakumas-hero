@@ -130,7 +130,8 @@ def _texts(img: MatLike, boxes):
         from hiro.vision.pages import _texts as t
 
         boxes = t(img)
-    return [(t.replace(" ", ""), b) for t, b in boxes]
+    # 「サポート」的「ポ」常被 OCR 读成「ボ」（11-16 Mac 账号 2 第 2 步标题「2.サボート選択」，整页认不出、自动编成失败），这里统一回「ポ」
+    return [(t.replace(" ", "").replace("サボート", "サポート"), b) for t, b in boxes]
 
 
 def _center(b) -> list[int]:
