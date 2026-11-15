@@ -173,3 +173,36 @@ def test_pick_once_finds_best_row_when_return_swipe_falls_short(monkeypatch):
     monkeypatch.setattr(rental, "_rows", lambda: {"rows": screens[state["screen"]], "controls": {"decide": [497, 1157]},
                                                     "pager": {"page": 1, "pages": 1}})  # fmt: skip
     assert rental._pick_once("Da", set(), score) == best["support_card_id"]
+
+
+def test_pick_once_refreshes_list_when_nothing_fits(monkeypatch):
+    """两页都没有能补成 4-2 的卡：点刷新换一批再找（11-16 Mac 实机：租借列表换了一批，没有 Da 就停了）。"""
+    pytest.importorskip("kotonebot")
+    from hiro.produce import rental
+
+    vi = {"player": "V", "card": {"support_card_id": "s_card-vi", "level": 60, "name": "vi"}, "center": [360, 600]}
+    da = {"player": "D", "card": {"support_card_id": "s_card-da", "level": 60, "name": "da"}, "center": [360, 600]}
+    state = {"batch": 0, "clicked": []}
+    ctrl = {"decide": [497, 1157], "cancel": [220, 1157], "refresh": [400, 1071]}
+
+    class Dev:
+        def click(self, *a):
+            state["clicked"].append(a)
+            if list(a) == ctrl["refresh"]:
+                state["batch"] = 1
+
+        def swipe(self, *a):
+            pass
+
+        def screenshot(self):
+            return None
+
+    monkeypatch.setattr(rental, "device", Dev())
+    monkeypatch.setattr(rental, "_ensure_plan_fit", lambda: None)
+    monkeypatch.setattr(rental, "progress", lambda why: None)
+    monkeypatch.setattr(rental, "_sleep", lambda s: None)
+    monkeypatch.setattr(rental, "_to_top", lambda: None)
+    monkeypatch.setattr(rental, "_rows", lambda: {"rows": [[vi], [da]][state["batch"]], "controls": ctrl, "pager": {"page": 1, "pages": 1}})
+    score = lambda row: 1.0 if row["player"] == "D" else None  # noqa: E731  只有 Da 能补成 4-2
+    assert rental._pick_once("Da", set(), score) == "da"
+    assert tuple(ctrl["refresh"]) in state["clicked"] and state["clicked"][-1] == tuple(ctrl["decide"])

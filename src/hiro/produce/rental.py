@@ -106,6 +106,7 @@ def scored_best(rows: list[dict], scorer, exclude: set | None = None) -> tuple[d
 
 
 RETURN_EXTRA_SCREENS = 3
+RENTAL_REFRESHES = 2  # 两页都没有合适的卡时最多刷新租借列表几次（刷新免费）
 
 
 def pick_rental(attr: str = WANT_ATTR, tries: int = 3, scorer=None) -> bool:
@@ -129,7 +130,7 @@ def progress(why: str) -> None:
     _p(why)
 
 
-def _pick_once(attr: str, exclude: set, scorer=None) -> str | None:
+def _pick_once(attr: str, exclude: set, scorer=None, refreshes: int = RENTAL_REFRESHES) -> str | None:
     """两页都从顶滑到底，记下最好的一张（页、滑动次数、玩家名），回去点它。返回选中的卡名。
     没有 scorer 时遇到满级（Lv60）主属性卡立刻选；有 scorer 时要看完全部再挑价值最高的。"""
     device.click(*RENTAL_SLOT)
@@ -174,6 +175,21 @@ def _pick_once(attr: str, exclude: set, scorer=None) -> str | None:
             device.swipe(*SWIPE)
             _sleep(1.2)
     if best is None:
+        refresh = ctrl.get("refresh")
+        if refreshes > 0 and refresh:
+            # 租借列表会换一批（11-16 Mac 实机：上一轮有 Da Lv60，这一轮两页都没有主属性卡就停了）：点刷新（免费）换一批再找
+            logger.warning("租借：两页都没读到%s，刷新租借列表再找（还剩 %d 次）", f" {attr} 卡" if scorer is None else "能补成 4-2 的卡", refreshes)
+            if pages > 1:
+                _goto_page(1, pager)
+            _to_top()
+            before = [r.get("player") for r in _rows()["rows"]]
+            device.click(*refresh)
+            _sleep(2.5)
+            if [r.get("player") for r in _rows()["rows"]] != before:
+                device.click(*(ctrl.get("cancel") or (220, 1157)))
+                _sleep(1.5)
+                return _pick_once(attr, exclude, scorer, refreshes - 1)
+            logger.warning("租借：点了刷新列表没变（可能在冷却），不再刷新")
         logger.warning("租借：两页都没读到%s，取消", f" {attr} 卡" if scorer is None else "能补成 4-2 的卡")
         device.click(*(ctrl.get("cancel") or (220, 1157)))
         return None
