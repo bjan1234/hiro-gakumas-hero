@@ -199,11 +199,14 @@ def _pick_once(attr: str, exclude: set, scorer=None, refreshes: int = RENTAL_REF
     # 回到那一行：滑动有惯性，滑同样次数不一定回到同一屏（11-16 Mac 实机：没找到就取消、不开局）。
     # 从顶往下逐屏找这位玩家，最多比记下的屏数多滑 RETURN_EXTRA_SCREENS 次
     row, lst, last_players, still = None, None, None, 0
+    seen_best = None  # 往回找途中看到的价值最高的一行（找不到原玩家时的退路；回去的路上屏幕和扫描时可能不一样）
     for _ in range(screen + 1 + RETURN_EXTRA_SCREENS):
         lst = _rows()
         row = next((r for r in lst["rows"] if r.get("player") == player and r.get("card")), None)
         if row is not None:
             break
+        if scorer is not None and (hit := scored_best(lst["rows"], scorer, exclude)) is not None and (seen_best is None or hit[1] > seen_best[1]):
+            seen_best = (lst, hit[1], hit[0])
         players = [r.get("player") for r in lst["rows"]]
         still = still + 1 if players == last_players else 0
         if still >= 2:
@@ -211,6 +214,19 @@ def _pick_once(attr: str, exclude: set, scorer=None, refreshes: int = RENTAL_REF
         last_players = players
         device.swipe(*SWIPE)
         _sleep(1.2)
+    if row is None and seen_best is not None:
+        # 退回往回找时看到的最好一行：需要回到那一屏
+        logger.warning("租借：回到最佳行时没找到（玩家 %s），改租往回找时看到的最好一张（价值 %.0f，最好的是 %.0f）",
+                       player, seen_best[1], best[0])
+        target = seen_best[2].get("player")
+        _to_top()
+        for _ in range(screen + 1 + RETURN_EXTRA_SCREENS):
+            lst = _rows()
+            row = next((r for r in lst["rows"] if r.get("player") == target and r.get("card")), None)
+            if row is not None:
+                break
+            device.swipe(*SWIPE)
+            _sleep(1.2)
     if row is None:
         hit = scored_best(lst["rows"], scorer, exclude) if scorer is not None else None
         row = hit[0] if hit else (best_row(lst["rows"], attr, exclude) if scorer is None else None)
