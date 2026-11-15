@@ -206,3 +206,41 @@ def test_pick_once_refreshes_list_when_nothing_fits(monkeypatch):
     score = lambda row: 1.0 if row["player"] == "D" else None  # noqa: E731  只有 Da 能补成 4-2
     assert rental._pick_once("Da", set(), score) == "da"
     assert tuple(ctrl["refresh"]) in state["clicked"] and state["clicked"][-1] == tuple(ctrl["decide"])
+
+
+def test_pick_once_falls_back_to_best_seen_on_return(monkeypatch):
+    """回去时原玩家那一行找不到（11-16 Mac 实机 p6：扫描时读到的行回去时读不出来）：改租往回找途中看到的最好一张，不停机。"""
+    pytest.importorskip("kotonebot")
+    from hiro.produce import rental
+
+    def row(player, name):
+        return {"player": player, "card": {"support_card_id": name, "level": 60, "name": name}, "center": [360, 600]}
+
+    state = {"pass": 0, "screen": 0, "clicked": []}
+    scan = [[row("A", "a")], [row("B", "b")], [row("B", "b")]]
+    back = [[row("A", "a")], [row("C", "c")], [row("C", "c")]]  # 回去时 B 那一行读不出来
+
+    class Dev:
+        def click(self, *a):
+            state["clicked"].append(a)
+
+        def swipe(self, *a):
+            state["screen"] = min(state["screen"] + 1, 2)
+
+        def screenshot(self):
+            return None
+
+    def to_top():
+        state["screen"] = 0
+        state["pass"] += 1
+
+    monkeypatch.setattr(rental, "device", Dev())
+    monkeypatch.setattr(rental, "_ensure_plan_fit", lambda: None)
+    monkeypatch.setattr(rental, "progress", lambda why: None)
+    monkeypatch.setattr(rental, "_sleep", lambda s: None)
+    monkeypatch.setattr(rental, "_to_top", to_top)
+    monkeypatch.setattr(rental, "_rows", lambda: {"rows": (scan if state["pass"] == 0 else back)[state["screen"]],
+                                                    "controls": {"decide": [497, 1157], "cancel": [220, 1157]},
+                                                    "pager": {"page": 1, "pages": 1}})  # fmt: skip
+    score = {"A": 1.0, "B": 3.0, "C": 2.0}
+    assert rental._pick_once("Da", set(), lambda r: score[r["player"]]) == "c"
