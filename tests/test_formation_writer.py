@@ -244,3 +244,20 @@ def test_autofix_switch_default_off(monkeypatch):
     assert kaa_patches._autofix_on() is True
     monkeypatch.setattr(kaa_env, "ACTIVE_PLAN", None)
     assert kaa_patches._autofix_on() is False
+
+
+def test_fix_support_waits_for_settled_slots():
+    """刚翻到这个编成号时第 1 格还在动画里、读成认不出：等读数稳定后发现 5 格都对，不改任何格子（11-16 Mac 实机）。"""
+    g = FakeGame(["a", "b", "c", "d", "e"], [[["p"]]])
+    reads = iter([[None, "b", "c", "d", "e"]])
+    real = g.read_formation
+
+    def read_formation(img):
+        page = real(img)
+        nxt = next(reads, None)
+        if page is not None and nxt is not None:
+            page["slots"] = [{**s, "support_card_id": c} for s, c in zip(page["slots"], nxt)]
+        return page
+
+    done = fw.fix_support(g.device(), _plan(["a", "b", "c", "d", "e"]), read_formation=read_formation, read_list=g.read_list)
+    assert done == [] and g.slots == ["a", "b", "c", "d", "e"]

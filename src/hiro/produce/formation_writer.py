@@ -149,14 +149,31 @@ def pick_support(dev: Device, target: str, *, read_list) -> None:
     raise FormationWriteError(f"支援卡选择列表里没找到 {target}（库存里没有，或认不出）")
 
 
+SETTLE_READS, SETTLE_GAP_S = 8, 0.5
+
+
+def _settled_step2(dev: Device, read_formation):
+    """第 2 步 5 格读到连续两次一样才算数（刚从别的编成号翻过来时卡片还在动画里，第 1 格常读成认不出，
+    11-16 Mac 实机：于是去列表里找一张已经在编成里的卡，找不到就不开局）。读不到稳定结果时用最后一次。"""
+    prev, page = None, None
+    for _ in range(SETTLE_READS):
+        page = read_formation(dev.shoot())
+        if page is not None and page.get("view") == "step2":
+            cur = [s.get("support_card_id") for s in page["slots"]]
+            if cur == prev:
+                return page
+            prev = cur
+        dev.sleep(SETTLE_GAP_S)
+    return page if page is not None and page.get("view") == "step2" else None
+
+
 def fix_support(dev: Device, plan: dict, *, read_formation, read_list) -> list[dict]:
     """第 2 步：读 5 格，和方案不一致的格子逐个点开、选方案的卡、決定，再核对。返回改动记录。"""
     want = [o["support_card_id"] for o in (plan.get("support") or {}).get("own") or []]
     if not want:
         return []
-    img = dev.shoot()
-    page = read_formation(img)
-    if page is None or page.get("view") != "step2":
+    page = _settled_step2(dev, read_formation)
+    if page is None:
         raise FormationWriteError("不在第 2 步支援卡页面")
     current = [s.get("support_card_id") for s in page["slots"]]
     moves = fix_plan(current, want)
