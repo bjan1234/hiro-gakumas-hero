@@ -268,3 +268,15 @@ def test_scan_entries_keep_inventory_position():
                        entry(3, "p_card-02-men-3_002", "mid"), entry(4, "p_card-00-men-3_005", "mid")]}  # fmt: skip
     chosen = select_memories(inv)["chosen"]
     assert chosen and all(c.get("cell") is not None and c.get("key") for c in chosen)
+
+
+def test_support_step2_title_ocr_bo_variant():
+    """第 2 步标题「2.サポート選択」被 OCR 读成「2.サボート選択」（11-16 Mac 账号 2）：也要认成 step2 页。"""
+    import numpy as np
+
+    from hiro.vision.support_screens import read_support_formation
+
+    img = np.zeros((1280, 720, 3), np.uint8)
+    boxes = [("2.サボート選択", (56, 39, 201, 64)), ("20/20", (40, 650, 130, 680)), ("サボートカード編成 20", (30, 980, 300, 1010))]
+    page = read_support_formation(img, boxes)
+    assert page is not None and page["view"] == "step2" and page["name"] == "サポートカード編成20"
