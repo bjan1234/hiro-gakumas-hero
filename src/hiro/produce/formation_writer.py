@@ -203,6 +203,7 @@ def fix_support(dev: Device, plan: dict, *, read_formation, read_list) -> list[d
 # 第 3 步四格回忆的插图（点开进回忆选择页）：720x1280，顺序 左上、右上、左下、右下（11-04 实机帧；技能卡小图标在其右侧）
 STEP3_SLOTS = ((152, 770), (478, 770), (152, 901), (478, 901))
 SEARCH_ROWS = 3  # 目标行上下各找几行
+PICKER_OPEN_TRIES = 4  # 点回忆格后最多看几次选择页开没开（每次 1.5 秒，中途再点一次）
 PICKER_DECIDE = (497, 1157)
 
 
@@ -271,12 +272,17 @@ def fix_memory(dev: Device, plan: dict, *, read_icons, make_picker) -> list[dict
     done = []
     for slot, key in moves:
         logger.info("编成修正：回忆第 %d 格 %s → %s", slot + 1, current[slot] or "认不出", key)
-        dev.click(*STEP3_SLOTS[slot])
-        dev.sleep(1.5)
-        picker = make_picker()
         from hiro.produce.memory_picker import picker_open
 
-        if not picker_open(picker.ocr(picker.shoot())):
+        picker, opened = make_picker(), False
+        for attempt in range(PICKER_OPEN_TRIES):  # 页面打开有时慢（11-16 Mac 实机：1.5 秒后还没开 → 不开局）：多等、没开再点一次
+            if attempt == 0 or attempt == PICKER_OPEN_TRIES // 2:
+                dev.click(*STEP3_SLOTS[slot])
+            dev.sleep(1.5)
+            if picker_open(picker.ocr(picker.shoot())):
+                opened = True
+                break
+        if not opened:
             raise FormationWriteError("点回忆格没打开回忆选择页")
         pick_memory(picker, targets[key])
         img = None
