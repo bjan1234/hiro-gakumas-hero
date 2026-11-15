@@ -239,6 +239,7 @@ def normalize_memory(m: dict) -> dict:
     from hiro.brain.deciders import _customize_text
     from hiro.state.memory_priority import CUSTOM_TEXT_KEYS, parse_param_texts
 
+    raw = m  # 原始扫描记录：开局自动编成要它的 cell / slot / stats 找回这份回忆（_inventory_position），转换后的格式里没有
     if isinstance(m.get("card"), dict):
         m = _from_entry(m)
 
@@ -254,7 +255,7 @@ def normalize_memory(m: dict) -> dict:
     params = m.get("params") or parse_param_texts(m.get("param_texts") or [])
     return {"id": m.get("id", m.get("index")), "card_id": card_id, "name": m.get("card_name") or card_id, "upgrade": up,
             "custom_keys": keys, "customized": customized, "timing": _timing(m), "params": params,
-            "abilities": list(m.get("abilities") or []), "rank": m.get("rank"), "raw": m}  # fmt: skip
+            "abilities": list(m.get("abilities") or []), "rank": m.get("rank"), "raw": raw}  # fmt: skip
 
 
 def memory_quality(mem: dict, gains: dict | None = None, finals: dict | None = None,

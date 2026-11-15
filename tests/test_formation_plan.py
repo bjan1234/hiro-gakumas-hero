@@ -252,3 +252,19 @@ def test_memory_set_check():
 
 def test_plan_file_is_json_serializable():
     json.dumps(_hiro_plan(), ensure_ascii=False)
+
+
+def test_scan_entries_keep_inventory_position():
+    """hiro.memory_scan 扫出来的记录（card 是 dict、stats 是 dict、带 slot / cell）：方案里选中的回忆要带上 cell 和 key，
+    开局自动编成靠它们找回这份回忆。以前 normalize_memory 先转格式再取位置，cell / key 全是 None（11-16 Mac 实机：
+    「方案里的回忆没有库存位置（旧版方案）」不开局）。"""
+
+    def entry(i, card_id, timing="start"):
+        return {"card": {"card_id": card_id, "name": card_id, "upgrade": 1}, "timing": timing, "timing_text": "",
+                "abilities": [{"text": "初期ダンス上昇+20", "disabled": False}], "stats": {"dance": 20}, "card_text": "",
+                "effect": "", "page": 0, "slot": i, "cell": [i // 3, i % 3]}  # fmt: skip
+
+    inv = {"entries": [entry(0, "p_card-02-men-2_004"), entry(1, "p_card-02-act-1_037"), entry(2, "p_card-02-act-3_039", "mid"),
+                       entry(3, "p_card-02-men-3_002", "mid"), entry(4, "p_card-00-men-3_005", "mid")]}  # fmt: skip
+    chosen = select_memories(inv)["chosen"]
+    assert chosen and all(c.get("cell") is not None and c.get("key") for c in chosen)
