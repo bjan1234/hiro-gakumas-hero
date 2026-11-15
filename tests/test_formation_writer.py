@@ -261,3 +261,28 @@ def test_fix_support_waits_for_settled_slots():
 
     done = fw.fix_support(g.device(), _plan(["a", "b", "c", "d", "e"]), read_formation=read_formation, read_list=g.read_list)
     assert done == [] and g.slots == ["a", "b", "c", "d", "e"]
+
+
+def test_fix_memory_matches_core_when_ability_text_differs(monkeypatch):
+    """同一份回忆两次读，能力文字 OCR 差一个字（11-16 Mac 实机：第 16 行附近试了 2 格都对不上 → 不开局）：卡 / 强化 / 时机 / 属性一致就算。"""
+    import json
+
+    from hiro.produce import memory_picker
+
+    mem = FakeMemory(["act-2_062", "men-3_012", "act-3_050", "men-1_035"])
+    card_of = lambda r, c: "act-3_039" if (r, c) == (7, 1) else f"other{r}{c}"  # noqa: E731
+    monkeypatch.setattr(memory_picker, "to_top", lambda p: (setattr(mem, "top_row", 0), "picker")[1])
+    monkeypatch.setattr(memory_picker, "page_rows", lambda img: [[{"row": mem.top_row + i, "col": c, "center": (0, 0)} for c in range(3)] for i in range(5)])
+    monkeypatch.setattr(memory_picker, "picker_open", lambda boxes: True)
+
+    def key(e):
+        r, c = mem.selected
+        return json.dumps([e["card"], 1, "start", 10, 20, 0, 0, [{"text": "初期ダンス上昇+2O" if (r, c) == (7, 1) else f"x{r}{c}"}]], ensure_ascii=False)
+
+    monkeypatch.setattr(fw, "memory_key", key)
+    want = json.dumps(["act-3_039", 1, "start", 10, 20, 0, 0, [{"text": "初期ダンス上昇+20"}]], ensure_ascii=False)
+    plan = {"memory": {"chosen": [{"card_id": "p_card-02-act-2_062"}, {"card_id": "p_card-00-men-3_012"}, {"card_id": "p_card-02-act-3_050"},
+                                  {"card_id": "p_card-02-act-3_039", "cell": [7, 1], "key": want}]}}  # fmt: skip
+    dev = fw.Device(shoot=mem.shoot, click=mem.click, swipe=lambda *a: None, sleep=lambda s: None)
+    done = fw.fix_memory(dev, plan, read_icons=mem.read_icons, make_picker=lambda: mem.picker(card_of))
+    assert mem.decided == [(7, 1)] and done and done[0]["to"] == "act-3_039"
