@@ -203,8 +203,7 @@ def test_fix_memory_picks_by_inventory_position(monkeypatch):
 
     mem = FakeMemory(["act-2_062", "men-3_012", "act-3_050", "men-1_035"])
     card_of = lambda r, c: "act-3_039" if (r, c) == (7, 1) else f"other{r}{c}"  # noqa: E731
-    monkeypatch.setattr(memory_picker, "to_top", lambda p: (setattr(mem, "top_row", 0), "picker")[1])
-    monkeypatch.setattr(memory_picker, "page_rows", lambda img: [[{"row": mem.top_row + i, "col": c, "center": (0, 0)} for c in range(3)] for i in range(5)])
+    monkeypatch.setattr(memory_picker, "iter_rows", lambda p: ((g, [{"row": g, "col": c, "center": (0, 0)} for c in range(3)]) for g in range(mem.rows)))  # 精确行号
     monkeypatch.setattr(memory_picker, "picker_open", lambda boxes: True)
     monkeypatch.setattr(fw, "memory_key", lambda e: e["key_override"])
     plan = {"memory": {"chosen": [{"card_id": "p_card-02-act-2_062"}, {"card_id": "p_card-00-men-3_012"}, {"card_id": "p_card-02-act-3_050"},
@@ -271,8 +270,7 @@ def test_fix_memory_matches_core_when_ability_text_differs(monkeypatch):
 
     mem = FakeMemory(["act-2_062", "men-3_012", "act-3_050", "men-1_035"])
     card_of = lambda r, c: "act-3_039" if (r, c) == (7, 1) else f"other{r}{c}"  # noqa: E731
-    monkeypatch.setattr(memory_picker, "to_top", lambda p: (setattr(mem, "top_row", 0), "picker")[1])
-    monkeypatch.setattr(memory_picker, "page_rows", lambda img: [[{"row": mem.top_row + i, "col": c, "center": (0, 0)} for c in range(3)] for i in range(5)])
+    monkeypatch.setattr(memory_picker, "iter_rows", lambda p: ((g, [{"row": g, "col": c, "center": (0, 0)} for c in range(3)]) for g in range(mem.rows)))  # 精确行号
     monkeypatch.setattr(memory_picker, "picker_open", lambda boxes: True)
 
     def key(e):
@@ -295,8 +293,7 @@ def _core_rig(monkeypatch, target_cell, ability_of):
 
     mem = FakeMemory(["act-2_062", "men-3_012", "act-3_050", "men-1_035"], rows=40)
     card_of = lambda r, c: "act-3_039" if (r, c) == target_cell else f"other{r}{c}"  # noqa: E731
-    monkeypatch.setattr(memory_picker, "to_top", lambda p: (setattr(mem, "top_row", 0), "picker")[1])
-    monkeypatch.setattr(memory_picker, "page_rows", lambda img: [[{"row": mem.top_row + i, "col": c, "center": (0, 0)} for c in range(3)] for i in range(3)])
+    monkeypatch.setattr(memory_picker, "iter_rows", lambda p: ((g, [{"row": g, "col": c, "center": (0, 0)} for c in range(3)]) for g in range(mem.rows)))  # 精确行号
     monkeypatch.setattr(memory_picker, "picker_open", lambda boxes: True)
 
     def key(e):

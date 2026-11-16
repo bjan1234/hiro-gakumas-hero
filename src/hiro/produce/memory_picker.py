@@ -43,6 +43,7 @@ PAGE_PREV, PAGE_NEXT = (230, 530), (485, 530)
 CANCEL_TAP = (211, 1162)
 FILTER_TAP, SORT_KEY_TAP, SORT_DIR_TAP = (399, 1050), (495, 1050), (653, 1050)
 SWIPE_FROM, SWIPE_ROWS = 1000, 2  # 一次上滑 2 行（行距 137.5），可见 3 行 → 与上一页重叠 1 行，用来核对没有跳行
+SCROLL_STEP_MAX = int(3 * 137.5)  # 一次滑动最多这么多像素（3 行）：上滑 1000→588、下滑 600→1012，都在列表区（560–1040）里
 SWIPE_DURATION, SWIPE_HOLD = 1.0, 0.4  # 慢滑 + 终点停住再抬起：不带惯性（2026-11-01 实机：3 行快滑一次滚过 4 行以上，整行漏扫）
 CELL_MATCH_MAX = 14.0  # 两张格子缩略图（48x24 灰度）平均差 ≤ 这个算同一格（行带上下差 1–2 像素也能对上）
 MAX_BACKTRACK = 3
@@ -247,13 +248,25 @@ class Picker:
     def scroll(self, rows: float = SWIPE_ROWS, *, px: int | None = None, x: int = 360, y_from: int | None = None) -> np.ndarray:
         """上滑 rows 行（负数下滑；或直接给像素 px），慢滑、终点停住，返回滑后的画面。x / y_from：换个起点滑（原起点没让列表动时）。"""
         dy = int(px if px is not None else rows * ROW_PITCH)
+        # 一次最多滑 SCROLL_STEP_MAX：起止点都留在列表区里（11-17 开局第 3 步：一次滑约 16 行，终点 y 成了负数，kotonebot swipe 报
+        # argument out of range）。大距离拆成几次
+        while abs(dy) > SCROLL_STEP_MAX:
+            step = SCROLL_STEP_MAX if dy > 0 else -SCROLL_STEP_MAX
+            y1 = y_from if y_from is not None else (SWIPE_FROM if step > 0 else GRID_Y[0] + 40)
+            self.swipe(x, y1, x, y1 - step)
+            self.sleep(SCROLL_SETTLE)
+            dy -= step
         y1 = y_from if y_from is not None else (SWIPE_FROM if dy > 0 else GRID_Y[0] + 40)
         self.swipe(x, y1, x, y1 - dy)
         self.sleep(SCROLL_SETTLE)
         return self.shoot()
 
     def cancel(self) -> bool:
-        self.click(*CANCEL_TAP)
+        """点「キャンセル」关掉选择页（按 OCR 找：编成菜单的选择页在 (211,1162)，开局第 3 步的多了 所持メモリー / レンタル 页签、
+        在 (220,1160) 附近；找不到才点 CANCEL_TAP）。返回选择页关了没有。"""
+        boxes = self.ocr(self.shoot())
+        pos = find_text(boxes, "キャンセル", region=(0, 1080, 720, 1280)) or CANCEL_TAP
+        self.click(*pos)
         self.sleep(1.0)
         return not picker_open(self.ocr(self.shoot()))
 
@@ -353,6 +366,36 @@ def align(prev: list[list[dict]], cur: list[list[dict]]) -> int | None:
         if all(same_row(prev[len(prev) - 1 - i], cur[k - i]) for i in range(n)):
             return k
     return None
+
+
+def iter_rows(picker: "Picker", *, max_pages: int = 600):
+    """从顶部往下逐页走，产出 (全局行号, 这一行的格子)，行号按页与页的重叠精确计数（同 scan：读完重截当上一页、align 找上一页最后一行、
+    对不上一行一行往回滑），不按滑过的像素估算（11-17 编成菜单：按每屏行数累计会高估，第 70 行 ±30 行都找不到）。
+    调用方可以在拿到一行后点格子读详情；走不下去（到底 / 对不上）就结束。"""
+    img = to_top(picker)
+    base, start = 0, 0
+    for _ in range(max_pages):
+        rows = page_rows(img)
+        for i in range(start, len(rows)):
+            yield base + i, rows[i]
+        prev_img = picker.shoot()
+        prev = page_rows(prev_img) or rows
+        if not prev:
+            return
+        dy = prev[-1][0]["rect"][1] - prev[0][0]["rect"][1] if len(prev) > 1 else int(ROW_PITCH)
+        moved, img = scroll_moved(picker, prev_img, dy)
+        if not moved:
+            return  # 到底
+        k = align(prev, page_rows(img))
+        back = 0
+        while k is None and back < SCAN_BACKTRACK:
+            back += 1
+            img = picker.scroll(-1)
+            k = align(prev, page_rows(img))
+        if k is None:
+            logger.warning("回忆列表：第 %d 行之后对不上（往回滑了 %d 行），行号没法继续数，停", base + len(prev) - 1, back)
+            return
+        base, start = base + len(prev) - 1 - k, k + 1
 
 
 def mark_suspects(entries: list[dict]) -> int:
