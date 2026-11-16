@@ -160,6 +160,15 @@ def events_from_step(page: str | None, action: dict, ok: bool, page_fields: dict
             item = shelf[i] if 0 <= i < len(shelf) else {}
             E("SHOP_BUY", kind="card" if item.get("card_id") else "drink", card_id=item.get("card_id"), drink_id=item.get("drink_id"),
               upgrade=item.get("upgrade"), price=item.get("price"))  # fmt: skip
+    elif page == "HIF_ROUND_INTERVAL" and kind == "IntervalBuy" and "index" in args:
+        # 轮间买卡 / 饮料：同相談记 SHOP_BUY，卡进牌组账本（p13 复盘：以前没记，R2 开局重建找不到轮间买的 アイドル魂、退回 uinet）。
+        # 货架格子编号就是决策的 index（买走后那格 card_id 变空，所以用决策这一步的货架）
+        iv = page_fields.get("interval") or {}
+        i = int(args["index"])
+        item = next((c for c in (iv.get("cards") or []) + (iv.get("drinks") or []) if c.get("index") == i), {})
+        if item.get("card_id") or item.get("drink_id"):
+            E("SHOP_BUY", kind="card" if item.get("card_id") else "drink", card_id=item.get("card_id"), drink_id=item.get("drink_id"),
+              upgrade=item.get("upgrade"), price=item.get("price"), source="interval")  # fmt: skip
     elif page == "SKILL_CARD_CHANGE_1" and kind == "ChangeCard" and not args.get("cancel"):
         cands = page_fields.get("candidates") or []
         i = args.get("pick_index")
