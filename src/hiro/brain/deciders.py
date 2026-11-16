@@ -129,7 +129,8 @@ class ProduceDeciders:
               "SPECIAL_GUIDANCE": self.special_guidance, "FORMATION": self.formation, "TOWER_FORMATION": self.tower_formation, "TOWER_RETRY": self.tower_retry,
               "QUALIFY_MEMORY": self.qualify_memory, "SKILL_CARD_CHANGE_1": self.change_pick,
               "SKILL_CARD_CHANGE_2": self.change_remove, "SKILL_CARD_REMOVAL": self.remove_card,
-              "SKILL_CARD_ENHANCE": self.enhance_card, "PDRINK_MAX_CONFIRM": self.drink_overflow_confirm}[page]  # fmt: skip
+              "SKILL_CARD_ENHANCE": self.enhance_card, "PDRINK_MAX_CONFIRM": self.drink_overflow_confirm,
+              "NIA_SALES_PLACE": self.sales_place, "NIA_SALES_EVENT": self.sales_event, "NIA_AUDITION_SELECT": self.audition_select}[page]  # fmt: skip
         t0 = time.monotonic()
         try:
             d = fn(state, **kw)
@@ -306,6 +307,37 @@ class ProduceDeciders:
                             decider=decider)  # fmt: skip
         i, reason, _ = (choose_outing if decider == "outing" else choose_study)(self._hajime_nia_status(state), choices)
         return Decision(Action.event_select(i), reason, "rule", 0.7, decider=decider)
+
+    # ---------------------------------------------------------------- N.I.A 营业 / 试镜选档（hiro.brain.hajime_nia，设计稿第三、六节）
+    def sales_place(self, state: GameState) -> Decision:
+        from hiro.brain.hajime_nia import choose_sales_place
+
+        places = [p for p in state.page_fields.get("places") or [] if "index" in p]
+        if not places:
+            return Decision(Action.ui(ActionKind.WAIT, why="营业场所没读到"), "营业场所没读到", "fallback", 0.1, decider="sales_place")
+        i, reason, _ = choose_sales_place(self._hajime_nia_status(state), places, (state.produce or {}).get("drinks"))
+        return Decision(Action.event_select(i), reason, "rule", 0.7, decider="sales_place")
+
+    def sales_event(self, state: GameState) -> Decision:
+        from hiro.brain.hajime_nia import choose_sales_event
+
+        choices = [c for c in state.page_fields.get("choices") or [] if "index" in c]
+        if not choices:
+            return Decision(Action.ui(ActionKind.WAIT, why="营业选项没读到"), "营业选项没读到", "fallback", 0.1, decider="sales_event")
+        i, reason, _ = choose_sales_event(self._hajime_nia_status(state), choices)
+        return Decision(Action.event_select(i), reason, "rule", 0.7, decider="sales_event")
+
+    def audition_select(self, state: GameState) -> Decision:
+        """N.I.A 试镜选档：动作带 audition_number（中转层按它查这场的战斗配置，8a3a1e7 11-17）。"""
+        from hiro.brain.hajime_nia import choose_audition
+
+        pf = state.page_fields
+        tiers = [t for t in pf.get("tiers") or [] if "index" in t]
+        if not tiers:
+            return Decision(Action.ui(ActionKind.WAIT, why="试镜档位没读到"), "试镜档位没读到", "fallback", 0.1, decider="audition_select")
+        votes = pf.get("votes") if pf.get("votes") is not None else (state.produce or {}).get("votes")
+        i, number, reason, _ = choose_audition(self._hajime_nia_status(state), votes, tiers, failed=int(pf.get("failed") or 0))
+        return Decision(Action(ActionKind.EVENT_SELECT, {"select": int(i), "audition_number": number}), reason, "rule", 0.7, decider="audition_select")
 
     def _stale_step_fallback(self, available: list[dict] | None, produce: dict | None, why: str) -> Decision:
         """日程对不上时的兜底：不按（可能读错的）step 套日程模板，只按页面上的选项选。"""
