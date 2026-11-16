@@ -37,3 +37,54 @@ def test_sampler_saves_on_change_and_scene_and_stalls(tmp_path):
     now[0] += m.STALL_S
     with pytest.raises(m.SampleStall):
         dev.screenshot_hook_after(logical(200))
+
+
+def test_blind_choice_three_hits_saves_frame_and_stops(tmp_path, monkeypatch):
+    """kaa_patches 拦下 KAA 盲点的选项页（BLIND_CHOICE 置位）：8 秒内第 3 次就存一帧、抛 SampleBlocked；隔得久的不累计。"""
+    m = _mod()
+    flag = {"pending": False}
+    monkeypatch.setitem(__import__("sys").modules, "hiro.loop.kaa_patches", NS(BLIND_CHOICE=flag))
+    import hiro.loop as hl
+
+    monkeypatch.setattr(hl, "kaa_patches", __import__("sys").modules["hiro.loop.kaa_patches"], raising=False)
+    now = [0.0]
+    s = m.Sampler(tmp_path / "frames", diff=4.0, clock=lambda: now[0])
+    img = np.full((1280, 720, 3), 50, np.uint8)
+    s.after(img)  # 第一张照常存
+    for t in (1.0, 20.0, 21.0):  # 第 1 次和后两次隔了 19 秒：不够 3 次
+        now[0] = t
+        flag["pending"] = True
+        s.after(img)
+        assert flag["pending"] is False
+    now[0] = 22.0
+    flag["pending"] = True
+    with pytest.raises(m.SampleBlocked):
+        s.after(img)
+    rows = [json.loads(l) for l in (tmp_path / "frames" / "frames.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert rows[-1]["scene"] == "BLIND_CHOICE" and len(rows) == 2  # 画面没变也存这一帧
+
+
+def test_resume_enters_and_runs_kaa_controller(monkeypatch):
+    """--resume：enter_produce 进培育，再用 KAA 的 ProduceController + StandardStrategy（场景按 --difficulty，is_resumed=True）。"""
+    import sys
+
+    m = _mod()
+    calls = []
+    monkeypatch.setitem(sys.modules, "hiro.loop.resume", NS(enter_produce=lambda: calls.append("enter") or "resumed"))
+    monkeypatch.setitem(sys.modules, "kaa.kaa_context", NS(
+        produce_solution=lambda: NS(data=NS(card_deck_id="deck-1")),
+        init_produce_session=lambda sess: calls.append(("session", sess.kw)),
+        clear_produce_session=lambda: calls.append("clear")))  # fmt: skip
+    monkeypatch.setitem(sys.modules, "kaa.tasks.produce.session", NS(ProduceSession=lambda **kw: NS(kw=kw)))
+
+    class Controller:
+        def __init__(self, scenario, strategy):
+            calls.append(("controller", scenario, strategy))
+
+        def run(self):
+            calls.append("run")
+
+    pm = NS(resolve_deck=lambda idol, deck_id: f"{idol}/{deck_id}", ProduceController=Controller, StandardStrategy="std")
+    m.resume(pm, "REGULAR", "i_card-x")
+    assert calls == ["enter", ("session", {"idol_card": "i_card-x", "scenario": "REGULAR", "is_resumed": True, "deck": "i_card-x/deck-1"}),
+                     ("controller", "REGULAR", "std"), "run", "clear"]  # fmt: skip
