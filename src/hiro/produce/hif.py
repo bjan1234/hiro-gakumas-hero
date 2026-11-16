@@ -1762,6 +1762,45 @@ class HifCore:
         self.s.note(f"{label} 再挑戦：用了{what}{left}")
         return kind
 
+    RANKING_REPEAT_MAX = 20  # 同一张本战名次页点了这么多次还在：不再点，交给看门狗（存帧报警）
+
+    def on_finals_ranking(self, ctx=None):
+        """新主循环：本战名次页（HIF_FINALS_RANKING：开考前「現在順位 / タップして次へ」、R1 后 round_result、R2 后 final）。
+        同旧主循环 HiroController._record_finals_ranking / _advance_ranking：同一页（页种 + 轮次）只记一次（存帧进 trace）；
+        final 页先按规则判断再挑戦（免费 / 券，ジュエル不点），不挑戦就点「次へ」，之后的结算由主循环（PRODUCE_END 等）收尾。
+        Mac p13 11-17：新主循环没处理这一页，开考前名次页 180 秒停机。"""
+        from hiro.vision.pages import classify_page
+
+        img = device.screenshot()
+        hit = classify_page(img)
+        if not hit or hit[0] != "HIF_FINALS_RANKING":
+            return
+        f = hit[1]
+        key = (f.get("kind"), f.get("finals_round"))  # OCR 会抖（40570 / 46570），按页种 + 轮次去重
+        if key == getattr(self, "_last_ranking", None):
+            self._ranking_repeats = getattr(self, "_ranking_repeats", 0) + 1
+            if self._ranking_repeats > self.RANKING_REPEAT_MAX:
+                return
+        else:
+            self._ranking_repeats, self._last_ranking = 0, key
+            self.s.observe(scene="HIF_FINALS_RANKING", img=img, fields=f, save_frame=True)
+            self.s.record()
+            logger.info("本战排名页（%s）：第 %s 轮，我方第 %s 名，总分 %s，本轮 %s；全员 %s", f.get("kind"), f.get("finals_round"), f.get("rank"),
+                        f.get("score") or f.get("my_score"), f.get("round_score"),
+                        [(e.get("rank"), e.get("name"), e.get("score"), e.get("round_score")) for e in f.get("entries") or []])  # fmt: skip
+        if f.get("kind") == "final":
+            try:
+                if self._finals_retry(img, "r2"):
+                    return  # 用了再挑戦：exam_restarted，主循环重进考试
+            except Exception as e:  # noqa: BLE001  再挑戦判断失败也不能卡住：照常点「次へ」
+                logger.warning("本战最终页再挑戦判断失败：%s", e)
+        texts = screen_texts(img)
+        btn = next((t for t in texts if button_text(t.text, "次へ") and t.rect.center.y > 900), None)  # R1 / R2 结果页「→次へ」
+        if btn is not None:
+            device.click(*btn.rect.center)
+        elif (tip := next((t for t in texts if "タップして" in t.text), None)) is not None:
+            device.click(*tip.rect.center)  # 开考前名次页「タップして次へ」（实机 (364,1187)）
+
     def _finals_retry(self, img, label: str) -> bool:
         """本战最终结果页（HIF_FINALS_RANKING final）敗退 / 没拿第 1，且有「再挑戦」时使用（免费 / 券；ジュエル不点）。"""
         from hiro.vision.pages import classify_page

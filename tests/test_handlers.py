@@ -36,6 +36,7 @@ def test_pages_call_core_methods():
     h = make_handlers(core)
     assert _run(h, "CONSULT") is DONE and _run(h, "SKILL_CARD_REMOVAL") is DONE and _run(h, "PDRINK_MAX_CONFIRM") is DONE
     assert core.calls == ["consult", "skill_card_removal", "pdrink_max_confirm"]
+    assert _run(h, "HIF_FINALS_RANKING") is DONE and core.calls[-1] == "finals_ranking"  # 本战名次页（Mac p13 11-17 没处理）
     assert _run(h, "SPECIAL_GUIDANCE") is DONE and core.calls[-1] == "special_guidance"  # 回到定制选卡页接着做（h11 11-15）
     assert "LOADING" not in h and "unknown" not in h  # 不需要处理的页没登记，交给 advance
 
