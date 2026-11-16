@@ -179,8 +179,48 @@ def reroll_confirm(frame, rt) -> str | None:
     return f"再抽選确认框：点「{hit.text}」"
 
 
+# 成就达成提示条（「手札の多さが武器 / 花海 咲季のPアイドルを合計5種類入手 ✓」）：白色圆角横条盖在画面顶部（y 36–150），
+# 开局第 1 步的页头被它挡住认不出（Mac 账号 2 11-16）。几秒后自己消失：不点（点了可能跳到成就页），这一拍当「处理过」等它走。
+# 判据：横条上下两段白（x 120–580，y 40–56 / 124–146 白色比例 ≥ 0.9）+ 右边蓝色对勾（x 590–665，y 60–130 蓝像素 ≥ 150）。
+# fixtures + Mac 实机帧 699 张里只有两张成就帧命中（517 个蓝像素）。
+TOAST_MAX_S = 20.0  # 一直在超过这么久就不再当中断（交回判页 / 看门狗，防真卡住时死等）
+
+
+def _achievement_toast(img) -> bool:
+    import cv2
+    import numpy as np
+
+    if img is None or img.shape[:2] != (1280, 720):
+        return False
+    hsv = cv2.cvtColor(img[:170], cv2.COLOR_BGR2HSV)
+
+    def white(y1, y2):
+        b = hsv[y1:y2, 120:580]
+        return float(((b[..., 1] < 25) & (b[..., 2] > 235)).mean())
+
+    if white(40, 56) < 0.9 or white(124, 146) < 0.9:
+        return False
+    chk = hsv[60:130, 590:665]
+    return int(np.count_nonzero((chk[..., 0] >= 95) & (chk[..., 0] <= 118) & (chk[..., 1] >= 120) & (chk[..., 2] >= 180))) >= 150
+
+
+def achievement_toast(frame, rt) -> str | None:
+    """成就达成提示条盖住页头：不点，等它自己消失（连续 TOAST_MAX_S 秒还在就不再拦）。"""
+    now = rt.clock() if callable(getattr(rt, "clock", None)) else 0.0
+    if not _achievement_toast(frame.img):
+        rt._toast_since = None
+        return None
+    since = getattr(rt, "_toast_since", None)
+    if since is None:
+        rt._toast_since = since = now
+    if now - since >= TOAST_MAX_S:
+        return None
+    return "成就提示条盖住页头：等它消失"
+
+
 Interrupt = Callable[[object, object], "str | None"]
-DEFAULT: tuple[Interrupt, ...] = (red_line, comm, stop_notice, date_changed, settings, customize_confirm, tutorial, reroll_confirm)
+DEFAULT: tuple[Interrupt, ...] = (red_line, comm, stop_notice, date_changed, settings, customize_confirm, tutorial, reroll_confirm,
+                                   achievement_toast)
 
 
 def check(frame, rt, interrupts: tuple[Interrupt, ...] = DEFAULT) -> str | None:

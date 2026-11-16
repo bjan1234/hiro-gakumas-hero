@@ -539,3 +539,32 @@ def test_pitem_customize_done_page_is_tapped_through():
     rt = NS(device=NS(tap=lambda x, y: taps.append((x, y))), sleep=lambda s: None, screen=NS(shot=lambda: Frame(img, 0.0)))
     hit = classify(img)
     assert hit.name == "PITEM_CUSTOMIZE_DONE" and play.advance(rt, Frame(img, 0.0), hit) is True and taps == [(12, 12)]
+
+
+@pytest.mark.parametrize("name", ["achievement-toast-home.png", "achievement-toast-step1.png"])
+def test_achievement_toast_waits_without_tapping(name):
+    """成就达成提示条盖住开局第 1 步的页头（Mac 账号 2 11-16）：中断层不点、等它消失；一直在超过 TOAST_MAX_S 就不再拦。"""
+    import os
+    from pathlib import Path
+
+    import cv2
+
+    from hiro.runtime.frame import Frame
+
+    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / name
+    if not path.exists():
+        pytest.skip(f"需要实机截图 pages/{name}")
+    rt, clock = runtime([frame()])
+    f = Frame(cv2.resize(cv2.imread(str(path)), (720, 1280)), 0.0)
+    assert "成就提示" in interrupts.achievement_toast(f, rt) and rt.raw_device.taps == []
+    clock.now += interrupts.TOAST_MAX_S
+    assert interrupts.achievement_toast(f, rt) is None  # 一直不走：交回判页 / 看门狗
+    assert interrupts.achievement_toast(frame(), rt) is None  # 没有提示条：不管
+
+
+def test_drive_waits_out_achievement_toast():
+    """drive 等第 1 步页头时提示条盖着：这几拍当中断处理（不调 step、不算超时），消失后照常认出。"""
+    seq = [True, True, True, False]
+    rt, clock = runtime([frame()], interrupts=(lambda f, rt: "成就提示条盖住页头：等它消失" if seq.pop(0) else None,))
+    calls = []
+    assert rt.drive(lambda f: calls.append(1) or True, 1.0, "等第 1 步") is True and calls == [1]
