@@ -164,6 +164,10 @@ def read_ability_page(boxes) -> list[dict]:
     return out
 
 
+class PickerClosed(RuntimeError):
+    """回忆选择页不见了（多半点成了「決定」，编成可能被改了）：扫描 / 读取立即停下，不再点任何东西。"""
+
+
 class Picker:
     """回忆选择页上的操作。shoot / click / swipe / ocr / clock / sleep 可注入（离线测试）。"""
 
@@ -193,27 +197,43 @@ class Picker:
         """点一格；详情栏变了（或本来就是这格）后返回画面。"""
         return self.select_checked(cell)[1]
 
+    def ensure_open(self, boxes=None, img=None) -> list:
+        """还在回忆选择页（キャンセル / 決定 / 編成詳細 都在）；不在了抛 PickerClosed。返回用过的 OCR 结果。"""
+        if boxes is None:
+            boxes = self.ocr(img if img is not None else self.shoot())
+        if not picker_open(boxes):
+            raise PickerClosed("回忆选择页不见了（可能点成了「決定」，编成可能被改了）")
+        return boxes
+
     def select_checked(self, cell: dict) -> tuple[bool, np.ndarray]:
-        """点一格，返回 (详情栏变了没有, 画面)。没变就再点一次（点击丢了 / 详情栏刷新慢）。"""
+        """点一格（只点一次），返回 (详情栏变了没有, 画面)。点之前核对还在选择页。
+        详情栏没变也不再点同一格：再点已选中的格子可能被游戏当成「決定」（11-16 账号 2：扫描中选择页关了、编成第 1 格被换成
+        ラブリーウインク），只多等一会儿。"""
         before = self.shoot()
+        self.ensure_open(img=before)
         self.click(*cell["center"])
         changed, img = self._wait_change(before, DETAIL_ROI)
         if not changed:
-            self.click(*cell["center"])
+            self.sleep(0.8)
             changed, img = self._wait_change(before, DETAIL_ROI)
         return changed, img
 
     def to_page(self, page: int) -> tuple[np.ndarray, list]:
-        """详情栏翻到第 page 页（1 / 2）。"""
+        """详情栏翻到第 page 页（1 / 2）。每次点翻页箭头前核对还在选择页、并且认出了页码（认不出页码就不盲点，等一下重读）。"""
         img = self.shoot()
-        boxes = self.ocr(img)
+        boxes = self.ensure_open(self.ocr(img))
         for _ in range(3):
             cur = detail_page(boxes)
             if cur == page:
                 return img, boxes
-            self.click(*(PAGE_NEXT if (cur or 1) < page else PAGE_PREV))
+            if cur is None:
+                self.sleep(0.4)
+                img = self.shoot()
+                boxes = self.ensure_open(self.ocr(img))
+                continue
+            self.click(*(PAGE_NEXT if cur < page else PAGE_PREV))
             _, img = self._wait_change(img, DETAIL_ROI)
-            boxes = self.ocr(img)
+            boxes = self.ensure_open(self.ocr(img))
         return img, boxes
 
     def read_selected(self) -> dict:
@@ -383,64 +403,74 @@ def scan(picker: Picker, out: Path, *, max_pages: int = 600, on_entry: Callable[
         inv["scanned_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
         out.write_text(json.dumps(inv, ensure_ascii=False, indent=1), encoding="utf-8")
 
-    while pages < max_pages:
-        picker.snap(img, f"page{pages:03d}")
-        rows = page_rows(img)
-        for r in range(start, len(rows)):
-            for cell in rows[r]:
-                changed, _ = picker.select_checked(cell)
-                e = picker.read_selected()
-                if last is not None and content_key(e) == content_key(last) and cell["hash"] != last.get("thumb"):
-                    # 详情栏还是上一格的内容：等一下再点一次重读
-                    picker.sleep(0.6)
+    closed = False
+    try:
+        while pages < max_pages:
+            picker.snap(img, f"page{pages:03d}")
+            rows = page_rows(img)
+            for r in range(start, len(rows)):
+                for cell in rows[r]:
                     changed, _ = picker.select_checked(cell)
                     e = picker.read_selected()
-                e.update(page=pages, slot=(row_base + r) * 3 + cell["col"], cell=[row_base + r, cell["col"]], thumb=cell["hash"],
-                         refreshed=changed)  # fmt: skip
-                if last is not None and content_key(e) == content_key(last) and cell["hash"] != last.get("thumb"):
-                    e["suspect"] = "same_as_prev"
-                    logger.warning("回忆扫描：第 %s 格读到的和上一格一模一样（缩略图不同），记为可疑", e["cell"])
-                inv["entries"].append(e)
-                last = e
-                new += 1
-                if on_entry:
-                    on_entry(e)
-                save()
-        pages += 1
-        prev_img = picker.shoot()  # 读完重截：选中框状态和下一页一致
-        prev, prev_base = page_rows(prev_img) or rows, row_base
-        if not prev:  # 一行都没认出：不能直接算到底，按整块列表区像素看滑不滑得动
-            moved, img = scroll_moved(picker, prev_img, int(SWIPE_ROWS * ROW_PITCH))
-            if not moved:
+                    if last is not None and content_key(e) == content_key(last) and cell["hash"] != last.get("thumb"):
+                        # 详情栏还是上一格的内容：等一下重读（不再点同一格：再点已选中的格子可能被当成「決定」）
+                        picker.sleep(1.0)
+                        e = picker.read_selected()
+                    e.update(page=pages, slot=(row_base + r) * 3 + cell["col"], cell=[row_base + r, cell["col"]], thumb=cell["hash"],
+                             refreshed=changed)  # fmt: skip
+                    if last is not None and content_key(e) == content_key(last) and cell["hash"] != last.get("thumb"):
+                        e["suspect"] = "same_as_prev"
+                        logger.warning("回忆扫描：第 %s 格读到的和上一格一模一样（缩略图不同），记为可疑", e["cell"])
+                    inv["entries"].append(e)
+                    last = e
+                    new += 1
+                    if on_entry:
+                        on_entry(e)
+                    save()
+            pages += 1
+            prev_img = picker.shoot()  # 读完重截：选中框状态和下一页一致
+            prev, prev_base = page_rows(prev_img) or rows, row_base
+            if not prev:  # 一行都没认出：不能直接算到底，按整块列表区像素看滑不滑得动
+                moved, img = scroll_moved(picker, prev_img, int(SWIPE_ROWS * ROW_PITCH))
+                if not moved:
+                    _at_end(picker, inv, img, pages)
+                    break
+                row_base, start = prev_base, 0
+                continue
+            dy = prev[-1][0]["rect"][1] - prev[0][0]["rect"][1] if len(prev) > 1 else int(ROW_PITCH)
+            moved, img = scroll_moved(picker, prev_img, dy)
+            if not moved:  # 原起点和换的几个起点都滑不动，还在选择页：到底
                 _at_end(picker, inv, img, pages)
                 break
-            row_base, start = prev_base, 0
-            continue
-        dy = prev[-1][0]["rect"][1] - prev[0][0]["rect"][1] if len(prev) > 1 else int(ROW_PITCH)
-        moved, img = scroll_moved(picker, prev_img, dy)
-        if not moved:  # 原起点和换的几个起点都滑不动，还在选择页：到底
-            _at_end(picker, inv, img, pages)
-            break
-        cur = page_rows(img)
-        k = align(prev, cur)
-        if k is None:  # 留证据：读完重截的上一页、滑过去的这一页（11-15 那次对不上的原因没留帧，查不了）
-            picker.snap(prev_img, f"page{pages - 1:03d}-after-read")
-            picker.snap(img, f"page{pages:03d}-nomatch")
-        back = 0
-        while k is None and back < SCAN_BACKTRACK:  # 滑过头（惯性）：一行一行往回滑，直到看见上一页最后一行
-            back += 1
-            img = picker.scroll(-1)
-            k = align(prev, page_rows(img))
-        if k is None:
-            inv["gaps"].append({"after_row": prev_base + len(prev) - 1, "page": pages})
-            inv["aborted"] = f"第 {pages} 页和上一页对不上（往回滑了 {back} 行也找不到），停止扫描，后面没扫"
-            logger.warning("回忆扫描：%s", inv["aborted"])
-            break
-        row_base = prev_base + len(prev) - 1 - k
-        start = k + 1
+            cur = page_rows(img)
+            k = align(prev, cur)
+            if k is None:  # 留证据：读完重截的上一页、滑过去的这一页（11-15 那次对不上的原因没留帧，查不了）
+                picker.snap(prev_img, f"page{pages - 1:03d}-after-read")
+                picker.snap(img, f"page{pages:03d}-nomatch")
+            back = 0
+            while k is None and back < SCAN_BACKTRACK:  # 滑过头（惯性）：一行一行往回滑，直到看见上一页最后一行
+                back += 1
+                img = picker.scroll(-1)
+                k = align(prev, page_rows(img))
+            if k is None:
+                inv["gaps"].append({"after_row": prev_base + len(prev) - 1, "page": pages})
+                inv["aborted"] = f"第 {pages} 页和上一页对不上（往回滑了 {back} 行也找不到），停止扫描，后面没扫"
+                logger.warning("回忆扫描：%s", inv["aborted"])
+                break
+            row_base = prev_base + len(prev) - 1 - k
+            start = k + 1
+    except PickerClosed as ex:
+        # 选择页在扫描中关了：多半点成了「決定」，编成号的这一格可能被换成刚选中的回忆。立即停，不再点任何东西（不点キャンセル）
+        closed = True
+        picker.snap(picker.shoot(), f"page{pages:03d}-picker-closed")
+        last_cell = inv["entries"][-1]["cell"] if inv["entries"] else None
+        inv["aborted"] = f"读格子时回忆选择页关了（最后一条记录 {last_cell}）：{ex}。编成可能被改成了刚选中的那份回忆，请人工核对编成"
+        inv["formation_may_have_changed"] = True
+        logger.error("回忆扫描：%s", inv["aborted"])
     inv["suspects"] = mark_suspects(inv["entries"])
     save()
-    picker.cancel()
+    if not closed and picker_open(picker.ocr(picker.shoot())):
+        picker.cancel()  # 只在还在选择页时点キャンセル（不在了就别在别的画面上乱点）
     logger.info("回忆扫描：%d 页，读了 %d 格，可疑 %d 格，漏行 %d 处，complete=%s → %s", pages, new, inv["suspects"], len(inv["gaps"]),
                 inv["complete"], out)  # fmt: skip
     return inv
