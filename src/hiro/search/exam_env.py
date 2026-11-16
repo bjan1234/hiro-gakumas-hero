@@ -181,8 +181,8 @@ def from_hif_loadout(doc: dict) -> dict:
 
 
 def objective(lo: dict, rivals: list | None = None) -> dict:
-    """search / plan_many 的终局目标（rivals：对手终局分，从高到低）。3940a9 按场次填（N.I.A 要第 1、初有名次线和分数线、
-    课程有满分线）；这里先给「对手分」：画面 / ctx.meta 给的优先，没有用主数据对手组的 scoreMax（保守）。"""
+    """search / plan_many 的终局目标（rivals：对手终局分，从高到低）：画面 / ctx.meta 给的优先，没有用主数据对手组的 scoreMax（保守）；
+    再加按场次的目标（stage_objective：过关名次、分数封顶、课程合格线）。"""
     from hiro.bench_bridge import tower as tw
 
     if rivals:
@@ -191,4 +191,25 @@ def objective(lo: dict, rivals: list | None = None) -> dict:
         npc = (lo.get("exam") or {}).get("produce_exam_battle_npc_group_id")
         rows = [r for r in tw.master().rows("ProduceExamBattleNpcGroup") if r.get("id") == npc] if npc else []
         top = sorted((int(r["scoreMax"]) for r in rows), reverse=True)
-    return {"rivals": top, "lost_ssr_max": None, "debuffs_min": None}
+    out = {"rivals": top, "lost_ssr_max": None, "debuffs_min": None}
+    out.update(stage_objective(lo))
+    return out
+
+
+def stage_objective(lo: dict) -> dict:
+    """按场次的目标（3940a9，设计稿第五节）：只给有值的键（旧 Rust 包不认这几个参数）。
+    - 过关名次 pass_rank：主数据 rankThreshold（初 = 3，N.I.A = 1），名次在线外一律 0 档；
+    - 分数封顶 score_cap：forceEndScore > 0 时（初 REGULAR 中間 900，到分考试就结束，多的分没用）；
+    - 课程（以后）：clear_score = 合格线、score_cap = 满分线。"""
+    aud = lo.get("audition") or {}
+    out: dict = {}
+    if aud.get("rankThreshold"):
+        out["pass_rank"] = int(aud["rankThreshold"])
+    if int(aud.get("forceEndScore") or 0) > 0:
+        out["score_cap"] = int(aud["forceEndScore"])
+    lesson = lo.get("lesson") or {}
+    if lesson.get("clear_score") is not None:
+        out["clear_score"] = int(lesson["clear_score"])
+        if lesson.get("perfect_score"):
+            out["score_cap"] = int(lesson["perfect_score"])
+    return out

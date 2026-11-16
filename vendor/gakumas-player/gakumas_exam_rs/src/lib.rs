@@ -387,15 +387,17 @@ mod py {
     /// best（动作元组或 None）、votes [(动作, 票数, 平均终局分)]、worlds [(第一手, 终局分, 续打数, 是否跑完)]、seconds
     #[pyfunction(name = "search")]
     #[pyo3(signature = (ex, known_deck_prefix, free_turns, worlds=8, seconds=15.0, threads=0, seed=0, level=2, iterations=60, alpha=1.0, temperature=1.0, end_bias=-1.0,
-                        rivals=vec![], lost_ssr_max=None, debuffs_min=None, greedy=0.0, prior=None))]
+                        rivals=vec![], lost_ssr_max=None, debuffs_min=None, greedy=0.0, prior=None,
+                        pass_rank=None, score_cap=None, clear_score=None))]
     #[allow(clippy::too_many_arguments)]
     fn search_py<'py>(py: Python<'py>, ex: &PyExam, known_deck_prefix: usize, free_turns: Vec<usize>, worlds: usize, seconds: f64, threads: usize,
                       seed: u64, level: u32, iterations: u32, alpha: f64, temperature: f64, end_bias: f64, rivals: Vec<i64>,
                       lost_ssr_max: Option<i64>, debuffs_min: Option<i64>, greedy: f64,
-                      prior: Option<std::collections::HashMap<u64, f64>>) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+                      prior: Option<std::collections::HashMap<u64, f64>>, pass_rank: Option<i64>, score_cap: Option<i64>,
+                      clear_score: Option<i64>) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
         use pyo3::types::PyDict;
         let h = crate::search::Hidden { known_deck_prefix, free_turns };
-        let obj = crate::search::Objective { rivals, lost_ssr_max, debuffs_min };
+        let obj = crate::search::Objective { rivals, lost_ssr_max, debuffs_min, pass_rank, score_cap, clear_score };
         let prior: crate::search::Policy = prior.unwrap_or_default().into_iter().collect();
         let p = crate::search::Params { level, iterations, alpha, temperature, end_bias, greedy, prior: std::sync::Arc::new(prior), obj, ..Default::default() };
         let ex0 = ex.ex.clone();
@@ -418,12 +420,14 @@ mod py {
 
     /// 一批局面各自从当前起搜一整局（不重排隐藏信息），返回 [(目标值, 终局分, 星)]。偶像之路编成评估用。
     #[pyfunction(name = "plan_many")]
-    #[pyo3(signature = (exams, seconds=1.0, threads=0, seed=0, level=2, iterations=60, rivals=vec![], lost_ssr_max=None, debuffs_min=None, greedy=0.0))]
+    #[pyo3(signature = (exams, seconds=1.0, threads=0, seed=0, level=2, iterations=60, rivals=vec![], lost_ssr_max=None, debuffs_min=None, greedy=0.0,
+                        pass_rank=None, score_cap=None, clear_score=None))]
     #[allow(clippy::too_many_arguments)]
     fn plan_many_py(py: Python<'_>, exams: Vec<PyRef<'_, PyExam>>, seconds: f64, threads: usize, seed: u64, level: u32, iterations: u32,
-                    rivals: Vec<i64>, lost_ssr_max: Option<i64>, debuffs_min: Option<i64>, greedy: f64) -> Vec<(i64, i64, i64)> {
+                    rivals: Vec<i64>, lost_ssr_max: Option<i64>, debuffs_min: Option<i64>, greedy: f64, pass_rank: Option<i64>,
+                    score_cap: Option<i64>, clear_score: Option<i64>) -> Vec<(i64, i64, i64)> {
         let xs: Vec<Exam> = exams.iter().map(|e| e.ex.clone()).collect();
-        let obj = crate::search::Objective { rivals, lost_ssr_max, debuffs_min };
+        let obj = crate::search::Objective { rivals, lost_ssr_max, debuffs_min, pass_rank, score_cap, clear_score };
         let p = crate::search::Params { level, iterations, greedy, obj, ..Default::default() };
         py.detach(move || crate::search::plan_many(xs, seconds, threads, seed, &p))
     }

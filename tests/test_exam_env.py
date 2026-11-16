@@ -52,3 +52,54 @@ def test_audition_row_picks_by_number(monkeypatch):
 
 def test_objective_prefers_given_rivals():
     assert E.objective({}, [100, 300, 200])["rivals"] == [300, 200, 100]
+
+
+# ---------------------------------------------------------------- 按场次的目标（3940a9，设计稿第五节）
+
+
+def test_stage_objective_by_scenario():
+    from hiro.search.exam_env import stage_objective
+
+    assert stage_objective({"audition": {"rankThreshold": 1, "forceEndScore": 0}}) == {"pass_rank": 1}  # N.I.A：必须第 1
+    assert stage_objective({"audition": {"rankThreshold": 3, "forceEndScore": 900}}) == {"pass_rank": 3, "score_cap": 900}  # 初 REGULAR 中間
+    assert stage_objective({"lesson": {"clear_score": 30, "perfect_score": 90}}) == {"clear_score": 30, "score_cap": 90}  # 课程
+    assert stage_objective({}) == {}  # 偶像之路等：不加键
+
+
+def test_gnrpa_drops_newer_objective_on_old_rust(monkeypatch):
+    """旧 Rust 包的 search 不认 pass_rank / score_cap：这一局去掉这些参数照常搜，不整步报错。"""
+    import types
+
+    from hiro.search import tower_algo as ta
+
+    calls = []
+
+    def search(rx, prefix, free, **kw):
+        calls.append(sorted(kw))
+        if "pass_rank" in kw:
+            raise TypeError("search() got an unexpected keyword argument 'pass_rank'")
+        return {"best": ("end",), "votes": [], "worlds": []}
+
+    fake_rs = types.SimpleNamespace(search=search, plan_many=None)
+    monkeypatch.setitem(__import__("sys").modules, "gakumas_exam_rs", fake_rs)
+    algo = ta.TowerGnrpa(warm=0)
+    algo.obj = {"rivals": [1], "lost_ssr_max": None, "debuffs_min": None, "pass_rank": 1}
+    algo.prefix, algo.policy, algo.prev, algo.stats = 0, {}, None, __import__("collections").Counter()
+
+    class Rx:
+        current_turn, limit_turn, ended = 1, 2, False
+
+        def clone(self):
+            return self
+
+        def step(self, a):
+            pass
+
+        def advance(self):
+            pass
+
+    algo.rx = Rx()
+    monkeypatch.setattr(algo, "_align", lambda obs: None)
+    d = algo.decide(types.SimpleNamespace(obs={"exam": {"turn": 1, "types": [1, 1]}, "legal": [["end"]]}, budget=0.5))
+    assert d.action == ("end",) and "pass_rank" in calls[0] and "pass_rank" not in calls[1]
+    assert "pass_rank" not in algo.obj and algo.stats["no_newer_kwargs"] == 1

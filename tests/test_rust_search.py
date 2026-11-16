@@ -101,6 +101,28 @@ def test_objective_stars_by_rivals(rs, rx):
     assert all(w[5] == 2 for w in r["worlds"])  # 第 1 名但通关条件（除外 SSR ≤ −1）不可能满足：★2
 
 
+def test_objective_pass_rank(rs, rx):
+    """过关名次（初前 3、N.I.A 第 1）：名次在线外一律 0 档。N.I.A 第 2 名不算过。"""
+    if "pass_rank" not in (rs.search.__text_signature__ or ""):
+        pytest.skip("Rust 后端没有 pass_rank")
+    r = rs.search(rx, 0, [], worlds=2, seconds=0.3, threads=2, seed=5, rivals=[10 ** 12, 1], pass_rank=1)
+    assert all(w[5] == 0 for w in r["worlds"])  # 第 2 名、要第 1：没过
+    r = rs.search(rx, 0, [], worlds=2, seconds=0.3, threads=2, seed=5, rivals=[10 ** 12, 1], pass_rank=3)
+    assert all(w[5] == 2 for w in r["worlds"])  # 第 2 名、前 3 就过：照旧 ★2
+
+
+def test_objective_score_cap_and_lesson(rs, rx):
+    """分数封顶（初 REGULAR 中間 forceEndScore、课程满分线）：超过封顶的分数不算；课程（没有对手）先看有没有到合格线。"""
+    if "score_cap" not in (rs.search.__text_signature__ or ""):
+        pytest.skip("Rust 后端没有 score_cap")
+    out = rs.plan_many([rx.clone()], seconds=0.2, threads=1, score_cap=5)
+    assert out[0][0] == 5 and out[0][1] > 5  # 目标值封顶在 5，原始分照实
+    out = rs.plan_many([rx.clone()], seconds=0.2, threads=1, clear_score=1, score_cap=5)
+    assert out[0][0] == 10 ** 10 + 5  # 过了合格线：1 档 + 封顶分
+    out = rs.plan_many([rx.clone()], seconds=0.2, threads=1, clear_score=10 ** 12)
+    assert out[0][0] < 10 ** 10  # 到不了合格线：0 档
+
+
 def test_plan_many_returns_best_line(rs, rx):
     out = rs.plan_many([rx.clone(), rx.clone()], seconds=0.2, threads=2, rivals=[1])
     assert len(out) == 2 and all(v >= 3 * 10 ** 10 and raw > 1 and st == 3 for v, raw, st in out)
