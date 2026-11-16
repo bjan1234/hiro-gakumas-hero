@@ -330,3 +330,21 @@ def test_exam_retry_rules(pf, confirm):
 def test_nia_retry_says_reselect():
     d = _retry("produce-004", stage="confirm", attempts=0, cost="free")
     assert d.action.args["confirm"] and d.action.args["reselect"] is True and "降" in d.reason
+
+
+def test_hajime_oikomi_takes_highest_exam_criteria():
+    """追い込みレッスン（初 REGULAR 中間まで 1週 实机帧 00886）：选审查基准最高的属性 Vo [g8-PRO]，不是数值最高的 Da。"""
+    opts = [_opt("training", "Vo", False), _opt("training", "Da", False), _opt("training", "Vi", False)]
+    for o in opts:
+        o["oikomi"] = True
+    st = _st(params={"Vo": 252, "Da": 260, "Vi": 180}, criteria={"Vo": 0.45, "Da": 0.35, "Vi": 0.20}, stamina=34)
+    o, reason, rules = _pick(st, opts)
+    assert o["attr"] == "Vo" and "hajime.oikomi_bonus" in rules
+
+
+def test_exam_criteria_from_master():
+    """审查基准 = 下一场考试战斗配置的三属性权重（主数据）。"""
+    from hiro.brain.hajime_nia import exam_criteria
+
+    c = exam_criteria("produce-001", "i_card-shro-3-007", "mid1")
+    assert c and set(c) == {"Vo", "Da", "Vi"} and abs(sum(c.values()) - 1) < 1e-6

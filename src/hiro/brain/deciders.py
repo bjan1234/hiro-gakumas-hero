@@ -291,9 +291,16 @@ class ProduceDeciders:
         from hiro.brain.hajime_nia import Status
 
         prod = dict(state.produce or {})
+        from hiro.brain.hajime_nia import exam_criteria
+
+        pf = state.page_fields or {}
+        criteria = pf.get("criteria")
+        if not criteria and pf.get("exam_next"):  # 页头「中間まで / 最終まで」：按主数据查下一场的审查基准
+            criteria = exam_criteria(prod["mode"], prod.get("idol_card_id") or (self.profile.idol_id if self.profile else None), pf["exam_next"])
         return Status(mode=prod["mode"], step=int(prod.get("step") or 0), stamina=int(prod.get("stamina") or 0),
                       max_stamina=int(prod.get("max_stamina") or prod.get("stamina") or 1), produce_point=int(prod.get("produce_point") or 0),
-                      params=dict(prod.get("params") or {}), rest_left=prod.get("rest_left"), main_attr=prod.get("main_attr") or self.main_attr)  # fmt: skip
+                      params=dict(prod.get("params") or {}), rest_left=prod.get("rest_left"), main_attr=prod.get("main_attr") or self.main_attr,
+                      criteria=criteria)  # fmt: skip
 
     def _hajime_nia_choice(self, state: GameState, decider: str) -> Decision | None:
         """初 / N.I.A 的外出 / 授業（hiro.brain.hajime_nia）；别的模式返回 None，照 H.I.F 原逻辑。没有结构化 choices 时选中间那项兜底。"""
