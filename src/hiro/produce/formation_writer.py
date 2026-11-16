@@ -202,7 +202,8 @@ def fix_support(dev: Device, plan: dict, *, read_formation, read_list) -> list[d
 
 # 第 3 步四格回忆的插图（点开进回忆选择页）：720x1280，顺序 左上、右上、左下、右下（11-04 实机帧；技能卡小图标在其右侧）
 STEP3_SLOTS = ((152, 770), (478, 770), (152, 901), (478, 901))
-SEARCH_ROWS = 3  # 目标行上下各找几行
+SEARCH_ROWS = 8  # 目标行上下各找几行（库存行号可能偏：扫描漏行 / 重扫后列表变了，11-16 账号 2 偏了十几行）
+ABILITY_SIMILAR = 0.85  # 能力文字（OCR 原文）相似度达到这个就算同一份；卡 / 强化 / 时机一致但能力不像的，整窗口找完没有更好的才用
 PICKER_OPEN_TRIES = 4  # 点回忆格后最多看几次选择页开没开（每次 1.5 秒，中途再点一次）
 PICKER_DECIDE = (497, 1157)
 
@@ -214,42 +215,74 @@ def memory_key(e: dict) -> str:
 
 
 def _core(key: str):
-    """内容键里稳定的部分：卡、强化、时机、三属性、体力（能力文字是 OCR 原文，同一份回忆两次读常差一两个字，不比）。"""
+    """内容键里稳定的部分：卡、强化、时机。属性不比：选择页顶部显示的是「当前编成 + 这份回忆」的总加成，随编成变
+    （11-16 账号 2：扫描时和开局时读到的属性对不上）；能力文字是 OCR 原文，常差一两个字，另外按相似度比。"""
     try:
-        return json.loads(key)[:7]
+        return json.loads(key)[:3]
     except (TypeError, ValueError):
         return None
 
 
+def _abilities_text(key: str) -> str:
+    try:
+        ab = json.loads(key)[7] or []
+    except (TypeError, ValueError, IndexError):
+        return ""
+    return "".join(a.get("text", "") if isinstance(a, dict) else str(a) for a in ab)
+
+
+def _similar(a: str, b: str) -> float:
+    from difflib import SequenceMatcher
+
+    return 1.0 if a == b else SequenceMatcher(None, a, b).ratio()
+
+
 def pick_memory(picker, target: dict, *, decide=PICKER_DECIDE) -> None:
-    """在已打开的回忆选择页里按库存位置找到 target（cell = [行, 列]、key = entry_key），核对后「決定」。"""
+    """在已打开的回忆选择页里按库存位置找到 target（cell = [行, 列]、key = entry_key），核对后「決定」。
+    从目标行上面 SEARCH_ROWS 行开始往下读同一列，读到目标行下面 SEARCH_ROWS 行为止：
+    内容键完全一样、或卡 / 强化 / 时机一致且能力文字相似（≥ ABILITY_SIMILAR）就选；一个都没有时，再走一遍选第一份卡 / 强化 / 时机一致的。"""
     from hiro.produce.memory_picker import ROW_PITCH, page_rows, to_top
 
     row, col = target["cell"]
-    img = to_top(picker)
-    lead = max(0, row - SEARCH_ROWS)  # 目标行停在屏幕中间：滚动有误差时上下都还看得到
-    if lead > 0:
-        img = picker.scroll(px=int(lead * ROW_PITCH))
-    want_core = _core(target["key"])
+    want_core, want_ab = _core(target["key"]), _abilities_text(target["key"])
     tried = 0
-    for screen in range(2):  # 这一屏没找到再往下滑一屏（滚动有误差 / 扫描时有漏行，行号会偏几行）
-        if screen:
-            img = picker.scroll(px=int(SEARCH_ROWS * ROW_PITCH))
-        rows = page_rows(img)
-        for r in rows[: SEARCH_ROWS * 2 + 1]:
-            cell = next((c for c in r if c["col"] == col), None)
-            if cell is None:
-                continue
-            picker.select(cell)
-            got = picker.read_selected()
-            tried += 1
-            key = memory_key(got)
-            if key == target["key"] or (want_core is not None and _core(key) == want_core):
-                picker.click(*decide)
-                picker.sleep(1.5)
-                return
+
+    def walk(accept) -> bool:
+        nonlocal tried
+        img = to_top(picker)
+        lead = max(0, row - SEARCH_ROWS)
+        if lead > 0:
+            img = picker.scroll(px=int(lead * ROW_PITCH))
+        covered = 0
+        while covered < SEARCH_ROWS * 2 + 1:
+            rows = page_rows(img)
+            if not rows:
+                return False
+            for r in rows:
+                cell = next((c for c in r if c["col"] == col), None)
+                if cell is None:
+                    continue
+                picker.select(cell)
+                got = memory_key(picker.read_selected())
+                tried += 1
+                if accept(got):
+                    picker.click(*decide)
+                    picker.sleep(1.5)
+                    return True
+            covered += max(1, len(rows) - 1)
+            img = picker.scroll(px=int(max(1, len(rows) - 1) * ROW_PITCH))  # 留一行重叠，不漏行
+        return False
+
+    def strong(key: str) -> bool:
+        return key == target["key"] or (want_core is not None and _core(key) == want_core and _similar(_abilities_text(key), want_ab) >= ABILITY_SIMILAR)
+
+    if walk(strong):
+        return
+    if want_core is not None and walk(lambda key: _core(key) == want_core):
+        logger.warning("回忆选择页：第 %d 行附近没有能力文字也对得上的，选了第一份卡 / 强化 / 时机一致的", row)
+        return
     picker.cancel()
-    raise FormationWriteError(f"回忆选择页第 {row} 行附近没找到方案里的回忆（试了 {tried} 格），库存可能过期，请重扫")
+    raise FormationWriteError(f"回忆选择页第 {row} 行上下 {SEARCH_ROWS} 行里没找到方案里的回忆（试了 {tried} 格），库存可能过期，请重扫")
 
 
 def fix_memory(dev: Device, plan: dict, *, read_icons, make_picker) -> list[dict]:

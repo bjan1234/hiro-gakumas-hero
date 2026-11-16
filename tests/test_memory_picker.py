@@ -133,11 +133,14 @@ class ScrollList:
         if copies > 1:  # 重复拼接时给每一份打上不同的色块，保证行各不相同
             for i in range(len(self.rows)):
                 self.rows[i] = self.rows[i].copy()
-                self.rows[i][40:80, 100:140] = ((i * 37) % 255, (i * 91) % 255, (i * 53) % 255)
+                for c in range(3):  # 每格都打一块（压进缩略图区），重复的几份行也对不上
+                    x0 = mp.COL_X[c] - 60
+                    self.rows[i][30:90, x0 : x0 + 120] = ((i * 37 + c * 80) % 255, (i * 91) % 255, (i * 53 + c * 40) % 255)
         self.slop, self.stuck = slop, set(stuck)
         gap = self.base[575:580, 40:680].reshape(-1, 3).mean(0)
         self.base[mp.GRID_Y[0] : mp.GRID_Y[1] + 60, :] = gap.astype(np.uint8)
         self.offset, self.fling, self.swipes, self.read = 0.0, dict(fling or {}), 0, []
+        self.selected = None  # 最后点过的格子 (行, 列)：画橙色选中框（实机：读完一页，选中框留在下一页的重叠行上）
         self.max_offset = (len(self.rows) - 2) * mp.ROW_PITCH
 
     def shoot(self):
@@ -147,6 +150,12 @@ class ScrollList:
             y1, y2 = max(y, mp.GRID_Y[0] - 5), min(y + 118, mp.GRID_Y[1] + 60)
             if y2 > y1:
                 img[y1:y2] = row[y1 - y : y2 - y]
+        if self.selected is not None:
+            r, c = self.selected
+            y = int(round(self.TOP + r * mp.ROW_PITCH - self.offset))
+            x = mp.COL_X[c] - mp.CELL_W // 2
+            if mp.GRID_Y[0] <= y and y + 118 <= mp.GRID_Y[1] + 60:
+                cv2.rectangle(img, (x + 6, y + 6), (x + mp.CELL_W - 7, y + 111), (0, 140, 255), 12)  # 选中框画在格子里（伸进缩略图区）
         img[1005:1060, 30:690] = (250, 250, 250)  # 浮在列表上的「編成詳細 / 筛选 / 排序」按钮
         return img
 
@@ -167,10 +176,17 @@ class ListPicker(mp.Picker):
         self.lst = lst
 
     def select(self, cell):
-        self.lst.read.append((self.lst.row_at(cell["center"][1]), cell["col"]))
+        self.select_checked(cell)
+
+    def select_checked(self, cell):
+        rc = (self.lst.row_at(cell["center"][1]), cell["col"])
+        self.lst.read.append(rc)
+        self.lst.selected = rc
+        return True, None
 
     def read_selected(self):
-        return {}
+        r, c = self.lst.read[-1]
+        return {"card": {"card_id": f"m{r}-{c}"}}  # 每格内容不同
 
     def cancel(self):
         return True
@@ -233,3 +249,53 @@ def test_occluded_row_is_not_counted():
     lst.offset = 0.6 * mp.ROW_PITCH  # 第 3 个完整行的下沿压到按钮下面
     rows = mp.grid_rows(lst.shoot())
     assert rows and all(y2 <= mp.ROW_BOTTOM_MAX for _, y2 in rows)
+
+
+@pytest.mark.fixtures
+def test_scan_stops_at_gap_instead_of_rereading_old_rows(tmp_path, monkeypatch):
+    """账号 2 11-15：对不上后往回滑了几行接着记，旧行被当成新行记了一遍又一遍（仕切り直し 记了 7 份），后面行号全偏。
+    现在：找不到上一页最后一行就停，complete=False，记 aborted；已记的行号不重复。"""
+    lst = ScrollList(fling={4: 5}, copies=3)  # 第 4 次滑动（前两次是回顶部的下滑）多滚 5 行：往回滑能找回来，照常扫完
+    inv = run_scan(tmp_path, lst, monkeypatch)
+    assert inv["complete"] and not inv.get("aborted") and sorted(set(lst.read)) == all_cells(lst)
+    lst = ScrollList(fling={4: 12}, copies=3)  # 多滚 12 行：往回滑 6 行也找不到
+    inv = run_scan(tmp_path, lst, monkeypatch)
+    assert inv.get("aborted") and not inv["complete"] and inv["gaps"]
+    slots = [e["slot"] for e in inv["entries"]]
+    assert len(slots) == len(set(slots)) and len(lst.read) == len(set(lst.read))  # 没有重读、没有重号
+
+
+class StalePicker(ListPicker):
+    """点格子后详情栏不刷新：stale 里的格子第一次读到上一格的内容；always 里的格子一直读到上一格的内容。"""
+
+    def __init__(self, lst, stale=(), always=()):
+        super().__init__(lst)
+        self.stale, self.always, self.seen = set(stale), set(always), {}
+
+    def read_selected(self):
+        rc = self.lst.read[-1]
+        self.seen[rc] = self.seen.get(rc, 0) + 1
+        prev = next((x for x in reversed(self.lst.read) if x != rc), rc)  # 上一个不同的格子（重读时同一格会再记一次）
+        if rc in self.always or (rc in self.stale and self.seen[rc] == 1):
+            return {"card": {"card_id": f"m{prev[0]}-{prev[1]}"}} if prev != rc else {"card": {"card_id": "x"}}
+        return {"card": {"card_id": f"m{rc[0]}-{rc[1]}"}}
+
+
+@pytest.mark.fixtures
+def test_stale_detail_is_reread_or_marked_suspect(tmp_path, monkeypatch):
+    """详情栏没刷新（读到上一格的内容、缩略图不同）：再点一次重读；重读还是一样就标 suspect=same_as_prev（formation_plan 不选）。"""
+    monkeypatch.setattr(mp, "picker_open", lambda boxes: True)
+    lst = ScrollList()
+    inv = mp.scan(StalePicker(lst, stale={(1, 1)}, always={(2, 0)}), tmp_path / "inv.json")
+    by = {tuple(e["cell"]): e for e in inv["entries"]}
+    assert by[(1, 1)]["card"]["card_id"] == "m1-1" and "suspect" not in by[(1, 1)]  # 重读后对了
+    assert by[(2, 0)]["suspect"] == "same_as_prev" and inv["suspects"] == 1
+
+
+def test_mark_suspects_rules():
+    es = [{"slot": 0, "thumb": "a", "card": {"card_id": "c1"}}, {"slot": 1, "thumb": "b", "card": {"card_id": "c1"}},
+          {"slot": 2, "thumb": "b", "card": {"card_id": "c1"}}, {"slot": 3, "thumb": "c", "card": None},
+          {"slot": 4, "thumb": "d", "card": {"card_id": "c4"}, "refreshed": False}]  # fmt: skip
+    assert mp.mark_suspects(es) == 3
+    # 同内容同缩略图：真的有两份一样的回忆（不是没刷新），不标
+    assert [e.get("suspect") for e in es] == [None, "same_as_prev", None, "card_unread", "detail_not_refreshed"]

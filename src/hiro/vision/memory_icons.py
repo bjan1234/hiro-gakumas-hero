@@ -144,6 +144,39 @@ def read_icon(icon: MatLike, expect: list[str] | None = None) -> dict:
     return out
 
 
+EMPTY_STD = 20.0  # 第 3 步空格（「+」，没编回忆）图标区灰度标准差 12.9–15.1；有图标 32–69（账号 2 11-16 第 120 / 132 号帧）
+PLAN_RED_MIN = 0.3  # 图标上方「プラン不一致」红标签的红色比例：有标签 0.50，没有 0
+PLAN_BOOST = 1.3  # プラン不一致 的卡图被压暗：饱和度、亮度各乘这个再认（魅惑の視線：原样 25.1 认成别的，提亮后 13.1、领先 4.6）
+
+
+def _plan_mismatch(img: MatLike, box) -> bool:
+    x1, y1, x2, y2 = box
+    hsv = cv2.cvtColor(img[max(0, y1 - 40) : y1 - 4, max(0, x1 - 10) : x2 + 20], cv2.COLOR_BGR2HSV)
+    red = ((hsv[..., 0] <= 8) | (hsv[..., 0] >= 170)) & (hsv[..., 1] >= 120) & (hsv[..., 2] >= 180)
+    return float(red.mean()) >= PLAN_RED_MIN
+
+
+def _brighten(icon: MatLike, gain: float = PLAN_BOOST) -> MatLike:
+    hsv = cv2.cvtColor(icon, cv2.COLOR_BGR2HSV).astype(np.float32)
+    hsv[..., 1:] *= gain
+    return cv2.cvtColor(np.clip(hsv, 0, 255).astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+
 def read_step3_icons(img: MatLike, expect: list[str] | None = None) -> list[dict]:
-    """第 3 步截图（720x1280）→ 四格回忆的图标读数，顺序为 左上、右上、左下、右下。"""
-    return [dict(read_icon(img[y1:y2, x1:x2], expect), slot=i) for i, (x1, y1, x2, y2) in enumerate(STEP3_ICONS)]
+    """第 3 步截图（720x1280）→ 四格回忆的图标读数，顺序为 左上、右上、左下、右下。
+    空格（「+」）给 empty=True、card=None；图标上方有「プラン不一致」红标签的给 plan_mismatch=True，
+    它的卡图被压暗，原样认不出时提亮再认一次（账号 2 11-16：一格 プラン不一致 + 三格空，四格都报认不出）。"""
+    out = []
+    for i, (x1, y1, x2, y2) in enumerate(STEP3_ICONS):
+        icon = img[y1:y2, x1:x2]
+        if float(cv2.cvtColor(icon, cv2.COLOR_BGR2GRAY).std()) < EMPTY_STD:
+            out.append({"card": None, "score": None, "asset": None, "second": None, "margin": None, "method": method(),
+                        "known": False, "empty": True, "slot": i})  # fmt: skip
+            continue
+        r = read_icon(icon, expect)
+        if _plan_mismatch(img, (x1, y1, x2, y2)):
+            if not r["known"] and (r2 := read_icon(_brighten(icon), expect))["known"]:
+                r = r2
+            r["plan_mismatch"] = True
+        out.append(dict(r, slot=i))
+    return out

@@ -186,7 +186,7 @@ def _step2(monkeypatch, *, enabled_after_pick=True, picked=True, mismatch=False)
     monkeypatch.setattr(prep_steps, "select_set", lambda n, **kw: calls["set"].append(n) or True)
     monkeypatch.setattr(formation_steps, "autofix_support", lambda dev, plan: None)
 
-    def check(img, plan, set_no):
+    def check(img, plan, set_no, **kw):  # shoot / sleep：等翻页动画停（账号 2 11-16）
         if mismatch:
             raise opening.ResumeBlocked("支援卡编成和方案对不上")  # FormationMismatch 也是停机类
 
@@ -287,3 +287,33 @@ def test_prepare_main_skips_formation_steps(monkeypatch):
     rt, _ = rig(monkeypatch, [s1], on_tap=lambda taps: [frame({"Produce.TextStepIndicator4Or2": (1, 1)})])
     opening.prepare(rt, "main", idol="i_card-skin-hski-3-007", expect_memory=("1", "2", "3"))
     assert called == [("memory", ("1", "2", "3")), ("step4", {"note_boost": False, "pt_boost": False})]
+
+
+def _memory_unset_rig(monkeypatch, chosen):
+    from hiro.produce import formation_steps, prep_steps
+    from hiro.vision.ocr import Box as OBox, Text
+
+    monkeypatch.setattr(prep_steps, "select_set", lambda n, **kw: True)
+    monkeypatch.setattr(formation_steps, "autofix_memory", lambda dev, plan, mk: None)
+    monkeypatch.setattr(formation_steps, "check_memory_set", lambda img, plan, n: None)
+    s3 = frame({"Produce.TextStepIndicator3": (1, 1), "Produce.Step3.ButtonNext": (500, 1160)})
+    dlg = frame({}, [Text("キャンセル", OBox(162, 1144, 311, 1180)), Text("く完了する", OBox(394, 1144, 577, 1176))])
+    dlg.__dict__.update(has_dialog=True, dialog={"kind": "other", "title": "メモリー編成確認", "danger": False, "y": 937, "body": ""})
+    s4 = frame({"Produce.TextStepIndicator4Or2": (1, 1)})
+    rt, _ = rig(monkeypatch, [s3], on_tap=lambda taps: [dlg] if len(taps) == 1 else [s4])
+    plan = {"memory": {"chosen": [{"card_id": f"c{i}"} for i in range(chosen)]}}
+    return rt, plan
+
+
+def test_step3_memory_unset_confirm_when_plan_has_fewer(monkeypatch):
+    """「メモリー編成確認」（有空的回忆格，账号 2 11-16 原来没处理）：方案本来就不到 4 份 → 点「完了する」进第 4 步。"""
+    rt, plan = _memory_unset_rig(monkeypatch, 1)
+    opening.step3(rt, set_no=20, plan=plan)
+    assert rt.raw_device.taps == [(500, 1160), (485, 1160)]
+
+
+def test_step3_memory_unset_cancel_and_stop_when_plan_wants_four(monkeypatch):
+    rt, plan = _memory_unset_rig(monkeypatch, 4)
+    with pytest.raises(ResumeBlocked, match="キャンセル"):
+        opening.step3(rt, set_no=20, plan=plan)
+    assert rt.raw_device.taps[-1] == (236, 1162)  # 点的是キャンセル，不是完了する

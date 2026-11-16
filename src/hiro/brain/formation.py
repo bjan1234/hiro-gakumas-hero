@@ -366,6 +366,9 @@ def select_memories(inventory: dict | list, *, gains: dict | None = None, finals
     rows = (inventory.get("memories") or inventory.get("entries") or []) if isinstance(inventory, dict) else inventory
     mems, skipped = [], []
     for raw in rows:
+        if raw.get("suspect"):  # 扫描标的可疑记录（详情栏没刷新读成上一格等，hiro.produce.memory_picker.mark_suspects）：不选
+            skipped.append(f"{raw.get('id') or raw.get('cell')}：扫描记录可疑（{raw['suspect']}）")
+            continue
         m = normalize_memory(raw)
         if m["card_id"] is None:
             skipped.append(f"{raw.get('id')}：卡名读不出（{raw.get('card_name')}）")
@@ -518,7 +521,7 @@ def choose_memory_rental(rental_rows: list[dict], current_formation: list[dict],
             continue
         rentals.append((raw, m))
     own_rows = ((inventory.get("memories") or inventory.get("entries") or []) if isinstance(inventory, dict) else inventory) or []
-    own = [m for m in (normalize_memory(r) for r in own_rows) if m["card_id"]]
+    own = [m for m in (normalize_memory(r) for r in own_rows if not r.get("suspect")) if m["card_id"]]
     scored = _score_memories(cur + [m for _, m in rentals] + own, gains_, finals_, profile)
     base, _ = _formation_score(cur, scored, gains_, finals_, profile) if cur else (0.0, [])
     out["current_total"] = round(base, 1)
