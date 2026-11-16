@@ -31,6 +31,7 @@ class Status:
     params: dict = field(default_factory=dict)
     rest_left: int | None = None
     main_attr: str | None = None
+    criteria: dict | None = None  # 下一场考试的审查基准（三属性权重，和为 1）：追い込みレッスン按它选
 
     @property
     def family(self) -> str | None:
@@ -44,6 +45,26 @@ class Status:
         if self.main_attr:
             return self.main_attr
         return max(self.params, key=lambda a: self.params[a]) if self.params else None
+
+
+def exam_criteria(mode: str, idol_card_id: str | None, stage: str) -> dict | None:
+    """下一场考试（mid1 / mid2 / final）的审查基准：主数据战斗配置的 vocal / dance / visual 权重，归一成和为 1。查不到 None。
+    画面右上角「審査基準」的三根柱就是它（初 REGULAR 实机帧 00886：Vo 最高）。"""
+    if not idol_card_id:
+        return None
+    try:
+        st = next((x for x in modes.auditions(mode, idol_card_id) if x.kind == stage), None)
+        if st is None:
+            return None
+        cid = st.tiers[0].battle_config_id
+        cfg = next((r for r in modes.master().rows("ProduceExamBattleConfig") if r.get("id") == cid), None)
+    except Exception:  # noqa: BLE001
+        return None
+    if not cfg:
+        return None
+    w = {"Vo": float(cfg["vocal"]), "Da": float(cfg["dance"]), "Vi": float(cfg["visual"])}
+    tot = sum(w.values()) or 1.0
+    return {a: v / tot for a, v in w.items()}
 
 
 def _customize_alert(mode: str) -> int:
@@ -122,6 +143,12 @@ def _fallback_order(p: _Pick, order: tuple[str, ...], why: str) -> tuple[int, st
 def _hajime(p: _Pick) -> tuple[int, str, list[str]]:
     st = p.st
     lessons = p.idx("training")
+    oikomi = [i for i in lessons if p.opts[i].get("oikomi")]
+    if oikomi and st.criteria:
+        p.use("hajime.oikomi_bonus")
+        i = max(oikomi, key=lambda k: st.criteria.get(p.opts[k].get("attr"), 0))
+        a = p.opts[i].get("attr")
+        return p.done(i, f"追い込みレッスン选审查基准最高的 {a}（{st.criteria.get(a, 0):.0%}）")
     if lessons:
         if st.stamina < LOW_STAMINA and p.idx("rest") and _rest_ok(p):
             return p.done(p.idx("rest")[0], f"课程周体力只剩 {st.stamina}（< {LOW_STAMINA}），先休息")

@@ -300,3 +300,51 @@ def test_deciders_nia_pages_registered():
     assert d.action.args == {"select": 1, "audition_number": 2} and d.decider == "audition_select"
     d = pd.decide("NIA_SALES_EVENT", GameState(produce=prod, page_fields={"choices": [{"index": 0, "attr": "Vo"}, {"index": 1, "attr": "Da"}]}))
     assert d.action.args["select"] in (0, 1) and d.decider == "sales_event"
+
+
+# ---------------------------------------------------------------- 再挑戦（协调 11-17：只用免费 / 已有的票，每场 ≤ 3 次）
+
+
+def _retry(prod_mode="produce-001", **pf):
+    from hiro.brain.deciders import ProduceDeciders
+    from hiro.brain.state import CAMPUS_HIRO
+    from hiro.contracts import GameState
+
+    return ProduceDeciders(CAMPUS_HIRO, None).decide("EXAM_RETRY", GameState(produce={"mode": prod_mode}, page_fields=pf))
+
+
+@pytest.mark.parametrize("pf, confirm", [
+    ({"stage": "result", "attempts": 0}, True),
+    ({"stage": "result", "attempts": 3}, False),  # 每场最多 3 次
+    ({"stage": "result", "attempts": 1, "retries_left": 0}, False),  # 游戏说没次数了
+    ({"stage": "confirm", "attempts": 1, "cost": "free"}, True),
+    ({"stage": "confirm", "attempts": 1, "cost": "ticket"}, True),
+    ({"stage": "confirm", "attempts": 1, "cost": "jewel"}, False),  # 绝不花ジュエル
+    ({"stage": "confirm", "attempts": 1}, False),  # 读不出花什么：不点
+])  # fmt: skip
+def test_exam_retry_rules(pf, confirm):
+    d = _retry(**pf)
+    assert d.action.args["kind"] == "exam_retry" and d.action.args["confirm"] is confirm and d.decider == "exam_retry"
+
+
+def test_nia_retry_says_reselect():
+    d = _retry("produce-004", stage="confirm", attempts=0, cost="free")
+    assert d.action.args["confirm"] and d.action.args["reselect"] is True and "降" in d.reason
+
+
+def test_hajime_oikomi_takes_highest_exam_criteria():
+    """追い込みレッスン（初 REGULAR 中間まで 1週 实机帧 00886）：选审查基准最高的属性 Vo [g8-PRO]，不是数值最高的 Da。"""
+    opts = [_opt("training", "Vo", False), _opt("training", "Da", False), _opt("training", "Vi", False)]
+    for o in opts:
+        o["oikomi"] = True
+    st = _st(params={"Vo": 252, "Da": 260, "Vi": 180}, criteria={"Vo": 0.45, "Da": 0.35, "Vi": 0.20}, stamina=34)
+    o, reason, rules = _pick(st, opts)
+    assert o["attr"] == "Vo" and "hajime.oikomi_bonus" in rules
+
+
+def test_exam_criteria_from_master():
+    """审查基准 = 下一场考试战斗配置的三属性权重（主数据）。"""
+    from hiro.brain.hajime_nia import exam_criteria
+
+    c = exam_criteria("produce-001", "i_card-shro-3-007", "mid1")
+    assert c and set(c) == {"Vo", "Da", "Vi"} and abs(sum(c.values()) - 1) < 1e-6
