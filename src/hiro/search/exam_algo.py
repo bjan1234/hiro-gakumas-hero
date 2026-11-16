@@ -35,6 +35,7 @@ class ExamGnrpa(TowerGnrpa):
         self.rx = exam_env(self.lo, seed).rx
         self.rx.advance()
         self.prev = None
+        self.seen_types, self.free, self._turn_weights = {}, None, None
         self.policy = {}
         self.known = []  # 抽牌记录只有偶像之路同一编成重试才有（用户 11-14 定的例外），初 / N.I.A 不用
         self.drawn = 0

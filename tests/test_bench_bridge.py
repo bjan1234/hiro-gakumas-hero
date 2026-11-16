@@ -751,3 +751,65 @@ def test_advisor_uses_exam_loadout_for_nia(monkeypatch, tmp_path):
     assert adv.exam["produce"] == "produce-005" and adv.exam["step"] == "AUDITION_MID2" and adv.exam["crit"] == [396, 483, 586]
     assert adv.exam["turns"] == 12 and adv.exam["max_stamina"] == 32 and adv.deck == [("p_card-a", 1)]
     assert adv.exam["permil_default"] == {}  # 不拿 H.I.F 的参考倍率
+
+
+def test_allocate_turns_by_weights():
+    from hiro.search.tower_algo import allocate_turns
+
+    assert sorted(allocate_turns({1: 50, 2: 30, 3: 20}, 10)) == [1] * 5 + [2] * 3 + [3] * 2
+    assert allocate_turns({1: 1, 2: 1, 3: 1}, 0) == [] and len(allocate_turns({1: 1, 2: 1, 3: 1}, 4)) == 4
+
+
+
+TTMR16 = {"produce_id": "tower", "tower_id": "tower_001-ttmr", "layer": 16, "turns": 10, "score_bonus_permils": [23090, 11980, 2600],
+          "max_stamina": 46, "idol_card_id": "i_card-ttmr-2-000",
+          "produce_cards": ["p_card-01-ido-2_017+1", "p_card-00-sup-3_027", "p_card-01-act-2_031", "p_card-01-act-2_001+1", "p_card-01-men-3_036+1",
+                            "p_card-01-act-1_021+1", "p_card-01-act-2_032+1", "p_card-01-men-2_038+1", "p_card-01-sup-2_090", "p_card-01-men-1_008+1"]}
+TTMR16_T1 = {"exam": {"produce": "tower", "turn": 1, "limit": 10, "types": [1] * 10, "permil": [23090, 11980, 2600]},
+             "num": {"score": 0, "stamina": 45, "max_stamina": 46, "block": 0},
+             "status": [], "hand": [{"id": "p_card-01-men-0_008", "u": 0}, {"id": "p_card-01-act-2_001", "u": 1}, {"id": "p_card-01-act-1_021", "u": 1},
+                                    {"id": "p_card-01-men-1_008", "u": 1}],
+             "deck": [{"id": c, "u": u} for c, u in (("p_card-00-sup-3_027", 0), ("p_card-01-act-0_028", 0), ("p_card-01-act-2_031", 0),
+                                                       ("p_card-01-act-2_032", 1), ("p_card-01-ido-2_017", 1), ("p_card-01-men-2_038", 1),
+                                                       ("p_card-01-men-3_036", 1), ("p_card-01-sup-2_090", 0))],
+             "grave": [], "lost": [], "drinks": [], "legal": [["play", 0], ["play", 1], ["play", 3], ["end"]]}  # fmt: skip  实机 tower-g5c T1
+
+
+@pytest.mark.sim_master
+def test_tower_align_trusts_only_seen_turn_types():
+    """画面的 types 只有到过的回合可信（ScreenTracker 用当前回合属性填满了没见过的）：T1 之后的回合按战斗配置的权重分配，
+    交给搜索打乱（手毬 16 层 T1 以为 10 回合全是 Vo，预测高了约 4 倍，协调 11-17）。"""
+    rs = pytest.importorskip("gakumas_exam_rs")
+    if not (hasattr(rs, "search") and hasattr(rs, "plan_many")):
+        pytest.skip("Rust 后端没有 search / plan_many")
+    from types import SimpleNamespace
+
+    from hiro.search.tower_algo import TowerGnrpa
+
+    algo = TowerGnrpa(warm=0)
+    algo.begin(SimpleNamespace(loadout=TTMR16, known_draws=None, obs=TTMR16_T1))
+    algo._align(TTMR16_T1)
+    tt = list(algo.rx.turn_types)
+    assert tt[0] == 1 and algo.free == list(range(1, 10))
+    assert set(tt[1:]) != {1}, tt  # 未来回合不再全是 Vo
+
+
+@pytest.mark.sim_master
+def test_tower_status_sync_opt_in():
+    """sync_status=True 时画面上的集中 / 好調覆盖进引擎；缺省不覆盖（画面状态读数待核实）。"""
+    rs = pytest.importorskip("gakumas_exam_rs")
+    if not hasattr(getattr(rs, "Exam", object), "override_status"):
+        pytest.skip("Rust 后端没有 override_status")
+    from types import SimpleNamespace
+
+    from hiro.search.tower_algo import TowerGnrpa
+
+    obs = dict(TTMR16_T1, status=[["lesson_buff", 18.0, -1], ["parameter_buff", 3.0, 3]])
+    on = TowerGnrpa(warm=0, sync_status=True)
+    on.begin(SimpleNamespace(loadout=TTMR16, known_draws=None, obs=obs))
+    on._align(obs)
+    assert on.rx.lesson_buff == 18
+    off = TowerGnrpa(warm=0)
+    off.begin(SimpleNamespace(loadout=TTMR16, known_draws=None, obs=obs))
+    off._align(obs)
+    assert off.rx.lesson_buff == 0

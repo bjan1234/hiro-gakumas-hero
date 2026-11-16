@@ -224,6 +224,16 @@ mod py {
         fn set_review(&mut self, v: i64) {
             self.ex.status.override_review(v);
         }
+        /// 画面读数覆盖一种状态：cls 是状态类名（如 LessonBuffStatusEffect），by_turn 见 StatusCollection::override_single。
+        /// 不认识的类名报错（不往引擎里塞新类）。
+        fn override_status(&mut self, cls: &str, by_turn: bool, n: i64) -> PyResult<()> {
+            if !crate::enums::CLASS_NAMES.iter().any(|c| *c == cls) {
+                return Err(pyo3::exceptions::PyKeyError::new_err(format!("不认识的状态类 {cls}")));
+            }
+            let c = crate::status::class_id(cls);
+            self.ex.status.override_single(c, by_turn, n);
+            Ok(())
+        }
         #[setter]
         fn set_score(&mut self, v: i64) {
             self.ex.score = v;
