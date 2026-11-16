@@ -130,7 +130,8 @@ class ProduceDeciders:
               "QUALIFY_MEMORY": self.qualify_memory, "SKILL_CARD_CHANGE_1": self.change_pick,
               "SKILL_CARD_CHANGE_2": self.change_remove, "SKILL_CARD_REMOVAL": self.remove_card,
               "SKILL_CARD_ENHANCE": self.enhance_card, "PDRINK_MAX_CONFIRM": self.drink_overflow_confirm,
-              "NIA_SALES_PLACE": self.sales_place, "NIA_SALES_EVENT": self.sales_event, "NIA_AUDITION_SELECT": self.audition_select}[page]  # fmt: skip
+              "NIA_SALES_PLACE": self.sales_place, "NIA_SALES_EVENT": self.sales_event, "NIA_AUDITION_SELECT": self.audition_select,
+              "EXAM_RETRY": self.exam_retry}[page]  # fmt: skip
         t0 = time.monotonic()
         try:
             d = fn(state, **kw)
@@ -307,6 +308,37 @@ class ProduceDeciders:
                             decider=decider)  # fmt: skip
         i, reason, _ = (choose_outing if decider == "outing" else choose_study)(self._hajime_nia_status(state), choices)
         return Decision(Action.event_select(i), reason, "rule", 0.7, decider=decider)
+
+    EXAM_RETRY_MAX = 3  # 同一场考试 / 试镜最多再挑戦几次（协调 11-17，同 H.I.F 的 MAX_RETRIES_PER_EXAM）
+
+    def exam_retry(self, state: GameState) -> Decision:
+        """初 / N.I.A 考试 / 试镜失败后的再挑戦（协调 11-17：只用免费次数和已有的再挑戦チケット，每场最多 3 次；不用マニー买券、
+        绝不花ジュエル）。page_fields：stage = result（结果页的「再挑戦」按钮）/ confirm（确认框），attempts（这一场已用次数），
+        retries_left?（画面上「あと N回」），cost?（confirm：free / ticket / jewel，读不出不给）。
+        输出 Dialog {kind: exam_retry, confirm, reselect?}；N.I.A 确认后回选档页降档（reselect，选档页的 failed 由平台带）。"""
+        from hiro.state.modes import NIA, family
+
+        pf = state.page_fields
+        stage, n = pf.get("stage") or "result", int(pf.get("attempts") or 0)
+        nia = family((state.produce or {}).get("mode")) == NIA
+
+        def out(confirm: bool, why: str, conf: float = 0.9) -> Decision:
+            args = {"kind": "exam_retry", "confirm": bool(confirm)}
+            if nia and confirm:
+                args["reselect"] = True
+                why += "；N.I.A 回选档页降一档再打"
+            return Decision(Action(ActionKind.DIALOG, args), why, "rule", conf, decider="exam_retry")
+
+        if n >= self.EXAM_RETRY_MAX:
+            return out(False, f"这一场已经再挑戦 {n} 次（上限 {self.EXAM_RETRY_MAX}），不再挑戦")
+        if pf.get("retries_left") is not None and int(pf["retries_left"]) <= 0:
+            return out(False, "画面上没有剩余的再挑戦次数")
+        if stage == "result":
+            return out(True, f"没过，第 {n + 1} 次再挑戦（先看确认框花什么）")
+        cost = pf.get("cost")
+        if cost in ("free", "ticket"):
+            return out(True, f"再挑戦花的是{'免费次数' if cost == 'free' else '已有的再挑戦チケット'}，确认（第 {n + 1} 次）")
+        return out(False, "确认框要花ジュエル，取消" if cost == "jewel" else "确认框读不出花什么，取消（不冒险花ジュエル）", 0.7)
 
     # ---------------------------------------------------------------- N.I.A 营业 / 试镜选档（hiro.brain.hajime_nia，设计稿第三、六节）
     def sales_place(self, state: GameState) -> Decision:
