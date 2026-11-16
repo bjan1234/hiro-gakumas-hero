@@ -14,6 +14,7 @@ def _reload_env(monkeypatch, **env):
 
     for k in ("HIRO_SUPPORT_SET", "HIRO_MEMORY_SET", "HIRO_MEMORY_CARDS"):
         monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("HIRO_FORMATION_PLAN", "off")  # 不读本机 conf/formation-plan.json（实机生成的方案会补上编成号）
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     return importlib.reload(kaa_env)
