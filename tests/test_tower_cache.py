@@ -166,10 +166,12 @@ def test_progress_survives_restart_same_game_day(tmp_path, monkeypatch):
 
     from datetime import timedelta, timezone
 
-    assert tc.game_day(datetime(2026, 11, 17, 3, 59)) == "2026-11-16" and tc.game_day(datetime(2026, 11, 17, 4, 0)) == "2026-11-17"  # 日本时间
-    cst = timezone(timedelta(hours=8))  # 北京时间 03:51 = 日本时间 04:51：已经是 11-17（协调 11-17 发现按本机时区算成了 11-16）
-    assert tc.game_day(datetime(2026, 11, 17, 3, 51, tzinfo=cst)) == "2026-11-17"
-    assert tc.game_day(datetime(2026, 11, 17, 2, 59, tzinfo=cst)) == "2026-11-16"
+    assert tc.game_day(datetime(2026, 11, 17, 4, 59)) == "2026-11-16" and tc.game_day(datetime(2026, 11, 17, 5, 0)) == "2026-11-17"  # 日本时间 5 点换日
+    cst = timezone(timedelta(hours=8))  # 北京时间 04:05 = 日本 05:05：协调 11-17 实机这时弹了「日付変更」
+    assert tc.game_day(datetime(2026, 11, 17, 4, 5, tzinfo=cst)) == "2026-11-17"
+    assert tc.game_day(datetime(2026, 11, 17, 3, 59, tzinfo=cst)) == "2026-11-16"  # 登录奖励「04:59まで」（日本时间）
+    utc = timezone.utc  # 别的时区的机器：照样按日本时间算
+    assert tc.game_day(datetime(2026, 11, 16, 19, 59, tzinfo=utc)) == "2026-11-16" and tc.game_day(datetime(2026, 11, 16, 20, 0, tzinfo=utc)) == "2026-11-17"
     run = TowerRun("tower_001-ttmr")
     run.after_result(16, False, 0)
     run.after_result(16, False, 0)

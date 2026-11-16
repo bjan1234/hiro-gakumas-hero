@@ -207,12 +207,12 @@ def exam_steps(steps_jsonl: Path, label: str, after_seq: int = 0) -> list[dict]:
 
 
 # ---------------------------------------------------------------- 每层挑战次数（跨进程）
-DAY_RESET_HOUR = 4  # 游戏每天日本时间凌晨 4 点换日（日付変更；北京时间 3 点）
+DAY_RESET_HOUR = 5  # 游戏每天日本时间凌晨 5 点换日（日付変更；北京时间 4 点）。协调 11-17 实机：北京 04:05 弹「日付変更」，登录奖励写「04:59まで」
 JST = __import__("datetime").timezone(__import__("datetime").timedelta(hours=9), "JST")  # 日本没有夏令时：固定 UTC+9（不用 zoneinfo，Windows 上要另装 tzdata）
 
 
 def game_day(now=None) -> str:
-    """游戏日：按日本时间，凌晨 4 点前算前一天（协调 11-17：原来按本机时区，北京时间 03:51 = 日本 04:51 已经换日，却还算前一天）。
+    """游戏日：按日本时间，凌晨 5 点前算前一天（原来按本机时区 4 点，在北京时间的 Mac 上碰巧对，换到别的时区的机器就错）。
     now：带时区的时刻（换成日本时间再算）；不带时区的按日本时间理解；缺省现在。"""
     from datetime import datetime, timedelta
 

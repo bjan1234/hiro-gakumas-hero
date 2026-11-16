@@ -110,7 +110,7 @@ def stop_notice(frame, rt) -> str | None:
 
 
 def date_changed(frame, rt) -> str | None:
-    """日期切换 / 数据更新（凌晨 4 点）：抛 DateChanged，run_hif 回首页从「プロデュース中」续跑。"""
+    """日期切换 / 数据更新（日本时间凌晨 5 点）：抛 DateChanged，run_hif 回首页从「プロデュース中」续跑。"""
     if frame.has_dialog and date_change.date_change_button(frame.boxes) is not None:
         raise date_change.DateChanged("日付変更")
     return None
