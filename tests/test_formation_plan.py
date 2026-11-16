@@ -158,8 +158,9 @@ def test_build_plan_for_hiro(tmp_path):
     plan = _hiro_plan()
     assert plan["profile"] == "yaruki" and plan["idol"]["default_main"] == "Da"
     sup, mem = plan["support"], plan["memory"]
-    assert "error" not in sup and len(sup["own"]) == 5 and sup["counts"][plan["main_attr"]] == 3
-    assert sup["rental_rule"]["attr"] == plan["main_attr"]  # 租借补第 4 张主属性
+    # 没有实机租借列表：租借格按满级 SSR 估，6 格一起评估（主属性 4 张，第 6 格只能是租借，协调 11-17）
+    assert "error" not in sup and len(sup["own"]) == 5 and sup["counts"][plan["main_attr"]] == 4
+    assert sup["rental"] and sup["rental"]["rental"] and sup["rental"]["level"] == 60 and sup["rental_estimated"]
     assert len(mem["cards"]) == 4 and "p_card-02-men-2_004" in mem["cards"]
     text = fp.format_report(plan)
     assert "编成 20" in text and "回忆" in text

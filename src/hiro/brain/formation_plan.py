@@ -8,8 +8,8 @@
 3. 写方案：选了哪几张、理由、次优方案差多少，以及要存进的编成号（--support-set / --memory-set，用户在游戏里把方案存进这两个编成位）。
 4. 开局：hiro.kaa_env 读到方案就用它的编成号和回忆卡；kaa_patches 在第 2 步核对支援卡、第 3 步核对回忆编成号，对不上就停（不开局）。
 
-租借格：开局时 kaa_patches 按主属性挑等级最高的一张（rental.pick_rental），所以库存里没有租借列表时，自己的 5 张按「主属性 3 + 其他 2」选，
-租到主属性后正好 4-2-0 / 4-1-1 [ep08]。
+租借格：库存里没有实机租借列表时，按「可租到的满级 SSR」（support_select.virtual_rentals：方案一致的全部 SSR，Lv60）
+当候选，和自己的卡一起评估 6 格（主属性 4 张 [ep08]、最多 1 张租借；协调 11-17）。开局第 2 步按编成价值从实际租借列表挑（rental.py）。
 
 用法：
     PYTHONPATH=src .venv/bin/python -m hiro.brain.formation_plan --idol i_card-skin-shro-3-007 --support-set 20 --memory-set 20
@@ -77,7 +77,9 @@ def build(idol: str, *, support_inventory: dict | None, memory_inventory: dict |
     if support_inventory:
         inv = ss.normalize_inventory(support_inventory)
         has_rentals = bool(inv.get("rentals"))
-        size, main_count = (6, 4) if has_rentals else (5, 3)
+        if not has_rentals:  # 没有实机租借列表：按可租到的满级 SSR 估租借格，一起评估 6 格（协调 11-17）
+            inv = dict(inv, rentals=ss.virtual_rentals())
+        size, main_count = 6, 4
         if fixed_main:
             with ss.using(info["default_main"], info["plan"], main_count):
                 r = ss.choose(inv, size=size)
@@ -92,7 +94,9 @@ def build(idol: str, *, support_inventory: dict | None, memory_inventory: dict |
                        sp_lessons=r.get("sp_lessons"), runner_up=r.get("runner_up"), excluded=r.get("excluded"),
                        main_attr_candidates=r.get("main_attr_candidates"), main_attr_why=r.get("main_attr_why"))  # fmt: skip
             if not has_rentals:
-                sup["rental_rule"] = {"attr": r["main_attr"], "why": "开局第 2 步租主属性等级最高的一张，补成 4 张主属性 [ep08]"}
+                sup["rental_estimated"] = True
+                sup["rental_rule"] = {"attr": (r.get("rental") or {}).get("attr") or r["main_attr"],
+                                      "why": "租借格按「可租到的满级 SSR」估（Lv60，偏乐观）；开局第 2 步按编成价值从实际租借列表挑 [ep08]"}  # fmt: skip
             out["notes"].extend(r.get("notes") or [])
             if all(all(w.startswith("事件") for w in o.get("why") or []) for o in r["own"]):
                 out["notes"].append("支援卡技能数据缺失（只算到支援事件收益）：支援卡方案只按事件、属性、等级排，不可靠，建议手动挑")
@@ -135,7 +139,8 @@ def format_report(plan: dict) -> str:
         for i, o in enumerate(sup["own"], 1):
             lines.append(f"{i}. {o['attr']} **{o['name']}** Lv{o['level']}，价值 {o['value']}：{'；'.join(o['why'][:4])}")
         if sup.get("rental"):
-            lines.append(f"6. 租借 {sup['rental']['name']}（价值 {sup['rental']['value']}）")
+            est = "（估：按满级 SSR，开局按实际列表挑）" if sup.get("rental_estimated") else ""
+            lines.append(f"6. 租借 {sup['rental']['name']}（价值 {sup['rental']['value']}）{est}")
         elif sup.get("rental_rule"):
             lines.append(f"6. 租借格：{sup['rental_rule']['why']}")
         lines.append(f"\n总价值 {sup['value']}，属性分布 {sup['counts']}，主属性课程走 SP 约 {sup.get('sp_lessons')} 次")
