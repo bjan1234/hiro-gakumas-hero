@@ -9,6 +9,8 @@
 - --resume：培育进行中时续跑，不开新局（hiro.loop.resume.enter_produce：首页点「プロデュース中」→「再開する」，已在培育里就直接接上；
   破弃提示只点キャンセル 停下）。--difficulty 要和进行中的那局一致（KAA 的控制器按它走）。不加 --resume 时开局前照旧 guard_new，
   看到「再開する」就停、提示改用 --resume。
+- 横屏 LIVE：PlayCover 上 LIVE 横屏会黑屏（KAA 等 select cover 180s 后停，协调 11-17 初最終試験结算），每次截图喂一帧给
+  hiro.loop.landscape.LandscapeGuard（同 Runtime / HiroController：黑屏 20s 进全屏，LIVE 结束退全屏）；LIVE 中不按 STALL_S 停。
 - 选项页：KAA 想盲点的剧情 / 事件 / 初始二选一被 kaa_patches 拦下后会每秒重试；8 秒内拦下 BLIND_STOP 次就存一帧、停下交人
   （协调 11-17 第 4 次采样：开局剧情二选一刷了 58 次没停）。
 
@@ -50,7 +52,7 @@ class SampleBlocked(RuntimeError):
 class Sampler:
     """挂在 kotonebot 设备上：screenshot_raw 记住最近一张原生截图，screenshot_hook_after 拿逻辑分辨率帧判断要不要存。"""
 
-    def __init__(self, out: Path, diff: float, clock=time.monotonic) -> None:
+    def __init__(self, out: Path, diff: float, clock=time.monotonic, landscape=None) -> None:
         self.out, self.diff, self.clock = out, diff, clock
         self.out.mkdir(parents=True, exist_ok=True)
         self.jsonl = (self.out / "frames.jsonl").open("a", encoding="utf-8")
@@ -62,6 +64,7 @@ class Sampler:
         self.raw = None
         self.progress_t = clock()
         self.blind_hits: list[float] = []
+        self.landscape = landscape  # hiro.loop.landscape.LandscapeGuard（main 里按 is_playcover 建）；None = 不管横屏
 
     # ---- 钩子
     def wrap_raw(self, device) -> None:
@@ -82,6 +85,11 @@ class Sampler:
         thumb = cv2.resize(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), (90, 160)).astype(np.float32)
         d = 255.0 if self.last_thumb is None else float(np.abs(thumb - self.last_thumb).mean())
         now = self.clock()
+        if self.landscape is not None:
+            frame = self.raw if self.raw is not None else img  # 原尺寸截图：横竖方向按它判（逻辑分辨率帧是缩放过的）
+            self.landscape.tick(frame)
+            if self.landscape.in_live(frame):
+                self.progress_t = now  # LIVE 演出 / 黑屏等全屏切换：画面本来就不变，不按 STALL_S 停
         if self.blind_choice(now):
             self.scene = "BLIND_CHOICE"
             self.save(img, d)
@@ -190,6 +198,10 @@ def main() -> int:
     logging.getLogger().addHandler(sampler.log_handler())
 
     device = connect()
+    from hiro.device import is_playcover
+    from hiro.loop.landscape import LandscapeGuard
+
+    sampler.landscape = LandscapeGuard(active=is_playcover())
     sampler.wrap_raw(device)
     init_context(target_device=device)
     manual_context().begin()

@@ -92,3 +92,37 @@ def test_resume_enters_and_runs_kaa_controller(monkeypatch):
     m.resume(pm, "REGULAR", "i_card-x")
     assert calls == ["enter", ("session", {"idol_card": "i_card-x", "scenario": "REGULAR", "is_resumed": True, "deck": "i_card-x/deck-1"}),
                      ("controller", "REGULAR", "std"), "run", "clear"]  # fmt: skip
+
+
+def test_landscape_guard_ticked_with_native_frame_and_no_stall_in_live(tmp_path):
+    """每次截图都用原尺寸帧喂 LandscapeGuard（横屏 LIVE 黑屏切全屏）；LIVE 中画面不变也不按 STALL_S 停。"""
+    m = _mod()
+    now = [0.0]
+    seen = []
+
+    class Guard:
+        live = True
+
+        def tick(self, frame):
+            seen.append(frame.shape)
+            return False
+
+        def in_live(self, frame):
+            return self.live
+
+    g = Guard()
+    s = m.Sampler(tmp_path / "frames", diff=4.0, clock=lambda: now[0], landscape=g)
+    raw = np.zeros((1032, 1838, 3), np.uint8)  # 横屏原尺寸
+    dev = NS(screenshot_raw=lambda: raw, screenshot_hook_after=None)
+    s.wrap_raw(dev)
+    logical = np.zeros((1280, 720, 3), np.uint8)
+    for _ in range(3):
+        dev.screenshot_raw()
+        dev.screenshot_hook_after(logical)
+        now[0] += m.STALL_S
+    assert seen == [(1032, 1838, 3)] * 3  # 原尺寸，不是逻辑分辨率
+    g.live = False
+    dev.screenshot_raw()
+    now[0] += m.STALL_S
+    with pytest.raises(m.SampleStall):  # LIVE 结束后照常按 STALL_S 停
+        dev.screenshot_hook_after(logical)
