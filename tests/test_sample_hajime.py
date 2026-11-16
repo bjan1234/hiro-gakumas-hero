@@ -33,6 +33,10 @@ def test_sampler_saves_on_change_and_scene_and_stalls(tmp_path):
     rows = [json.loads(l) for l in (tmp_path / "frames" / "frames.jsonl").read_text(encoding="utf-8").splitlines()]
     assert [r["scene"] for r in rows] == ["start", "start", "ACTION_SELECT"]  # 第二张没变不存；页面类型变了就存
     assert rows[0]["native"] == [1032, 1838] and (tmp_path / "frames" / rows[0]["file"]).exists()  # 原尺寸
+    assert rows[0]["file"].endswith(".jpg")  # JPEG q95（PNG 一局 4.1 GB 把盘写满）
+    import cv2
+
+    assert cv2.imread(str(tmp_path / "frames" / rows[0]["file"])).shape == (1838, 1032, 3)
     dev.screenshot_raw()
     now[0] += m.STALL_S
     with pytest.raises(m.SampleStall):

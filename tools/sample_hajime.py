@@ -17,7 +17,7 @@
 - 规矩同 run_hif：kaa_patches 全装（「プロデュースデータの破棄」只点キャンセル、不用ジュエル、编成核对），开局前 guard_new。
   AP 不够就停（run_hif 的自动补 AP 只认 H.I.F 的按钮），手动喝 APドリンク 后重跑。
 - 存帧：每次截图和上一张存下的帧相比有明显变化（灰度缩略图平均差 ≥ --diff），或 KAA 判的页面类型变了，就存一帧原尺寸截图：
-  <序号>-<时分秒>-<KAA 页面>.png；frames.jsonl 每行 {seq, t, file, scene, ctx（最近一条 KAA / kotonebot 日志）, native, logical_diff}。
+  <序号>-<时分秒>-<KAA 页面>.jpg（JPEG 质量 JPEG_QUALITY：原尺寸 PNG 一局 2316 张占 4.1 GB 把盘写满，协调 11-17 改 q95 后 1.0 GB）；frames.jsonl 每行 {seq, t, file, scene, ctx（最近一条 KAA / kotonebot 日志）, native, logical_diff}。
 """
 
 from __future__ import annotations
@@ -35,6 +35,7 @@ import hiro  # noqa: F401  兼容层（要在 kotonebot 之前）
 logger = logging.getLogger("sample_hajime")
 
 STALL_S = 180.0  # 画面没变、KAA 页面也没变这么久：停下（帧留着，人接手）
+JPEG_QUALITY = 95
 BLIND_STOP, BLIND_WINDOW_S = 3, 8.0  # 选项页被拦下：这么多秒内拦下这么多次就停（同 HiroController 的判据，过场动画偶尔误报一次不停）
 
 
@@ -109,8 +110,8 @@ class Sampler:
 
         self.seq += 1
         raw = self.raw if self.raw is not None else img
-        name = f"{self.seq:05d}-{time.strftime('%H%M%S')}-{self.scene}.png"
-        cv2.imwrite(str(self.out / name), raw)
+        name = f"{self.seq:05d}-{time.strftime('%H%M%S')}-{self.scene}.jpg"
+        cv2.imwrite(str(self.out / name), raw, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
         rec = {"seq": self.seq, "t": time.strftime("%Y-%m-%d %H:%M:%S"), "file": name, "scene": self.scene, "ctx": self.ctx,
                "native": [int(raw.shape[1]), int(raw.shape[0])], "logical_diff": round(d, 1)}  # fmt: skip
         self.jsonl.write(json.dumps(rec, ensure_ascii=False) + "\n")
