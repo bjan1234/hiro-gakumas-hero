@@ -16,9 +16,10 @@ PRODUCE_PAGES = {
     # 识屏 ce615b6 快速判页：底部结果气泡。DELETE_RESULT（「A と B を削除しました」→ CARD_DELETE 事件，考试后自动删基础卡 / 相談删卡）、
     # CUSTOMIZE_RESULT：任何培育页面之间都可能出现，当覆盖层（HUB），事件照常记
     "DELETE_RESULT", "CUSTOMIZE_RESULT", "GIFT",
+    "INITIAL_CHOICE", "EVENT_CHOICE",  # 事件选项页：随机事件 / 开局二选一，几乎在任何行动之后都可能出现，当枢纽
 }  # fmt: skip
 EXAM_PAGES = {"HIF_EXAM", "HIF_EXAM_RESULT"}
-HUB = {"IDLE", "commu", "DIALOG", "MENU", "PRODUCE_LOG", "DELETE_RESULT", "CUSTOMIZE_RESULT"}  # PRODUCE_LOG：行动记录覆盖层（底栏文档图标），点 ✕ 关闭  # 任何培育页面都可能经过：剧情、弹窗之间的空档
+HUB = {"IDLE", "commu", "DIALOG", "MENU", "PRODUCE_LOG", "DELETE_RESULT", "CUSTOMIZE_RESULT", "INITIAL_CHOICE", "EVENT_CHOICE"}  # PRODUCE_LOG：行动记录覆盖层（底栏文档图标），点 ✕ 关闭  # 任何培育页面都可能经过：剧情、弹窗之间的空档
 WEAK = {"IDLE"}  # 「在培育里但没认出具体页面」：弹窗选中项时 KAA 也会判成 IDLE，要连续多帧才离开当前页面
 SELECTS = {"SELECT_CARD", "SELECT_DRINK", "SELECT_PITEM"}
 CARD_OPS = {"SKILL_CARD_ENHANCE", "SKILL_CARD_REMOVAL", "SKILL_CARD_CHANGE_1", "SKILL_CARD_CHANGE_2"}

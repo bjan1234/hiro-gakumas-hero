@@ -36,6 +36,8 @@ def test_pages_call_core_methods():
     h = make_handlers(core)
     assert _run(h, "CONSULT") is DONE and _run(h, "SKILL_CARD_REMOVAL") is DONE and _run(h, "PDRINK_MAX_CONFIRM") is DONE
     assert core.calls == ["consult", "skill_card_removal", "pdrink_max_confirm"]
+    assert _run(h, "OUTING_STAMINA_MAX") is DONE and core.calls[-1] == "outing_stamina_max"  # 原来没处理器（11-17 页面清单 P7b）
+    assert _run(h, "INITIAL_CHOICE") is DONE and core.calls[-1] == "event_choice"  # 事件选项页（O12）
     assert _run(h, "SPECIAL_GUIDANCE") is DONE and core.calls[-1] == "special_guidance"  # 回到定制选卡页接着做（h11 11-15）
     assert "LOADING" not in h and "unknown" not in h  # 不需要处理的页没登记，交给 advance
 
