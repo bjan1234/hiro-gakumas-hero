@@ -46,6 +46,7 @@ INTERRUPT_EXTRA = 3.0  # drive / wait_until：处理中断（设置弹窗等）�
 ERROR_LIMIT = 10  # 识别 / 中断 / 处理器抛的普通异常：接住、记 trace、这一拍按认不出处理；同一处同一异常连续这么多次才停机
 # （用户 11-15 测稳定性：一处识别异常不能让整局退出，Mac h8 read_dialog 空图那次 exit 1）
 LIVE_MAX_S = 600.0  # LIVE 演出（含黑屏切全屏）最多不受看门狗管这么久；一直黑 / 横着超过这个就照常停机
+INTERRUPT_FRAME_GAP_S = 60.0  # 同一句中断说明这么久内只存一帧
 STALL_S = 180.0  # 页面没变、画面也没变（缩略图差 < repeat_guard.SCREEN_DIFF）这么久就停机；认不出的画面同样适用
 
 
@@ -124,11 +125,13 @@ class Runtime:
                 raise
             self.absorb(e, "中断层", f)
             done = f"中断层异常（{type(e).__name__}）"
-        self._log_interrupt(done, f.t)
+        self._log_interrupt(done, f)
         return f, done
 
-    def _log_interrupt(self, done: str | None, t: float) -> None:
-        """中断日志：同一句连续出现只记第一拍，换了 / 没了再记一句结束（成就提示条等每拍都会命中，11-17 一次记了 7 行）。"""
+    def _log_interrupt(self, done: str | None, f: Frame) -> None:
+        """中断日志：同一句连续出现只记第一拍，换了 / 没了再记一句结束（成就提示条等每拍都会命中，11-17 一次记了 7 行）。
+        第一拍存一帧进 trace（同一句 INTERRUPT_FRAME_GAP_S 内不重复存；11-17 通信エラー 点了 162 次リトライ，一帧都没有）。"""
+        t = f.t
         last = getattr(self, "_int_log", None)  # (说明, 起始时刻, 拍数)
         if last is not None and done == last[0]:
             self._int_log = (last[0], last[1], last[2] + 1)
@@ -136,8 +139,17 @@ class Runtime:
         if last is not None and last[2] > 1:
             logger.info("中断结束：%s（连续 %d 拍，%.1fs）", last[0], last[2], t - last[1])
         self._int_log = (done, t, 1) if done is not None else None
-        if done is not None:
-            logger.info("中断：%s", done)
+        if done is None:
+            return
+        logger.info("中断：%s", done)
+        saved = self.__dict__.setdefault("_int_saved", {})
+        if self.session is not None and t - saved.get(done, -1e9) >= INTERRUPT_FRAME_GAP_S:
+            saved[done] = t
+            try:
+                shot = self.session.trace.save_frame(self.session.trace.next_seq(), f.img)
+                self.session.note(f"中断：{done}（帧 {shot}）")
+            except Exception:  # noqa: BLE001  存帧失败不影响
+                pass
 
     def wait_until(self, pred: Callable[[Frame], bool], timeout: float, *, every: float = TICK) -> tuple[bool, Frame]:
         """每拍过检查点和中断层后看 pred(帧)；成立返回 (True, 帧)，超时返回 (False, 最后一帧)。中断处理过的那一拍不算 pred。"""

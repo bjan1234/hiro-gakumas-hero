@@ -51,11 +51,48 @@ def red_line(frame, rt) -> str | None:
     return f"危险弹窗「{d['title']}」：点キャンセル"
 
 
+COMM_RETRY_MAX = 10  # 通信エラー 连着点リトライ 这么多次还在就停机报警（11-17 Mac：10 分钟点了 162 次，没上限）
+COMM_RETRY_MAX_S = 300.0  # 或者从第一次点起这么久还在
+COMM_RESET_S = 60.0  # 这么久没再见到通信エラー 才重新计数（两次之间是读取画面，不能每拍清零）
+
+
+def _comm_frame(rt, f) -> str | None:
+    try:
+        return rt.session.trace.save_frame(rt.session.trace.next_seq(), f.img) if rt.session is not None else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def comm(frame, rt) -> str | None:
-    """通信エラー：只点リトライ；只能回标题时点閉じる并抛 CommErrorToTitle（hiro.loop.comm_error）。"""
+    """通信エラー：只点リトライ；只能回标题时点閉じる并抛 CommErrorToTitle（hiro.loop.comm_error）。
+    点之前确认弹窗确实在：标题条读出来是通信エラー、リトライ 在标题条下面，重截一帧还在同一个位置（11-17：リトライ 的位置 (299,1019)
+    在首页上靠近「プロデュース中」）。连着点 COMM_RETRY_MAX 次 / COMM_RETRY_MAX_S 秒还在：存帧、停机报警。"""
     if not frame.has_dialog:
         return None
-    r = comm_error.handle(frame.boxes, rt.device.tap, sleep=rt.sleep)
+    e = comm_error.comm_error(frame.boxes)
+    if e is None:
+        return None
+    d = frame.dialog or {}
+    if d.get("kind") != "comm_error" and not any(h in (d.get("title") or "") for h in comm_error.TITLE_HINTS):
+        return None  # 画面上有「通信」字样，但最上层的弹窗标题不是通信エラー：不点
+    if e["kind"] == "retry" and d.get("y") is not None and e["retry"][1] <= d["y"]:
+        return None  # 「リトライ」不在这个弹窗里（在标题条上面）
+    f2 = rt.screen.shot()  # 重截核对：弹窗还在、按钮没挪
+    e2 = comm_error.comm_error(f2.boxes) if f2.has_dialog else None
+    if e2 is None or e2["kind"] != e["kind"] or (e["retry"] and (e2["retry"] is None or abs(e2["retry"][1] - e["retry"][1]) > 20)):
+        return "通信エラー：重截时弹窗不在了 / 变了，这一拍不点"
+    if e2["kind"] == "retry":
+        now = rt.clock() if callable(getattr(rt, "clock", None)) else 0.0
+        st = getattr(rt, "_comm_retry", None)  # (第一次, 最近一次, 次数)
+        if st is not None and now - st[1] > COMM_RESET_S:
+            st = None
+        n = (st[2] if st else 0) + 1
+        first = st[0] if st else now
+        if n > COMM_RETRY_MAX or now - first > COMM_RETRY_MAX_S:
+            shot = _comm_frame(rt, f2)
+            raise ResumeBlocked(f"通信エラー 点了 {n - 1} 次リトライ（{now - first:.0f}s）还在，停机（帧 {shot}）")
+        rt._comm_retry = (first, now, n)
+    r = comm_error.handle(f2.boxes, rt.device.tap, sleep=rt.sleep)
     return f"通信エラー：{r}" if r else None
 
 
