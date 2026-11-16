@@ -1,0 +1,248 @@
+"""初 / N.I.A 的培育决策（通关档：社区规则，每条带出处）。设计稿 .temp/plans-20261112/初与NIA-决策-设计.md 第四节。
+
+选行动页的选项沿用 H.I.F 的名字：training（课程 / 自主レッスン / 追い込みレッスン，带 attr、sp、hp_cost）、class（授業）、outing、
+gift（差し入れ）、shop（相談）、special_guidance、rest；新增 allowance（初的活動支給）、sales（N.I.A 的営業）。
+不跟随老师建议（用户定）：选项上的 recommended 不参与选择。
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from hiro.brain import hajime_nia_rules as hr
+from hiro.state import modes
+
+LOW_STAMINA = 8  # 体力低于它时课程周也先休息（初）；N.I.A 的 SP 课程也耗 8
+OUTING_POINTS = 100  # 外出和休息二选一时，P 点到这个数就外出 [g8-外出]
+TIRED_LOST = 15  # 体力少了这么多（或少了一半）算累 [g8-外出]
+SHOP_POINTS = 100  # 相談删卡 / 强化 100P 起 [g8-PRO]
+CUSTOMIZE_ALERT_DEFAULT = 49  # 主数据 ProduceSetting.stepCustomizeStartAlertProducePointThreshold（取不到时用）
+
+
+@dataclass
+class Status:
+    """选行动要用的状态（从 GameState.produce 拼出来）。"""
+
+    mode: str
+    step: int
+    stamina: int
+    max_stamina: int
+    produce_point: int
+    params: dict = field(default_factory=dict)
+    rest_left: int | None = None
+    main_attr: str | None = None
+
+    @property
+    def family(self) -> str | None:
+        return modes.family(self.mode)
+
+    @property
+    def difficulty(self) -> str | None:
+        return modes.MODES[self.mode].difficulty if self.mode in modes.MODES else None
+
+    def main(self) -> str | None:
+        if self.main_attr:
+            return self.main_attr
+        return max(self.params, key=lambda a: self.params[a]) if self.params else None
+
+
+def _customize_alert(mode: str) -> int:
+    try:
+        c = modes.master()
+        sid = c.one("Produce", mode)["produceSettingId"]
+        return int(c.one("ProduceSetting", sid)["stepCustomizeStartAlertProducePointThreshold"])
+    except Exception:  # noqa: BLE001  没有主数据
+        return CUSTOMIZE_ALERT_DEFAULT
+
+
+class _Pick:
+    def __init__(self, st: Status, opts: list[dict]):
+        self.st, self.opts, self.rules, self.notes = st, opts, [], []
+
+    def use(self, rule_id: str) -> None:
+        if rule_id not in self.rules and hr.applies(rule_id, self.st.family, self.st.difficulty):
+            self.rules.append(rule_id)
+
+    def idx(self, option: str) -> list[int]:
+        return [i for i, o in enumerate(self.opts) if o.get("option") == option]
+
+    def done(self, i: int, why: str) -> tuple[int, str, list[str]]:
+        cites = "；".join(hr.cite(r) for r in self.rules)
+        return i, f"{why}（{cites}）" if cites else why, list(self.rules)
+
+
+def _lesson(p: _Pick, cands: list[int], prefer: str) -> int:
+    """课程里挑一门：SP 优先，再按 prefer（main = 主属性 / low = 属性最低的）。"""
+    st = p.st
+
+    def key(i):
+        o = p.opts[i]
+        attr = o.get("attr")
+        val = st.params.get(attr, 0) if attr else 0
+        return (bool(o.get("sp")), (attr == st.main()) if prefer == "main" else -val)
+
+    return max(cands, key=key)
+
+
+def _rest_ok(p: _Pick) -> bool:
+    st = p.st
+    if st.stamina >= st.max_stamina:
+        p.use("hajime.rest_full")
+        return False
+    if st.family == modes.NIA and st.rest_left is not None and st.rest_left <= 0:
+        p.use("nia.rest_limit")
+        return False
+    if st.family == modes.HAJIME and st.difficulty == "master" and st.step < 6:
+        p.use("hajime.master_rest_week6")
+        return False
+    return True
+
+
+def choose_action(st: Status, opts: list[dict]) -> tuple[int, str, list[str]]:
+    """选行动页 → (选第几项, 理由, 用到的规则编号)。只处理初 / N.I.A；别的模式抛 ValueError。"""
+    if st.family == modes.HAJIME:
+        return _hajime(_Pick(st, opts))
+    if st.family == modes.NIA:
+        return _nia(_Pick(st, opts))
+    raise ValueError(f"不是初 / N.I.A：{st.mode}")
+
+
+def _fallback_order(p: _Pick, order: tuple[str, ...], why: str) -> tuple[int, str, list[str]]:
+    rest_ok = None
+    for name in order:
+        for i in p.idx(name):
+            if name == "rest":
+                rest_ok = _rest_ok(p) if rest_ok is None else rest_ok
+                if not rest_ok:
+                    continue
+            return p.done(i, f"{why}：{p.opts[i].get('option')}")
+    return p.done(0, f"{why}：没有更合适的，选第 1 项")
+
+
+def _hajime(p: _Pick) -> tuple[int, str, list[str]]:
+    st = p.st
+    lessons = p.idx("training")
+    if lessons:
+        if st.stamina < LOW_STAMINA and p.idx("rest") and _rest_ok(p):
+            return p.done(p.idx("rest")[0], f"课程周体力只剩 {st.stamina}（< {LOW_STAMINA}），先休息")
+        p.use("hajime.lesson_first")
+        i = _lesson(p, lessons, "main")
+        o = p.opts[i]
+        return p.done(i, f"上课程 {o.get('attr')}{' SP' if o.get('sp') else ''}")
+    if p.idx("class"):
+        p.use("hajime.lesson_first")
+        cls = p.idx("class")
+        i = next((k for k in cls if p.opts[k].get("attr") == st.main()), cls[0])
+        return p.done(i, f"上授業 {p.opts[i].get('attr') or ''}".strip())
+    lost = st.max_stamina - st.stamina
+    tired = lost >= TIRED_LOST or st.stamina * 2 <= st.max_stamina
+    outing_ok = bool(p.idx("outing"))
+    if st.difficulty == "master" and outing_ok:
+        p.use("hajime.master_outing_avoid")
+        outing_ok = False
+    if tired:
+        p.use("hajime.outing_when")
+        p.use("hajime.outing_vs_rest")
+        if outing_ok and st.produce_point >= OUTING_POINTS:
+            return p.done(p.idx("outing")[0], f"体力少了 {lost}，P 点 {st.produce_point} ≥ {OUTING_POINTS}，去外出")
+        if p.idx("rest") and _rest_ok(p):
+            return p.done(p.idx("rest")[0], f"体力少了 {lost}，P 点 {st.produce_point} 不到 {OUTING_POINTS}，休息")
+        if outing_ok:
+            return p.done(p.idx("outing")[0], f"体力少了 {lost}，休息不了，去外出")
+    order = ["allowance", "gift"]
+    if st.produce_point >= SHOP_POINTS:
+        order.append("shop")
+    if outing_ok:
+        order.append("outing")
+    order += ["shop", "rest", "outing"]  # 最后的 outing：MASTER 不推荐，但实在没别的可选
+    return _fallback_order(p, tuple(dict.fromkeys(order)), "没有课程 / 授業")
+
+
+def _nia(p: _Pick) -> tuple[int, str, list[str]]:
+    st = p.st
+    lessons = p.idx("training")
+    if lessons:
+        p.use("nia.lesson_sp")
+        ok = [i for i in lessons if p.opts[i].get("hp_cost") is None or st.stamina > int(p.opts[i]["hp_cost"])]
+        if len(ok) < len(lessons):
+            p.use("nia.lesson_stamina")
+        if ok:
+            i = _lesson(p, ok, "low")
+            o = p.opts[i]
+            return p.done(i, f"上自主レッスン {o.get('attr')}{' SP' if o.get('sp') else ''}（缺的属性优先）")
+        if p.idx("rest") and _rest_ok(p):
+            return p.done(p.idx("rest")[0], f"体力 {st.stamina} 上不了课程，休息")
+    if p.idx("sales"):
+        p.use("nia.sales_cost")
+        return p.done(p.idx("sales")[0], "去营业（场所另选）")
+    if p.idx("special_guidance") and st.produce_point > _customize_alert(st.mode):
+        return p.done(p.idx("special_guidance")[0], f"P 点 {st.produce_point} 够定制，进特別指導")
+    if st.stamina <= LOW_STAMINA and p.idx("rest") and _rest_ok(p):
+        return p.done(p.idx("rest")[0], f"体力 {st.stamina} 太低，休息")
+    order: list[str] = []
+    if st.difficulty == "master":
+        p.use("nia.outing_default")
+        order.append("outing")
+    elif st.stamina * 2 <= st.max_stamina:
+        order.append("outing")
+    order += ["gift"]
+    if st.produce_point >= SHOP_POINTS:
+        order.append("shop")
+    order += ["outing", "special_guidance", "shop", "rest"]
+    return _fallback_order(p, tuple(dict.fromkeys(order)), "没有课程 / 营业")
+
+
+# ---------------------------------------------------------------- 外出 / 授業
+# 选项是结构化的 page_fields.choices：{index, text, cost_p, cost_hp, trouble, attr?}（同 H.I.F 的识别格式）。
+
+ATTR_WORDS = {"Vo": ("ボーカル", "Vo"), "Da": ("ダンス", "Da"), "Vi": ("ビジュアル", "Vi")}
+
+
+def _affordable(st: Status, c: dict) -> bool:
+    return int(c.get("cost_p") or 0) <= st.produce_point
+
+
+def choose_outing(st: Status, choices: list[dict]) -> tuple[int, str, list[str]]:
+    """外出三选一 → (choices 里的 index, 理由, 规则)。"""
+    p = _Pick(st, choices)
+    chs = sorted(choices, key=lambda c: c["index"])
+    ok = [c for c in chs if _affordable(st, c)] or chs[-1:]
+    if st.family == modes.NIA and st.difficulty == "master" and len(chs) == 3:
+        p.use("nia.outing_order")
+        top, mid, low = chs
+        is_change = "チェンジ" in (mid.get("text") or "")
+        order = [low, mid, top] if not is_change else [low, top, mid]
+        c = next((c for c in order if _affordable(st, c)), ok[0])
+        return p.done(c["index"], f"外出选{'下中上'[[low, mid, top].index(c)] if c is not mid or not is_change else '中（换卡）'}，P 点 {st.produce_point}")
+    if st.family == modes.NIA and len(chs) == 3:
+        p.use("nia.outing_middle")
+        c = chs[1] if _affordable(st, chs[1]) else ok[0]
+        return p.done(c["index"], "外出选中间那项" if c is chs[1] else "中间那项 P 点不够，选买得起的")
+    p.use("hajime.outing_spend")
+    tired = (st.max_stamina - st.stamina) >= TIRED_LOST or st.stamina * 2 <= st.max_stamina
+    c = max(ok, key=lambda c: int(c.get("cost_p") or 0)) if tired else min(ok, key=lambda c: int(c.get("cost_p") or 0))
+    return p.done(c["index"], f"{'体力少了，选买得起的最贵一档' if tired else '体力还够，选花得最少的一档'}（{int(c.get('cost_p') or 0)}P）")
+
+
+def _attr_of(c: dict) -> str | None:
+    if c.get("attr"):
+        return c["attr"]
+    text = c.get("text") or ""
+    return next((a for a, words in ATTR_WORDS.items() if any(w in text for w in words)), None)
+
+
+def choose_study(st: Status, choices: list[dict]) -> tuple[int, str, list[str]]:
+    """授業三选一：不选「トラブル追加」（加眠気），答主属性；体力不够其它项的消耗时才选トラブル。"""
+    p = _Pick(st, choices)
+    chs = sorted(choices, key=lambda c: c["index"])
+    trouble = [c for c in chs if c.get("trouble")]
+    plain = [c for c in chs if not c.get("trouble")]
+    if trouble:
+        p.use("hajime.study_avoid_trouble")
+    can = [c for c in plain if int(c.get("cost_hp") or 0) <= st.stamina]
+    if not can and trouble:
+        return p.done(trouble[0]["index"], f"体力 {st.stamina} 不够其它项的消耗，只能选トラブル追加")
+    pool = can or plain or chs
+    main = st.main()
+    c = next((c for c in pool if _attr_of(c) == main), pool[0])
+    return p.done(c["index"], f"授業答主属性 {main}" if _attr_of(c) == main else "授業：没认出主属性那项，选第一个不加眠気的")
