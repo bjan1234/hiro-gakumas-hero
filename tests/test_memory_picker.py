@@ -351,3 +351,48 @@ def test_purple_locked_rows_are_detected():
     assert mp.grid_rows(img) == [(676, 794), (814, 933)]  # 上面被详情栏截一半、下面压到浮动按钮的不算
     cells = mp.grid_cells(img)
     assert len(cells) == 6 and len({c["hash"] for c in cells}) == 6
+
+
+class ClosingPicker(ListPicker):
+    """读到某一格时选择页关了（实机：点成了「決定」，回到编成菜单）。"""
+
+    def __init__(self, lst, close_at):
+        super().__init__(lst)
+        self.close_at, self.closed, self.clicks = close_at, False, []
+        self.click = lambda x, y: self.clicks.append((x, y))
+
+    def select_checked(self, cell):
+        if self.closed:
+            raise mp.PickerClosed("选择页不见了")
+        out = super().select_checked(cell)
+        if self.lst.read[-1] == self.close_at:
+            self.closed = True
+        return out
+
+
+@pytest.mark.fixtures
+def test_picker_closed_mid_scan_stops_and_flags_formation(tmp_path, monkeypatch):
+    """11-16 账号 2：扫描中选择页关了、编成第 1 格被换掉，扫描还接着点了下一格、最后又点了キャンセル。
+    现在：立即停，记 aborted + formation_may_have_changed，不再点格子、不点キャンセル。"""
+    monkeypatch.setattr(mp, "picker_open", lambda boxes: True)
+    lst = ScrollList()
+    picker = ClosingPicker(lst, close_at=(2, 1))
+    cancels = []
+    picker.cancel = lambda: cancels.append(1) or True
+    inv = mp.scan(picker, tmp_path / "inv.json")
+    assert inv.get("formation_may_have_changed") and "人工核对" in inv["aborted"] and not inv["complete"]
+    assert lst.read[-1] == (2, 1) and cancels == []  # 关了之后没再点别的格子，也没点キャンセル
+
+
+def test_select_checked_never_taps_same_cell_twice():
+    """详情栏没变也不再点同一格（再点已选中的格子可能被当成「決定」）；点之前核对还在选择页。"""
+    still = np.zeros((1280, 720, 3), np.uint8)
+    taps = []
+    p = mp.Picker(lambda: still, lambda x, y: taps.append((x, y)), lambda *a: None, ocr=lambda im: [("キャンセル", 1, (0, 0, 1, 1)),
+                  ("決定", 1, (0, 0, 1, 1)), ("編成詳細", 1, (0, 0, 1, 1))], clock=iter(range(0, 10_000)).__next__, sleep=lambda s: None)  # fmt: skip
+    changed, _ = p.select_checked({"center": [360, 700]})
+    assert not changed and taps == [(360, 700)]
+    p.ocr = lambda im: []  # 选择页不见了
+    with pytest.raises(mp.PickerClosed):
+        p.select_checked({"center": [140, 700]})
+    assert taps == [(360, 700)]  # 不在选择页就不点

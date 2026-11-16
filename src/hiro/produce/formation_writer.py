@@ -317,7 +317,12 @@ def fix_memory(dev: Device, plan: dict, *, read_icons, make_picker) -> list[dict
                 break
         if not opened:
             raise FormationWriteError("点回忆格没打开回忆选择页")
-        pick_memory(picker, targets[key])
+        from hiro.produce.memory_picker import PickerClosed
+
+        try:
+            pick_memory(picker, targets[key])
+        except PickerClosed as e:  # 找的途中选择页关了（点成了「決定」）：这一格可能被换成了别的回忆，停下交给人
+            raise FormationWriteError(f"回忆第 {slot + 1} 格：找方案里的回忆时选择页关了，这一格可能被换成了别的回忆：{e}") from e
         img = None
         for _ in range(10):
             img = dev.shoot()
