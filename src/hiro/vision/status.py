@@ -32,6 +32,13 @@ _x, _y, _w, _h = layout.node(layout.EXAM, _FIRST_SLOT)[1]["rect"]
 SLOT_PITCH, SLOT_HALF = _h, 28
 MAX_SLOTS = 10
 BLUE = ((95, 120, 150), (110, 255, 255))
+RED_MIN_RATIO = 0.15  # 槽内红底像素占比：低下状态（デバフ，如 消費体力増加）实测 0.26–0.29，蓝底状态 / 卡牌效果为 0
+# 红底（低下状态）图标的字形和蓝底的「减少」那一个几乎一样，图库里也没有单独的「増加」图标：按底色翻过来（偶像之路 g5c 11-17：
+# 红心「消費体力増加」被认成「消費体力減少」0 或「ダークヒーローの誕生」N ターン，引擎因此少算一倍体力消耗）
+DEBUFF_FLIP = {"examstaminaconsumptiondown": ("examstaminaconsumptionadd", "ProduceExamEffectType_ExamStaminaConsumptionAdd", "消費体力増加")}
+# 字形只差一个小角标的图标对：整体相关分差只有 0.04（g5c #19 背景发亮时还会排反），按两张模板「不一样的像素」再比一次
+# （消費体力減少 / 増加 的「%」和 体力回復無効 的「×」）
+CONFUSABLE = (("examstaminaconsumptiondown", "examstaminarecoverrestriction"),)
 BLUE_MIN_RATIO = 0.08  # 槽内蓝底像素占比：状态效果实测 0.19–0.32，卡牌效果为 0
 GLYPH_SIZES = (30, 34, 38, 42)
 PRERANK_SIZE = 2  # 粗排用的尺寸（38）
@@ -100,6 +107,32 @@ def match_status_icon(patch: MatLike) -> list[tuple[float, str]]:
     pre = sorted(((score(sizes[PRERANK_SIZE]), key) for key, sizes in templates.items()), reverse=True)[:PRERANK_KEEP]
     scored = sorted(((max(score(t) for t in templates[key]), key) for _, key in pre), reverse=True)
     return scored[:3]
+
+
+def _red_mask(hsv: np.ndarray) -> np.ndarray:
+    return ((hsv[..., 0] <= 10) | (hsv[..., 0] >= 170)) & (hsv[..., 1] >= 120) & (hsv[..., 2] >= 150)
+
+
+def _split_pair(patch: MatLike, top: list[tuple[float, str]]) -> list[tuple[float, str]]:
+    """前两名是 CONFUSABLE 里的一对时重比一次：字形只留菱形底色（红 / 蓝）凸包里面的白色像素——菱形外面背景发亮时
+    （g5c #19）白色会混进字形，把「%」排到「×」后面。按重比的分数排这两个，分数用重比的。"""
+    if len(top) < 2 or not any({top[0][1], top[1][1]} == set(p) for p in CONFUSABLE):
+        return top
+    _, templates = _icon_index()
+    hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
+    pts = cv2.findNonZero((_red_mask(hsv) | (cv2.inRange(hsv, *BLUE) > 0)).astype(np.uint8))
+    if pts is None:
+        return top
+    inside = np.zeros(hsv.shape[:2], np.uint8)
+    cv2.fillConvexPoly(inside, cv2.convexHull(pts), 1)
+    g = _glyph(patch) * inside
+
+    def score(key: str) -> float:
+        return max(float(cv2.minMaxLoc(cv2.matchTemplate(g, t, cv2.TM_CCOEFF_NORMED))[1]) for t in templates[key]
+                   if t.shape[0] <= g.shape[0])  # fmt: skip
+
+    pair = sorted(((score(k), k) for _, k in top[:2]), reverse=True)
+    return [*pair, *top[2:]]
 
 
 def _norm(gray: np.ndarray) -> np.ndarray:
@@ -264,9 +297,23 @@ def _accepted(meta: dict, top: list[tuple[float, str]]) -> bool:
 def _read_slot(img: MatLike, k: int, *, faint: bool = False) -> dict:
     meta, _ = _icon_index()
     patch = _slot(img, k)
-    blue = cv2.inRange(cv2.cvtColor(patch, cv2.COLOR_BGR2HSV), *BLUE)
-    if np.count_nonzero(blue) / blue.size >= BLUE_MIN_RATIO:
-        top = match_status_icon(patch)
+    hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
+    blue = cv2.inRange(hsv, *BLUE)
+    red = float(_red_mask(hsv).mean())
+    blue_ratio = np.count_nonzero(blue) / blue.size
+    red_top = _split_pair(patch, match_status_icon(patch)) if blue_ratio < BLUE_MIN_RATIO and red >= RED_MIN_RATIO else None
+    if red_top and _accepted(meta, red_top):
+        # 红底：低下状态（デバフ）。字形和蓝底那一个一样的按 DEBUFF_FLIP 翻成「増加」那一种
+        score, key = red_top[0]
+        info = meta.get(key, {})
+        key, typ, name = DEBUFF_FLIP.get(key, (key, info.get("type"), info.get("name")))
+        entry = {"slot": k, "kind": "status", "key": key, "type": typ, "name": name, "debuff": True,
+                 "score": round(score, 3), "margin": round(score - red_top[1][0], 3)}  # fmt: skip
+        alternatives = info.get("aliases", []) + [c for s2, c in red_top[1:] if score - s2 < AMBIGUOUS_MARGIN]
+        if alternatives:
+            entry["alternatives"] = alternatives
+    elif blue_ratio >= BLUE_MIN_RATIO:
+        top = _split_pair(patch, match_status_icon(patch))
         score, key = top[0]
         if not _accepted(meta, top):
             entry = {"slot": k, "kind": "status", "key": None, "score": round(score, 3), "candidates": [c for _, c in top]}
