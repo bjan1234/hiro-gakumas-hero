@@ -11,8 +11,14 @@ from hiro.produce.formation_check import FormationMismatch
 logger = logging.getLogger(__name__)
 
 
-def check_support(img, plan: dict | None, set_no=None) -> None:
-    """有开局编成方案时核对第 2 步的 5 格支援卡；对不上抛 FormationMismatch（不开局）。核对本身出错只记日志。"""
+SUPPORT_SETTLE_READS, SUPPORT_SETTLE_GAP_S = 8, 0.5  # 翻编成号后卡片还在动画里：最多读几次、每次隔多久
+
+
+def check_support(img, plan: dict | None, set_no=None, *, shoot=None, sleep=None) -> None:
+    """有开局编成方案时核对第 2 步的 5 格支援卡；对不上抛 FormationMismatch（不开局）。核对本身出错只记日志。
+    给了 shoot / sleep 时先等读数稳定（5 格都认出，或连续两次一样），刚翻过编成号时卡片还在动画里
+    （账号 2 11-16：5 格都认不出却记成「核对通过」）。等完还是一格都认不出：核对不了，抛 FormationMismatch；
+    部分认不出：记「核对不完整」，不说通过。"""
     if not plan:
         return
     from hiro.produce.formation_check import check_support_step2
@@ -20,7 +26,16 @@ def check_support(img, plan: dict | None, set_no=None) -> None:
     try:
         from hiro.vision.support_screens import read_support_formation
 
-        problems, warnings = check_support_step2(read_support_formation(img), plan)
+        read = read_support_formation(img)
+        prev = None
+        for _ in range(SUPPORT_SETTLE_READS if shoot is not None else 0):
+            ids = [s.get("support_card_id") for s in (read or {}).get("slots") or []] if (read or {}).get("view") == "step2" else None
+            if ids is not None and (all(ids) or ids == prev):
+                break
+            prev = ids
+            (sleep or (lambda s: None))(SUPPORT_SETTLE_GAP_S)
+            read = read_support_formation(shoot())
+        problems, warnings = check_support_step2(read, plan)
     except Exception as e:  # noqa: BLE001
         logger.warning("支援卡编成核对失败（不拦开局）：%s", e)
         return
@@ -29,6 +44,14 @@ def check_support(img, plan: dict | None, set_no=None) -> None:
     if problems:
         logger.error("支援卡编成和方案对不上，不开局：%s", "；".join(problems))
         raise FormationMismatch("支援卡编成和方案对不上：" + "；".join(problems))
+    slots = (read or {}).get("slots") or []
+    unknown = sum(1 for s in slots if not s.get("support_card_id"))
+    if slots and unknown == len(slots):
+        logger.error("支援卡编成 %d 格都认不出，核对不了，不开局", len(slots))
+        raise FormationMismatch(f"支援卡编成 {len(slots)} 格都认不出（画面还在动画里？），核对不了")
+    if unknown:
+        logger.warning("支援卡编成核对不完整（编成 %s）：%d 格认不出，认出的都对", set_no, unknown)
+        return
     logger.info("支援卡编成核对通过（编成 %s）", set_no)
 
 

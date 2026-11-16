@@ -242,7 +242,7 @@ def step2(rt, *, set_no: int | None, plan: dict | None = None, rental_attr: str 
         raise ResumeBlocked(f"支援卡编成翻不到 {set_no} 号")
     dev = _RentalDevice(rt)
     formation_steps.autofix_support(WriterDevice(shoot=dev.screenshot, click=dev.click, swipe=dev.swipe, sleep=rt.sleep), plan)
-    formation_steps.check_support(rt.screen.shot().img, plan, set_no)
+    formation_steps.check_support(rt.screen.shot().img, plan, set_no, shoot=lambda: rt.screen.shot().img, sleep=rt.sleep)
     if _next_enabled(rt.screen.shot(), "Produce.Step2.ButtonNext") is None:
         # 租借（hiro.produce.rental）走「当前设备」门面 hiro.devices.active（平台模块 feat_matto_handlers）：run_hif 在新主循环里
         # active.use(rt) 后它点的就是带拦截的 rt.device
@@ -260,6 +260,9 @@ def step2(rt, *, set_no: int | None, plan: dict | None = None, rental_attr: str 
 
 
 # ---------------------------------------------------------------- 第 3 步：回忆编成（同 KAA prepare.step3 + kaa_patches._snap_step3）
+MEMORY_UNSET_TITLE = "メモリー編成確認"  # 第 3 步点次へ 时有空的回忆格：「未編成の枠があります このまま編成を完了してもよろしいですか？」
+
+
 def step3(rt, *, set_no: int | None, plan: dict | None = None) -> None:
     """第 3 步：翻到回忆编成 set_no → 按方案自动改（HIRO_FORMATION_AUTOFIX=1）→ 核对编成号和回忆卡 → 次へ（中途「有可用租借次数」
     提示点确认），到第 4 步。"""
@@ -281,9 +284,21 @@ def step3(rt, *, set_no: int | None, plan: dict | None = None) -> None:
     formation_steps.autofix_memory(WriterDevice(shoot=dev.screenshot, click=dev.click, swipe=dev.swipe, sleep=rt.sleep), plan, make_picker)
     formation_steps.check_memory_set(rt.screen.shot().img, plan, set_no)
 
+    want = len(((plan or {}).get("memory") or {}).get("chosen") or [])
+
     def next_step(f):
         if nav.find(f, "Produce.TextStepIndicator4Or2") is not None:
             return True
+        if f.has_dialog and MEMORY_UNSET_TITLE in ((f.dialog or {}).get("title") or ""):
+            # 「メモリー編成確認」：有回忆格空着。方案本来就不到 4 份（空格是有意的）才点「完了する」；
+            # 方案要 4 份（或没有方案）却空着：点キャンセル，停下（账号 2 11-16：原来没处理，卡在这个框）
+            if 0 < want < 4:
+                if (b := next((t for t in f.texts if "完了する" in t.text and t.rect.center.y > 1080), None)) is not None:
+                    rt.device.tap(*b.rect.center)
+                return None
+            if (b := next((t for t in f.texts if "キャンセル" in t.text and t.rect.center.y > 1080), None)) is not None:
+                rt.device.tap(*b.rect.center)
+            raise ResumeBlocked(f"第 3 步回忆格有空的（方案要 {want or '?'} 份），游戏问「このまま編成を完了」：点了キャンセル，不开局")
         if nav.find(f, "Produce.TextRentAvailable") is not None:
             if (m := nav.find(f, "Produce.RentAvailableConfirmButton")) is not None:
                 nav.tap_match(rt, m)
