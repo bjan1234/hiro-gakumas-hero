@@ -45,6 +45,7 @@ INTERRUPT_EXTRA = 3.0  # drive / wait_until：处理中断（设置弹窗等）�
 # （DMM own 本战开局 11-14：三个设置弹窗各约 6 秒，把「本战第 1 步点次へ」的 20 秒用完，最后一个弹窗处理完当拍就超时停机）
 ERROR_LIMIT = 10  # 识别 / 中断 / 处理器抛的普通异常：接住、记 trace、这一拍按认不出处理；同一处同一异常连续这么多次才停机
 # （用户 11-15 测稳定性：一处识别异常不能让整局退出，Mac h8 read_dialog 空图那次 exit 1）
+LIVE_MAX_S = 600.0  # LIVE 演出（含黑屏切全屏）最多不受看门狗管这么久；一直黑 / 横着超过这个就照常停机
 STALL_S = 180.0  # 页面没变、画面也没变（缩略图差 < repeat_guard.SCREEN_DIFF）这么久就停机；认不出的画面同样适用
 
 
@@ -96,6 +97,7 @@ class Runtime:
     clock: Callable[[], float] = pause_flag.active_clock
     sleep: Callable[[float], None] = time.sleep
     flow: _Flow = field(default_factory=_Flow)
+    landscape: object | None = None  # hiro.loop.landscape.LandscapeGuard：横屏 LIVE 黑屏切全屏（只 MaaTools 上 active）+ in_live 判断
     dialog_words: tuple[str, ...] = ()  # 模式自带的弹窗危险词（GuardedDevice 第 3 条；偶像之路用 hiro.runtime.tower.DIALOG_WORDS）
 
     def __post_init__(self) -> None:
@@ -103,6 +105,7 @@ class Runtime:
         self.device = GuardedDevice(self.raw_device, self.screen, self.dialog_words)
         self._unknown_since: float | None = None
         self._base: tuple[str, object, float] | None = None  # 进展看门狗的基准：(页面, 缩略图, 时刻)
+        self._live_since: float | None = None  # 进入 LIVE 演出（横屏 / 黑屏 / 全屏）的时刻：这期间看门狗不按「没变化 / 认不出」停机
         self._err: tuple[str, int] | None = None  # 上一个接住的异常（签名, 连续次数）
 
     # ---------------------------------------------------------------- 等待
@@ -208,6 +211,8 @@ class Runtime:
         f, done = self.tick()
         if done is not None:
             return STAY
+        if self.landscape is not None and self.landscape.tick(f.img):
+            return STAY  # 刚切了全屏 / 退了全屏（窗口操作）：下一拍重截
         hit = self.classify(f.img)
         self._watch_progress(hit, f)
         if self.session is not None:
@@ -225,6 +230,16 @@ class Runtime:
         认不出的画面另外连续 UNKNOWN_ALERT_S 秒起报警、STALL_S 秒停机（不管画面变没变）。"""
         from hiro.loop.repeat_guard import SCREEN_DIFF, _thumb
 
+        if self.landscape is not None and self.landscape.in_live(f.img):
+            # 横屏 LIVE（PlayCover 黑屏、全屏中截图也是黑的）：画面本来就认不出 / 不变，交给 LandscapeGuard 切全屏、退全屏，
+            # 不按看门狗停（p13 11-16：LIVE 黑屏 181 秒 LOADING 停机）。连续 LIVE_MAX_S 还在「LIVE」才照常管
+            if self._live_since is None:
+                self._live_since = f.t
+            if f.t - self._live_since < LIVE_MAX_S:
+                self._base, self._unknown_since = None, None
+                return
+        else:
+            self._live_since = None
         th = _thumb(f.img)
         if self._base is None or self._base[0] != hit.name or float(np.abs(th - self._base[1]).mean()) >= SCREEN_DIFF:
             self._base = (hit.name, th, f.t)

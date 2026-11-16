@@ -127,8 +127,13 @@ def build(args, session, device):
     for k, v in {"session": session, "use_llm": not args.no_llm, "llm_spec": args.llm, "main_attr": args.main_attr,
                  "exams_done": args.exams_done}.items():  # fmt: skip
         setattr(HifCore, k, v)
+    from hiro.loop.landscape import LandscapeGuard
+
     core = HifCore(scenario=args.mode, idol=args.idol)
-    return core, Runtime(raw_device=device, classify=classify, handlers=make_handlers(core), advance=advance, session=session)
+    # 横屏 LIVE 黑屏切全屏只在 Mac PlayCover（MaaTools）上做；其他设备只用 in_live 让看门狗别在 LIVE 里停（同旧主循环）
+    guard = LandscapeGuard(active=getattr(device, "name", "") == "maatools")
+    return core, Runtime(raw_device=device, classify=classify, handlers=make_handlers(core), advance=advance, session=session,
+                         landscape=guard)  # fmt: skip
 
 
 def recover_date_change(rt, session) -> None:
