@@ -268,7 +268,7 @@ def _round_defaults(label: str | None, deck: list) -> tuple[dict, dict | None]:
     dmmw1、dmmt2 的 R1 都是 Vo4 / Da3 / Vi2、末三回合 Vi → Da → Vo）。选拔考试没有模板，配额给 None。"""
     base = str(label or "").split("#", 1)[0].lower()
     permil, alloc = {}, None
-    if base.startswith("tower"):  # 偶像之路：倍率按回忆和本层算（tower.score_bonus_permils），这里没有参考值；画面读到为准
+    if base.startswith(("tower", "hajime", "nia")):  # 偶像之路 / 初 / N.I.A：倍率由编成定（编成给了就用编成的），没有 H.I.F 的参考值
         return permil, alloc
     try:
         if base in ("r1", "r2"):
@@ -292,6 +292,21 @@ def _round_defaults(label: str | None, deck: list) -> tuple[dict, dict | None]:
         except Exception as e:  # noqa: BLE001  没有模拟器 / 主数据：未知回合按流向填
             logger.info("本战回合配额不可用：%s: %s", type(e).__name__, e)
     return permil, alloc
+
+
+def _exam_loadout(ctx: dict) -> dict | None:
+    """初 / N.I.A 这一场的编成：context 的 exam_loadout，或 HIRO_EXAM_LOADOUT 指的 JSON 文件（bench 题存档或编成本身）。没有就 None。"""
+    if isinstance(ctx.get("exam_loadout"), dict):
+        return ctx["exam_loadout"]
+    path = os.environ.get("HIRO_EXAM_LOADOUT")
+    if not path:
+        return None
+    try:
+        doc = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        logger.warning("HIRO_EXAM_LOADOUT=%s 读不了：%s", path, e)
+        return None
+    return doc.get("loadout", doc)
 
 
 def _tower_loadout(ctx: dict) -> dict | None:
@@ -431,6 +446,22 @@ class BenchAdvisor:
                 self.deck = list(tc["deck"])
             logger.info("[%s] 偶像之路编成：%d 回合，倍率 %s，最大体力 %s，开局牌组 %d 张", self.label, tc["turns"] or 0,
                         tc["permil_fixed"], tc["max_stamina"], len(self.deck))  # fmt: skip
+        if str(self.label or "").lower().startswith(("hajime", "nia")) and (lo := _exam_loadout(ctx)) is not None:
+            from hiro.bench_bridge.screen import exam_context, exam_fields
+
+            try:
+                xc = exam_context(lo)
+            except Exception as e:  # noqa: BLE001  查不到这场试镜：只靠画面
+                logger.warning("[%s] 编成换算失败，只靠画面读数：%s: %s", self.label, type(e).__name__, e)
+            else:
+                idol = xc["idol"] or idol
+                self.exam = exam_fields(self.label, idol=idol, plan=_plan_number(idol), crit=xc["crit"], produce=xc["produce"])
+                self.exam["permil_default"], self.exam["allocation"] = {}, None
+                self.exam.update({k: xc[k] for k in ("turns", "permil_fixed", "max_stamina") if xc[k]})
+                if not self.deck and xc["deck"]:
+                    self.deck = list(xc["deck"])
+                logger.info("[%s] 编成：%s 回合，审查基准 %s，倍率 %s，最大体力 %s，开局牌组 %d 张", self.label, xc["turns"], xc["crit"],
+                            xc["permil_fixed"], xc["max_stamina"], len(self.deck))  # fmt: skip
         ench = items = None
         if self.algo is not None:
             try:
