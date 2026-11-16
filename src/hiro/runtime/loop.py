@@ -124,9 +124,20 @@ class Runtime:
                 raise
             self.absorb(e, "中断层", f)
             done = f"中断层异常（{type(e).__name__}）"
+        self._log_interrupt(done, f.t)
+        return f, done
+
+    def _log_interrupt(self, done: str | None, t: float) -> None:
+        """中断日志：同一句连续出现只记第一拍，换了 / 没了再记一句结束（成就提示条等每拍都会命中，11-17 一次记了 7 行）。"""
+        last = getattr(self, "_int_log", None)  # (说明, 起始时刻, 拍数)
+        if last is not None and done == last[0]:
+            self._int_log = (last[0], last[1], last[2] + 1)
+            return
+        if last is not None and last[2] > 1:
+            logger.info("中断结束：%s（连续 %d 拍，%.1fs）", last[0], last[2], t - last[1])
+        self._int_log = (done, t, 1) if done is not None else None
         if done is not None:
             logger.info("中断：%s", done)
-        return f, done
 
     def wait_until(self, pred: Callable[[Frame], bool], timeout: float, *, every: float = TICK) -> tuple[bool, Frame]:
         """每拍过检查点和中断层后看 pred(帧)；成立返回 (True, 帧)，超时返回 (False, 最后一帧)。中断处理过的那一拍不算 pred。"""

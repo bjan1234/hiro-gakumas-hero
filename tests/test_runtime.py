@@ -568,3 +568,14 @@ def test_drive_waits_out_achievement_toast():
     rt, clock = runtime([frame()], interrupts=(lambda f, rt: "成就提示条盖住页头：等它消失" if seq.pop(0) else None,))
     calls = []
     assert rt.drive(lambda f: calls.append(1) or True, 1.0, "等第 1 步") is True and calls == [1]
+
+
+def test_repeated_interrupt_logged_once_then_end(caplog):
+    """同一句中断连续出现只记第一拍和结束（成就提示条 11-17：每拍一行 INFO）。"""
+    caplog.set_level("INFO", logger="hiro.runtime.loop")
+    seq = ["成就提示条盖住页头：等它消失"] * 5 + [None]
+    rt, _ = runtime([frame()], interrupts=(lambda f, rt: seq.pop(0),))
+    for _ in range(6):
+        rt.tick()
+    lines = [r.getMessage() for r in caplog.records if "中断" in r.getMessage()]
+    assert lines == ["中断：成就提示条盖住页头：等它消失", lines[1]] and lines[1].startswith("中断结束：成就提示条") and "连续 5 拍" in lines[1]

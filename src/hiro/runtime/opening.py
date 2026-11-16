@@ -79,8 +79,24 @@ def select_hif(rt, timeout: float = LOGO_TIMEOUT) -> None:
     rt.drive(step, timeout, "翻到 H.I.F")
 
 
-def choose_mode(rt, mode: str, *, extra_ap: int | None = None, timeout: float = MODE_TIMEOUT) -> None:
-    """点 H.I.F 的选拔 / 本战，直到进了第 1 步（编成页）。AP 不足时喝 APドリンク 再点（只打选拔时本战还要 20 AP，一起补）。"""
+IN_PRODUCE_PAGES = ("ACTION_SELECT", "STUDY", "OUTING", "CONSULT", "SELECT_CARD", "SELECT_DRINK", "SELECT_PITEM", "HIF_EXAM_BRIEFING",
+                    "SPECIAL_GUIDANCE", "PRACTICE", "HIF_EXAM", "EXAM")  # fmt: skip  # 已经在培育里的页面：开局流程到此为止，交主循环
+
+
+def _finals_start(f) -> bool:
+    """本战「開始確認」页（选拔回忆概要 + 「H.I.F本戦へ」按钮）。"""
+    texts = [t.text for t in f.texts]
+    return any("本戦へ" in t for t in texts) and any("開始確認" in t for t in texts)
+
+
+def _in_produce(rt, f) -> bool:
+    return rt.classify(f.img).name in IN_PRODUCE_PAGES
+
+
+def choose_mode(rt, mode: str, *, extra_ap: int | None = None, timeout: float = MODE_TIMEOUT):
+    """点 H.I.F 的选拔 / 本战，直到进了第 1 步（编成页）。AP 不足时喝 APドリンク 再点（只打选拔时本战还要 20 AP，一起补）。
+    本战：选拔后保留的本战没有编成页，点了「本戦」直接到「開始確認」页（也算进了）；画面已经是培育里的页面（本战已经开始了）
+    返回 "started"，开局到此为止（Mac 账号 2 11-17：原来接着等「本战第 1 步」，20 秒超时停机）。"""
     from hiro.loop import ap_refill
 
     name = MODE_BUTTON[mode]
@@ -90,6 +106,10 @@ def choose_mode(rt, mode: str, *, extra_ap: int | None = None, timeout: float = 
     def step(f):
         if nav.find(f, "Produce.Step1.ButtonNext") is not None or nav.find(f, "Produce.TextStepIndicator1") is not None:
             return True
+        if mode == "main" and _finals_start(f):
+            return True
+        if mode == "main" and _in_produce(rt, f):
+            return "started"
         if nav.find(f, "Produce.TextAPInsufficient") is not None:
             if refilled["done"]:
                 raise ResumeBlocked("喝过 APドリンク 后仍然 AP 不足，停下")
@@ -100,10 +120,11 @@ def choose_mode(rt, mode: str, *, extra_ap: int | None = None, timeout: float = 
             refilled["done"] = True
             return None
         if (m := nav.find(f, name)) is not None:
+            logger.info("进 H.I.F %s：点 %s %s", mode, name, tuple(m.rect.center))
             nav.tap_match(rt, m)
         return None
 
-    rt.drive(step, timeout, f"进 H.I.F {mode}")
+    return rt.drive(step, timeout, f"进 H.I.F {mode}")
 
 
 def start(rt, timeout: float = 20.0) -> None:
@@ -348,31 +369,64 @@ def check_main_memory(rt, expect: tuple[str, ...]) -> None:
 # ---------------------------------------------------------------- 串起来
 def prepare(rt, mode: str, *, idol: str, support_set: int | None = None, memory_set: int | None = None, plan: dict | None = None,
             rental_attr: str | None = None, main_attr: str | None = None, expect_memory: tuple[str, ...] = (),
-            note_boost: bool = False, pt_boost: bool = False) -> None:  # fmt: skip
+            note_boost: bool = False, pt_boost: bool = False) -> bool:  # fmt: skip
     """编成第 1–4 步。选拔：选偶像 → 支援卡 + 租借 → 回忆 → 加成；本战：第 1 步直接次へ到「2.開始確認」→ 核对选拔回忆 → 加成
-    （同 KAA prepare / prepare_hif_main）。"""
+    （同 KAA prepare / prepare_hif_main）。返回 True：本战已经开始了（开始确认页点了「H.I.F本戦へ」，或者本来就在培育里），
+    调用方不用再点プロデュース開始。"""
     if mode == "qualify":
         step1(rt, idol)
         step2(rt, set_no=support_set, plan=plan, rental_attr=rental_attr, main_attr=main_attr)
         step3(rt, set_no=memory_set, plan=plan)
     else:
         def to_confirm(f):
+            if _finals_start(f):
+                return "finals_start"
             if nav.find(f, "Produce.TextStepIndicator4Or2") is not None:
-                return True
+                return "step4"
+            if _in_produce(rt, f):
+                return "started"
             if (m := nav.find(f, "Produce.Step1.ButtonNext")) is not None:
+                logger.info("本战第 1 步：点 Step1.ButtonNext %s", tuple(m.rect.center))
                 nav.tap_match(rt, m)
             return None
 
-        rt.drive(to_confirm, STEP_TIMEOUT, "本战第 1 步点次へ")
+        r = rt.drive(to_confirm, STEP_TIMEOUT, "本战第 1 步点次へ")
+        if r == "started":
+            logger.warning("本战已经开始了（没经过开始确认页的选拔回忆核对）：交给主循环")
+            return True
         check_main_memory(rt, expect_memory)
+        if r == "finals_start":
+            return _press_finals_start(rt)
     step4(rt, note_boost=note_boost, pt_boost=pt_boost)
+    return False
+
+
+def _press_finals_start(rt) -> bool:
+    """「開始確認」页核对过选拔回忆后点「H.I.F本戦へ」（按 OCR 找按钮字），等离开这一页。返回 True（本战已开始，不用再点プロデュース開始）。"""
+
+    def press(f):
+        if not _finals_start(f):
+            return True  # 离开开始确认页了（之后的设置框 / 教程 / 选行动由中断层和主循环接）
+        b = next((t for t in f.texts if "本戦へ" in t.text and t.rect.center.y > 1000), None)
+        if b is not None:
+            logger.info("本战开局：点「%s」%s", b.text, tuple(b.rect.center))
+            rt.device.tap(*b.rect.center)
+            rt.sleep(1.5)
+        return None
+
+    rt.drive(press, STEP_TIMEOUT, "点 H.I.F本戦へ")
+    return True
 
 
 def new_produce(rt, mode: str, **prep) -> None:
-    """新开一局（使用者放行开局后才跑）：培育入口 → H.I.F → 选拔 / 本战（AP）→ 编成第 1–4 步 → プロデュース開始 → 跳过交流。"""
+    """新开一局（使用者放行开局后才跑）：培育入口 → H.I.F → 选拔 / 本战（AP）→ 编成第 1–4 步 → プロデュース開始 → 跳过交流。
+    本战：开始确认页核对选拔回忆后点「H.I.F本戦へ」；已经在培育里就直接交给主循环。"""
     if enter_produce(rt, new=True) != "new":
         raise ResumeBlocked("没进到剧本选择页")
     select_hif(rt)
-    choose_mode(rt, mode)
-    prepare(rt, mode, **prep)
+    if choose_mode(rt, mode) == "started":
+        logger.warning("点了「本戦」后画面已经是培育里的页面（本战已经开始，没经过开始确认页）：交给主循环")
+        return
+    if prepare(rt, mode, **prep):
+        return
     start(rt)

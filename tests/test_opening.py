@@ -317,3 +317,37 @@ def test_step3_memory_unset_cancel_and_stop_when_plan_wants_four(monkeypatch):
     with pytest.raises(ResumeBlocked, match="キャンセル"):
         opening.step3(rt, set_no=20, plan=plan)
     assert rt.raw_device.taps[-1] == (236, 1162)  # 点的是キャンセル，不是完了する
+
+
+def _texts(*items):
+    from hiro.vision.ocr import Box as OBox, Text
+
+    return [Text(t, OBox(x - 40, y - 15, x + 40, y + 15)) for t, x, y in items]
+
+
+def test_prepare_main_on_finals_start_checks_memory_then_presses_honsen(monkeypatch):
+    """选拔后保留的本战：点「本戦」直接到「開始確認」（没有编成页）。核对选拔回忆 → 点「H.I.F本戦へ」→ 不再点 step4 / プロデュース開始
+    （Mac 账号 2 11-17：原来等「本战第 1 步」20 秒超时；Windows 11-14 同一处）。"""
+    called = []
+    monkeypatch.setattr(opening, "check_main_memory", lambda rt, expect: called.append(("memory", expect)))
+    monkeypatch.setattr(opening, "step4", lambda rt, **kw: called.append("step4"))
+    confirm = frame({"Produce.TextStepIndicator4Or2": (65, 49)}, _texts(("開始確認", 120, 40), ("H.I.F本戦へ", 470, 1160)))
+    after = frame({})
+    rt, _ = rig(monkeypatch, [confirm], on_tap=lambda taps: [after])
+    assert opening.prepare(rt, "main", idol="i", expect_memory=("1", "2", "3")) is True
+    assert called == [("memory", ("1", "2", "3"))] and rt.raw_device.taps == [(470, 1160)]
+
+
+def test_new_produce_main_already_in_produce_hands_over(monkeypatch):
+    """点了「本戦」后画面已经是选行动页（本战已经开始了）：开局到此为止，交主循环，不等第 1 步、不点プロデュース開始。"""
+    monkeypatch.setattr(opening, "enter_produce", lambda rt, new: "new")
+    monkeypatch.setattr(opening, "select_hif", lambda rt: None)
+    called = []
+    monkeypatch.setattr(opening, "prepare", lambda *a, **k: called.append("prepare"))
+    monkeypatch.setattr(opening, "start", lambda rt: called.append("start"))
+    rt, _ = rig(monkeypatch, [frame({})])
+    from hiro.vision.classify import PageHit
+
+    rt.classify = lambda img: PageHit("ACTION_SELECT", "pixel")
+    opening.new_produce(rt, "main")
+    assert called == [] and rt.raw_device.taps == []
