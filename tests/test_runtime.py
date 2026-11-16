@@ -628,3 +628,26 @@ def test_repeated_interrupt_logged_once_then_end(caplog):
         rt.tick()
     lines = [r.getMessage() for r in caplog.records if "中断" in r.getMessage()]
     assert lines == ["中断：成就提示条盖住页头：等它消失", lines[1]] and lines[1].startswith("中断结束：成就提示条") and "连续 5 拍" in lines[1]
+
+
+def test_idle_stop_logs_and_stops_when_nothing_happens(caplog):
+    """偶像之路 g5 11-17：首页画面会动（「画面没变」看门狗管不到），没有处理器，静默空转 4 分钟。idle_stop_s 内没有任何操作就写日志停机；
+    过一半先 WARNING。有操作（处理器 DONE）就重新计时。"""
+    caplog.set_level("WARNING", logger="hiro.runtime.loop")
+    acted = {"on": False}
+    rt, clock = runtime([frame(fill=0), frame(fill=200)] * 50, classify=lambda img: PageHit("home", "template"),
+                        handlers={"home": lambda rt, f, hit: DONE if acted["on"] else STAY}, idle_stop_s=60)  # fmt: skip
+    for _ in range(6):
+        rt.step()
+        clock.now += 10
+    assert any("没有任何操作" in r.getMessage() for r in caplog.records)  # 30 秒时先警告
+    with pytest.raises(ResumeBlocked, match="没有任何操作"):
+        for _ in range(4):
+            rt.step()
+            clock.now += 10
+    acted["on"] = True
+    rt2, clock2 = runtime([frame(fill=0), frame(fill=200)] * 50, classify=lambda img: PageHit("home", "template"),
+                          handlers={"home": lambda rt, f, hit: DONE}, idle_stop_s=60)  # fmt: skip
+    for _ in range(20):
+        rt2.step()
+        clock2.now += 10  # 一直有操作：不停

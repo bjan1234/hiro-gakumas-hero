@@ -24,6 +24,7 @@ ADVANCE_PAGES = ("unknown", "IDLE", "TRANSITION", "LOADING", "commu", "LIVE",
 SHOW_PAGES = ("PITEM_CUSTOMIZE_DONE",)
 # 快速判页（hiro.vision.quick）认出的「点一下就过」的页（获得演出、结果气泡、TAP 提示、礼物箱…）带 tap 直接点；
 # 不点的页（读取 / 闪屏 / 考前说明演出）同一种连续 QUICK_WAIT_TAP_S 秒没过就点一下兜底（同旧主循环 HiroController._quick_page）
+IDLE_STOP_S = 180.0  # H.I.F：这么久没有任何操作就停机（会动的画面「画面没变」看门狗管不到）
 QUICK_WAIT_TAP_S = 15.0
 QUICK_WAIT_TAP_BY_KIND = {"gift_effect": 1.0, "day_countdown": 4.0}
 # 选拔 / 本战通关后的结算流程开头几页（选回忆照片、选拔突破证书），判页认不出：交 finish.finish_produce_end 一路点到开始确认页停
@@ -133,7 +134,7 @@ def build(args, session, device):
     # 横屏 LIVE 黑屏切全屏只在 Mac PlayCover（MaaTools）上做；其他设备只用 in_live 让看门狗别在 LIVE 里停（同旧主循环）
     guard = LandscapeGuard(active=getattr(device, "name", "") == "maatools")
     return core, Runtime(raw_device=device, classify=classify, handlers=make_handlers(core), advance=advance, session=session,
-                         landscape=guard)  # fmt: skip
+                         landscape=guard, idle_stop_s=IDLE_STOP_S)  # fmt: skip
 
 
 def recover_date_change(rt, session) -> None:

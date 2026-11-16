@@ -98,6 +98,7 @@ class Runtime:
     clock: Callable[[], float] = pause_flag.active_clock
     sleep: Callable[[float], None] = time.sleep
     flow: _Flow = field(default_factory=_Flow)
+    idle_stop_s: float | None = None  # 这么久没有任何操作（处理器没做事、advance 没点、中断没处理）就写日志停机；None = 不管
     landscape: object | None = None  # hiro.loop.landscape.LandscapeGuard：横屏 LIVE 黑屏切全屏（只 MaaTools 上 active）+ in_live 判断
     dialog_words: tuple[str, ...] = ()  # 模式自带的弹窗危险词（GuardedDevice 第 3 条；偶像之路用 hiro.runtime.tower.DIALOG_WORDS）
 
@@ -106,7 +107,9 @@ class Runtime:
         self.device = GuardedDevice(self.raw_device, self.screen, self.dialog_words)
         self._unknown_since: float | None = None
         self._base: tuple[str, object, float] | None = None  # 进展看门狗的基准：(页面, 缩略图, 时刻)
-        self._live_since: float | None = None  # 进入 LIVE 演出（横屏 / 黑屏 / 全屏）的时刻：这期间看门狗不按「没变化 / 认不出」停机
+        self._live_since: float | None = None
+        self._acted_at: float | None = None  # 最近一次有操作（处理器 DONE / advance 点了 / 中断处理）的时刻
+        self._idle_warned = False  # 进入 LIVE 演出（横屏 / 黑屏 / 全屏）的时刻：这期间看门狗不按「没变化 / 认不出」停机
         self._err: tuple[str, int] | None = None  # 上一个接住的异常（签名, 连续次数）
 
     # ---------------------------------------------------------------- 等待
@@ -233,8 +236,10 @@ class Runtime:
     def _step(self) -> Outcome:
         f, done = self.tick()
         if done is not None:
+            self._mark_acted(f.t)
             return STAY
         if self.landscape is not None and self.landscape.tick(f.img):
+            self._mark_acted(f.t)
             return STAY  # 刚切了全屏 / 退了全屏（窗口操作）：下一拍重截
         hit = self.classify(f.img)
         self._watch_progress(hit, f)
@@ -246,7 +251,30 @@ class Runtime:
         out = handler(self, f, hit) if handler is not None else (DONE if self.advance(self, f, hit) else STAY)
         if out.kind == "stop":
             raise ResumeBlocked(f"{hit.name}：{out.reason}")
+        if out.kind != "stay" or (self.landscape is not None and self.landscape.in_live(f.img)):
+            self._mark_acted(f.t)  # LIVE 演出里本来就不点：不算没进展
+        else:
+            self._check_idle(hit, f.t, handler is not None)
         return out
+
+    def _mark_acted(self, t: float) -> None:
+        self._acted_at, self._idle_warned = t, False
+
+    def _check_idle(self, hit: PageHit, t: float, handled: bool) -> None:
+        """没有操作的时间：过一半写一次 WARNING，到 idle_stop_s 写日志停机（偶像之路 g5 11-17：停在首页 4 分钟一直存帧、没有任何日志）。
+        首页这类会动的画面，「画面没变」的看门狗管不到，所以另按「没有操作」计时。"""
+        if self.idle_stop_s is None:
+            return
+        if self._acted_at is None:
+            self._acted_at = t
+        idle = t - self._acted_at
+        what = "处理器一直在等" if handled else "这一页没有处理器、也没有可以点过去的地方"
+        if idle >= self.idle_stop_s:
+            logger.error("页面 %s：%.0fs 没有任何操作（%s），停机", hit.name, idle, what)
+            raise ResumeBlocked(f"{hit.name} 页 {idle:.0f}s 没有任何操作（{what}），停机")
+        if idle >= self.idle_stop_s / 2 and not self._idle_warned:
+            self._idle_warned = True
+            logger.warning("页面 %s：%.0fs 没有任何操作（%s），到 %.0fs 停机", hit.name, idle, what, self.idle_stop_s)
 
     def _watch_progress(self, hit: PageHit, f: Frame) -> None:
         """进展看门狗：页面没变、画面也没变 STALL_S 秒就停机（处理器一直 stay、没处理器的已知页、认不出的画面都管）。

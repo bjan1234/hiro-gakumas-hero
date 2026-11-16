@@ -64,6 +64,30 @@ def loadout(fields: dict, tower_id: str | None, layer: int | None) -> dict:
     return {k: v for k, v in lo.items() if v is not None}
 
 
+CONTEST_TAB = (496, 1177)  # 首页底栏「コンテスト」（OCR 读不到时的位置，实机帧）
+ROAD_BUTTON = (148, 925)  # コンテスト页左下圆形按钮「アイドル / への道」（两行字，OCR 认不成一个词；协调实机给的位置）
+IDLE_STOP_S = 60.0  # 偶像之路：任何页面 60 秒没有任何操作就写日志停机（g5 11-17：停在首页 4 分钟静默空转）
+
+
+def contest_page(texts) -> bool:
+    """コンテスト页（判页会判成 commu）：中间偏下的大卡片写着「コンテスト」（y≈894），左边圆形按钮写着「アイドル / への道」。"""
+    return any("コンテスト" in t.text and 840 <= t.rect.center.y <= 950 for t in texts) and any(
+        "への道" in t.text or t.text.strip() == "アイドル" for t in texts if t.rect.center.y < 1000)
+
+
+def tower_classify(img):
+    """偶像之路用的判页：コンテスト页先认出来（共用判页会把它当 commu、去点 SKIP），其余交 hiro.vision.classify。"""
+    from hiro.vision.classify import PageHit, classify
+
+    hit = classify(img)
+    if hit.name in ("commu", "unknown"):
+        from hiro.vision.ocr import screen_texts
+
+        if contest_page(screen_texts(img)):
+            return PageHit("TOWER_CONTEST", "ocr")
+    return hit
+
+
 def _now(rt) -> float:
     import time
 
@@ -114,6 +138,28 @@ class TowerPlay:
             run.tower_id = f"{TOWER_NO}-{code}"  # 没经过编成页（从名次页 / 结果页续跑）也有路线
 
     # ---------------------------------------------------------------- 页面
+    def on_home(self, rt, f, hit):
+        """首页：点底栏「コンテスト」进コンテスト页（偶像之路入口在那里）。"""
+        if self.finished:
+            return END
+        if self._just_acted(rt, "home"):
+            return STAY
+        b = next((t for t in f.texts if t.text.strip() == "コンテスト" and t.rect.center.y > 1100), None)
+        pos = tuple(b.rect.center) if b is not None else CONTEST_TAB
+        logger.info("偶像之路：首页 → 点「コンテスト」%s", pos)
+        rt.device.tap(*pos)
+        self._mark_acted(rt, "home")
+        return DONE
+
+    def on_contest(self, rt, f, hit):
+        """コンテスト页：点左下「アイドルへの道」进路线列表（第一次进会有剧情，交给推进点过去）。"""
+        if self._just_acted(rt, "TOWER_CONTEST"):
+            return STAY
+        logger.info("偶像之路：コンテスト页 → 点「アイドルへの道」%s", ROAD_BUTTON)
+        rt.device.tap(*ROAD_BUTTON)
+        self._mark_acted(rt, "TOWER_CONTEST")
+        return DONE
+
     def on_list(self, rt, f, hit):
         idol = next((i for i in hit.fields.get("idols") or [] if i.get("name") == self.idol_name), None)
         if idol is None:
@@ -371,7 +417,7 @@ class TowerPlay:
 
             return h
 
-        hs = {"TOWER_LIST": self.on_list, "TOWER_LAYERS": self.on_layers, "TOWER_LAYER_INFO": self.on_layer_info,
+        hs = {"home": self.on_home, "TOWER_CONTEST": self.on_contest, "TOWER_LIST": self.on_list, "TOWER_LAYERS": self.on_layers, "TOWER_LAYER_INFO": self.on_layer_info,
                 "TOWER_FORMATION": self.on_formation, "TOWER_MEMORY_SELECT": self.on_memory_select, "TOWER_EXAM": self.on_exam,
                 "TOWER_RANKING": self.on_ranking, "TOWER_RESULT": self.on_result, "TOWER_RETRY_CONFIRM": self.on_retry_confirm}  # fmt: skip
         def track(page, fn):
@@ -394,7 +440,6 @@ def run(args) -> int:
     from hiro.produce.hif import HifCore
     from hiro.runtime import play
     from hiro.runtime.loop import Runtime
-    from hiro.vision.classify import classify
 
     session = Session(TraceWriter(name=args.trace))
     HifCore.session, HifCore.use_llm, HifCore.llm_spec = session, not args.no_llm, args.llm
@@ -403,8 +448,8 @@ def run(args) -> int:
                    loadout_path=Path(session.trace.dir) / "tower-loadout.json")  # fmt: skip
     device = open_device()
     device.connect()
-    rt = Runtime(raw_device=device, classify=classify, handlers=tp.handlers(), advance=play.advance, session=session,
-                 dialog_words=DIALOG_WORDS)  # fmt: skip
+    rt = Runtime(raw_device=device, classify=tower_classify, handlers=tp.handlers(), advance=play.advance, session=session,
+                 dialog_words=DIALOG_WORDS, idle_stop_s=IDLE_STOP_S)  # fmt: skip
     active.use(rt)
     try:
         rt.run(until=lambda: tp.finished)
