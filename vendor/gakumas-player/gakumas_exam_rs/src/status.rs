@@ -512,6 +512,24 @@ impl StatusCollection {
             None => {}
         }
     }
+    /// 画面读数覆盖一种状态（续推 / 画面重建用，不触发任何时点）：by_turn = false 数量在 value（集中、やる気这类 SingleValue），
+    /// true 数量在 turn（好調、好印象、带回合的开关这类 SingleTurn）。有就改，没有就按 TryAdd 的形状新建，n <= 0 移除。
+    pub fn override_single(&mut self, c: u16, by_turn: bool, n: i64) {
+        match self.first_idx(c) {
+            Some(i) if n <= 0 => {
+                self.effects.remove(i);
+            }
+            Some(i) if by_turn => self.effects[i].turn = n,
+            Some(i) => self.effects[i].value = n,
+            None if n > 0 && by_turn => {
+                self.add(Status::new(c, n, 0, true, false));
+            }
+            None if n > 0 => {
+                self.add(Status::new(c, -1, n, false, false));
+            }
+            None => {}
+        }
+    }
     /// 画面读数覆盖好印象（值存在 _turn）：同上
     pub fn override_review(&mut self, n: i64) {
         match self.first_idx(cls::ReviewStatusEffect) {

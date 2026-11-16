@@ -64,3 +64,14 @@ def test_produce_state_new_fields_roundtrip():
     assert back.votes == 4200 and back.rest_left == 4 and back.family == "nia"
     hif = ProduceState(idol_card_id="x", mode="produce-007", step=1, stamina=1, max_stamina=1, produce_point=0, params={}, growth_permil={}, star=0)
     assert hif.votes is None and hif.rest_left is None and hif.family == "hif"
+
+
+def test_deck_card_keeps_customize_ledger():
+    """特別指導记账往牌组写 customize（定制项 → 级数，ddecb43）：ProduceState.from_dict 要接得住。
+    p13 第 19 天定制完第一张后决策器抛 TypeError（DeckCard 没有 customize），第二张定制没做、304P 浪费。"""
+    ps = ProduceState.from_dict({"idol_card_id": "i_card-shro-3-007", "mode": "produce-007", "step": 19, "stamina": 18, "max_stamina": 39,
+                                 "produce_point": 304, "params": {}, "growth_permil": {}, "star": 460,
+                                 "deck": [{"card_id": "p_card-02-men-1_031", "upgrade": 1, "customized": True,
+                                           "customize": {"p_card_custom-040_040_070-g_effect-aggressive_add-1": 3}}]})  # fmt: skip
+    assert ps.deck[0].customize == {"p_card_custom-040_040_070-g_effect-aggressive_add-1": 3} and ps.deck[0].customized
+    assert ProduceState.from_dict(ps.to_dict()).deck[0].customize == ps.deck[0].customize

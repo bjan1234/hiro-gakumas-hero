@@ -146,6 +146,21 @@ def audition_row(idol_card_id: str, produce_id: str, round_key: str, number: int
     return rows[0]
 
 
+def turn_weights(lo: dict) -> dict | None:
+    """这场考试三属性回合的权重 {1: Vo, 2: Da, 3: Vi}（主数据 ProduceExamBattleConfig.vocal / dance / visual）；查不到 None。"""
+    try:
+        import hiro.sim  # noqa: F401  引擎路径
+        from gakumas_exam.master import shared
+
+        from hiro.sim.engine import master_commit
+
+        cid = (lo.get("exam") or {}).get("produce_exam_battle_config_id")
+        cfg = next((r for r in shared(master_commit()).table("ProduceExamBattleConfig") if r["id"] == cid), None) if cid else None
+    except Exception:  # noqa: BLE001
+        return None
+    return {1: float(cfg["vocal"]), 2: float(cfg["dance"]), 3: float(cfg["visual"])} if cfg else None
+
+
 def from_hif_loadout(doc: dict) -> dict:
     """bench 题（初 / N.I.A 的试镜，gkms.hif_loadout.v1）→ exam_env 要的写法，附 audition（主数据行，objective 要用）。
     倍率：题里有 score_bonus_permils（N.I.A 抓到的服务器倍率，已含各种加成）就用，没有按 parameters 和 battle config 算

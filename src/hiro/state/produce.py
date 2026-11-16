@@ -15,6 +15,7 @@ class DeckCard:
     card_id: str
     upgrade: int = 0
     customized: bool = False
+    customize: dict = field(default_factory=dict)  # 特別指導记账：定制项 id → 级数（hiro.loop.events CARD_CUSTOMIZE，ddecb43）
 
 
 @dataclass
