@@ -147,6 +147,7 @@ EXTRACTORS = {
     "CONSULT": _consult,
     "STUDY": read_event_choices,
     "OUTING": read_event_choices,
+    "EVENT_CHOICE": read_event_choices,  # 事件选项页（判页 INITIAL_CHOICE），和授業 / 外出同一种选项按钮
     "ACTION_SELECT": _action_select,
     "DECK_LIST": read_deck_list,
     "SKILL_CARD_REMOVAL": _removal_dialog,

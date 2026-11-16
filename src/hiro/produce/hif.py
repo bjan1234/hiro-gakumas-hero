@@ -978,6 +978,23 @@ class HifCore:
     def on_outing(self, ctx=None):
         self._event_page("OUTING", lambda i: self._event_commit(i, outing=True), len(self._event_options()))
 
+    def on_event_choice(self, ctx=None):
+        """新主循环：事件选项页（判页 INITIAL_CHOICE：「審査基準」+ 两个以上选项按钮、没有授業 / 外出等标题，随机事件、开局二选一等）。
+        按 EVENT_CHOICE 决策（hiro.brain.event_choice：按整局培育选，算法 → LLM → 兜底，选不出就停）；点法同授業（选中再确认）。
+        KAA 判到就双击第一项；原来新主循环没处理器，撞上就 3 分钟停机。"""
+        self._event_page("EVENT_CHOICE", lambda i: self._event_commit(i, outing=False), len(self._event_options()))
+
+    def on_outing_stamina_max(self, ctx=None):
+        """「確認：体力が最大なので回復効果は発動しません。次に進みますか？」（キャンセル / 選択する）：所选那项已经按决策选了，
+        只是回复效果不生效，按 KAA 的做法点「選択する」继续，trace 记一笔。读不到按钮就停。原来新主循环没处理器（3 分钟停机）。"""
+        texts = screen_texts(device.screenshot())
+        btn = next((t for t in texts if button_text(t.text, "選択する") and t.rect.center.y > 1080), None)
+        if btn is None:
+            self._stop("OUTING_STAMINA_MAX", "体力已满确认框：没读到「選択する」，不点")
+        self.s.note("体力已满：所选那项的回复效果不生效，按已做的决策继续（選択する）")
+        device.click(*btn.rect.center)
+        sleep(1.0)
+
     # ---------------------------------------------------------------- 主动查看牌组（state-events §6）
     _reviewed_at_exam: int | None = None
 
