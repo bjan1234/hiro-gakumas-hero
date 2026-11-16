@@ -399,6 +399,24 @@ def from_screen(state: Any, memory: Any, legal: list, tracker: ScreenTracker, ex
 
 
 MODE_STEPS = {"mid1": "AUDITION_MID1", "mid2": "AUDITION_MID2", "final": "AUDITION_FINAL"}
+# 初课程的 step（UIObs 写 ProduceStepType 枚举值，见 vendor/gakumas-player/gakumas_exam/enums.json）：
+# 1–9 = LessonVocal/Dance/Visual × Normal / Sp / Hard（Hard = 追い込みレッスン），29–34 = LegendLesson × Normal / Sp（初 LEGEND，produce-006）
+LESSON_ATTR = {"vo": 0, "da": 1, "vi": 2}
+LEGEND_PRODUCES = {"produce-006"}
+
+
+def lesson_step_type(rest: str, produce: str | None = None) -> int | None:
+    """课程标签的后半段 → ProduceStepType。认两种写法：数字（lesson-32，bench 题）或属性 + 档（lesson-vo / lesson-da-sp /
+    lesson-vi-hard，平台从画面读：课程属性、SP 角标）。produce-006（LEGEND）的普通 / SP 课是 29–34。"""
+    parts = [x for x in str(rest).split("-")[1:] if x]
+    if parts and parts[0].isdigit():
+        return int(parts[0])
+    if not parts or parts[0] not in LESSON_ATTR:
+        return None
+    a, kind = LESSON_ATTR[parts[0]], (parts[1] if len(parts) > 1 else "normal")
+    if produce in LEGEND_PRODUCES and kind in ("normal", "sp"):
+        return 29 + a * 2 + (kind == "sp")
+    return 1 + a * 3 + {"normal": 0, "sp": 1, "hard": 2}.get(kind, 0)
 MODE_PRODUCE = {"hajime": "produce-001", "nia": "produce-004"}  # 缺省难度（初 REGULAR / N.I.A PRO）；编成给了 produce_id 就用编成的
 
 
@@ -417,8 +435,7 @@ def exam_fields(label: str | None, *, idol: str | None, plan: int | None, crit=N
         rest = base.split("-", 1)[1] if "-" in base else ""
         out = {"produce": produce or MODE_PRODUCE[mode], "plan": plan, "idol": idol, "crit": list(crit or [0, 0, 0])}
         if mode == "hajime" and rest.startswith("lesson"):
-            n = rest.rsplit("-", 1)[-1]
-            return {**out, "step": int(n) if n.isdigit() else None, "crit": [0, 0, 0], "lesson": True}
+            return {**out, "step": lesson_step_type(rest, out["produce"]), "crit": [0, 0, 0], "lesson": True}
         return {**out, "step": MODE_STEPS.get(rest, "AUDITION_FINAL")}
     if base.startswith("qualify"):
         n = int(base.rsplit("-", 1)[-1]) if base[-1:].isdigit() else 1
