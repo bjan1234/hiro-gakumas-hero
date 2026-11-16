@@ -8,6 +8,8 @@ starting_stamina / max_stamina、score_bonus_permils、exam（gimmick / battle_c
 
 from __future__ import annotations
 
+from hiro.search.exam_env import bonus_permils  # noqa: F401  原在这里，别处按 hiro.search.tower.bonus_permils 引用
+
 
 def complete_loadout(lo: dict) -> dict:
     """编成缺的考试设置（机关 / battle_config / 对手组 / 层道具）用 layer_exam 补；已有的不动。"""
@@ -47,50 +49,11 @@ def with_initial_cards(cards: list, idol: str | None) -> list:
     return cards + [c for c in extra if c not in have]
 
 
-def bonus_permils(b) -> dict:
-    """考试倍率 → {1: Vo, 2: Da, 3: Vi}。题目文件写成列表 [Vo, Da, Vi]，bench 模板（problems.load_set(template=True)，实打时
-    ctx.loadout 就是它）写成 {"1": Vo, "2": Da, "3": Vi}：两种都认（字典直接 zip 会拿到键，倍率变成 1 / 2 / 3）。"""
-    if isinstance(b, dict):
-        return {t: int(b[k]) for t in (1, 2, 3) for k in (t, str(t)) if k in b}
-    return {t: int(v) for t, v in zip((1, 2, 3), b)}
-
-
 def tower_env(lo: dict, seed: int):
-    """编成 → 我们的引擎对局（FidelityBattle，Rust 后端时是 NativeBattle，.rx 是 gakumas_exam_rs.Exam）。"""
-    import hiro.sim  # noqa: F401  引擎路径
-    from gakumas_exam.battle import FidelityBattle, _native
-    from gakumas_exam.cards import ExamCard
-    from gakumas_exam.master import shared
-    from gakumas_exam.setup import new_exam
+    """编成 → 我们的引擎对局（FidelityBattle，Rust 后端时是 NativeBattle，.rx 是 gakumas_exam_rs.Exam）。通用部分在 exam_env。"""
+    from hiro.search.exam_env import exam_env
 
-    from hiro.bench_bridge.advisor import _customize_ids
-    from hiro.search.loadout import parse_deck_entry
-    from hiro.sim.engine import master_commit
-    from hiro.state.context import catalog
-
-    m = shared(master_commit())
-    cz = _customize_ids()
-    deck = []
-    for i, s in enumerate(lo["produce_cards"]):
-        cid, up, custom = parse_deck_entry(s)
-        ids = cz(cid, up)
-        counts = [int(custom.get(k) or 0) for k in ids] if custom else None
-        deck.append(ExamCard(m, cid, up, counts, guid=f"card-tower-{i:03d}"))
-    ex_ = lo["exam"]
-    cfg = next(r for r in m.table("ProduceExamBattleConfig") if r["id"] == ex_["produce_exam_battle_config_id"])
-    plan = catalog().one("IdolCard", lo["idol_card_id"])["planType"]
-    plan_type = {"ProducePlanType_Plan1": 1, "ProducePlanType_Plan2": 2, "ProducePlanType_Plan3": 3}.get(plan, 0)
-    weights = {1: cfg["vocal"], 2: cfg["dance"], 3: cfg["visual"], "turns": int(cfg["turn"])}
-    bonus = bonus_permils(lo["score_bonus_permils"])
-    hp = int(lo.get("starting_stamina") or lo["max_stamina"])
-    ex = new_exam(None, m, seed, deck=deck, items=list(lo.get("produce_item_ids") or []), stamina=hp, max_stamina=int(lo["max_stamina"]),
-                  randomize_turns=True, config_weights=weights, bonus_permil=bonus, drinks=list(lo.get("drink_ids") or []),
-                  plan_type=plan_type, gimmicks=[ex_["produce_exam_gimmick_effect_group_id"]])  # fmt: skip
-    attrs = [{1: "Vo", 2: "Da", 3: "Vi"}[t] for t in ex.turn_types]
-    env = FidelityBattle(ex, FidelityBattle._turn_table(ex, attrs, 3), attrs, turn_offset=0, draw=3)
-    env.seed = seed
-    env._sync_turns()
-    return _native(env)
+    return exam_env(lo, seed, guid_prefix="card-tower")
 
 
 def objective(lo: dict, rivals: list | None = None) -> dict:
