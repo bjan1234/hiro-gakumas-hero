@@ -154,6 +154,8 @@ class TowerPlay:
         self.result_handled = False  # 这一次的结果页已经处理过（点了再挑戦 / 一覧に戻る）：等页面换了再处理下一次（实机 r2：同一张结果页处理了两次）
         if run.tower_id is None and (code := idol_code(idol_name)):
             run.tower_id = f"{TOWER_NO}-{code}"  # 没经过编成页（从名次页 / 结果页续跑）也有路线
+        if run.tower_id and tower_cache.load_progress(run):
+            logger.info("偶像之路：读回今天的挑战次数 %s（%s）", run.tries, tower_cache.progress_path(run.tower_id))
 
     # ---------------------------------------------------------------- 页面
     def on_home(self, rt, f, hit):
@@ -363,6 +365,7 @@ class TowerPlay:
         self.layer = layer
         self.ensure_loadout(layer)  # 同编成再挑戦不经过编成页：下一场用这一层缓存的编成
         verdict = self.run.after_result(layer, bool(fields.get("cleared")), int(fields.get("stars") or 0))
+        tower_cache.save_progress(self.run)  # 跨进程记次数：重启后「每层最多 3 次」照样管
         logger.info("偶像之路第 %s 层结果：过关=%s 星=%s → %s（%s）", layer, fields.get("cleared"), fields.get("stars"), verdict, self.run.summary())
         if verdict == "stop":
             raise ResumeBlocked(f"偶像之路第 {layer} 层 {self.run.tries.get(layer)} 次都没过关，停下报告（{self.run.summary()}）")
@@ -475,6 +478,9 @@ def run(args) -> int:
     session = Session(TraceWriter(name=args.trace))
     HifCore.session, HifCore.use_llm, HifCore.llm_spec = session, not args.no_llm, args.llm
     core = HifCore(scenario="qualify", idol=None)
+    if getattr(args, "reset_progress", False) and (code := idol_code(args.idol_name)):
+        tower_cache.reset_progress(f"{TOWER_NO}-{code}")
+        logger.warning("偶像之路：清掉了 %s 今天的挑战次数记录", args.idol_name)
     tp = TowerPlay(core, TowerRun(tower_id=None, max_layer=None), idol_name=args.idol_name, layers=args.layers,
                    loadout_path=Path(session.trace.dir) / "tower-loadout.json")  # fmt: skip
     device = open_device()
@@ -502,6 +508,7 @@ def main(argv=None) -> int:
     ap.add_argument("--no-llm", action="store_true")
     ap.add_argument("--llm", default=os.environ.get("HIRO_LLM"))
     ap.add_argument("--trace", default=None)
+    ap.add_argument("--reset-progress", action="store_true", help="清掉这条路线今天记下的每层挑战次数（tower_cache.progress_path）再开始")
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s")
     return run(ap.parse_args(argv))
 
