@@ -269,6 +269,38 @@
    "quote": "営業では【リゾート施設】は選ばない。"
   },
   {
+   "id": "nia.sales_corporate_drinks",
+   "families": [
+    "nia"
+   ],
+   "difficulties": [
+    "master"
+   ],
+   "rule": "考试要用的饮料（ブーストエキス、プロテイン等）不齐时，营业去企業（得饮料）",
+   "source": "g8-NIAM",
+   "quote": "※ブーストエキス、プロテインなどスコア獲得に必要なドリンクが揃っていなければイベント会場を選ぶのがおすすめです。"
+  },
+  {
+   "id": "nia.sales_purple",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "营业紫（商業）：拿到的技能卡是强化过的",
+   "source": "g8-NIA",
+   "quote": "紫：強化済みスキル獲得"
+  },
+  {
+   "id": "nia.sales_yellow",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "营业黄（自治体）：未强化技能卡 + P 点",
+   "source": "g8-NIA",
+   "quote": "黄：未強化スキル＋Pポイント"
+  },
+  {
    "id": "nia.sales_choice_fill",
    "families": [
     "nia"

@@ -233,3 +233,70 @@ def test_deciders_outing_study_route_by_family():
     chs = [_ch(0, attr="Vo"), _ch(1, attr="Vi"), _ch(2, trouble=True)]
     d = ProduceDeciders(CAMPUS_HIRO, None).study(GameState(produce=prod, page_fields={"choices": chs}))
     assert d.action.args["select"] == 0
+
+
+# ---------------------------------------------------------------- N.I.A 营业 / 试镜选档
+
+from hiro.brain.hajime_nia import choose_audition, choose_sales_event, choose_sales_place  # noqa: E402
+
+
+def _pl(i, kind, hp_cost=0):
+    return {"index": i, "kind": kind, "hp_cost": hp_cost}
+
+
+def test_sales_place_yellow_or_purple_when_stamina_ok():
+    i, _, rules = choose_sales_place(_nia(stamina=25), [_pl(0, "resort", 0), _pl(1, "local", 5), _pl(2, "commercial", 5)])
+    assert i in (1, 2) and "nia.sales_yellow_purple" in rules
+
+
+def test_sales_place_purple_when_points_enough_yellow_when_short():
+    places = [_pl(0, "local", 5), _pl(1, "commercial", 5)]
+    assert choose_sales_place(_nia(stamina=25, produce_point=200), places)[0] == 1
+    assert choose_sales_place(_nia(stamina=25, produce_point=20), places)[0] == 0
+
+
+def test_sales_place_resort_when_stamina_would_block_lesson():
+    """营业后体力会不到 SP 课程要的 8 以上：去绿（リゾート）回体力。"""
+    i, _, rules = choose_sales_place(_nia(stamina=12), [_pl(0, "resort", 0), _pl(1, "local", 5), _pl(2, "commercial", 5)])
+    assert i == 0 and "nia.sales_green_low" in rules
+
+
+def test_sales_place_corporate_when_low_stamina_and_no_resort():
+    i, _, _ = choose_sales_place(_nia(stamina=10), [_pl(0, "corporate", 0), _pl(1, "local", 5), _pl(2, "commercial", 5)])
+    assert i == 0
+
+
+def test_sales_event_fills_weakest_attr():
+    chs = [{"index": 0, "attr": "Vo"}, {"index": 1, "attr": "Vi"}, {"index": 2, "attr": "Da"}]
+    i, _, rules = choose_sales_event(_nia(params={"Vo": 300, "Da": 250, "Vi": 120}), chs)
+    assert i == 1 and "nia.sales_choice_fill" in rules
+
+
+def test_audition_highest_unlocked_tier():
+    tiers = [{"index": 0, "number": 1, "vote_need": 0, "locked": False}, {"index": 1, "number": 2, "vote_need": 4000, "locked": False},
+             {"index": 2, "number": 3, "vote_need": 9000, "locked": True}]  # fmt: skip
+    i, number, reason, _ = choose_audition(_nia(), 6000, tiers)
+    assert (i, number) == (1, 2) and "4,000" in reason
+
+
+def test_audition_lower_after_failure():
+    """失败重来时降一档（N.I.A 失败可以降档，协调 11-17）。"""
+    tiers = [{"index": 0, "number": 1, "vote_need": 0, "locked": False}, {"index": 1, "number": 2, "vote_need": 4000, "locked": False}]
+    i, number, reason, _ = choose_audition(_nia(), 6000, tiers, failed=1)
+    assert (i, number) == (0, 1) and "降" in reason
+
+
+def test_deciders_nia_pages_registered():
+    from hiro.brain.deciders import ProduceDeciders
+    from hiro.brain.state import CAMPUS_HIRO
+    from hiro.contracts import GameState
+
+    prod = {"mode": "produce-004", "step": 9, "stamina": 25, "max_stamina": 30, "produce_point": 0, "params": {"Vo": 1, "Da": 1, "Vi": 1}, "votes": 5000}
+    pd = ProduceDeciders(CAMPUS_HIRO, None)
+    d = pd.decide("NIA_SALES_PLACE", GameState(produce=prod, page_fields={"places": [_pl(0, "resort"), _pl(1, "local", 5)]}))
+    assert d.action.args["select"] == 1 and d.decider == "sales_place"
+    d = pd.decide("NIA_AUDITION_SELECT", GameState(produce=prod, page_fields={"votes": 5000, "tiers": [
+        {"index": 0, "number": 1, "vote_need": 0, "locked": False}, {"index": 1, "number": 2, "vote_need": 4000, "locked": False}]}))
+    assert d.action.args == {"select": 1, "audition_number": 2} and d.decider == "audition_select"
+    d = pd.decide("NIA_SALES_EVENT", GameState(produce=prod, page_fields={"choices": [{"index": 0, "attr": "Vo"}, {"index": 1, "attr": "Da"}]}))
+    assert d.action.args["select"] in (0, 1) and d.decider == "sales_event"

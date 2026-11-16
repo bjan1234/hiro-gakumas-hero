@@ -246,3 +246,69 @@ def choose_study(st: Status, choices: list[dict]) -> tuple[int, str, list[str]]:
     main = st.main()
     c = next((c for c in pool if _attr_of(c) == main), pool[0])
     return p.done(c["index"], f"授業答主属性 {main}" if _attr_of(c) == main else "授業：没认出主属性那项，选第一个不加眠気的")
+
+
+# ---------------------------------------------------------------- N.I.A 营业 / 试镜选档
+# 页面字段（和平台约定，采样后可能调整）：
+#   NIA_SALES_PLACE  page_fields.places  = [{index, kind: resort|local|corporate|commercial, hp_cost, name?}]
+#   NIA_SALES_EVENT  page_fields.choices = [{index, attr?, text?}]
+#   NIA_AUDITION_SELECT page_fields.votes, page_fields.tiers = [{index, number, vote_need, locked}]
+SALES_KEEP_STAMINA = 8  # 营业后体力要留到 8 以上（SP 课程耗 8）[g8-NIAM]
+KIND_NAME = {"resort": "绿（リゾート）", "local": "黄（自治体）", "corporate": "青（企業）", "commercial": "紫（商業）"}
+
+
+def choose_sales_place(st: Status, places: list[dict], drinks: list | None = None) -> tuple[int, str, list[str]]:
+    """营业场所 → (places 里的 index, 理由, 规则)。"""
+    p = _Pick(st, places)
+    by = {pl.get("kind"): pl for pl in places}
+    p.use("nia.sales_cost")
+
+    def after(pl):
+        return st.stamina - int(pl.get("hp_cost") or 0)
+
+    if st.difficulty == "master" and drinks is not None and len(drinks) < 2 and "corporate" in by:
+        p.use("nia.sales_corporate_drinks")
+        return p.done(by["corporate"]["index"], f"考试饮料只有 {len(drinks)} 瓶，去{KIND_NAME['corporate']}拿饮料")
+    good = [by[k] for k in ("commercial", "local") if k in by and after(by[k]) >= SALES_KEEP_STAMINA]
+    p.use("nia.sales_yellow_purple")
+    if good:
+        want = "commercial" if st.produce_point >= SHOP_POINTS else "local"
+        pl = next((x for x in good if x.get("kind") == want), good[0])
+        p.use("nia.sales_purple" if pl.get("kind") == "commercial" else "nia.sales_yellow")
+        why = f"体力 {st.stamina} 去完还剩 {after(pl)}，P 点 {st.produce_point}"
+        return p.done(pl["index"], f"营业去{KIND_NAME[pl['kind']]}（{why}）")
+    p.use("nia.sales_green_low")
+    for k in ("resort", "corporate"):
+        if k in by:
+            return p.done(by[k]["index"], f"体力 {st.stamina} 去黄 / 紫会掉到 {SALES_KEEP_STAMINA} 以下，去{KIND_NAME[k]}")
+    pl = min(places, key=lambda x: int(x.get("hp_cost") or 0))
+    return p.done(pl["index"], "没认出场所种类，选耗体力最少的一个")
+
+
+def choose_sales_event(st: Status, choices: list[dict]) -> tuple[int, str, list[str]]:
+    """营业事件的选项：选缺的那项属性 [g8-NIA]；认不出属性时选第一个。"""
+    p = _Pick(st, choices)
+    p.use("nia.sales_choice_fill")
+    with_attr = [(c, _attr_of(c)) for c in choices]
+    with_attr = [(c, a) for c, a in with_attr if a]
+    if not with_attr:
+        return p.done(min(c["index"] for c in choices), "营业选项认不出属性，选第一个")
+    c, a = min(with_attr, key=lambda x: st.params.get(x[1], 0))
+    return p.done(c["index"], f"营业选项补最缺的属性 {a}（{st.params.get(a, 0)}）")
+
+
+def choose_audition(st: Status, votes: int | None, tiers: list[dict], *, failed: int = 0) -> tuple[int, int | None, str, list[str]]:
+    """试镜选档 → (tiers 里的 index, 档位编号 audition_number, 理由, 规则)。
+    通关档（设计稿第六节，模拟估过关率之前）：选投票够得上、没锁的最高档（参考 MaaGakumasu ProduceChooseMirrorAuto）；
+    这一场失败过 failed 次就往下降 failed 档（协调 11-17：N.I.A 失败可以降档），降到最低档为止。"""
+    ok = [t for t in tiers if not t.get("locked") and (votes is None or int(t.get("vote_need") or 0) <= int(votes))]
+    if not ok:
+        t = min(tiers, key=lambda t: int(t.get("vote_need") or 0))
+        return t["index"], t.get("number"), "没有解锁的档位（读数可能不全），选门槛最低的一档", []
+    ok.sort(key=lambda t: -int(t.get("number") or t.get("vote_need") or 0))
+    k = min(max(0, int(failed)), len(ok) - 1)
+    t = ok[k]
+    need = int(t.get("vote_need") or 0)
+    why = f"投票 {votes:,}" if votes is not None else "投票数没读到"
+    tail = f"，失败过 {failed} 次，降 {k} 档" if failed else ""
+    return t["index"], t.get("number"), f"选第 {t.get('number')} 档（门槛 {need:,}，{why}，够得上的最高档{tail}）[参考 MaaGakumasu]", []
