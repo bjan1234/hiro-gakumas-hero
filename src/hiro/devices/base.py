@@ -62,11 +62,28 @@ def logical_size(width: int, height: int) -> tuple[int, int]:
     return LANDSCAPE if width > height else PORTRAIT
 
 
-def check_aspect(width: int, height: int) -> None:
-    """宽高比和 9:16 差太多时没法按 KAA 的方式拉伸（模板会变形），直接报错。"""
+LANDSCAPE_CROP_RATIO = (1.5, 1.7)  # 横屏宽高比落在这里（Mac 全屏 16:10：PlayCover 横屏 LIVE 全屏后截到 2940x1838）：居中裁成 16:9
+
+
+def crop_box(width: int, height: int) -> tuple[int, int, int, int] | None:
+    """原生截图里要用的那一块 (x0, y0, w, h)：宽高比接近 9:16 用整张；横屏 16:10 左右（全屏 LIVE）居中裁出 16:9；
+    都不是返回 None。"""
+    if width <= 0 or height <= 0:
+        return None
     lw, lh = logical_size(width, height)
     long_side, short_side = max(width, height), min(width, height)
-    if width <= 0 or height <= 0 or abs(long_side / short_side - max(lw, lh) / min(lw, lh)) > ASPECT_TOLERANCE:
+    if abs(long_side / short_side - max(lw, lh) / min(lw, lh)) <= ASPECT_TOLERANCE:
+        return 0, 0, width, height
+    if width > height and LANDSCAPE_CROP_RATIO[0] <= width / height <= LANDSCAPE_CROP_RATIO[1]:
+        ch = round(width * 9 / 16)
+        return 0, (height - ch) // 2, width, ch
+    return None
+
+
+def check_aspect(width: int, height: int) -> None:
+    """宽高比和 9:16 差太多（又不是能裁的横屏 16:10）时没法按 KAA 的方式拉伸（模板会变形），直接报错。"""
+    if crop_box(width, height) is None:
+        lw, lh = logical_size(width, height)
         raise DeviceUnavailable(f"画面尺寸 {width}x{height} 和 9:16 差太多，不能缩放到 {lw}x{lh}")
 
 
@@ -100,6 +117,7 @@ class LogicalScreen:
 
     def __init__(self) -> None:
         self.native: tuple[int, int] | None = None  # 最近一张原生截图的 (宽, 高)
+        self.crop: tuple[int, int, int, int] | None = None  # 原生截图里用的那一块 (x0, y0, w, h)；横屏 16:10 时居中裁 16:9
 
     @property
     def orientation(self) -> str:
@@ -115,10 +133,15 @@ class LogicalScreen:
         if image is None or image.ndim != 3 or image.shape[2] != 3 or not image.size:
             raise DeviceUnavailable(f"截图不是 BGR 三通道图像：{None if image is None else image.shape}")
         h, w = image.shape[:2]
-        check_aspect(w, h)
-        self.native = (w, h)
-        size = logical_size(w, h)
-        if (w, h) == size:
+        box = crop_box(w, h)
+        if box is None:
+            check_aspect(w, h)  # 抛 DeviceUnavailable
+        self.native, self.crop = (w, h), box
+        x0, y0, cw, ch = box
+        if (cw, ch) != (w, h):
+            image = image[y0 : y0 + ch, x0 : x0 + cw]
+        size = logical_size(cw, ch)
+        if (cw, ch) == size:
             return np.ascontiguousarray(image)
         return cv2.resize(image, size)
 
@@ -127,7 +150,8 @@ class LogicalScreen:
         if self.native is None:
             raise DeviceUnavailable("还没截过图，不知道原生分辨率")
         w, h = self.native
-        lw, lh = logical_size(w, h)
-        nx = min(w - 1, max(0, round(x * w / lw)))
-        ny = min(h - 1, max(0, round(y * h / lh)))
+        x0, y0, cw, ch = self.crop or (0, 0, w, h)
+        lw, lh = logical_size(cw, ch)
+        nx = min(w - 1, max(0, x0 + round(x * cw / lw)))
+        ny = min(h - 1, max(0, y0 + round(y * ch / lh)))
         return nx, ny
