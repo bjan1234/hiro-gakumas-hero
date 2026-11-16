@@ -221,3 +221,48 @@ def test_tower_classify_recognizes_contest_and_home():
         if not (base / name).exists():
             pytest.skip(f"需要实机帧 tower/pages/{name}")
         assert tp.tower_classify(cv2.resize(cv2.imread(str(base / name)), (720, 1280))).name == page, name
+
+
+def test_find_idol_strips_spaces_and_fuzzy():
+    idols = [{"name": "花海咲季", "center": [1, 1]}, {"name": "月村手鞠", "center": [2, 2]}, {"name": None, "stage": 11, "center": [3, 3]}]
+    assert tp.find_idol(idols, "花海 咲季")["center"] == [1, 1]  # 去空格
+    assert tp.find_idol(idols, "月村手毬")["center"] == [2, 2]  # OCR 错一个字：相似度够就认
+    assert tp.find_idol(idols, "藤田ことね") is None
+
+
+def test_retry_confirm_fading_after_ok_is_not_a_stop(tmp_path):
+    """g5c 11-17：点了「同じ編成で再挑戦」→「OK」，框淡出时又被认成确认框、按钮没读全，原来直接停机，游戏却开始了第 2 次挑戦没人打。
+    点过之后同一页不再处理；按钮没读全先等，连续 PARTIAL_WAIT_S 秒都没读全才停。"""
+    p = _play(tmp_path)
+    h = p.handlers()
+    now = [0.0]
+    taps = []
+    rt = NS(device=NS(tap=lambda x, y: taps.append((x, y))), sleep=lambda s: None, clock=lambda: now[0])
+    full = NS(fields={"cost": None, "same": [492, 1037], "ok": [509, 1160]})
+    fading = NS(fields={"cost": None, "same": None, "ok": None})
+    assert h["TOWER_RETRY_CONFIRM"](rt, None, full) is DONE and taps == [(492, 1037), (509, 1160)]
+    now[0] = 0.5
+    assert h["TOWER_RETRY_CONFIRM"](rt, None, fading) is tp.STAY  # 淡出帧：刚点过，不处理、不停
+    # 刚弹出、按钮还没读全：等；一直读不全才停
+    p2 = _play(tmp_path)
+    h2 = p2.handlers()
+    now[0] = 100.0
+    assert h2["TOWER_RETRY_CONFIRM"](rt, None, fading) is tp.STAY
+    now[0] = 100.0 + tp.PARTIAL_WAIT_S
+    with pytest.raises(ResumeBlocked, match="没读全"):
+        h2["TOWER_RETRY_CONFIRM"](rt, None, fading)
+
+
+def test_retry_confirm_fading_frame_classified():
+    """实机那一帧（OK 刚点下去）：读得出来就是确认框；读不全也只会 STAY（见上）。这里只核判页不出错。"""
+    import os
+
+    import cv2
+
+    from hiro.vision.classify import classify
+
+    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "tower" / "pages" / "retry-confirm-ok-tapped-g5c.jpg"
+    if not path.exists():
+        pytest.skip("需要实机帧")
+    hit = classify(cv2.resize(cv2.imread(str(path)), (720, 1280)))
+    assert hit.name in ("TOWER_RETRY_CONFIRM", "TOWER_RANKING", "unknown", "DIALOG")

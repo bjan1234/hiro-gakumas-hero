@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 TOWER_NO = "tower_001"  # 目前只有一座塔（主数据 Tower 表）；tower_id = tower_001-<偶像代号>
 END = Outcome("end", "偶像之路打完设定的层数")  # 处理器返回它：Runtime.run 正常结束
+PARTIAL_WAIT_S = 10.0  # 再挑戦确认框按钮没读全（弹出 / 淡出中）时最多等这么久再停
 ACT_WAIT_S = 5.0  # 层选择页 / 过关名次页点过一次后，页面没换就等这么久再点（实机：挑戦する 2 秒点了 4 次、同一张名次页记了两次，协调 11-15）
 
 
@@ -67,6 +68,22 @@ def loadout(fields: dict, tower_id: str | None, layer: int | None) -> dict:
 CONTEST_TAB = (496, 1177)  # 首页底栏「コンテスト」（OCR 读不到时的位置，实机帧）
 ROAD_BUTTON = (148, 925)  # コンテスト页左下圆形按钮「アイドル / への道」（两行字，OCR 认不成一个词；协调实机给的位置）
 IDLE_STOP_S = 60.0  # 偶像之路：任何页面 60 秒没有任何操作就写日志停机（g5 11-17：停在首页 4 分钟静默空转）
+
+
+def _name_key(name: str | None) -> str:
+    return (name or "").replace(" ", "").replace("　", "")
+
+
+def find_idol(idols: list[dict], want: str) -> dict | None:
+    """路线列表里找偶像：去空格后完全一致优先，再按相似度（≥ 0.75，OCR 偶尔错一个字）。"""
+    from difflib import SequenceMatcher
+
+    key = _name_key(want)
+    named = [i for i in idols if i.get("name")]
+    if (hit := next((i for i in named if _name_key(i["name"]) == key), None)) is not None:
+        return hit
+    scored = sorted(((SequenceMatcher(None, _name_key(i["name"]), key).ratio(), n) for n, i in enumerate(named)), reverse=True)
+    return named[scored[0][1]] if scored and scored[0][0] >= 0.75 else None
 
 
 def contest_page(texts) -> bool:
@@ -133,6 +150,7 @@ class TowerPlay:
         self.loadout: dict | None = None  # 现在 HIRO_TOWER_LOADOUT 指的那份（编成页写的，或从缓存读的）
         self.exam_draws: dict | None = None  # 刚考完那场的抽牌（tower_cache.infer_draws），名次页补上对手分数后存盘
         self._acted: tuple[str, float] | None = None  # (页面, 时刻)：这一页刚点过，页面换了之前不再点（ACT_WAIT_S 后还没换才再点）
+        self._partial_since: float | None = None  # 再挑戦确认框按钮没读全从什么时候开始
         self.result_handled = False  # 这一次的结果页已经处理过（点了再挑戦 / 一覧に戻る）：等页面换了再处理下一次（实机 r2：同一张结果页处理了两次）
         if run.tower_id is None and (code := idol_code(idol_name)):
             run.tower_id = f"{TOWER_NO}-{code}"  # 没经过编成页（从名次页 / 结果页续跑）也有路线
@@ -161,7 +179,7 @@ class TowerPlay:
         return DONE
 
     def on_list(self, rt, f, hit):
-        idol = next((i for i in hit.fields.get("idols") or [] if i.get("name") == self.idol_name), None)
+        idol = find_idol(hit.fields.get("idols") or [], self.idol_name)
         if idol is None:
             raise ResumeBlocked(f"偶像之路列表里没找到「{self.idol_name}」（读到 {[i.get('name') for i in hit.fields.get('idols') or []]}）")
         rt.device.tap(*idol["center"])
@@ -398,15 +416,28 @@ class TowerPlay:
         return self.on_result(rt, None, SimpleNamespace(fields=res))
 
     def on_retry_confirm(self, rt, f, hit):
+        """再挑戦确认框：只用免费次数（框上有消耗字样就停）；点「同じ編成で再挑戦」再点「OK」。
+        点过 OK 后框还在淡出、又被认成这一页：不再处理（g5c 11-17：淡出帧上按钮没读全，原来直接停机，游戏却已经开始第 2 次挑戦，
+        一场考试没人打）。按钮没读全先等（框正在弹出 / 淡出），连续 PARTIAL_WAIT_S 秒都没读全才停。"""
+        if self._just_acted(rt, "TOWER_RETRY_CONFIRM"):
+            return STAY
         fields = hit.fields
         self.ensure_loadout()
         if fields.get("cost"):
             raise ResumeBlocked(f"再挑戦确认框上有消耗字样「{fields['cost']}」：不点，停下")
         if fields.get("same") is None or fields.get("ok") is None:
-            raise ResumeBlocked("再挑戦确认框没读全（同じ編成で再挑戦 / OK），不点，停下")
+            now = _now(rt)
+            if self._partial_since is None:
+                self._partial_since = now
+            if now - self._partial_since < PARTIAL_WAIT_S:
+                return STAY
+            raise ResumeBlocked(f"再挑戦确认框 {now - self._partial_since:.0f}s 都没读全（同じ編成で再挑戦 / OK），不点，停下")
+        self._partial_since = None
         rt.device.tap(*fields["same"])  # 同编成再打（换编成等回忆选择页接上后再做）
         rt.sleep(0.5)
         rt.device.tap(*fields["ok"])
+        self._mark_acted(rt, "TOWER_RETRY_CONFIRM")
+        logger.info("偶像之路：再挑戦（同じ編成で再挑戦 → OK）")
         return DONE
 
     def handlers(self) -> dict:

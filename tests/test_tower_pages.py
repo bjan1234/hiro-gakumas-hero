@@ -96,3 +96,12 @@ def test_perfect_result_page():
     """三星（1 位）的结果页标题是「PERFECT」不是「CLEAR」（Mac 手毬 14 层 11-15，原来判成 unknown 卡住）：照样是 TOWER_RESULT，星数 3。"""
     name, f = _hit("100_perfect_result.png")
     assert name == "TOWER_RESULT" and (f["cleared"], f["layer"], f["stars"]) == (True, 14, 3) and f["back"] and f["retry"]
+
+
+def test_list_card_found_when_stage_sparkles():
+    """g5b 11-17：手毬那张「STAGE 15」上有闪光动画，OCR 读成「STA」「¥15」，原来按 STAGE 定位整张卡漏掉 →「列表里没找到月村手毬」。
+    现在按进度「x/81」定位：stage 读不到记 None，名字 / 进度 / 点击位置照样有。"""
+    name, f = _hit("list-stage-sparkle-g5b.jpg")
+    assert name == "TOWER_LIST"
+    tm = next(i for i in f["idols"] if i["name"] == "月村手毬")
+    assert tm["stage"] is None and tm["progress"] == "41/81" and 800 < tm["center"][1] < 950
