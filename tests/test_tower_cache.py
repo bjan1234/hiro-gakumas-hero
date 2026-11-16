@@ -164,7 +164,12 @@ def test_progress_survives_restart_same_game_day(tmp_path, monkeypatch):
 
     from hiro.runtime.tower import TowerRun
 
-    assert tc.game_day(datetime(2026, 11, 17, 3, 59)) == "2026-11-16" and tc.game_day(datetime(2026, 11, 17, 4, 0)) == "2026-11-17"
+    from datetime import timedelta, timezone
+
+    assert tc.game_day(datetime(2026, 11, 17, 3, 59)) == "2026-11-16" and tc.game_day(datetime(2026, 11, 17, 4, 0)) == "2026-11-17"  # 日本时间
+    cst = timezone(timedelta(hours=8))  # 北京时间 03:51 = 日本时间 04:51：已经是 11-17（协调 11-17 发现按本机时区算成了 11-16）
+    assert tc.game_day(datetime(2026, 11, 17, 3, 51, tzinfo=cst)) == "2026-11-17"
+    assert tc.game_day(datetime(2026, 11, 17, 2, 59, tzinfo=cst)) == "2026-11-16"
     run = TowerRun("tower_001-ttmr")
     run.after_result(16, False, 0)
     run.after_result(16, False, 0)
