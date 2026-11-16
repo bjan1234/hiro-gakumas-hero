@@ -221,3 +221,10 @@ def test_tower_classify_recognizes_contest_and_home():
         if not (base / name).exists():
             pytest.skip(f"需要实机帧 tower/pages/{name}")
         assert tp.tower_classify(cv2.resize(cv2.imread(str(base / name)), (720, 1280))).name == page, name
+
+
+def test_find_idol_strips_spaces_and_fuzzy():
+    idols = [{"name": "花海咲季", "center": [1, 1]}, {"name": "月村手鞠", "center": [2, 2]}, {"name": None, "stage": 11, "center": [3, 3]}]
+    assert tp.find_idol(idols, "花海 咲季")["center"] == [1, 1]  # 去空格
+    assert tp.find_idol(idols, "月村手毬")["center"] == [2, 2]  # OCR 错一个字：相似度够就认
+    assert tp.find_idol(idols, "藤田ことね") is None

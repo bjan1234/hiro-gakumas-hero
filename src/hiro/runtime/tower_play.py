@@ -69,6 +69,22 @@ ROAD_BUTTON = (148, 925)  # コンテスト页左下圆形按钮「アイドル 
 IDLE_STOP_S = 60.0  # 偶像之路：任何页面 60 秒没有任何操作就写日志停机（g5 11-17：停在首页 4 分钟静默空转）
 
 
+def _name_key(name: str | None) -> str:
+    return (name or "").replace(" ", "").replace("　", "")
+
+
+def find_idol(idols: list[dict], want: str) -> dict | None:
+    """路线列表里找偶像：去空格后完全一致优先，再按相似度（≥ 0.75，OCR 偶尔错一个字）。"""
+    from difflib import SequenceMatcher
+
+    key = _name_key(want)
+    named = [i for i in idols if i.get("name")]
+    if (hit := next((i for i in named if _name_key(i["name"]) == key), None)) is not None:
+        return hit
+    scored = sorted(((SequenceMatcher(None, _name_key(i["name"]), key).ratio(), n) for n, i in enumerate(named)), reverse=True)
+    return named[scored[0][1]] if scored and scored[0][0] >= 0.75 else None
+
+
 def contest_page(texts) -> bool:
     """コンテスト页（判页会判成 commu）：中间偏下的大卡片写着「コンテスト」（y≈894），左边圆形按钮写着「アイドル / への道」。"""
     return any("コンテスト" in t.text and 840 <= t.rect.center.y <= 950 for t in texts) and any(
@@ -161,7 +177,7 @@ class TowerPlay:
         return DONE
 
     def on_list(self, rt, f, hit):
-        idol = next((i for i in hit.fields.get("idols") or [] if i.get("name") == self.idol_name), None)
+        idol = find_idol(hit.fields.get("idols") or [], self.idol_name)
         if idol is None:
             raise ResumeBlocked(f"偶像之路列表里没找到「{self.idol_name}」（读到 {[i.get('name') for i in hit.fields.get('idols') or []]}）")
         rt.device.tap(*idol["center"])

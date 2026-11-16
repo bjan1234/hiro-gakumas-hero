@@ -96,19 +96,27 @@ def _int(text: str) -> int | None:
 
 
 def _list_fields(boxes) -> dict:
-    """路线列表：每张卡「STAGE n」、偶像名在下方约 215 像素、进度「x/81」再下约 60。"""
+    """路线列表：每张卡从上到下是「STAGE n」、偶像名（约 +215）、进度「x/81」（约 +275）。
+    以进度「x/81」为锚：名字在它上面约 60 像素，STAGE 在上面约 270 像素。STAGE 上有闪光动画时 OCR 读不出（g5b 11-17：
+    手毬那张读成「STA」「¥15」，整张卡漏掉，「列表里没找到月村手毬」），这时 stage 记 None，名字和点击位置照样有。
+    只露出 STAGE、名字在屏幕外的卡（第二排）也列出来，name / progress 为 None。点击位置用名字（没有名字用 STAGE）的中心。"""
     import re
 
-    idols = []
-    for t, b in boxes:
-        m = re.fullmatch(r"STAGE(\d+)", t)
-        if not m:
-            continue
-        cx, cy = _center(b)
-        name = next((t2 for t2, b2 in boxes if abs(_center(b2)[0] - cx) < 60 and 180 <= _center(b2)[1] - cy <= 250 and len(t2) >= 2
-                     and not re.search(r"\d", t2)), None)  # fmt: skip
-        prog = next((t2 for t2, b2 in boxes if re.fullmatch(r"\d+/\d+", t2) and abs(_center(b2)[0] - cx) < 90 and 240 <= _center(b2)[1] - cy <= 310), None)
-        idols.append({"stage": int(m.group(1)), "name": name, "progress": prog, "center": [cx, cy]})
+    idols, used = [], set()
+    progs = sorted(((t, b) for t, b in boxes if re.fullmatch(r"\d+/\d+", t) and _center(b)[1] > 600), key=lambda x: (_center(x[1])[1] // 40, _center(x[1])[0]))
+    for pt, pb in progs:
+        px, py = _center(pb)
+        name = next(((t, b) for t, b in boxes if abs(_center(b)[0] - px) < 90 and 30 <= py - _center(b)[1] <= 100 and len(t) >= 2
+                     and not re.search(r"\d", t)), None)  # fmt: skip
+        st = next(((t, b) for t, b in boxes if re.fullmatch(r"STAGE(\d+)", t) and abs(_center(b)[0] - px) < 110 and 230 <= py - _center(b)[1] <= 320), None)
+        if st is not None:
+            used.add(id(st[1]))
+        anchor = name[1] if name is not None else (st[1] if st is not None else None)
+        center = list(_center(anchor)) if anchor is not None else [px, py - 60]
+        idols.append({"stage": int(st[0][5:]) if st else None, "name": name[0] if name else None, "progress": pt, "center": center})
+    for t, b in boxes:  # 名字在屏幕外的卡：只有 STAGE
+        if (m := re.fullmatch(r"STAGE(\d+)", t)) and id(b) not in used:
+            idols.append({"stage": int(m.group(1)), "name": None, "progress": None, "center": list(_center(b))})
     return {"idols": idols}
 
 
