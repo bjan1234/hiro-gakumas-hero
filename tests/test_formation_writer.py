@@ -286,3 +286,41 @@ def test_fix_memory_matches_core_when_ability_text_differs(monkeypatch):
     dev = fw.Device(shoot=mem.shoot, click=mem.click, swipe=lambda *a: None, sleep=lambda s: None)
     done = fw.fix_memory(dev, plan, read_icons=mem.read_icons, make_picker=lambda: mem.picker(card_of))
     assert mem.decided == [(7, 1)] and done and done[0]["to"] == "act-3_039"
+
+
+def _core_rig(monkeypatch, target_cell, ability_of):
+    import json
+
+    from hiro.produce import memory_picker
+
+    mem = FakeMemory(["act-2_062", "men-3_012", "act-3_050", "men-1_035"], rows=40)
+    card_of = lambda r, c: "act-3_039" if (r, c) == target_cell else f"other{r}{c}"  # noqa: E731
+    monkeypatch.setattr(memory_picker, "to_top", lambda p: (setattr(mem, "top_row", 0), "picker")[1])
+    monkeypatch.setattr(memory_picker, "page_rows", lambda img: [[{"row": mem.top_row + i, "col": c, "center": (0, 0)} for c in range(3)] for i in range(3)])
+    monkeypatch.setattr(memory_picker, "picker_open", lambda boxes: True)
+
+    def key(e):
+        r, c = mem.selected
+        # 属性是「当前编成 + 这份回忆」的总加成：开局时读到的和扫描时不一样
+        return json.dumps([e["card"], 1, "start", 145, 160, 15, 0, [{"text": ability_of(r, c)}]], ensure_ascii=False)
+
+    monkeypatch.setattr(fw, "memory_key", key)
+    want = json.dumps(["act-3_039", 1, "start", 10, 20, 0, 0, [{"text": "初期ダンス上昇+20"}]], ensure_ascii=False)
+    plan = {"memory": {"chosen": [{"card_id": "p_card-02-act-2_062"}, {"card_id": "p_card-00-men-3_012"}, {"card_id": "p_card-02-act-3_050"},
+                                  {"card_id": "p_card-02-act-3_039", "cell": [7, 1], "key": want}]}}  # fmt: skip
+    dev = fw.Device(shoot=mem.shoot, click=mem.click, swipe=lambda *a: None, sleep=lambda s: None)
+    return mem, card_of, plan, dev
+
+
+def test_fix_memory_ignores_stats_and_searches_rows_around(monkeypatch):
+    """11-16 账号 2：属性随当前编成变、库存行号偏了几行。卡 / 强化 / 时机一致 + 能力文字相似就选，在目标行上下 SEARCH_ROWS 行里找。"""
+    mem, card_of, plan, dev = _core_rig(monkeypatch, (13, 1), lambda r, c: "初期ダンス上昇+2O" if (r, c) == (13, 1) else f"x{r}{c}")
+    done = fw.fix_memory(dev, plan, read_icons=mem.read_icons, make_picker=lambda: mem.picker(card_of))
+    assert mem.decided == [(13, 1)] and done[0]["to"] == "act-3_039"  # 库存写第 7 行，实际在第 13 行
+
+
+def test_fix_memory_core_only_match_on_second_pass(monkeypatch):
+    """窗口里没有能力文字也像的：第二遍选第一份卡 / 强化 / 时机一致的（写日志）。"""
+    mem, card_of, plan, dev = _core_rig(monkeypatch, (9, 1), lambda r, c: "全然違う能力")
+    done = fw.fix_memory(dev, plan, read_icons=mem.read_icons, make_picker=lambda: mem.picker(card_of))
+    assert mem.decided == [(9, 1)] and done
