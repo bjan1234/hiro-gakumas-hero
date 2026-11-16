@@ -224,11 +224,11 @@ class Picker:
         self.to_page(1)
         return entry
 
-    def scroll(self, rows: float = SWIPE_ROWS, *, px: int | None = None) -> np.ndarray:
-        """上滑 rows 行（负数下滑；或直接给像素 px），慢滑、终点停住，返回滑后的画面。"""
+    def scroll(self, rows: float = SWIPE_ROWS, *, px: int | None = None, x: int = 360, y_from: int | None = None) -> np.ndarray:
+        """上滑 rows 行（负数下滑；或直接给像素 px），慢滑、终点停住，返回滑后的画面。x / y_from：换个起点滑（原起点没让列表动时）。"""
         dy = int(px if px is not None else rows * ROW_PITCH)
-        y1 = SWIPE_FROM if dy > 0 else GRID_Y[0] + 40
-        self.swipe(360, y1, 360, y1 - dy)
+        y1 = y_from if y_from is not None else (SWIPE_FROM if dy > 0 else GRID_Y[0] + 40)
+        self.swipe(x, y1, x, y1 - dy)
         self.sleep(SCROLL_SETTLE)
         return self.shoot()
 
@@ -291,8 +291,36 @@ def grid_still(a: np.ndarray, b: np.ndarray) -> bool:
 
 
 def content_key(e: dict) -> str:
-    """一格读到的内容（卡 + 强化 + 时机 + 属性 + 能力）：判断详情栏是不是没刷新（和上一格一模一样）。"""
-    return entry_key(e)
+    """一格读到的内容（卡 + 强化 + 时机 + 能力）：判断详情栏是不是没刷新（和上一格一模一样）。
+    不含属性：选择页顶部是「当前编成合计 ± 这份回忆的增减」（如 Vo 20 -15），不是这份回忆自己的（协调 11-16）。"""
+    card = e.get("card") or {}
+    return json.dumps([card.get("card_id") or e.get("card_text"), card.get("upgrade"), e.get("timing"), e.get("abilities")], ensure_ascii=False)
+
+
+ALT_SWIPES = ((150, 940), (570, 940), (360, 880))  # 原起点 (360, SWIPE_FROM) 没让列表动时换这几个起点再试（起点可能落在锁格 / 浮动按钮上）
+
+
+def scroll_moved(picker: "Picker", before: np.ndarray, px: int) -> tuple[bool, np.ndarray]:
+    """往上滑 px：列表区（整块像素，不靠认出的行）动了返回 (True, 画面)；原起点不动就换 ALT_SWIPES 的起点再试，都不动 (False, 最后一帧)。"""
+    img = picker.scroll(px=px)
+    if not grid_still(before, img):
+        return True, img
+    for x, y1 in ALT_SWIPES:
+        img = picker.scroll(px=px, x=x, y_from=y1)
+        if not grid_still(before, img):
+            logger.info("回忆扫描：原起点滑不动，换起点 (%d, %d) 滑动了", x, y1)
+            return True, img
+    return False, img
+
+
+def _at_end(picker: "Picker", inv: dict, img: np.ndarray, pages: int) -> None:
+    """列表滑不动：还在回忆选择页才算到底（complete）；不在了（被别的画面挡住）记 aborted。都存帧。"""
+    picker.snap(img, f"page{pages:03d}-end")
+    if picker_open(picker.ocr(img)):
+        inv["complete"] = True
+    else:
+        inv["aborted"] = f"第 {pages} 页后列表滑不动，而且画面不是回忆选择页了（被别的画面挡住？），停止扫描"
+        logger.warning("回忆扫描：%s", inv["aborted"])
 
 
 def align(prev: list[list[dict]], cur: list[list[dict]]) -> int | None:
@@ -381,20 +409,18 @@ def scan(picker: Picker, out: Path, *, max_pages: int = 600, on_entry: Callable[
         pages += 1
         prev_img = picker.shoot()  # 读完重截：选中框状态和下一页一致
         prev, prev_base = page_rows(prev_img) or rows, row_base
-        if not prev:
-            img = picker.scroll(SWIPE_ROWS)
-            if grid_still(prev_img, img) and grid_still(img, picker.scroll(SWIPE_ROWS)):
-                inv["complete"] = True
+        if not prev:  # 一行都没认出：不能直接算到底，按整块列表区像素看滑不滑得动
+            moved, img = scroll_moved(picker, prev_img, int(SWIPE_ROWS * ROW_PITCH))
+            if not moved:
+                _at_end(picker, inv, img, pages)
                 break
             row_base, start = prev_base, 0
             continue
         dy = prev[-1][0]["rect"][1] - prev[0][0]["rect"][1] if len(prev) > 1 else int(ROW_PITCH)
-        img = picker.scroll(px=dy)
-        if grid_still(prev_img, img):  # 没动：再滑一次，还不动才算到底
-            img = picker.scroll(px=dy)
-            if grid_still(prev_img, img):
-                inv["complete"] = True
-                break
+        moved, img = scroll_moved(picker, prev_img, dy)
+        if not moved:  # 原起点和换的几个起点都滑不动，还在选择页：到底
+            _at_end(picker, inv, img, pages)
+            break
         cur = page_rows(img)
         k = align(prev, cur)
         if k is None:  # 留证据：读完重截的上一页、滑过去的这一页（11-15 那次对不上的原因没留帧，查不了）

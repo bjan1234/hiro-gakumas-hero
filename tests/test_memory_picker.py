@@ -128,7 +128,7 @@ class ScrollList:
 
     TOP = 600  # 第 0 行在滚动位置 0 时的上沿
 
-    def __init__(self, fling=None, slop=1.0, stuck=(), copies=1):
+    def __init__(self, fling=None, slop=1.0, stuck=(), copies=1, dead_after_row=None):
         self.rows, self.base = list_rows() * copies, PAGES[0].copy()
         if copies > 1:  # 重复拼接时给每一份打上不同的色块，保证行各不相同
             for i in range(len(self.rows)):
@@ -137,6 +137,7 @@ class ScrollList:
                     x0 = mp.COL_X[c] - 60
                     self.rows[i][30:90, x0 : x0 + 120] = ((i * 37 + c * 80) % 255, (i * 91) % 255, (i * 53 + c * 40) % 255)
         self.slop, self.stuck = slop, set(stuck)
+        self.dead_after_row = dead_after_row  # 滚到这一行之后，从原起点 (360, SWIPE_FROM) 起滑列表不动（起点落在锁格上，11-16 账号 2 假到底）
         gap = self.base[575:580, 40:680].reshape(-1, 3).mean(0)
         self.base[mp.GRID_Y[0] : mp.GRID_Y[1] + 60, :] = gap.astype(np.uint8)
         self.offset, self.fling, self.swipes, self.read = 0.0, dict(fling or {}), 0, []
@@ -163,6 +164,9 @@ class ScrollList:
         self.swipes += 1
         if self.swipes in self.stuck:
             return  # 这一次滑动没让列表动
+        if (self.dead_after_row is not None and self.offset >= self.dead_after_row * mp.ROW_PITCH
+                and (x1, y1) == (360, mp.SWIPE_FROM) and y1 > y2):  # fmt: skip
+            return
         rows = (y1 - y2) * self.slop / mp.ROW_PITCH + (self.fling.pop(self.swipes, 0) if y1 > y2 else 0)
         self.offset = min(max(0.0, self.offset + rows * mp.ROW_PITCH), self.max_offset)
 
@@ -299,3 +303,51 @@ def test_mark_suspects_rules():
     assert mp.mark_suspects(es) == 3
     # 同内容同缩略图：真的有两份一样的回忆（不是没刷新），不标
     assert [e.get("suspect") for e in es] == [None, "same_as_prev", None, "card_unread", "detail_not_refreshed"]
+
+
+
+@pytest.mark.fixtures
+def test_dead_swipe_start_is_not_the_end(tmp_path, monkeypatch):
+    """账号 2 11-16：第 15 行之后原起点滑不动，扫描判成到底（48 份、complete=True，实际 100 多份）。换起点再滑，扫完整个列表。"""
+    lst = ScrollList(copies=3, dead_after_row=5)
+    inv = run_scan(tmp_path, lst, monkeypatch)
+    assert sorted(set(lst.read)) == all_cells(lst) and inv["complete"] and not inv.get("aborted")
+
+
+@pytest.mark.fixtures
+def test_stuck_and_not_on_picker_is_aborted_not_complete(tmp_path, monkeypatch):
+    lst = ScrollList(copies=2)
+    state = {"open": True}
+    monkeypatch.setattr(mp, "picker_open", lambda boxes: state["open"])
+    picker = ListPicker(lst)
+    real = lst.swipe
+
+    def swipe(*a):
+        if lst.offset >= 3 * mp.ROW_PITCH:  # 第 3 行之后弹了别的画面：列表滑不动，也不是选择页了
+            state["open"] = False
+            return
+        real(*a)
+
+    picker.swipe = swipe
+    inv = mp.scan(picker, tmp_path / "inv.json")
+    assert inv.get("aborted") and not inv["complete"]
+
+
+def test_content_key_ignores_stats():
+    """选择页顶部属性是「编成合计 ± 增减」，同一份回忆换个编成就不一样：判「没刷新」的内容键不含属性。"""
+    a = {"card": {"card_id": "c", "upgrade": 1}, "timing": "mid", "abilities": [{"text": "x"}], "stats": {"Vo": 20}}
+    b = {**a, "stats": {"Vo": 35}}
+    assert mp.content_key(a) == mp.content_key(b)
+
+
+def test_purple_locked_rows_are_detected():
+    """紫色锁格（只有卡种徽记、「SS 開」、锁图标，没有偶像照片，账号 2 第 16 行起）：照样是完整行、每格一个指纹。"""
+    import os
+
+    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "memory-picker-purple-locked-rows.png"
+    if not path.exists():
+        pytest.skip("需要实机截图 pages/memory-picker-purple-locked-rows.png")
+    img = cv2.resize(cv2.imread(str(path)), (720, 1280))
+    assert mp.grid_rows(img) == [(676, 794), (814, 933)]  # 上面被详情栏截一半、下面压到浮动按钮的不算
+    cells = mp.grid_cells(img)
+    assert len(cells) == 6 and len({c["hash"] for c in cells}) == 6
