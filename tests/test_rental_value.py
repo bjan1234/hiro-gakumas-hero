@@ -244,3 +244,40 @@ def test_pick_once_falls_back_to_best_seen_on_return(monkeypatch):
                                                     "pager": {"page": 1, "pages": 1}})  # fmt: skip
     score = {"A": 1.0, "B": 3.0, "C": 2.0}
     assert rental._pick_once("Da", set(), lambda r: score[r["player"]]) == "c"
+
+
+def test_pick_once_finds_best_row_when_player_name_reads_differently(monkeypatch):
+    """回去找时玩家名小字 OCR 差一个字（11-17 Mac：chamiria 那张价值 1336 没找到，退成 1228）：按卡的身份（卡名 + 等级 + 突破）也认。"""
+    pytest.importorskip("kotonebot")
+    from hiro.produce import rental
+
+    worst = {"support_card_id": "s_card-worst", "level": 60}
+    best = {"support_card_id": "s_card-best", "level": 60}
+
+    def score(row):
+        return 2.0 if row["card"]["support_card_id"] == "s_card-best" else 1.0
+    scan = [[_row(worst, "A")], [_row(best, "chamiria")], [_row(worst, "C")]]
+    back = [[_row(worst, "A")], [_row(best, "chamirla")], [_row(worst, "C")]]  # 第二遍玩家名读错一个字
+    state = {"screen": 0, "pass": scan, "clicked": []}
+
+    class Dev:
+        def click(self, *a):
+            state["clicked"].append(a)
+
+        def swipe(self, *a):
+            if a[1] > a[3]:
+                state["screen"] = min(state["screen"] + 1, len(scan) - 1)
+            else:
+                state["screen"], state["pass"] = 0, back
+
+        def screenshot(self):
+            return None
+
+    monkeypatch.setattr(rental, "device", Dev())
+    monkeypatch.setattr(rental, "_ensure_plan_fit", lambda: None)
+    monkeypatch.setattr(rental, "progress", lambda why: None)
+    monkeypatch.setattr(rental, "_sleep", lambda s: None)
+    monkeypatch.setattr(rental, "_to_top", lambda: Dev().swipe(0, 0, 0, 1))
+    monkeypatch.setattr(rental, "_rows", lambda: {"rows": state["pass"][state["screen"]], "controls": {"decide": [497, 1157]},
+                                                    "pager": {"page": 1, "pages": 1}})  # fmt: skip
+    assert rental._pick_once("Da", set(), score) == best["support_card_id"]

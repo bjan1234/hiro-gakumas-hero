@@ -57,6 +57,20 @@ def _goto_page(page: int, pager: dict):
         _sleep(1.5)
 
 
+def _card_sig(row: dict) -> tuple:
+    """一行租借卡的身份：卡名 + 等级 + 突破数（玩家名是小字 OCR，两遍读得可能差一个字）。"""
+    c = row.get("card") or {}
+    return c.get("name"), c.get("level"), c.get("breaks")
+
+
+def _find_row(rows: list[dict], player, sig: tuple) -> dict | None:
+    """回去找记下的那一行：先按玩家名完全一致；再按卡的身份（卡名 + 等级 + 突破）一致（玩家名 OCR 差一个字时也能找到；
+    别人的同一张同级同突破的卡价值一样，租哪张都行）。11-17 Mac：按玩家名没找到 chamiria（价值 1336），退成了 1228。"""
+    cand = [r for r in rows if r.get("card") and not r.get("covered")]
+    return (next((r for r in cand if player and r.get("player") == player), None)
+            or next((r for r in cand if sig[0] and _card_sig(r) == sig), None))  # fmt: skip
+
+
 def _tap_and_decide(row: dict, ctrl: dict) -> bool:
     c = row["card"]
     logger.info("租借：选 %s（%s Lv%s 突破%s，玩家 %s）", c.get("name"), c.get("attr"), c.get("level"), c.get("breaks"), row.get("player"))
@@ -160,7 +174,7 @@ def _pick_once(attr: str, exclude: set, scorer=None, refreshes: int = RENTAL_REF
                     c = row["card"]
                     key = (value, c.get("level") or 0, c.get("breaks") or 0)
                     if best is None or key > best[:3]:
-                        best = (*key, page, screen, row.get("player"))
+                        best = (*key, page, screen, row.get("player"), _card_sig(row))
                         logger.info("租借：目前最好 %s（%s Lv%s，编成价值 %.0f，玩家 %s）", c.get("name"), c.get("attr"), c.get("level"), value, row.get("player"))
             else:
                 row = best_row(rows, attr, exclude)
@@ -171,7 +185,7 @@ def _pick_once(attr: str, exclude: set, scorer=None, refreshes: int = RENTAL_REF
                         return c.get("name")
                     key = (0.0, c.get("level") or 0, c.get("breaks") or 0)
                     if best is None or key > best[:3]:
-                        best = (*key, page, screen, row.get("player"))
+                        best = (*key, page, screen, row.get("player"), _card_sig(row))
             device.swipe(*SWIPE)
             _sleep(1.2)
     if best is None:
@@ -193,18 +207,20 @@ def _pick_once(attr: str, exclude: set, scorer=None, refreshes: int = RENTAL_REF
         logger.warning("租借：两页都没读到%s，取消", f" {attr} 卡" if scorer is None else "能补成 4-2 的卡")
         device.click(*(ctrl.get("cancel") or (220, 1157)))
         return None
-    _, _, _, page, screen, player = best
+    _, _, _, page, screen, player, sig = best
     _goto_page(page, pager)
     _to_top()
     # 回到那一行：滑动有惯性，滑同样次数不一定回到同一屏（11-16 Mac 实机：没找到就取消、不开局）。
     # 从顶往下逐屏找这位玩家，最多比记下的屏数多滑 RETURN_EXTRA_SCREENS 次
     row, lst, last_players, still = None, None, None, 0
     seen_best = None  # 往回找途中看到的价值最高的一行（找不到原玩家时的退路；回去的路上屏幕和扫描时可能不一样）
+    seen_players: list = []
     for _ in range(screen + 1 + RETURN_EXTRA_SCREENS):
         lst = _rows()
-        row = next((r for r in lst["rows"] if r.get("player") == player and r.get("card")), None)
+        row = _find_row(lst["rows"], player, sig)
         if row is not None:
             break
+        seen_players += [r.get("player") for r in lst["rows"]]
         if scorer is not None and (hit := scored_best(lst["rows"], scorer, exclude)) is not None and (seen_best is None or hit[1] > seen_best[1]):
             seen_best = (lst, hit[1], hit[0])
         players = [r.get("player") for r in lst["rows"]]
@@ -216,8 +232,8 @@ def _pick_once(attr: str, exclude: set, scorer=None, refreshes: int = RENTAL_REF
         _sleep(1.2)
     if row is None and seen_best is not None:
         # 退回往回找时看到的最好一行：需要回到那一屏
-        logger.warning("租借：回到最佳行时没找到（玩家 %s），改租往回找时看到的最好一张（价值 %.0f，最好的是 %.0f）",
-                       player, seen_best[1], best[0])
+        logger.warning("租借：回到最佳行时没找到（玩家 %s，卡 %s），改租往回找时看到的最好一张（价值 %.0f，最好的是 %.0f）；往回找时读到的玩家 %s",
+                       player, sig, seen_best[1], best[0], seen_players)  # fmt: skip
         target = seen_best[2].get("player")
         _to_top()
         for _ in range(screen + 1 + RETURN_EXTRA_SCREENS):

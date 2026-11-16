@@ -239,38 +239,32 @@ def _similar(a: str, b: str) -> float:
 
 def pick_memory(picker, target: dict, *, decide=PICKER_DECIDE) -> None:
     """在已打开的回忆选择页里按库存位置找到 target（cell = [行, 列]、key = entry_key），核对后「決定」。
-    从目标行上面 SEARCH_ROWS 行开始往下读同一列，读到目标行下面 SEARCH_ROWS 行为止：
+    从顶往下按精确行号走（滑动不按像素估算，扫描库存时也是这样数的），只读目标行上下 SEARCH_ROWS 行里同一列的格子：
     内容键完全一样、或卡 / 强化 / 时机一致且能力文字相似（≥ ABILITY_SIMILAR）就选；一个都没有时，再走一遍选第一份卡 / 强化 / 时机一致的。"""
-    from hiro.produce.memory_picker import ROW_PITCH, page_rows, to_top
+    from hiro.produce.memory_picker import iter_rows
 
     row, col = target["cell"]
     want_core, want_ab = _core(target["key"]), _abilities_text(target["key"])
     tried = 0
 
     def walk(accept) -> bool:
+        """从顶往下按精确行号走（memory_picker.iter_rows），只读目标行上下 SEARCH_ROWS 行里同一列的格子。"""
         nonlocal tried
-        img = to_top(picker)
-        lead = max(0, row - SEARCH_ROWS)
-        if lead > 0:
-            img = picker.scroll(px=int(lead * ROW_PITCH))
-        covered = 0
-        while covered < SEARCH_ROWS * 2 + 1:
-            rows = page_rows(img)
-            if not rows:
+        for g, r in iter_rows(picker):
+            if g < row - SEARCH_ROWS:
+                continue
+            if g > row + SEARCH_ROWS:
                 return False
-            for r in rows:
-                cell = next((c for c in r if c["col"] == col), None)
-                if cell is None:
-                    continue
-                picker.select(cell)
-                got = memory_key(picker.read_selected())
-                tried += 1
-                if accept(got):
-                    picker.click(*decide)
-                    picker.sleep(1.5)
-                    return True
-            covered += max(1, len(rows) - 1)
-            img = picker.scroll(px=int(max(1, len(rows) - 1) * ROW_PITCH))  # 留一行重叠，不漏行
+            cell = next((c for c in r if c["col"] == col), None)
+            if cell is None:
+                continue
+            picker.select(cell)
+            got = memory_key(picker.read_selected())
+            tried += 1
+            if accept(got):
+                picker.click(*decide)
+                picker.sleep(1.5)
+                return True
         return False
 
     def strong(key: str) -> bool:

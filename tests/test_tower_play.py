@@ -2,6 +2,7 @@
 打完一层停；结果页按 TowerRun 重试；再挑戦确认有消耗字样就停。"""
 
 import json
+from pathlib import Path
 from types import SimpleNamespace as NS
 
 import pytest
@@ -191,3 +192,32 @@ def test_layers_and_ranking_act_once_until_page_changes(tmp_path):
     assert p.run.rankings[15] == [{"my_rank": 1, "rows": rows}]  # 只记一次
     h["TOWER_LAYER_INFO"](rt, None, NS(fields={"conditions": [], "close": None}))  # 换页
     assert h["TOWER_LAYERS"](rt, None, layers) is DONE  # 回来照常处理
+
+
+def test_navigates_home_to_contest_to_road(tmp_path):
+    """首页起跑（g5 11-17：停在首页 4 分钟没动）：首页点「コンテスト」→ コンテスト页点「アイドルへの道」→ 路线列表照常。"""
+    from hiro.vision.ocr import Box, Text
+
+    p = _play(tmp_path)
+    h = p.handlers()
+    now = [0.0]
+    taps = []
+    rt = NS(device=NS(tap=lambda x, y: taps.append((x, y))), sleep=lambda s: None, clock=lambda: now[0])
+    home = NS(texts=[Text("コンテスト", Box(456, 1162, 536, 1192)), Text("ホーム", Box(330, 1180, 390, 1208))])
+    assert h["home"](rt, home, NS(fields=None)) is DONE and taps == [(496, 1177)]
+    now[0] = 1.0
+    assert h["home"](rt, home, NS(fields=None)) is tp.STAY  # 刚点过，页面还没换
+    assert h["TOWER_CONTEST"](rt, NS(texts=[]), NS(fields=None)) is DONE and taps[-1] == tp.ROAD_BUTTON
+
+
+def test_tower_classify_recognizes_contest_and_home():
+    import os
+
+    import cv2
+
+    base = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "tower" / "pages"
+    want = {"00_contest.png": "TOWER_CONTEST", "home-g5.jpg": "home", "02_after_story.png": "TOWER_LIST"}
+    for name, page in want.items():
+        if not (base / name).exists():
+            pytest.skip(f"需要实机帧 tower/pages/{name}")
+        assert tp.tower_classify(cv2.resize(cv2.imread(str(base / name)), (720, 1280))).name == page, name

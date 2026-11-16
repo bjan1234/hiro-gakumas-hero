@@ -396,3 +396,41 @@ def test_select_checked_never_taps_same_cell_twice():
     with pytest.raises(mp.PickerClosed):
         p.select_checked({"center": [140, 700]})
     assert taps == [(360, 700)]  # 不在选择页就不点
+
+
+def test_scroll_splits_big_distance_inside_list_area():
+    """11-17 开局第 3 步：一次滑约 16 行，终点 y 成负数，kotonebot swipe 报 argument out of range。拆成每次 ≤ 3 行、起止点都在列表区。"""
+    swipes = []
+    p = mp.Picker(lambda: None, lambda x, y: None, lambda x1, y1, x2, y2: swipes.append((y1, y2)), ocr=lambda im: [], sleep=lambda s: None)
+    p.scroll(px=int(16 * mp.ROW_PITCH))
+    assert sum(a - b for a, b in swipes) == int(16 * mp.ROW_PITCH) and len(swipes) >= 6
+    assert all(abs(a - b) <= mp.SCROLL_STEP_MAX and mp.GRID_Y[0] <= min(a, b) and max(a, b) <= mp.GRID_Y[1] for a, b in swipes)
+    swipes.clear()
+    p.scroll(px=-int(5 * mp.ROW_PITCH))
+    assert sum(b - a for a, b in swipes) == int(5 * mp.ROW_PITCH) and all(mp.GRID_Y[0] <= min(a, b) and max(a, b) <= mp.GRID_Y[1] for a, b in swipes)
+
+
+def test_cancel_finds_button_by_ocr():
+    """开局第 3 步的选择页多了 所持メモリー / レンタル 页签，キャンセル 在 (220,1160) 附近：按 OCR 找，不点死坐标。"""
+    taps, state = [], {"open": True}
+    boxes = lambda im: ([("キャンセル", 1.0, (180, 1145, 260, 1175)), ("決定", 1.0, (440, 1145, 510, 1175)), ("編成詳細", 1.0, (80, 1040, 200, 1060))]  # noqa: E731
+                        if state["open"] else [])  # fmt: skip
+
+    def click(x, y):
+        taps.append((x, y))
+        state["open"] = False
+
+    p = mp.Picker(lambda: None, click, lambda *a: None, ocr=boxes, sleep=lambda s: None)
+    assert p.cancel() is True and taps == [(220, 1160)]
+
+
+@pytest.mark.fixtures
+@pytest.mark.parametrize("kw", [{}, {"slop": 0.97, "copies": 3}])
+def test_iter_rows_counts_rows_exactly(kw):
+    """按页与页重叠精确数行号（不按滑过的像素估算）：每一行产出的行号就是列表里的真实行号。"""
+    lst = ScrollList(**kw)
+    picker = ListPicker(lst)
+    seen = []
+    for g, r in mp.iter_rows(picker):
+        seen.append((g, lst.row_at(r[0]["center"][1])))
+    assert [g for g, _ in seen] == list(range(len(lst.rows))) and all(g == real for g, real in seen)
