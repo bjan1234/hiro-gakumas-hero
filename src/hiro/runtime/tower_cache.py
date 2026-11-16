@@ -204,3 +204,57 @@ def exam_steps(steps_jsonl: Path, label: str, after_seq: int = 0) -> list[dict]:
         out.append({"remaining_turns": f.get("remaining_turns"), "hand": f.get("hand"), "played": played,
                     "unrecognized": len(f.get("unrecognized_cards") or [])})  # fmt: skip
     return out
+
+
+# ---------------------------------------------------------------- 每层挑战次数（跨进程）
+DAY_RESET_HOUR = 4  # 游戏每天凌晨 4 点换日（日付変更）
+
+
+def game_day(now=None) -> str:
+    """游戏日：凌晨 4 点前算前一天。"""
+    from datetime import datetime, timedelta
+
+    return ((now or datetime.now()) - timedelta(hours=DAY_RESET_HOUR)).strftime("%Y-%m-%d")
+
+
+def progress_path(tower_id: str) -> Path:
+    return cache_dir() / f"{tower_id}-progress.json"
+
+
+def save_progress(run) -> Path | None:
+    """TowerRun 的 tries / best / cleared / gave_up_three 落盘，标上游戏日（协调 11-17：只记在进程里，重启就从 0 算，手毬 16 层实际打了 3 次、
+    日志每次都写 1）。"""
+    if not getattr(run, "tower_id", None):
+        return None
+    p = progress_path(run.tower_id)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    rec = {"game_day": game_day(), "tries": {str(k): v for k, v in run.tries.items()}, "best": {str(k): v for k, v in run.best.items()},
+           "cleared": sorted(run.cleared), "gave_up_three": list(run.gave_up_three)}  # fmt: skip
+    p.write_text(json.dumps(rec, ensure_ascii=False), encoding="utf-8")
+    return p
+
+
+def load_progress(run) -> bool:
+    """同一游戏日的记录读回 TowerRun（别的日子的不读：每天的次数重新算）。返回读到没有。"""
+    p = progress_path(run.tower_id) if getattr(run, "tower_id", None) else None
+    if p is None or not p.exists():
+        return False
+    try:
+        rec = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        logger.warning("偶像之路次数记录 %s 读不了：%s", p, e)
+        return False
+    if rec.get("game_day") != game_day():
+        return False
+    run.tries.update({int(k): int(v) for k, v in (rec.get("tries") or {}).items()})
+    run.best.update({int(k): int(v) for k, v in (rec.get("best") or {}).items()})
+    run.cleared.update(int(x) for x in rec.get("cleared") or [])
+    run.gave_up_three.extend(int(x) for x in rec.get("gave_up_three") or [] if int(x) not in run.gave_up_three)
+    return True
+
+
+def reset_progress(tower_id: str) -> None:
+    p = progress_path(tower_id)
+    if p.exists():
+        p.unlink()
+

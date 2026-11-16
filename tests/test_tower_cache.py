@@ -156,3 +156,36 @@ def test_rivals_unread_score_gives_empty():
     rows = [{"rank": 1, "name": "A", "score": None}, {"rank": 2, "name": "月村手毬", "score": 5}]
     assert tp.rivals({"my_rank": 2, "rows": rows}, "月村手毬") == []
     assert tp.rivals({"my_rank": None, "rows": rows[:1]}, "x") == []
+
+
+def test_progress_survives_restart_same_game_day(tmp_path, monkeypatch):
+    """跨进程记每层挑战次数（协调 11-17：重启后从 0 算，手毬 16 层实际打了 3 次、日志每次都写 1）：同一游戏日读回来，换日不读。"""
+    from datetime import datetime
+
+    from hiro.runtime.tower import TowerRun
+
+    assert tc.game_day(datetime(2026, 11, 17, 3, 59)) == "2026-11-16" and tc.game_day(datetime(2026, 11, 17, 4, 0)) == "2026-11-17"
+    run = TowerRun("tower_001-ttmr")
+    run.after_result(16, False, 0)
+    run.after_result(16, False, 0)
+    tc.save_progress(run)
+    again = TowerRun("tower_001-ttmr")
+    assert tc.load_progress(again) and again.tries == {16: 2}
+    assert again.after_result(16, False, 0) == "stop"  # 第 3 次：跨进程也算到上限
+    monkeypatch.setattr(tc, "game_day", lambda now=None: "2099-01-01")  # 换日：重新算
+    fresh = TowerRun("tower_001-ttmr")
+    assert not tc.load_progress(fresh) and fresh.tries == {}
+
+
+def test_tower_play_loads_and_saves_progress(tmp_path):
+    from hiro.runtime.tower import TowerRun
+
+    run = TowerRun("tower_001-ttmr")
+    run.after_result(16, True, 1)
+    tc.save_progress(run)
+    p = tp.TowerPlay(NS(), TowerRun("tower_001-ttmr"), idol_name="月村手毬", layers=1, loadout_path=tmp_path / "lo.json")
+    assert p.run.tries == {16: 1} and 16 in p.run.cleared  # 启动时读回
+    rt = NS(device=NS(tap=lambda x, y: None), sleep=lambda s: None)
+    p.layer = 16
+    p.on_result(rt, None, NS(fields={"cleared": True, "layer": 16, "stars": 2, "retry": [129, 1160], "back": [350, 1160]}))
+    assert json.loads(tc.progress_path("tower_001-ttmr").read_text(encoding="utf-8"))["tries"] == {"16": 2}  # 每次结果后落盘
