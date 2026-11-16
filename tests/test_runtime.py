@@ -189,10 +189,59 @@ def test_stop_notice_and_date_change():
         interrupts.check(rt.screen.shot(), rt)
 
 
+COMM = {"kind": "comm_error", "title": "通信エラー", "danger": False, "y": 470}
+
+
+def _comm_frame():
+    return frame([T("通信エラー", 360, 470), T("通信中にエラーが発生しました", 360, 600), T("タイトルへ", 200, 1160), T("リトライ", 500, 1160)], COMM)
+
+
 def test_comm_error_only_retry():
-    rt, _ = runtime([frame([T("通信エラー", 360, 500), T("タイトルへ", 200, 1160), T("リトライ", 500, 1160)], PLAIN)])
+    rt, _ = runtime([_comm_frame()])
     assert interrupts.check(rt.screen.shot(), rt) == "通信エラー：retry"
     assert rt.raw_device.taps == [(500, 1160)]
+
+
+def test_comm_error_needs_comm_dialog_on_top_and_still_there():
+    """11-17：リトライ 位置在首页上靠近「プロデュース中」。最上层弹窗标题不是通信エラー不点；重截时弹窗不在了也不点。"""
+    other = frame([T("通信エラー", 360, 470), T("リトライ", 500, 1160)], PLAIN)  # 最上层是别的弹窗
+    rt, _ = runtime([other])
+    assert interrupts.comm(rt.screen.shot(), rt) is None and rt.raw_device.taps == []
+    rt, _ = runtime([_comm_frame(), frame()])  # 重截那一帧弹窗没了
+    assert "不点" in interrupts.comm(rt.screen.shot(), rt) and rt.raw_device.taps == []
+
+
+def test_comm_error_retry_cap_stops_and_saves_frame():
+    """通信エラー 一直在（11-17：10 分钟点了 162 次リトライ）：连着 COMM_RETRY_MAX 次之后停机报警、存帧；中间隔得久才重新计数。"""
+    from types import SimpleNamespace as NS
+
+    saved = []
+    rt, clock = runtime([_comm_frame()])
+    rt.session = NS(trace=NS(next_seq=lambda: 9, save_frame=lambda seq, img: saved.append(seq) or "frames/00009.jpg"), note=lambda s: None)
+    for _ in range(interrupts.COMM_RETRY_MAX):
+        assert interrupts.comm(rt.screen.shot(), rt) == "通信エラー：retry"
+    with pytest.raises(ResumeBlocked, match="通信エラー.*停机.*00009"):
+        interrupts.comm(rt.screen.shot(), rt)
+    assert len(rt.raw_device.taps) == interrupts.COMM_RETRY_MAX and saved
+    rt, clock = runtime([_comm_frame()])
+    for _ in range(interrupts.COMM_RETRY_MAX):
+        interrupts.comm(rt.screen.shot(), rt)
+    clock.now += interrupts.COMM_RESET_S + 1  # 隔了一阵没见到：重新计数
+    assert interrupts.comm(rt.screen.shot(), rt) == "通信エラー：retry"
+
+
+def test_interrupt_first_tick_saves_frame():
+    """每次中断第一拍存一帧进 trace（同一句 60 秒内不重复存）。"""
+    from types import SimpleNamespace as NS
+
+    saved, notes = [], []
+    seq = ["教程框：点「閉じる」", None, "教程框：点「閉じる」"]
+    rt, clock = runtime([frame()], interrupts=(lambda f, rt: seq.pop(0),))
+    rt.session = NS(trace=NS(next_seq=lambda: 3, save_frame=lambda s, img: saved.append(s) or "frames/00003.jpg"), note=notes.append)
+    for _ in range(3):
+        rt.tick()
+        clock.now += 1
+    assert saved == [3] and "frames/00003.jpg" in notes[0]  # 第二次 60 秒内：不重复存
 
 
 def test_pitem_customize_confirm_taps_decide():
