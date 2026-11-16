@@ -716,3 +716,38 @@ def test_tower_gnrpa_warm_start_default_on(monkeypatch):
     monkeypatch.setitem(sys.modules, "gakumas_exam_rs", types.SimpleNamespace(search=None, plan_many=None))
     assert ta.TowerGnrpa().warm == ta.WARM == 2.0
     assert ta.TowerGnrpa(warm=0).warm == 0.0
+
+
+def test_exam_fields_hajime_nia_like_bench():
+    """初 / N.I.A 的写法照 bench 给 UINet 的（11-17 对 87 题逐题核过）。"""
+    nia = exam_fields("nia-mid2", idol="i", plan=3, crit=[396, 483, 586], produce="produce-005")
+    assert nia == {"produce": "produce-005", "step": "AUDITION_MID2", "plan": 3, "idol": "i", "crit": [396, 483, 586]}
+    assert exam_fields("hajime-final", idol="i", plan=4)["produce"] == "produce-001"  # 缺省初 REGULAR
+    assert exam_fields("hajime-mid1", idol="i", plan=4)["crit"] == [0, 0, 0]  # 审查基准不知道：全 0，不填 H.I.F 的 [1,1,1]
+    lesson = exam_fields("hajime-lesson-32", idol="i", plan=4, produce="produce-006")
+    assert lesson["step"] == 32 and lesson["lesson"] and lesson["crit"] == [0, 0, 0]
+
+
+def test_from_screen_lesson_has_no_types_or_permil():
+    st, mem = _state([_card(0, "p_card-a", 1)], remaining=6, turn=2)
+    t = ScreenTracker([("p_card-a", 1)])
+    t.observe(st, mem)
+    obs, _ = from_screen(st, mem, st.legal_actions(), t, exam_fields("hajime-lesson-7", idol=None, plan=4))
+    assert obs["exam"]["types"] == [] and obs["exam"]["permil"] == [0, 0, 0] and obs["exam"]["step"] == 7
+
+
+@pytest.mark.bench_on
+def test_advisor_uses_exam_loadout_for_nia(monkeypatch, tmp_path):
+    xc = {"turns": 12, "crit": [396, 483, 586], "permil_fixed": {"Vo": 1, "Da": 2, "Vi": 3}, "max_stamina": 32, "idol": "i_card-x",
+          "produce": "produce-005", "deck": [("p_card-a", 1)]}  # fmt: skip
+    monkeypatch.setattr("hiro.bench_bridge.screen.exam_context", lambda lo: xc)
+    p = tmp_path / "lo.json"
+    p.write_text('{"loadout": {"produce_id": "produce-005"}}')
+    monkeypatch.setenv("HIRO_EXAM_LOADOUT", str(p))
+    algo = _Algo(("play", 0))
+    monkeypatch.setattr(A, "load_algo", lambda *a, **k: algo)
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    adv.on_round_start(1, {"exam": "nia-mid2", "idol": None, "deck": []})
+    assert adv.exam["produce"] == "produce-005" and adv.exam["step"] == "AUDITION_MID2" and adv.exam["crit"] == [396, 483, 586]
+    assert adv.exam["turns"] == 12 and adv.exam["max_stamina"] == 32 and adv.deck == [("p_card-a", 1)]
+    assert adv.exam["permil_default"] == {}  # 不拿 H.I.F 的参考倍率

@@ -238,7 +238,10 @@ class ProduceDeciders:
     # ---------------------------------------------------------------- 选行动
     def action_select(self, state: GameState) -> Decision:
         from hiro.state.context import preview_action_select
+        from hiro.state.modes import HAJIME, NIA, family
 
+        if family((state.produce or {}).get("mode")) in (HAJIME, NIA):
+            return self._action_select_hajime_nia(state)
         ps = self.produce_state(state)
         available = state.page_fields.get("options") or None
         if available is not None and self.unavailable_options:
@@ -264,6 +267,45 @@ class ProduceDeciders:
             d = self._action_select_decide(ps, state, available, unknown, rows)
             return replace(d, source="fallback" if d.source in ("rule", "llm") else d.source, warnings=[*d.warnings, stale])
         return self._action_select_decide(ps, state, available, unknown, rows)
+
+    def _action_select_hajime_nia(self, state: GameState) -> Decision:
+        """初 / N.I.A：按社区规则的策略表选（hiro.brain.hajime_nia，设计稿第四节），不走 H.I.F 的日程预演和もりし模板。"""
+        from hiro.brain.hajime_nia import choose_action
+
+        prod = dict(state.produce or {})
+        opts = [o for o in (state.page_fields.get("options") or []) if o.get("option") not in self.unavailable_options]
+        cands = [Candidate(Action.produce_next(o["option"], attr=o.get("attr"), sp=o.get("sp"))) for o in opts]
+        if not opts:
+            return Decision(Action.ui(ActionKind.WAIT, why="没有可用行动"), "没有可选的行动", "fallback", 0.1, cands, decider="action_select")
+        missing = [k for k in ("step", "stamina", "max_stamina") if prod.get(k) is None]
+        st = self._hajime_nia_status(state)
+        i, reason, rules = choose_action(st, opts)
+        o = opts[i]
+        warn = [f"状态缺 {missing}，按默认值选"] if missing else []
+        return Decision(Action.produce_next(o["option"], attr=o.get("attr"), sp=o.get("sp")), reason, "fallback" if missing else "rule",
+                        0.5 if missing else 0.8, cands, warnings=warn, decider="action_select")  # fmt: skip
+
+    def _hajime_nia_status(self, state: GameState):
+        from hiro.brain.hajime_nia import Status
+
+        prod = dict(state.produce or {})
+        return Status(mode=prod["mode"], step=int(prod.get("step") or 0), stamina=int(prod.get("stamina") or 0),
+                      max_stamina=int(prod.get("max_stamina") or prod.get("stamina") or 1), produce_point=int(prod.get("produce_point") or 0),
+                      params=dict(prod.get("params") or {}), rest_left=prod.get("rest_left"), main_attr=prod.get("main_attr") or self.main_attr)  # fmt: skip
+
+    def _hajime_nia_choice(self, state: GameState, decider: str) -> Decision | None:
+        """初 / N.I.A 的外出 / 授業（hiro.brain.hajime_nia）；别的模式返回 None，照 H.I.F 原逻辑。没有结构化 choices 时选中间那项兜底。"""
+        from hiro.brain.hajime_nia import choose_outing, choose_study
+        from hiro.state.modes import HAJIME, NIA, family
+
+        if family((state.produce or {}).get("mode")) not in (HAJIME, NIA):
+            return None
+        choices = [c for c in state.page_fields.get("choices") or [] if "index" in c]
+        if not choices:
+            return Decision(Action.event_select(1), f"{decider}：识别没给选项，选中间那项", "fallback", 0.3, warnings=["没有 page_fields.choices"],
+                            decider=decider)  # fmt: skip
+        i, reason, _ = (choose_outing if decider == "outing" else choose_study)(self._hajime_nia_status(state), choices)
+        return Decision(Action.event_select(i), reason, "rule", 0.7, decider=decider)
 
     def _stale_step_fallback(self, available: list[dict] | None, produce: dict | None, why: str) -> Decision:
         """日程对不上时的兜底：不按（可能读错的）step 套日程模板，只按页面上的选项选。"""
@@ -1813,6 +1855,8 @@ class ProduceDeciders:
 
         page_fields.choices 两种格式都接（见 _event_roles）；choices 缺失时按实机核实的固定位置（knowledge.STUDY_LAYOUT：A / B / 眠気）。
         非眠気的两项按顺序是 A、B；选项文字或选中项的效果说明（page_fields.effect）里出现效果名时以效果名为准。"""
+        if (d := self._hajime_nia_choice(state, "study")) is not None:
+            return d
         choices = state.page_fields.get("choices") or []
         ps = self.produce_state(state)
         effect, slot = self._study_effect()
@@ -1995,6 +2039,8 @@ class ProduceDeciders:
         """外出三档：第 5 天选眠気档（社区常规：多一张强化卡 + ワッペン星星）；P 点充裕时付 50P；否则「なし」。
 
         page_fields.choices 两种格式都接（见 _event_roles）；choices 缺失时按实机核实的固定位置（knowledge.OUTING_LAYOUT：付 50P / 眠気 / なし）。"""
+        if (d := self._hajime_nia_choice(state, "outing")) is not None:
+            return d
         choices = state.page_fields.get("choices") or []
         ps = self.produce_state(state)
         warn = [] if choices else ["识别未提供 choices，按实机核实的位置选择"]

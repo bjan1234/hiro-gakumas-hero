@@ -1,0 +1,446 @@
+{
+ "captured_at": "2026-11-17",
+ "purpose": "初 / N.I.A 培育决策的社区规则（设计稿 初与NIA-决策-设计.md）。每条只存出处和一两句原文摘录；整页原文不入库（game8 页尾禁止转载），存在私有 .temp/plans-20261112/hajime-nia-sources/。",
+ "sources": {
+  "g8-NIA": {
+   "url": "https://game8.jp/gakuen-idolmaster/661665",
+   "title": "game8「NIAシナリオ攻略」（N.I.A プロ）"
+  },
+  "g8-NIAM": {
+   "url": "https://game8.jp/gakuen-idolmaster/688368",
+   "title": "game8「NIAマスター攻略と育成のコツ」"
+  },
+  "g8-PRO": {
+   "url": "https://game8.jp/gakuen-idolmaster/610357",
+   "title": "game8「難易度プロの攻略とレギュラーとの違い」"
+  },
+  "g8-外出": {
+   "url": "https://game8.jp/gakuen-idolmaster/609743",
+   "title": "game8「お出かけの効果とタイミング」"
+  },
+  "g8-休": {
+   "url": "https://game8.jp/gakuen-idolmaster/609583",
+   "title": "game8「お休みを使うタイミングと効果」"
+  },
+  "g8-授業": {
+   "url": "https://game8.jp/gakuen-idolmaster/614057",
+   "title": "game8「授業の効果とメリット」"
+  },
+  "g8-試験": {
+   "url": "https://game8.jp/gakuen-idolmaster/609810",
+   "title": "game8「最終試験のコツ」"
+  },
+  "ww-NIA": {
+   "url": "https://wikiwiki.jp/gakumas/N.I.A%E7%AB%8B%E3%81%A1%E5%9B%9E%E3%82%8A",
+   "title": "wikiwiki「N.I.A立ち回り」（2025-05-15 版，コンテスト厳選向け）"
+  },
+  "ww-NIAM": {
+   "url": "https://wikiwiki.jp/gakumas/N.I.A%E3%83%9E%E3%82%B9%E3%82%BF%E3%83%BC/%E5%9F%BA%E6%9C%AC",
+   "title": "wikiwiki「N.I.Aマスター/基本」（2026-01-18 版）"
+  },
+  "ww-初M": {
+   "url": "https://wikiwiki.jp/gakumas/%E5%88%9D_%E3%83%9E%E3%82%B9%E3%82%BF%E3%83%BC%E8%82%B2%E6%88%90",
+   "title": "wikiwiki「初_マスター育成」（2025-01-26 版）"
+  }
+ },
+ "rules": [
+  {
+   "id": "hajime.lesson_first",
+   "families": [
+    "hajime"
+   ],
+   "difficulties": null,
+   "rule": "课程、授業优先，体力管理以能一直上课程 / 授業为准",
+   "source": "g8-PRO",
+   "quote": "また、レッスンや授業を常に踏めるように体力管理を徹底しましょう。"
+  },
+  {
+   "id": "hajime.outing_when",
+   "families": [
+    "hajime"
+   ],
+   "difficulties": null,
+   "rule": "体力少了一半（或 15 以上）时去外出",
+   "source": "g8-外出",
+   "quote": "お出かけは体力を半分〜15以上消費したときに使いましょう。"
+  },
+  {
+   "id": "hajime.outing_vs_rest",
+   "families": [
+    "hajime"
+   ],
+   "difficulties": null,
+   "rule": "外出和休息二选一时，P 点 100 以上选外出（附带的东西多）",
+   "source": "g8-外出",
+   "quote": "お出かけとお休みのどちらを選ぶべきかは、100以上あれば副産物が多いお出かけを選ぶのがおすすめです。"
+  },
+  {
+   "id": "hajime.outing_timing",
+   "families": [
+    "hajime"
+   ],
+   "difficulties": null,
+   "rule": "外出的推荐时机：没有课程的周，例如中間刚考完",
+   "source": "g8-外出",
+   "quote": "おすすめのタイミングは、練習が無く、中間試験明けの7週目などがおすすめです。"
+  },
+  {
+   "id": "hajime.rest_when",
+   "families": [
+    "hajime"
+   ],
+   "difficulties": null,
+   "rule": "休息只在没有课程、授業可选时用",
+   "source": "g8-休",
+   "quote": "レッスンや授業を優先し、どちらも無いターンに休むを選択する"
+  },
+  {
+   "id": "hajime.outing_spend",
+   "families": [
+    "hajime"
+   ],
+   "difficulties": null,
+   "rule": "外出多花 P 点，回复更多，还能多拿饮料或技能卡",
+   "source": "g8-外出",
+   "quote": "より多く消費することで回復量が上がったり追加でドリンクやスキルも得られます。"
+  },
+  {
+   "id": "hajime.study_avoid_trouble",
+   "families": [
+    "hajime"
+   ],
+   "difficulties": [
+    "pro",
+    "master"
+   ],
+   "rule": "授業的「トラブル追加」会往山札加眠気，换来该授業的最高属性",
+   "source": "g8-授業",
+   "quote": "トラブル追加を選択すると山札に「眠気」というデメリットカードが追加される代わりに、その授業の最大値のステータス上昇を受けることができます。"
+  },
+  {
+   "id": "hajime.rest_full",
+   "families": [
+    "hajime",
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "体力满了不能休息",
+   "source": "g8-休",
+   "quote": "休むは体力が最大の場合は選択できません。"
+  },
+  {
+   "id": "hajime.master_rest_week6",
+   "families": [
+    "hajime"
+   ],
+   "difficulties": [
+    "master"
+   ],
+   "rule": "MASTER 第 6 周起才能休息",
+   "source": "ww-初M",
+   "quote": "お休みは初レッスン終了時（6ターン目以降）から使用可能に変更されています。"
+  },
+  {
+   "id": "hajime.master_outing_avoid",
+   "families": [
+    "hajime"
+   ],
+   "difficulties": [
+    "master"
+   ],
+   "rule": "MASTER 的外出随机性太大，基本不选",
+   "source": "ww-初M",
+   "quote": "一方、おでかけはランダム性が高すぎるため基本的におすすめしません。"
+  },
+  {
+   "id": "hajime.oikomi_bonus",
+   "families": [
+    "hajime"
+   ],
+   "difficulties": null,
+   "rule": "追い込みレッスン选考试加成最高的属性",
+   "source": "g8-PRO",
+   "quote": "追い込みレッスンは試験のスコアボーナスの高いレッスンを選びましょう。"
+  },
+  {
+   "id": "hajime.consult_price",
+   "families": [
+    "hajime"
+   ],
+   "difficulties": [
+    "pro"
+   ],
+   "rule": "相談删卡 100P、第二次 125P",
+   "source": "g8-PRO",
+   "quote": "相談で100Pポイント(2回目125ポイント)で不要なスキルを削除することで強いカードが手札に来やすくなるので安定して強い立ち回りができます。"
+  },
+  {
+   "id": "hajime.final_first_bonus",
+   "families": [
+    "hajime"
+   ],
+   "difficulties": [
+    "master"
+   ],
+   "rule": "最終試験拿第 1，每项属性 +30",
+   "source": "ww-初M",
+   "quote": "(最終試験1位で各パラメータ+30 計+90されるため下記の表は最終パラメータから-90された値を記す）"
+  },
+  {
+   "id": "hajime.exam_retry",
+   "families": [
+    "hajime"
+   ],
+   "difficulties": null,
+   "rule": "考试一局最多再挑戦 3 次",
+   "source": "g8-試験",
+   "quote": "試験は1回のプロデュース中に3回まで再挑戦可能です。"
+  },
+  {
+   "id": "nia.lesson_sp",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "自主レッスン总是上 SP",
+   "source": "g8-NIA",
+   "quote": "レッスンは常にSPレッスンを踏みましょう。"
+  },
+  {
+   "id": "nia.lesson_stamina",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "体力不够消耗时不能上课（SP 耗 8），要留体力",
+   "source": "g8-NIA",
+   "quote": "従来のシナリオとは異なり、体力が消費体力以下だとレッスンが行えません。"
+  },
+  {
+   "id": "nia.sales_cost",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "营业去会耗体力的场所",
+   "source": "g8-NIA",
+   "quote": "営業先は体力消費の発生する場所を選びましょう。"
+  },
+  {
+   "id": "nia.sales_yellow_purple",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "营业以黄（自治体）、紫（商业）为主",
+   "source": "g8-NIAM",
+   "quote": "営業は黄（自治体イベント会場）と紫（商業施設）を中心に選ぶのがおすすめです。"
+  },
+  {
+   "id": "nia.sales_green_low",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "体力不够、会耽误下周上课时去绿（リゾート）",
+   "source": "g8-NIAM",
+   "quote": "体力が不足しており、次ターン以降のレッスンができなくなる場合、営業は緑（リゾート施設）を選びましょう。"
+  },
+  {
+   "id": "nia.sales_green_cheap",
+   "families": [
+    "nia"
+   ],
+   "difficulties": [
+    "master"
+   ],
+   "rule": "MASTER 里绿和其它场所的投票数只差 200–300",
+   "source": "g8-NIAM",
+   "quote": "NIAプロと違い、リゾート施設とそれ以外でファン投票数の差が200〜300しか無いので営業で体力回復する択を取りやすくなっています。"
+  },
+  {
+   "id": "nia.sales_green_contest",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "コンテスト厳選不去绿（投票数少，后面全吃紧）",
+   "source": "ww-NIA",
+   "quote": "営業では【リゾート施設】は選ばない。"
+  },
+  {
+   "id": "nia.sales_choice_fill",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "支援卡集中两项属性，营业里的选项补缺的那一项",
+   "source": "g8-NIA",
+   "quote": "サポートカードの編成は2極化し、営業コマンドで発生する選択肢で不足しているステータスを伸ばしましょう。"
+  },
+  {
+   "id": "nia.outing_middle",
+   "families": [
+    "nia"
+   ],
+   "difficulties": [
+    "pro"
+   ],
+   "rule": "外出没把握时选中间那项",
+   "source": "g8-NIA",
+   "quote": "どれを選んでいいかわからない場合は、とりあえずお出かけを選択し、中央の選択肢を選ぶのが安定です。"
+  },
+  {
+   "id": "nia.outing_order",
+   "families": [
+    "nia"
+   ],
+   "difficulties": [
+    "master"
+   ],
+   "rule": "MASTER 外出选项：下（强化）＞中（删除）＞上（强化）＞中（换卡）",
+   "source": "g8-NIAM",
+   "quote": "下（強化）＞中（削除）＞上（強化）＞中（チェンジ）"
+  },
+  {
+   "id": "nia.outing_default",
+   "families": [
+    "nia"
+   ],
+   "difficulties": [
+    "master"
+   ],
+   "rule": "MASTER 除了课程和营业以外尽量外出",
+   "source": "g8-NIAM",
+   "quote": "NIAマスター育成のコツは、レッスンと営業のターン以外はなるべくお出かけを選ぶことです。"
+  },
+  {
+   "id": "nia.outing_no_delete",
+   "families": [
+    "nia"
+   ],
+   "difficulties": [
+    "master"
+   ],
+   "rule": "MASTER 基本卡交给チャレンジPアイテム和相談删，外出选上或下",
+   "source": "g8-NIAM",
+   "quote": "基本カード削除はチャレンジPアイテムと相談に任せて、お出かけでは上か下を中心に選択しましょう。"
+  },
+  {
+   "id": "nia.delete_order",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "删卡：不带「レッスン中1回」的先删",
+   "source": "g8-NIAM",
+   "quote": "└「レッスン中1回」の無いカードから優先的に削除"
+  },
+  {
+   "id": "nia.rest_limit",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "休息最多 4 次",
+   "source": "g8-NIA",
+   "quote": "休むは4回まで選択可能"
+  },
+  {
+   "id": "nia.consult_budget",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "1 次试镜前删卡 + 定制做满要 210–280P",
+   "source": "ww-NIA",
+   "quote": "相談削除とカスタマイズをフルで行う場合210～280程度のPポイントが必要になる。"
+  },
+  {
+   "id": "nia.guidance_wappen",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "选了ワッペン时，没有要定制的卡也进特別指導",
+   "source": "ww-NIA",
+   "quote": "特別指導に関してはワッペンを選択している場合カスタマイズしたい対象がない場合であっても入ろう。"
+  },
+  {
+   "id": "nia.guidance_two",
+   "families": [
+    "nia"
+   ],
+   "difficulties": [
+    "master"
+   ],
+   "rule": "MASTER 一次特別指導能定制 2 张",
+   "source": "ww-NIAM",
+   "quote": "1マスでのカスタマイズ可能スキル数が2枚になった。"
+  },
+  {
+   "id": "nia.pitem_no_best",
+   "families": [
+    "nia"
+   ],
+   "difficulties": [
+    "master"
+   ],
+   "rule": "1 次试镜后的 3 选 1 P 道具没有最强的，看偏好",
+   "source": "ww-NIAM",
+   "quote": "どれが1強ということもなく、好みとなる。"
+  },
+  {
+   "id": "nia.challenge_bonus",
+   "families": [
+    "nia"
+   ],
+   "difficulties": [
+    "master"
+   ],
+   "rule": "チャレンジPアイテムのオーディションボーナス合计按 35–40% 配",
+   "source": "ww-NIAM",
+   "quote": "オーディションで増えるパラメータ値が上がるため基本的に35～40％になるようにセットしていくこととなる。"
+  },
+  {
+   "id": "nia.final_decay",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "最终试镜分数过衰减线后投票数大幅减少（PRO 约 20 万、MASTER 约 65 万）",
+   "source": "g8-NIAM",
+   "quote": "現在検証中ですが、NIAマスター最終試験のスコアは65万前後で試験後に獲得できるファン投票数が大幅に減衰します。"
+  },
+  {
+   "id": "nia.audition_contest_mid1",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "コンテスト厳選：1 次试镜选最上面的「メロBang!」",
+   "source": "ww-NIA",
+   "quote": "1次オーディションに関しては獲得できるファン数とステータスの関係から「メロBang!」(一番上)一択となる。"
+  },
+  {
+   "id": "nia.audition_contest_mid2",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "コンテスト厳選：2 次试镜强推「GAL★AXYミュージック」",
+   "source": "ww-NIA",
+   "quote": "オーディションに関しては【GAL★AXYミュージック】を強く推奨"
+  },
+  {
+   "id": "nia.audition_contest_final",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "コンテスト厳選：最终试镜选 Quartet 不选 finale",
+   "source": "ww-NIA",
+   "quote": "最終オーディションではfinaleではなくQuartetを選ぶことでSSに到達しやすくなる。"
+  }
+ ]
+}

@@ -381,7 +381,8 @@ def from_screen(state: Any, memory: Any, legal: list, tracker: ScreenTracker, ex
     obs = {
         "v": SCHEMA,
         "exam": {**{k: exam.get(k) for k in ("produce", "step", "plan", "idol")}, "turn": turn, "limit": limit,
-                 "types": tracker.types(turn, limit, exam.get("allocation")), "permil": permil, "crit": list(exam.get("crit") or [0, 0, 0])},
+                 "types": [] if exam.get("lesson") else tracker.types(turn, limit, exam.get("allocation")),
+                 "permil": [0, 0, 0] if exam.get("lesson") else permil, "crit": list(exam.get("crit") or [0, 0, 0])},
         "num": {"score": tracker.num("score", getattr(state, "score", None)), "stamina": tracker.num("stamina", getattr(state, "hp", None)),
                 "max_stamina": tracker.num("max_stamina", max_hp), "block": tracker.num("block", getattr(state, "genki", None)),
                 "playable": max(1, int(getattr(state, "actions_left", None) or 0), tracker.plays_left()), "plays": len(tracker.played)},
@@ -397,15 +398,59 @@ def from_screen(state: Any, memory: Any, legal: list, tracker: ScreenTracker, ex
     return obs, slot_of
 
 
-def exam_fields(label: str | None, *, idol: str | None, plan: int | None, crit=None) -> dict:
-    """hiro 的考试标签（qualify-1/2/3、r1、r2、tower / tower-<层>）→ UIObs exam 的固定部分。
-    偶像之路照 bench 给 UINet 的写法：produce "tower"、step 空、plan 0、crit 全 0（bench 的局面里没有这几项，填了反而和 bench 不可比）。"""
+MODE_STEPS = {"mid1": "AUDITION_MID1", "mid2": "AUDITION_MID2", "final": "AUDITION_FINAL"}
+MODE_PRODUCE = {"hajime": "produce-001", "nia": "produce-004"}  # 缺省难度（初 REGULAR / N.I.A PRO）；编成给了 produce_id 就用编成的
+
+
+def exam_fields(label: str | None, *, idol: str | None, plan: int | None, crit=None, produce: str | None = None) -> dict:
+    """hiro 的考试标签 → UIObs exam 的固定部分。写法都照 bench 给 UINet 的（11-17 扫 bench 逐步记录核过）：
+    - qualify-1/2/3（选拔）、r1 / r2（本战）：produce-007 / 008，plan = 偶像 plan 类型 + 1；
+    - tower / tower-<层>（偶像之路）：produce "tower"、step 空、plan 0、crit 全 0；
+    - hajime-mid1 / hajime-final（初的中期 / 最终考试）、nia-mid1 / nia-mid2 / nia-final（N.I.A 试镜）：step AUDITION_*，
+      crit 是这场的审查基准（编成给了就有，没有全 0）；
+    - hajime-lesson-<step_type>（初的课程）：step 是课程的 step_type 数字、crit 全 0，另带 lesson=True（types 空、倍率全 0）。"""
     base = str(label or "").split("#", 1)[0].lower()
     if base.startswith("tower"):
         return {"produce": "tower", "step": None, "plan": 0, "idol": idol, "crit": [0, 0, 0]}
+    mode = base.split("-", 1)[0]
+    if mode in MODE_PRODUCE:
+        rest = base.split("-", 1)[1] if "-" in base else ""
+        out = {"produce": produce or MODE_PRODUCE[mode], "plan": plan, "idol": idol, "crit": list(crit or [0, 0, 0])}
+        if mode == "hajime" and rest.startswith("lesson"):
+            n = rest.rsplit("-", 1)[-1]
+            return {**out, "step": int(n) if n.isdigit() else None, "crit": [0, 0, 0], "lesson": True}
+        return {**out, "step": MODE_STEPS.get(rest, "AUDITION_FINAL")}
     if base.startswith("qualify"):
         n = int(base.rsplit("-", 1)[-1]) if base[-1:].isdigit() else 1
         produce, step = "produce-007", STEPS[min(max(n, 1), 3) - 1]
     else:
         produce, step = "produce-008", STEPS[1] if base == "r2" else STEPS[0]
     return {"produce": produce, "step": step, "plan": plan, "idol": idol, "crit": list(crit or [1, 1, 1])}
+
+
+def exam_context(loadout: dict) -> dict:
+    """初 / N.I.A 这一场的已知量（编成决定的；bench 题 gkms.hif_loadout.v1，或实机编成拼成的同样写法）：回合数、审查基准、
+    三属性倍率、最大体力、偶像、开局牌组、培育 id。画面读不全时以这些为准（同 tower_context）。"""
+    from hiro.bench_bridge import tower as tw
+    from hiro.search.exam_env import from_hif_loadout
+
+    x = from_hif_loadout(loadout) if loadout.get("deck_cards") is not None else dict(loadout)
+    cfg = tw.master().battle_config((x.get("exam") or {}).get("produce_exam_battle_config_id") or "") or {}
+    pm = x.get("score_bonus_permils")
+    if isinstance(pm, dict):
+        pm = [pm.get(k, pm.get(int(k))) for k in ("1", "2", "3")]
+    deck = []
+    for c in x.get("produce_cards") or ():
+        if isinstance(c, dict):
+            deck.append((c.get("produce_card_id") or c.get("id"), int(c.get("current_upgrade_count", c.get("upgrade_count")) or 0)))
+        else:
+            deck.append(_card_ref(c))
+    return {
+        "turns": int(cfg["turn"]) if cfg.get("turn") else None,
+        "crit": [int(cfg[k]) for k in ("vocal", "dance", "visual")] if cfg else None,
+        "permil_fixed": {a: int(v) for a, v in zip(("Vo", "Da", "Vi"), pm)} if pm and all(pm) else None,
+        "max_stamina": int(x["max_stamina"]) if x.get("max_stamina") else None,
+        "idol": x.get("idol_card_id"),
+        "produce": x.get("produce_id"),
+        "deck": deck,
+    }

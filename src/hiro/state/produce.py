@@ -37,7 +37,7 @@ class LessonOption:
 @dataclass
 class ProduceState:
     idol_card_id: str
-    mode: str  # produce-007 选拔 / produce-008 本战
+    mode: str  # produce id：007 选拔 / 008 本战（H.I.F）；001–003 初；004 / 005 N.I.A（hiro.state.modes）
     step: int  # stepNumber：日程位置（本战 7/8/9 = R1/轮间/R2）
     stamina: int
     max_stamina: int
@@ -60,6 +60,16 @@ class ProduceState:
     lessons: dict = field(default_factory=dict)  # step → [LessonOption]（日程页可见的未来课程）
     supports: list[SupportCard] = field(default_factory=list)  # 本局支援卡编成（KAA 自动编成时由识别读出）
     main_attr: str | None = None  # 显式指定的主属性（运行配置）；None 时按支援卡编成推出，再不行按成长率推测
+    votes: int | None = None  # N.I.A ファン投票数（决定试镜能选哪档）；其它模式 None
+    rest_left: int | None = None  # 还能休息几次（N.I.A 最多 4 次）；None = 不限 / 没读到
+    challenge_items: list[str] = field(default_factory=list)  # MASTER 带进来的チャレンジPアイテム
+
+    @property
+    def family(self) -> str | None:
+        """hif / hajime / nia（hiro.state.modes）；不认识的 produce id 是 None。"""
+        from hiro.state.modes import family
+
+        return family(self.mode)
 
     def to_dict(self) -> dict:
         return asdict(self)

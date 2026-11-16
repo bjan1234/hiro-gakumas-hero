@@ -83,6 +83,12 @@ pub struct Objective {
     pub rivals: Vec<i64>,
     pub lost_ssr_max: Option<i64>,
     pub debuffs_min: Option<i64>,
+    /// 过关名次（初 = 3、N.I.A = 1）：名次在线外一律 0 档。None = 不限（偶像之路按名次给星）
+    pub pass_rank: Option<i64>,
+    /// 分数封顶（初 REGULAR 中間的 forceEndScore、课程的满分线）：目标值里的分数按它截断，终局原始分照实
+    pub score_cap: Option<i64>,
+    /// 课程的合格线（没有对手时）：到线 1 档、没到 0 档
+    pub clear_score: Option<i64>,
 }
 
 pub const STAR_WEIGHT: i64 = 10_000_000_000;
@@ -107,11 +113,24 @@ impl Objective {
         }
         true
     }
+    fn capped(&self, ex: &Exam) -> i64 {
+        match self.score_cap {
+            Some(c) if c > 0 => ex.score.min(c),
+            _ => ex.score,
+        }
+    }
     pub fn stars(&self, ex: &Exam) -> i64 {
         if self.rivals.is_empty() {
+            return match self.clear_score {
+                Some(c) => (ex.score >= c) as i64,
+                None => 0,
+            };
+        }
+        let place = self.place(ex);
+        if matches!(self.pass_rank, Some(r) if place > r) {
             return 0;
         }
-        match self.place(ex) {
+        match place {
             1 => if self.conditions_ok(ex) { 3 } else { 2 },
             2 => 2,
             3 => 1,
@@ -119,7 +138,7 @@ impl Objective {
         }
     }
     pub fn value(&self, ex: &Exam) -> i64 {
-        if self.rivals.is_empty() { ex.score } else { self.stars(ex) * STAR_WEIGHT + ex.score }
+        if self.rivals.is_empty() && self.clear_score.is_none() { self.capped(ex) } else { self.stars(ex) * STAR_WEIGHT + self.capped(ex) }
     }
 }
 
