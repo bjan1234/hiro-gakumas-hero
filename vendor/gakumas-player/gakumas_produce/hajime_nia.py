@@ -213,7 +213,10 @@ def rules(produce_id, idol_card_id, catalog=None) -> Rules:
 
 
 def hajime_evaluation(params, final_score, rank, cap):
-    """初的最终评价：floor(属性和 × 2.3) + 名次分 + 最终考试分的分段折算。第 1 名每项属性先 +30（再按上限截）。"""
+    """初的最终评价：floor(属性和 × 2.3) + 名次分 + 最终考试分的分段折算。第 1 名每项属性先 +30（再按上限截）。
+
+    params 传最終考试**之前**的属性：结算画面 / 培育履历上显示的属性已经含了这 +30，用那组数要先每项减 30。
+    实机核对：2026-11-17 初 REGULAR 篠澤広，履历 995 / 996 / 478、最終 14314 第 1 → 9973（游戏显示 9,973）。"""
     bonus = HAJIME_FIRST_PARAM_BONUS if rank == 1 else 0
     total = sum(min(cap, max(0, int(params.get(a, 0))) + bonus) for a in ATTRS)
     part, lo = 0.0, 0

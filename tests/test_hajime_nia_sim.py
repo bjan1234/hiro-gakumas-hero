@@ -64,6 +64,11 @@ def test_hajime_evaluation_matches_wiki_table(hn):
     assert hn.hajime_evaluation(p, 150000, 1, 9999) in (14500, 14501)
 
 
+def test_hajime_evaluation_matches_live_result(hn):
+    """2026-11-17 Mac 账号 2 初 REGULAR（篠澤広）：培育履历 9,973pt，属性 995 / 996 / 478（含第 1 名 +30），最終 14314 第 1。"""
+    assert hn.hajime_evaluation({"Vo": 965, "Da": 966, "Vi": 448}, 14314, 1, 1000) == 9973
+
+
 def test_nia_evaluation_tiers(hn):
     assert hn.nia_vote_eval(20000, "produce-004") == 2000
     assert hn.nia_vote_eval(36036, "produce-004") == 3363
