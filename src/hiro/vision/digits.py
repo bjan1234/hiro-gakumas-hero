@@ -23,6 +23,10 @@ CHARS = "0123456789%"
 GLYPH_H = 40  # 比较时统一的字形高度
 WHITE = ((0, 0, 190), (180, 70, 255))
 DARK_V = 140  # 描边亮度上限
+# 缩放过的画面（DMM 1080 宽窗口缩到 720）描边被白字和青底混浅（亮度 140–170），外圈「深色描边」占比掉到 0.2–0.5，
+# 字形全被当成背景丢掉、read_text 返回空（9580c0c 11-17，genki_dmm 9 张）。第一遍按 DARK_V 切不出字或有字认不准时，
+# 按 DARK_V_SOFT 再切一遍，那一遍所有字都认得出才用。原尺寸（Mac / 720 宽）第一遍就读出，不受影响。
+DARK_V_SOFT = 170
 RING_DARK_MIN = 0.55  # 字符外圈中深色描边的占比下限；背景色块外圈不是描边
 MIN_SCORE = 0.7  # 实测正确字符 0.81–0.93；数字间露出的背景块被认成「1」时约 0.57
 MIN_HEIGHT_RATIO = 0.6  # 比最高字符矮得多的连通域是噪点或「%」之外的小符号
@@ -81,6 +85,16 @@ def read_text(img: MatLike, box: tuple[int, int, int, int], *, align: bool = Fal
 
 
 def _read_glyphs(img: MatLike, box: tuple[int, int, int, int], *, align: bool = False) -> tuple[str, bool, dict | None]:
+    """_read_glyphs_at(DARK_V)；切不出字或有字认不准时按 DARK_V_SOFT 再切一遍（缩放后描边变浅的画面），那一遍全认出才用。"""
+    text, uncertain, info = _read_glyphs_at(img, box, align=align, dark_v=DARK_V)
+    if (not text or uncertain) and _templates():
+        t2, u2, i2 = _read_glyphs_at(img, box, align=align, dark_v=DARK_V_SOFT)
+        if t2 and not u2:
+            return t2, u2, i2
+    return text, uncertain, info
+
+
+def _read_glyphs_at(img: MatLike, box: tuple[int, int, int, int], *, align: bool = False, dark_v: int = DARK_V) -> tuple[str, bool, dict | None]:
     """read_text 的实现；另返回所取那组字形的信息 {span: (x1, y1, x2, y2) 原图坐标, glyphs: 字形个数, occluded: 是否疑似漏字}。
     没有数字字体（开源默认素材）时照常按描边切出字形、给出 span 和字形个数，只是每个字都记为没认出（整串「不确定」），
     由调用方交给 ddddocr；read_score 用字形个数核对 OCR 的位数。"""
@@ -92,7 +106,7 @@ def _read_glyphs(img: MatLike, box: tuple[int, int, int, int], *, align: bool = 
     inner = ((bx1 - x1) * scale, (by1 - y1) * scale, (bx2 - x1) * scale, (by2 - y1) * scale)
     crop = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
     hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-    dark = hsv[:, :, 2] < DARK_V
+    dark = hsv[:, :, 2] < dark_v
     fill = cv2.inRange(hsv, *WHITE)
     fill[cv2.dilate(dark.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0] = 0
     fill = cv2.morphologyEx(fill, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
