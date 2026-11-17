@@ -401,6 +401,9 @@ class BenchAdvisor:
         self._tower_algos: dict = {}  # spec → 算法或加载失败的说明（同一进程多场只载一次）
         self.tower_loadout: dict | None = None
         self.exam_loadout: dict | None = None
+        self._session = None
+        self._number: int | None = None
+        self._live_built = False
         self.known_draws: list | None = None
         self.load_error: str | None = None
         self.exam: dict = {}
@@ -461,7 +464,9 @@ class BenchAdvisor:
                 self.deck = list(tc["deck"])
             logger.info("[%s] 偶像之路编成：%d 回合，倍率 %s，最大体力 %s，开局牌组 %d 张", self.label, tc["turns"] or 0,
                         tc["permil_fixed"], tc["max_stamina"], len(self.deck))  # fmt: skip
-        number = _audition_number(self.label)
+        self._session = ctx.get("session")
+        self._number = number = _audition_number(self.label)
+        self._live_built = False
         lo = _exam_loadout(ctx) if str(self.label or "").lower().startswith(("hajime", "nia")) else None
         if lo is not None and number and not lo.get("audition_number"):
             lo = {**lo, "audition_number": number}  # 平台在标签里带的档位（nia-mid1#audition-2）
@@ -545,6 +550,64 @@ class BenchAdvisor:
                 return
         logger.warning("[%s] %s，用 %s 兜底", self.label, self.round_note, self.round_name)
 
+    def _live_exam_loadout(self, obs: dict) -> dict | None:
+        """实机初 / N.I.A：没有 HIRO_EXAM_LOADOUT 时，在这场第一次决策时拼编成（协调 11-17 定：中转层自己拼）。
+        牌组 = 执行层给的培育牌组账本；P 道具 / 支援卡 / 回忆附魔 = hiro.search.loadout.run_loadout（培育记账 + 开局编成方案）；
+        倍率 / 体力 = 这一帧画面（倍率只读到当前属性时按编成的 permil_fixed，没有就是画面补齐的值）；
+        场次 + 档位 = 标签（nia-mid2#audition-3）→ 主数据的试镜行（exam、audition：搜索按场次的目标要用）。拼不出返回 None。"""
+        import os
+
+        from hiro.search.exam_env import ExamUnsupported, audition_row
+
+        base = str(self.label or "").split("#", 1)[0].lower()
+        rnd = base.partition("-")[2]
+        if rnd.startswith("lesson"):
+            return None  # 课程：引擎还不支持
+        idol, produce = self.exam.get("idol"), self.exam.get("produce")
+        if not idol or not self.deck:
+            logger.info("[%s] 拼不了编成（偶像 %s、牌组 %d 张）", self.label, idol, len(self.deck))
+            return None
+        try:
+            row = audition_row(idol, produce, rnd, self._number)
+        except ExamUnsupported as e:
+            logger.warning("[%s] 拼编成时查不到试镜行：%s", self.label, e)
+            return None
+        num = obs.get("num") or {}
+        pm = self.exam.get("permil_fixed") or dict(zip(("Vo", "Da", "Vi"), (obs.get("exam") or {}).get("permil") or (0, 0, 0)))
+        lo = {"produce_id": produce, "round": rnd, "idol_card_id": idol,
+              "produce_cards": [f"{c}+{u}" if u else c for c, u in self.deck],
+              "starting_stamina": int(num.get("stamina") or 0) or None, "max_stamina": int(num.get("max_stamina") or 0) or None,
+              "score_bonus_permils": [int(pm.get(a) or 0) for a in ("Vo", "Da", "Vi")], "drink_ids": list(obs.get("drinks") or []),
+              "exam": {"produce_exam_battle_config_id": row["produceExamBattleConfigId"],
+                       "produce_exam_gimmick_effect_group_id": row.get("produceExamGimmickEffectGroupId") or None,
+                       "produce_exam_battle_npc_group_id": row["produceExamBattleNpcGroupId"]},
+              "audition": {k: row.get(k) for k in ("rankThreshold", "baseScore", "forceEndScore", "voteCount", "isStaticNpcScore", "number")}}  # fmt: skip
+        try:
+            from hiro.search.loadout import run_loadout
+
+            produce_state = (getattr(getattr(self._session, "state", None), "produce", None) or {}) if self._session is not None else {}
+            plan = None
+            if os.environ.get("HIRO_FORMATION_PLAN", "").lower() != "off":
+                try:
+                    from hiro.brain.formation_plan import load
+
+                    plan = load(os.environ.get("HIRO_FORMATION_PLAN") or None)
+                except Exception as e:  # noqa: BLE001
+                    logger.info("开局编成方案读不了：%s", e)
+            run, notes = run_loadout(produce_state, plan)
+            # 回忆附魔（run["skills"]）只认 H.I.F 回忆技能（触发 p_trigger-start_audition-for_hif_memory，只在 H.I.F 考试生效），
+            # 初 / N.I.A 不给；N.I.A 回忆能力（「1次オーディション開始時、30%の確率で…」）还没解析，先按没有（3940a9 11-17）
+            lo.update(produce_item_ids=list(run["items"]), supports=list(run["supports"]), skills=[])
+            if notes:
+                logger.info("[%s] 拼编成：%s", self.label, "；".join(notes))
+        except Exception as e:  # noqa: BLE001  道具 / 支援卡拼不出：按没有搜
+            logger.info("[%s] 拼编成时 run_loadout 失败（按没有道具 / 支援卡）：%s: %s", self.label, type(e).__name__, e)
+        if not lo["max_stamina"] or not all(lo["score_bonus_permils"]):
+            logger.info("[%s] 拼编成：最大体力 / 倍率读数不全（%s / %s），照样交给算法", self.label, lo["max_stamina"], lo["score_bonus_permils"])
+        logger.info("[%s] 现拼编成：牌组 %d 张、P 道具 %d、支援卡 %d、档位 %s", self.label, len(lo["produce_cards"]),
+                    len(lo.get("produce_item_ids") or ()), len(lo.get("supports") or ()), row.get("number"))  # fmt: skip
+        return lo
+
     def on_round_end(self, result: dict[str, Any] | None) -> None:
         logger.info("[%s] 考试出牌统计：bench %d 步，规则 %d 步", self.label, self.stats["bench"], self.stats["rules"])
         self.rules.on_round_end(result)
@@ -600,6 +663,9 @@ class BenchAdvisor:
             # 每步给算法的 UIObs 记进运行日志（复盘用：实机局能直接看出 UINet 看到的局面和画面差在哪）
             uiobs_log.info("[%s T%s %s] %s", self.label, getattr(memory, "turn", None), origin,
                            json.dumps(obs, ensure_ascii=False, separators=(",", ":")))
+            if self.exam_loadout is None and not self._live_built and str(self.label or "").lower().startswith(("hajime", "nia")):
+                self._live_built = True
+                self.exam_loadout = self._live_exam_loadout(obs)
             ctx = self._ctx(obs)
             if not self.began:
                 algo.begin(ctx)

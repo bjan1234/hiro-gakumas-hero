@@ -1116,7 +1116,7 @@ def run_exam(
     source.begin({"exam": exam, "profile": brain.profile, "target_score": target_score, "session": session, "brain": brain, "rec": rec})
     advisor.on_round_start(round_no if round_no is not None else (2 if exam == "r2" else 1),
                            {"exam": exam, "idol": brain.profile.idol_id if brain.profile else None, "brain": brain,
-                            "deck": _round_deck(session)})  # fmt: skip
+                            "deck": _round_deck(session), "session": session})  # fmt: skip
     rec.log("exam_brain_start", exam=exam, profile=brain.profile.idol_id if brain.profile else None, source=source.confidence())
     failures = 0
     wait_state = BoundedWait(LIVE_WAIT_S)  # 局面来源暂时给不出（返回 None）时最多等这么久，之后换帧重读
