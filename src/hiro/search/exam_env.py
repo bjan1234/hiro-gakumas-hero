@@ -257,6 +257,78 @@ def _lesson_loadout(doc: dict) -> dict:
     }  # fmt: skip
 
 
+LESSON_KINDS = {"normal": "NORMAL", "sp": "SP", "hard": "HARD"}
+
+
+def lesson_levels_by_clear(produce_id: str, idol_card_id: str | None, kind: str, clear: int, turns: int | None = None) -> list[dict]:
+    """按画面的合格线（CLEARまで 开课时的 N）反查这节课的档位（ProduceStepLessonLevel）：同培育、同种类、successThreshold = clear；
+    带 plan 的档位只要偶像的 plan。档位按日程位置定，不是同种同属性第几次（平台 11-18 核两局实机），所以不按次数查。
+    初 REGULAR（produce-001）的追い込み用的是 produce-002 的 hard 档（bench 5 节实录：p_step_lesson-produce-002-…-hard-01 / 02）。
+    turns：画面开课时的总回合数，档位 limitTurn 不能比它多（加减回合只会 −1 / +N，这里只当上限用）。"""
+    from hiro.bench_bridge import tower as tw
+
+    num = str(produce_id or "").split("-")[-1]
+    k = str(kind or "normal").lower()
+    nums = {num, "002"} if (num == "001" and k == "hard") else {num}
+    plan = ""
+    if idol_card_id:
+        try:
+            plan = "plan" + str(_idol_card(idol_card_id)["planType"]).rsplit("Plan", 1)[-1]
+        except ExamUnsupported:
+            plan = ""
+    out = []
+    for r in tw.master().rows("ProduceStepLessonLevel"):
+        rid = str(r.get("id") or "")
+        if int(r.get("successThreshold") or -1) != int(clear) or f"-{k}-" not in rid:
+            continue
+        if not any(rid.startswith((f"p_step_lesson_level-{n}-", f"p_step_lesson_level-produce_{n}-")) for n in nums):
+            continue
+        if "-plan" in rid and plan and f"-{plan}-" not in rid:
+            continue
+        out.append(r)
+    return out
+
+
+def lesson_from_screen(produce_id: str, idol_card_id: str | None, kind: str, attr: str, screen: dict) -> tuple[dict, list[str]]:
+    """实机课程（平台的课程画面读数 state.exam_session.lesson：turns_total / clear_target / perfect_target / level_ids /
+    lesson_limit_up_score）→ lesson 写法 + 说明。回合数、合格线用画面的；满分线画面读到（过了合格线才出现 PERFECTまで）就用，
+    没读到按档位 resultTargetValueLimit + lesson_limit_up_score（档位按合格线反查，候选的满分线不唯一就不封顶）。"""
+    from hiro.bench_bridge import tower as tw
+
+    notes: list[str] = []
+    k = str(kind or "normal").lower()
+    a = {"vo": 1, "da": 2, "vi": 3}.get(str(attr).lower())
+    if a is None or k not in LESSON_KINDS:
+        raise ExamUnsupported(f"课程种类 / 属性不认识：{kind} {attr}")
+    turns, clear, perfect = screen.get("turns_total"), screen.get("clear_target"), screen.get("perfect_target")
+    if not turns or clear is None:
+        raise ExamUnsupported(f"课程画面读数不全（回合 {turns}、合格线 {clear}）")
+    if perfect is None:
+        ids = list(screen.get("level_ids") or ())
+        rows = [r for r in tw.master().rows("ProduceStepLessonLevel") if r.get("id") in ids] if ids else []
+        rows = rows or lesson_levels_by_clear(produce_id, idol_card_id, k, int(clear), int(turns))
+        caps = {int(r["resultTargetValueLimit"]) for r in rows}
+        if len(caps) == 1:
+            up = screen.get("lesson_limit_up_score")
+            perfect = caps.pop() + int(up or 0)
+            notes.append(f"满分线按档位 {sorted(r['id'] for r in rows)} 算 {perfect}" + ("" if up is not None else "（满分线加成没读到，按 0）"))
+        else:
+            notes.append(f"满分线没读到、档位对不上（候选 {len(rows)} 个），不封顶")
+    return {"parameter_type": a, "kind": LESSON_KINDS[k], "name": None, "limit_turn": int(turns), "clear_score": int(clear),
+            "perfect_score": int(perfect) if perfect is not None else None, "source": "screen"}, notes  # fmt: skip
+
+
+# 课程开局只给弱饮料（协调 11-18，按 3940a9 摘的攻略折中 [g8-試験]：强饮料留到考试）。强 = hiro.state.knowledge.DRINK_CLASSES 档位 1
+# （复制 / 抽牌 / 加行动（初星ホエイプロテイン）/ 爆发）。
+STRONG_DRINK_TIER = 1
+
+
+def strong_drink(drink_id: str | None) -> bool:
+    from hiro.state.knowledge import DRINK_CLASSES, drink_class
+
+    return bool(drink_id) and DRINK_CLASSES.get(drink_class(drink_id), {}).get("tier") == STRONG_DRINK_TIER
+
+
 # ---------------------------------------------------------------- 对手分增减（AuditionNpcEnhancePermil）
 # 引擎（gakumas_exam）没实现对手分的增减；客户端是这么算的（2026-11-17 反汇编 11-14 客户端
 # ExamParameterModel.CalculateAuditionNpc @0x36df15c）：permil ≠ 0 时
@@ -366,4 +438,6 @@ def stage_objective(lo: dict) -> dict:
         out["clear_score"] = int(lesson["clear_score"])
         if lesson.get("perfect_score"):
             out["score_cap"] = int(lesson["perfect_score"])
+        else:
+            out.pop("score_cap", None)
     return out

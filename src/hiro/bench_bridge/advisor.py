@@ -179,20 +179,21 @@ EXAM_DEFAULT_ALGO = "hiro.search.exam_algo:ExamGnrpa"
 
 def exam_search_algo_spec(label: str = "") -> str:
     """初 / N.I.A 场次的出牌算法。HIRO_EXAM_SEARCH_ALGO 设了就用它（两个家族都管）；没设时：
-    - 初的中間 / 最終考试（hajime-mid1 / hajime-final）缺省走 Rust GNRPA（EXAM_DEFAULT_ALGO，目标用按场次的 stage_objective）——
-      协调 11-17 定，依据 bench 54 题 × 2 种子（初中期 uinet 63% → 94%）；HIRO_EXAM_SEARCH_HAJIME=0 退回 uinet；
-    - 初的课程、N.I.A：空 = 用 H.I.F 那个（uinet），等 bench 结果再定。"""
+    - 初的中間 / 最終考试（hajime-mid1 / hajime-final）和课程（hajime-lesson-*）缺省走 Rust GNRPA（EXAM_DEFAULT_ALGO，目标用按场次的
+      stage_objective）——协调 11-17 / 11-18 定，依据 bench：初考试 30 题 × 2 种子（中期 uinet 63% → 94%）、课程 33 题 × 2 种子
+      （69% → 93%，满分 34 → 51 局）；HIRO_EXAM_SEARCH_HAJIME=0 两样都退回 uinet；
+    - N.I.A：空 = 用 H.I.F 那个（uinet），等 bench 结果再定。"""
     spec = (os.environ.get("HIRO_EXAM_SEARCH_ALGO") or "").strip()
     if spec:
         return spec
     base = str(label or "").split("#", 1)[0].lower()
-    if base in ("hajime-mid1", "hajime-final") and hajime_search_on():
+    if (base in ("hajime-mid1", "hajime-final") or base.startswith("hajime-lesson")) and hajime_search_on():
         return EXAM_DEFAULT_ALGO
     return ""
 
 
 def hajime_search_on() -> bool:
-    """HIRO_EXAM_SEARCH_HAJIME：初的考试走搜索，缺省开（协调定）；0 / off / false 关。"""
+    """HIRO_EXAM_SEARCH_HAJIME：初的考试和课程走搜索，缺省开（协调定）；0 / off / false 关。"""
     return (os.environ.get("HIRO_EXAM_SEARCH_HAJIME") or "1").strip().lower() not in ("0", "off", "false", "no")
 
 
@@ -316,13 +317,17 @@ def _round_defaults(label: str | None, deck: list) -> tuple[dict, dict | None]:
     return permil, alloc
 
 
-def _audition_number(label: str | None) -> int | None:
-    """标签 tag 里的试镜档位：nia-mid1#audition-2 → 2（平台 11-17 约定）。"""
+def _tag_number(label: str | None, key: str) -> int | None:
+    """标签 tag 里的编号：nia-mid1#audition-2 → 2（试镜档位，平台 11-17 约定）；hajime-lesson-vo-sp#lesson-3 → 3（同种同属性第几节课）。"""
     for tag in str(label or "").split("#")[1:]:
         k, _, v = tag.partition("-")
-        if k == "audition" and v.isdigit():
+        if k == key and v.isdigit():
             return int(v)
     return None
+
+
+def _audition_number(label: str | None) -> int | None:
+    return _tag_number(label, "audition")
 
 
 def _exam_loadout(ctx: dict) -> dict | None:
@@ -500,6 +505,9 @@ class BenchAdvisor:
                 self.exam["crit"], self.exam["permil_default"], self.exam["allocation"] = ac["crit"], {}, None
                 if ac["turns"]:
                     self.exam["turns"] = ac["turns"]
+        base = str(self.label or "").split("#", 1)[0].lower()
+        if lo is None and base.startswith(("hajime-", "nia-")) and "-lesson" not in base:
+            self._audition_defaults(idol, number)
         if lo is not None:
             from hiro.bench_bridge.screen import exam_context, exam_fields
 
@@ -541,8 +549,8 @@ class BenchAdvisor:
         if not enabled():
             return
         if label.startswith(("hajime", "nia")):
-            # 初 / N.I.A：搜索（ExamGnrpa 自己按 UIObs 对齐引擎局面，不要 screen_source 跟踪）。初的考试缺省开，
-            # 课程和 N.I.A 缺省 uinet（exam_search_algo_spec）
+            # 初 / N.I.A：搜索（ExamGnrpa 自己按 UIObs 对齐引擎局面，不要 screen_source 跟踪）。初的考试和课程缺省开，
+            # N.I.A 缺省 uinet（exam_search_algo_spec）
             spec = exam_search_algo_spec(label)
             if not spec:
                 return
@@ -580,27 +588,37 @@ class BenchAdvisor:
 
         base = str(self.label or "").split("#", 1)[0].lower()
         rnd = base.partition("-")[2]
-        if rnd.startswith("lesson"):
-            return None  # 课程：引擎还不支持
         idol, produce = self.exam.get("idol"), self.exam.get("produce")
         if not idol or not self.deck:
             logger.info("[%s] 拼不了编成（偶像 %s、牌组 %d 张）", self.label, idol, len(self.deck))
             return None
-        try:
-            row = audition_row(idol, produce, rnd, self._number)
-        except ExamUnsupported as e:
-            logger.warning("[%s] 拼编成时查不到试镜行：%s", self.label, e)
-            return None
         num = obs.get("num") or {}
-        pm = self.exam.get("permil_fixed") or dict(zip(("Vo", "Da", "Vi"), (obs.get("exam") or {}).get("permil") or (0, 0, 0)))
         lo = {"produce_id": produce, "round": rnd, "idol_card_id": idol,
               "produce_cards": [f"{c}+{u}" if u else c for c, u in self.deck],
               "starting_stamina": int(num.get("stamina") or 0) or None, "max_stamina": int(num.get("max_stamina") or 0) or None,
-              "score_bonus_permils": [int(pm.get(a) or 0) for a in ("Vo", "Da", "Vi")], "drink_ids": list(obs.get("drinks") or []),
-              "exam": {"produce_exam_battle_config_id": row["produceExamBattleConfigId"],
-                       "produce_exam_gimmick_effect_group_id": row.get("produceExamGimmickEffectGroupId") or None,
-                       "produce_exam_battle_npc_group_id": row["produceExamBattleNpcGroupId"]},
-              "audition": {k: row.get(k) for k in ("rankThreshold", "baseScore", "forceEndScore", "voteCount", "isStaticNpcScore", "number")}}  # fmt: skip
+              "drink_ids": list(obs.get("drinks") or [])}  # fmt: skip
+        if rnd.startswith("lesson"):
+            got = self._live_lesson(base, obs)
+            if got is None:
+                return None
+            lo.update(round="lesson", lesson=got)
+            row = {"number": None}
+        else:
+            try:
+                row = audition_row(idol, produce, rnd, self._number)
+            except ExamUnsupported as e:
+                logger.warning("[%s] 拼编成时查不到试镜行：%s", self.label, e)
+                return None
+            pm = self.exam.get("permil_fixed") or dict(zip(("Vo", "Da", "Vi"), (obs.get("exam") or {}).get("permil") or (0, 0, 0)))
+            if not all(int(pm.get(a) or 0) > 0 for a in ("Vo", "Da", "Vi")):
+                # 倍率不全不能交给搜索（引擎会以为出牌不加分）：这一场用 H.I.F 的算法（ExamGnrpa 开局会报「倍率读不到」）
+                logger.warning("[%s] 三属性倍率读不全（%s），不拼编成，这一场退回 uinet", self.label, pm)
+                return None
+            lo.update(score_bonus_permils=[int(pm.get(a) or 0) for a in ("Vo", "Da", "Vi")],
+                      exam={"produce_exam_battle_config_id": row["produceExamBattleConfigId"],
+                            "produce_exam_gimmick_effect_group_id": row.get("produceExamGimmickEffectGroupId") or None,
+                            "produce_exam_battle_npc_group_id": row["produceExamBattleNpcGroupId"]},
+                      audition={k: row.get(k) for k in ("rankThreshold", "baseScore", "forceEndScore", "voteCount", "isStaticNpcScore", "number")})  # fmt: skip
         try:
             from hiro.search.loadout import run_loadout
 
@@ -621,11 +639,86 @@ class BenchAdvisor:
                 logger.info("[%s] 拼编成：%s", self.label, "；".join(notes))
         except Exception as e:  # noqa: BLE001  道具 / 支援卡拼不出：按没有搜
             logger.info("[%s] 拼编成时 run_loadout 失败（按没有道具 / 支援卡）：%s: %s", self.label, type(e).__name__, e)
-        if not lo["max_stamina"] or not all(lo["score_bonus_permils"]):
-            logger.info("[%s] 拼编成：最大体力 / 倍率读数不全（%s / %s），照样交给算法", self.label, lo["max_stamina"], lo["score_bonus_permils"])
+        if not lo["max_stamina"]:
+            logger.info("[%s] 拼编成：最大体力没读到，照样交给算法", self.label)
         logger.info("[%s] 现拼编成：牌组 %d 张、P 道具 %d、支援卡 %d、档位 %s", self.label, len(lo["produce_cards"]),
                     len(lo.get("produce_item_ids") or ()), len(lo.get("supports") or ()), row.get("number"))  # fmt: skip
         return lo
+
+    def _audition_defaults(self, idol: str | None, number: int | None) -> None:
+        """实机初 / N.I.A 试镜、没有编成时：按主数据的试镜行补审查基准 / 回合数，按培育三属性（选行动页读的 produce.params）和 battle config
+        算三属性倍率（同客户端 CalcParameterBonusPermils，hiro.bench_bridge.tower.score_bonus_permils）当缺省——画面读到倍率时以画面为准。
+        初的考试画面读不到倍率：以前 UIObs 和拼的编成里倍率全是 0，GNRPA 以为出牌不加分，T2 起直接结束回合（初第二局中間 227 分，协调 11-18）。"""
+        from hiro.bench_bridge import tower as tw
+        from hiro.search.exam_env import audition_row
+
+        base = str(self.label or "").split("#", 1)[0].lower()
+        rnd = base.partition("-")[2]
+        ps = (getattr(getattr(self._session, "state", None), "produce", None) or {}) if self._session is not None else {}
+        ps = ps if isinstance(ps, dict) else getattr(ps, "__dict__", {})
+        produce = ps.get("mode") or self.exam.get("produce")
+        try:
+            row = audition_row(idol, produce, rnd, number)
+        except Exception as e:  # noqa: BLE001  查不到：只靠画面
+            logger.warning("[%s] 查不到试镜行（%s %s 档位 %s），审查基准 / 倍率只靠画面：%s: %s", self.label, produce, rnd, number,
+                           type(e).__name__, e)  # fmt: skip
+            return
+        cfg = tw.master().battle_config(row["produceExamBattleConfigId"]) or {}
+        if cfg and not any(self.exam.get("crit") or ()):
+            self.exam["crit"] = [int(cfg[k]) for k in ("vocal", "dance", "visual")]
+        if cfg.get("turn") and not self.exam.get("turns"):
+            self.exam["turns"] = int(cfg["turn"])
+        params = ps.get("params") or {}
+        if all(params.get(a) for a in ("Vo", "Da", "Vi")):
+            try:
+                pm = tw.score_bonus_permils(row["produceExamBattleConfigId"], [int(params[a]) for a in ("Vo", "Da", "Vi")])
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[%s] 按三属性算倍率失败：%s: %s", self.label, type(e).__name__, e)
+            else:
+                self.exam["permil_default"], self.exam["allocation"] = dict(zip(("Vo", "Da", "Vi"), pm)), None
+                logger.info("[%s] 倍率按三属性 %s 算：%s（画面读到时以画面为准）", self.label, params, pm)
+                return
+        logger.warning("[%s] 培育三属性没记账（%s），倍率只靠画面", self.label, params)
+
+    def _lesson_screen(self) -> dict | None:
+        """平台的课程画面读数（state.exam_session.lesson：turns_total / clear_target / perfect_target / level_ids / …，平台 11-18）。"""
+        es = getattr(getattr(self._session, "state", None), "exam_session", None) if self._session is not None else None
+        got = getattr(es, "lesson", None) if es is not None else None
+        if got is not None and not isinstance(got, dict):
+            got = getattr(got, "__dict__", None) or (got.model_dump() if hasattr(got, "model_dump") else None)
+        return dict(got) if got else None
+
+    def _live_lesson(self, base: str, obs: dict) -> dict | None:
+        """实机课程（hajime-lesson-<vo|da|vi>[-sp|-hard]）→ exam_env 的 lesson 写法（协调 11-18）：回合数、合格线用平台的课程画面读数，
+        满分线读到就用、没读到按合格线反查的档位（exam_env.lesson_from_screen）。档位按日程位置定、不是同种同属性第几次（平台核两局实机），
+        所以不按次数查主数据。画面读数不全：不拼编成，这一场退回 uinet。"""
+        from hiro.search.exam_env import ExamUnsupported, lesson_from_screen
+
+        parts = base.split("-")  # hajime / lesson / vo / sp
+        attr = parts[2] if len(parts) > 2 else None
+        kind = parts[3] if len(parts) > 3 else "normal"
+        screen = self._lesson_screen()
+        if attr not in ("vo", "da", "vi") or not screen:
+            logger.warning("[%s] 课程标签没有属性或没有课程画面读数（%s），这一场退回 uinet", self.label, screen)
+            return None
+        try:
+            got, notes = lesson_from_screen(self.exam.get("produce"), self.exam.get("idol"), kind, attr, screen)
+        except ExamUnsupported as e:
+            logger.warning("[%s] 拼课程编成失败，这一场退回 uinet：%s", self.label, e)
+            return None
+        logger.info("[%s] 课程：%d 回合、合格 %s、满分 %s%s", self.label, got["limit_turn"], got["clear_score"], got["perfect_score"],
+                    ("；" + "；".join(notes)) if notes else "")  # fmt: skip
+        return got
+
+    def _refresh_lesson(self) -> None:
+        """课程中途画面读到了满分线（过了合格线才出现 PERFECTまで）：更新编成里的满分线（ExamGnrpa 每步按它更新目标）。"""
+        lo = self.exam_loadout
+        if not lo or not lo.get("lesson") or lo["lesson"].get("source") != "screen" or lo["lesson"].get("perfect_score") is not None:
+            return
+        perfect = (self._lesson_screen() or {}).get("perfect_target")
+        if perfect:
+            lo["lesson"] = {**lo["lesson"], "perfect_score": int(perfect)}
+            logger.info("[%s] 课程满分线画面读到：%s", self.label, perfect)
 
     def on_round_end(self, result: dict[str, Any] | None) -> None:
         logger.info("[%s] 考试出牌统计：bench %d 步，规则 %d 步", self.label, self.stats["bench"], self.stats["rules"])
@@ -685,6 +778,7 @@ class BenchAdvisor:
             if self.exam_loadout is None and not self._live_built and str(self.label or "").lower().startswith(("hajime", "nia")):
                 self._live_built = True
                 self.exam_loadout = self._live_exam_loadout(obs)
+            self._refresh_lesson()
             ctx = self._ctx(obs)
             step_note = ""
             try:
@@ -699,8 +793,9 @@ class BenchAdvisor:
                 # 开局就失败（拼不出编成等）的，这一场剩下的步都用 uinet，不每步重试。
                 why = f"{type(e).__name__}: {e}"
                 logger.warning("[%s] %s 这一步搜不了，用 %s：%s", self.label, self.round_name, algo_spec().split(":")[0], why)
-                if not self.began:
-                    self.round_algo, self.round_note = self.algo, f"{self.round_name} 开局失败（{why}）"
+                if not self.began or getattr(e, "whole_round", False):  # 开局失败 / 搜索自己判定这一场的模型不可信：整场 uinet
+                    what = "开局失败" if not self.began else "不可信"
+                    self.round_algo, self.round_note = self.algo, f"{self.round_name} {what}（{why}）"
                     self.round_name = algo_spec().split(":")[0]
                 else:
                     step_note = f"{self.round_name} 这一步搜不了（{why}）"
