@@ -260,7 +260,32 @@ def _classify_page(img: MatLike) -> tuple[str, dict] | None:
     kind = _transition_kind(boxes)
     if kind is not None:
         return "TRANSITION", {"kind": kind}
+    if (ev := event_dialogue(boxes)) is not None:
+        return "commu", ev
     return None
+
+
+EVENT_SPEAKER_Y = (880, 980)  # 台词框左上的名字条（N.I.A 星南独白：「星南」在 y 927）
+EVENT_LINE_Y = (960, 1130)  # 台词行
+EVENT_TAP = (360, 1030)  # 点台词框推进
+EVENT_BLOCK = ("SKIP", "早送", "AUTO", "ログ", "キャンセル", "決定", "次へ", "閉じる", "OK", "選択", "受け取")
+EVENT_BUTTON_Y = (1070, 1170)  # 台词框下面按钮的位置：这里有字（淡入中的「受け取る」等）就不是单纯台词，不点（点台词框会落在弹窗的勾选框附近）
+
+
+def event_dialogue(boxes) -> dict | None:
+    """事件台词（页头、体力 / P 点、底栏饮料都还在，台词框上方有名字条，没有 SKIP / 早送り 底栏）：协调 11-18，N.I.A 第二局选了相談后
+    星南独白判 unknown，24 秒停。初 / N.I.A / H.I.F 通用：判成 commu，带快速判页格式的点击（点台词框），主循环的 advance 照点。
+    有 SKIP 底栏的剧情由 commu_skip 处理，有按钮字样的不算（选项 / 弹窗另有处理）。"""
+    if any(w in t.upper() if w.isascii() else w in t for t, _ in boxes for w in EVENT_BLOCK):
+        return None
+    if any(EVENT_BUTTON_Y[0] <= (b[1] + b[3]) // 2 <= EVENT_BUTTON_Y[1] for _, b in boxes):
+        return None
+    speaker = next((t for t, b in boxes if 1 <= len(t.strip()) <= 8 and b[2] < 300 and EVENT_SPEAKER_Y[0] <= (b[1] + b[3]) // 2 <= EVENT_SPEAKER_Y[1]), None)
+    lines = [t for t, b in boxes if EVENT_LINE_Y[0] <= (b[1] + b[3]) // 2 <= EVENT_LINE_Y[1] and b[0] < 200 and len(t.strip()) >= 6]
+    if speaker is None or not lines:
+        return None
+    fields = {"kind": "event_dialogue", "speaker": speaker.strip(), "text": "".join(lines)}
+    return {**fields, "_quick": {"page": "commu", "tap": list(EVENT_TAP), "dispatch": None, "fields": fields}}
 
 
 def _transition_kind(boxes) -> str | None:

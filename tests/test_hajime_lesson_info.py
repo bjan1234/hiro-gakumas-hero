@@ -65,8 +65,9 @@ def test_lesson_info_extra_turn_and_limit_up():
     assert (info.d["exam_extra_turn"], info.d["perfect_target"], info.d["lesson_limit_up_score"]) == (2, 70, 20)
 
 
-def test_lesson_info_hard_unmatched_left_empty():
-    """追い込み：画面 CLEAR 90 / 165，初 REGULAR 主数据 hard 档是 75 / 100，对不上 → 不给档位和差值（不猜）；满分线读不到也留空。"""
+def test_lesson_info_hard_uses_pro_levels():
+    """追い込み：画面 CLEAR 90 / 165，初 REGULAR 主数据 hard 档是 75 / 100 对不上；按 produce-002 的 hard 档（8a3a1e7：实录都是）对上。
+    满分线读不到（右上换成追い込みボーナス）留空。"""
     from hiro.runtime.hajime import LessonInfo
 
     info = LessonInfo("hajime-lesson-vi-hard", 1, "produce-001", IDOL)
@@ -74,7 +75,14 @@ def test_lesson_info_hard_unmatched_left_empty():
     for _ in range(2):
         info.feed("perfect", {"goal": "perfect", "left": 300, "param": None}, None)
     assert info.d["kind"] == "hard" and info.d["turns_total"] == 11 and info.d["clear_target"] == 165
-    assert info.d["level_ids"] is None and info.d["exam_extra_turn"] is None and info.d["perfect_target"] is None
+    assert info.d["level_ids"] and all("-002-plan2-hard-" in i for i in info.d["level_ids"])
+    assert info.d["perfect_target"] is None and info.d["lesson_limit_up_score"] is None
+
+
+def test_lesson_levels_unmatched_left_empty():
+    from hiro.state import modes
+
+    assert modes.lesson_levels("produce-001", IDOL, "normal", 33) == []  # 哪个档都没有 CLEAR 33：不猜
 
 
 def test_lesson_kind():
@@ -95,12 +103,14 @@ def test_exam_session_has_lesson_field():
 
 
 # ---------------------------------------------------------------- 相談開始確認（P 少）
-def _rt(last):
+def _rt(last, produce=None):
     from test_runtime import frame as fake_frame
     from test_runtime import runtime
 
+    from hiro.contracts import GameState
+
     rt, _ = runtime([fake_frame()])
-    rt.session = NS(last_decision=last)
+    rt.session = NS(last_decision=last, state=GameState(produce=produce))
     return rt
 
 
@@ -114,16 +124,70 @@ def _check(rt):
     return interrupts.check(Frame(cv2.imread(str(p)), 0.0), rt)
 
 
-def test_consult_confirm_after_shop_decision_starts():
-    rt = _rt(("ACTION_SELECT", Decision(Action.produce_next("shop"), "相談", "rule", 0.8)))
-    assert "開始する" in _check(rt)
-    (x, y), = rt.raw_device.taps
-    assert abs(x - 512) < 30 and abs(y - 1160) < 20
-
-
-@pytest.mark.parametrize("last", [None, ("ACTION_SELECT", Decision(Action.produce_next("training", attr="Da"), "课程", "rule", 0.8))])
-def test_consult_confirm_otherwise_cancels(last):
-    rt = _rt(last)
+@pytest.mark.parametrize("last", [None, ("ACTION_SELECT", Decision(Action.produce_next("shop"), "相談", "rule", 0.8)),
+                                  ("ACTION_SELECT", Decision(Action.produce_next("training", attr="Da"), "课程", "rule", 0.8))])  # fmt: skip
+def test_consult_confirm_always_cancels_and_declines_shop(last):
+    """相談開始確認（P 不够）：一律点キャンセル（3940a9 11-18：进去也只能直接离开，这一周白费），记 declined_options=shop（同一周）。"""
+    rt = _rt(last, produce={"mode": "produce-001", "step": 4})
     assert "キャンセル" in _check(rt)
     (x, y), = rt.raw_device.taps
     assert x < 300 and abs(y - 1160) < 20
+    assert rt.session.state.produce["declined_options"] == {"options": ["shop"], "step": 4}
+
+
+def _obs(seq, page, fields):
+    from hiro.contracts import Observation, PageObs
+
+    return Observation(seq=seq, t=0.0, page=PageObs(name=page, area="produce", stable_frames=3), fields=fields)
+
+
+def _reduce(st, obs):
+    from hiro.loop.reduce import reduce
+
+    for _ in range(3):
+        st = reduce(st, obs)
+    return st
+
+
+def test_declined_options_same_week_then_dropped():
+    from hiro.contracts import GameState
+
+    st = GameState(produce={"mode": "produce-001", "step": 4, "declined_options": {"options": ["shop"], "step": 4}})
+    st = _reduce(st, _obs(1, "ACTION_SELECT", {"exam_next": "mid1", "weeks_left": 2, "stamina": 20}))
+    assert st.produce["step"] == 4 and st.page_fields["declined_options"] == ["shop"]
+    st = _reduce(st, _obs(2, "CONSULT", {"stamina": 20}))
+    st = _reduce(st, _obs(3, "ACTION_SELECT", {"exam_next": "mid1", "weeks_left": 1, "stamina": 18}))  # 换周
+    assert st.produce["step"] == 5 and "declined_options" not in st.produce and "declined_options" not in st.page_fields
+
+
+def test_consult_delete_price_recorded():
+    from hiro.contracts import GameState
+
+    st = _reduce(GameState(produce={"mode": "produce-001"}), _obs(1, "CONSULT", {"services": {"delete": {"price": 100, "available": True}}}))
+    assert st.produce["consult_delete_price"] == 100 and st.sources["produce.consult_delete_price"].origin == "screen"
+    st = _reduce(st, _obs(2, "CONSULT", {"services": {"delete": {"price": None, "available": True}}}))
+    assert st.produce["consult_delete_price"] == 100  # 读不到不覆盖
+
+
+def test_consult_price_from_real_frame():
+    from hiro.vision.extract import extract
+    from hiro.vision.observe import observation
+    from hiro.vision.offline import load
+
+    p = FIXP / "nia-consult-banner.jpg"
+    if not p.exists():
+        pytest.skip("需要实机截图 pages/nia-consult-banner.jpg")
+    raw, _ = extract("CONSULT", load(cv2.imread(str(p))))
+    assert observation(1, 0.0, "CONSULT", raw).fields["services"]["delete"]["price"] == 100
+
+
+def test_lesson_confirm_unchanged():
+    """レッスン開始確認（低体力）照旧：最近决策是课程就点開始する。"""
+    from hiro.runtime import interrupts
+    from hiro.runtime.frame import Frame
+
+    p = FIXP / "hajime-lesson-lowhp-confirm.jpg"
+    if not p.exists():
+        pytest.skip("需要实机截图 pages/hajime-lesson-lowhp-confirm.jpg")
+    rt = _rt(("ACTION_SELECT", Decision(Action.produce_next("training", attr="Da"), "课程", "rule", 0.8)))
+    assert "開始する" in interrupts.check(Frame(cv2.imread(str(p)), 0.0), rt)

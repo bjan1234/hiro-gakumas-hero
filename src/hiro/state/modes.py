@@ -73,16 +73,26 @@ LESSON_KINDS = ("normal", "sp", "hard")
 def lesson_levels(produce_id: str | None, idol_card_id: str | None, kind: str, clear: int | None) -> list[dict]:
     """初课程画面上的 CLEAR 线 → 主数据 ProduceStepLessonLevel 的候选档位（这个偶像的 plan、这一种课、successThreshold 等于 clear）。
     档位 id 是 p_step_lesson_level-<produce 号>-plan<N>-<kind>-<序号>，只看 plan + 种类 + 序号（课程 id 里的 exam_* 前缀不影响档位）。
-    对不上返回空列表（实机：初 REGULAR 追い込み 画面 CLEAR 90 / 165，主数据 hard-1 / hard-2 是 75 / 100，对不上）。"""
+    本模式对不上时按 LESSON_LEVEL_FALLBACK 再查（初 REGULAR 的追い込み 画面 CLEAR 90 / 165 是 produce-002 的 hard 档）；都对不上返回空列表。"""
     if not produce_id or not idol_card_id or kind not in LESSON_KINDS or clear is None:
         return []
     try:
         c = master()
         plan = str(c.one("IdolCard", idol_card_id).get("planType") or "").replace("ProducePlanType_Plan", "")
-        prefix = f"p_step_lesson_level-{produce_id.split('-')[-1]}-plan{plan}-{kind}-"
-        return [r for r in c.rows("ProduceStepLessonLevel") if str(r.get("id", "")).startswith(prefix) and int(r.get("successThreshold") or -1) == int(clear)]
+        rows = list(c.rows("ProduceStepLessonLevel"))
+        for pid in (produce_id, *LESSON_LEVEL_FALLBACK.get((produce_id, kind), ())):
+            prefix = f"p_step_lesson_level-{pid.split('-')[-1]}-plan{plan}-{kind}-"
+            hit = [r for r in rows if str(r.get("id", "")).startswith(prefix) and int(r.get("successThreshold") or -1) == int(clear)]
+            if hit:
+                return hit
+        return []
     except Exception:  # noqa: BLE001  没有主数据 / 偶像卡查不到
         return []
+
+
+# 本模式的档位对不上画面时再查的模式：初 REGULAR 的追い込み用的是初 PRO（produce-002）的 hard 档
+#（8a3a1e7 11-18：bench 实录 5 节都是；平台两局实机 CLEAR 90 / 165 = produce-002 hard-1 / hard-2）
+LESSON_LEVEL_FALLBACK = {("produce-001", "hard"): ("produce-002",)}
 
 
 def lesson_limits(levels: list[dict]) -> tuple[int, int] | None:

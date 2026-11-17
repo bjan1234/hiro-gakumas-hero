@@ -366,16 +366,40 @@ LESSON_CONFIRM_START, LESSON_CONFIRM_CANCEL = (515, 1160), (236, 1161)
 # 否则（含续跑不知道之前选了什么）点「キャンセル」回选行动页重新决策。协调 + 3940a9 11-17 定，不加开关。
 DECISION_CONFIRMS = {
     "レッスン開始確認": ("training", "class"),  # 体力が低下しています（初 Mac 11-17 frames/00360）
-    "相談開始確認": ("shop",),  # Pポイントの所持数が少ないです（初第二局 11-18 h2-dialog1）
 }
+# 一律点「キャンセル」、回选行动页时告诉决策器这一周别再选它（page_fields.declined_options，3940a9 07f1d30 已接）：
+# 相談開始確認（Pポイントの所持数が少ないです）说明按游戏实际价 P 不够，进去也只能直接离开，这一周白费（3940a9 11-18，初第二局第 4 周）
+DECLINE_CONFIRMS = {"相談開始確認": "shop"}
+
+
+def _decline(rt, option: str) -> None:
+    """记进局面 produce.declined_options = {options, step}：reduce 在同一周的选行动页放进 page_fields，换周丢掉；选行动执行完清掉。"""
+    session = getattr(rt, "session", None)
+    state = getattr(session, "state", None)
+    if state is None:
+        return
+    prod = dict(state.produce or {})
+    cur = prod.get("declined_options") or {}
+    opts = sorted({*(cur.get("options") or []), option}) if cur.get("step") == prod.get("step") else [option]
+    prod["declined_options"] = {"options": opts, "step": prod.get("step")}
+    state.produce = prod
 
 
 def decision_confirm(frame, rt) -> str | None:
-    """「レッスン開始確認」「相談開始確認」这类确认框（キャンセル / 開始する）。只认 DECISION_CONFIRMS 里的标题；
+    """「レッスン開始確認」「相談開始確認」这类确认框（キャンセル / 開始する）。只认 DECISION_CONFIRMS / DECLINE_CONFIRMS 里的标题；
     「開始する」不会点在破棄框上（破棄框由 red_line 先处理，标题也不在表里）。"""
     if not frame.has_dialog:
         return None
     title = str((frame.dialog or {}).get("title") or "")
+    decline = next(((t, o) for t, o in DECLINE_CONFIRMS.items() if t in title), None)
+    if decline is not None:
+        if _recently(rt, "decision_confirm"):
+            return f"{decline[0]}：刚点过，等框关"
+        btn = next((t for t in frame.texts if "キャンセル" in t.text and t.rect.center.y > 1000), None)
+        rt.device.tap(*(btn.rect.center if btn is not None else LESSON_CONFIRM_CANCEL))
+        _tapped(rt, "decision_confirm")
+        _decline(rt, decline[1])
+        return f"{decline[0]}：点「キャンセル」，这一周不再选 {decline[1]}（declined_options）"
     hit = next(((t, opts) for t, opts in DECISION_CONFIRMS.items() if t in title), None)
     if hit is None:
         return None
