@@ -174,3 +174,20 @@ def test_forced_change_falls_back_to_ledger_when_screen_all_protected():
     ctx = StubCtx(stage=2)
     st.on_skill_card_change(ctx)
     assert ctx.calls == [("s2", BASIC, False)] and ctx.stage2_args[0] is None  # 按 card_id 翻屏找，不按格子号
+
+
+def test_forced_change_gives_up_after_repeated_failures():
+    """mainz3 r1（11-18 03:47）：强制换出的卡执行侧没点成，每次取消都绕回换卡页，转了 2 分钟。强制换出 CHANGE_FORCED_MAX 次都没换成就停下。"""
+    import pytest
+
+    from hiro.produce.hif import UnhandledPage
+
+    st = _strategy({})
+    st.s = StubSession({"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": BASIC, "upgrade": 0}], "deck_complete": True}})
+    st.CHANGE_OBSERVE_TRIES = 1
+    st.s.recover = lambda *a: None
+    st.deciders.decide = lambda page, state, **kw: __import__("hiro.contracts", fromlist=["Decision"]).Decision(
+        Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7)
+    st._change_cancels = 1 + st.CHANGE_FORCED_MAX
+    with pytest.raises(UnhandledPage, match="强制换出"):
+        st.on_skill_card_change(StubCtx(stage=2))

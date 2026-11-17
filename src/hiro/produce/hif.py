@@ -1355,6 +1355,7 @@ class HifCore:
         return col
 
     CHANGE_EMPTY_REREADS = 3  # 换卡阶段 2 卡格读成空时再读几次（每次隔 1s）
+    CHANGE_FORCED_MAX = 2  # 取消绕回后强制换出最多试几次（每次都没换成就停下，不无限绕圈）
 
     def _scan_change_deck(self, region=None, page: str = "换卡阶段 2") -> bool:
         """换卡阶段 2：牌组一屏放不下时往下滑读整副（card_ops.scan_dialog_deck，拼完滑回顶部），整副交给决策。
@@ -1462,6 +1463,10 @@ class HifCore:
             # 阶段 1 没有取消键，阶段 2 取消后可能回到阶段 1（游戏执行-06 推断）：同一次换卡只取消 1 次；
             # 第 2 次改由执行侧换一张非保护卡（pick_change_target 跳过核心卡），还回来就停下，避免来回打转
             self._change_cancels = getattr(self, "_change_cancels", 0) + 1
+            if self._change_cancels >= 2 + self.CHANGE_FORCED_MAX:
+                # 强制换出也没换成（执行侧找不到 / 详情栏核对不上，点了キャンセル）又绕回来：再来一样，停下（mainz3 r1 转了 2 分钟）
+                self._stop("SKILL_CARD_CHANGE_2", f"强制换出 {self.CHANGE_FORCED_MAX} 次都没换成，又回到换卡页（第 {self._change_cancels} 次）",
+                           obs=obs, decision=d)  # fmt: skip
             if self._change_cancels >= 2:
                 # 取消后又回到换卡页：游戏里阶段 1 没有取消键，取消只会绕回来（main8 实机死循环）。
                 # 改按决策器 choose_card_to_change 换出价值最低的非保护卡（规则选出，不是执行侧盲选）；没有可换的才停下
