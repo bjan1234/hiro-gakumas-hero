@@ -209,6 +209,15 @@ def test_hajime_outing_not_tired_cheapest():
     assert i == 2
 
 
+def test_outing_skips_disabled():
+    """平台 20ad0e5：画面上灰掉的档（choices[].disabled）点不了。P 点读多了也不选灰档；N.I.A 按位置选时同样跳过。"""
+    chs = [_ch(0, 100, disabled=True), _ch(1, 50, disabled=True), _ch(2, 0)]
+    i, _, _ = choose_outing(_st(stamina=10, produce_point=300), chs)  # 累了本该选最贵的，但前两档灰了
+    assert i == 2
+    i, _, _ = choose_outing(_nia(produce_point=100), [_ch(0, 60), _ch(1, 40, disabled=True), _ch(2, 20)])
+    assert i != 1
+
+
 def test_hajime_study_main_attr_avoids_trouble():
     chs = [_ch(0, text="ボーカル", attr="Vo"), _ch(1, text="ビジュアル", attr="Vi"), _ch(2, trouble=True, text="トラブル追加")]
     i, _, rules = choose_study(_st(main_attr="Vi", mode="produce-002"), chs)

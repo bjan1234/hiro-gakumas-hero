@@ -242,14 +242,15 @@ ATTR_WORDS = {"Vo": ("ボーカル", "Vo"), "Da": ("ダンス", "Da"), "Vi": ("�
 
 
 def _affordable(st: Status, c: dict) -> bool:
-    return int(c.get("cost_p") or 0) <= st.produce_point
+    """P 点够、画面上也没灰掉（平台 20ad0e5：choices[].disabled，灰底的档点不了）。"""
+    return not c.get("disabled") and int(c.get("cost_p") or 0) <= st.produce_point
 
 
 def choose_outing(st: Status, choices: list[dict]) -> tuple[int, str, list[str]]:
     """外出三选一 → (choices 里的 index, 理由, 规则)。"""
     p = _Pick(st, choices)
     chs = sorted(choices, key=lambda c: c["index"])
-    ok = [c for c in chs if _affordable(st, c)] or chs[-1:]
+    ok = [c for c in chs if _affordable(st, c)] or [c for c in chs if not c.get("disabled")][-1:] or chs[-1:]
     if st.family == modes.NIA and st.difficulty == "master" and len(chs) == 3:
         p.use("nia.outing_order")
         top, mid, low = chs
