@@ -820,7 +820,7 @@ class ProduceDeciders:
             opts.append(dk.Option("keep", "不收（保持现有）", hold, Action(ActionKind.DISCARD_DRINK, {"discard": [], "receive": False, "pick_index": best_in})))
         elif can_skip:
             opts.append(dk.Option("skip", "不拿", hold, Action.exclude_card(0)))
-        res = dk.choose(opts, stage, capacity, sim_context=self._drink_sim_context(ps, stage), where="SELECT_DRINK")
+        res = dk.choose(opts, stage, capacity, sim_context=self._drink_sim_context(ps, stage), where="SELECT_DRINK", take_on_tie=True)
         return self._drink_decision(res, opts, stage, "select_drink", warn, state)
 
     def _drink_holding(self, state: GameState, ps) -> tuple[list | None, int, bool, list]:
@@ -1478,7 +1478,7 @@ class ProduceDeciders:
                                   hold[:j] + [incoming["drink_id"]] + hold[j + 1:],
                                   Action(ActionKind.DISCARD_DRINK, {"discard": [h["index"]], "receive": True})))  # fmt: skip
         stage = dk.stage_of(ps.mode if ps else None, interval=bool(state.page_fields.get("interval")))
-        res = dk.choose(opts, stage, max(capacity, len(hold)), sim_context=self._drink_sim_context(ps, stage), where="PDRINK_MAX")
+        res = dk.choose(opts, stage, max(capacity, len(hold)), sim_context=self._drink_sim_context(ps, stage), where="PDRINK_MAX", take_on_tie=True)
         return self._drink_decision(res, opts, stage, "drink_overflow", warn, state)
 
     def _drink_overflow_multi(self, state: GameState, ps, held: list, incomings: list, warn: list) -> Decision:
@@ -1509,7 +1509,7 @@ class ProduceDeciders:
             key = "keep" if not take else "take" + "-".join(map(str, take))
             opts.append(dk.Option(key, label, drinks, Action(ActionKind.DISCARD_DRINK, {"discard": discard, "receive": bool(take), "receive_indexes": take})))
         stage = dk.stage_of(ps.mode if ps else None, interval=bool(state.page_fields.get("interval")))
-        res = dk.choose(opts, stage, cap, sim_context=self._drink_sim_context(ps, stage), where="PDRINK_MAX")
+        res = dk.choose(opts, stage, cap, sim_context=self._drink_sim_context(ps, stage), where="PDRINK_MAX", take_on_tie=True)
         return self._drink_decision(res, opts, stage, "drink_overflow", warn + [f"新来 {len(incomings)} 瓶，按持有 + 新来的合起来挑"], state)
 
     # ---------------------------------------------------------------- 相談 / 授業 / 外出 / 轮间（识别字段到位前为保守规则）
