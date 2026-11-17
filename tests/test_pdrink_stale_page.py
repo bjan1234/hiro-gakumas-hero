@@ -68,3 +68,36 @@ def test_reentry_after_skip_waits_for_confirm_instead_of_redeciding(monkeypatch)
     strat._skip_incoming_drink = True
     strat.on_pdrink_max(None)
     assert seen == [] and confirms == [1]
+
+
+def _confirm_strategy(monkeypatch, on_top):
+    import hiro.produce.hif as hif
+
+    clicks, stops = [], []
+
+    class Deciders:
+        def decide(self, page, state):
+            return Decision(Action(ActionKind.DIALOG, {"kind": "reward_skip", "confirm": False}), "没有放弃新饮料的决策", "rule", 0.5)
+
+    sess = NS(state=GameState(), observe=lambda **k: NS(fields={}), record=lambda *a, **k: None, recover=lambda *a, **k: None)
+    strat = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
+    strat.s, strat.deciders = sess, Deciders()
+    strat._stop = lambda page, why, **k: stops.append(why)
+    monkeypatch.setattr(hif, "sleep", lambda s: None)
+    monkeypatch.setattr(hif, "device", NS(screenshot=lambda: None, click=lambda *a: clicks.append(a)))
+    monkeypatch.setattr(hif, "_confirm_on_top", on_top)
+    return strat, clicks, stops
+
+
+def test_confirm_cancel_waits_for_dialog_to_close(monkeypatch):
+    """qualifyverify4 续跑（14:58）：「報酬スキップ」没有对应决策 → 点キャンセル 就返回；DMM 约 4 秒后才响应，主循环又看到确认框，
+    算成「连续出现」停机。点完等确认框关掉再返回（关掉之后真的又弹出来才算第二次，test_hook_takeover 管那条）。"""
+    polls = {"n": 0}
+
+    def on_top(img):
+        polls["n"] += 1
+        return polls["n"] <= 3  # 点完キャンセル 后确认框还在 3 拍才关
+
+    strat, clicks, stops = _confirm_strategy(monkeypatch, on_top)
+    strat.on_pdrink_max_confirm(None)
+    assert clicks == [(218, 1160)] and stops == [] and polls["n"] == 4  # 等到关掉才返回

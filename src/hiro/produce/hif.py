@@ -454,6 +454,7 @@ class HifCore:
 
     SELECT_RETRIES = 4  # 三选一候选为空时重读几次（每次等 SELECT_RETRY_WAIT 秒，约 2–3 秒）
     SELECT_RETRY_WAIT = 0.5
+    CONFIRM_CLOSE_TRIES = 12  # 「報酬スキップ」点キャンセル 后等它关掉几拍（一半时补点一次）
     PDRINK_SETTLE_TRIES = 5  # 饮料溢出页还没在状态里稳定时重新观测几次再决策
     PDRINK_CONFIRM_WAIT_TRIES = 6  # 点过「残す」后重入：等「報酬スキップ」确认几拍
     PDRINK_DECIDE_RETRIES = 2  # 饮料溢出页决策没给出 DiscardDrink（异常兜底成 Wait）时重新观测再决策几次
@@ -1127,6 +1128,14 @@ class HifCore:
             if self._confirm_unknown >= 2:
                 self._stop("PDRINK_MAX_CONFIRM", f"「報酬スキップ」确认连续出现且没有放弃新饮料的决策（{d.reason}）", obs=obs, decision=d)
             device.click(*REWARD_SKIP_CANCEL)
+            # 等确认框关掉再返回：DMM 有时 4 秒后才响应，同一个确认框还开着就返回，主循环再看到它会算成「连续出现」停机
+            # （qualifyverify4 续跑 14:58）。关掉之后真的又弹出来才算第二次
+            for i in range(self.CONFIRM_CLOSE_TRIES):
+                sleep(self.SELECT_RETRY_WAIT)
+                if not _confirm_on_top(device.screenshot()):
+                    break
+                if i == self.CONFIRM_CLOSE_TRIES // 2:
+                    device.click(*REWARD_SKIP_CANCEL)
             self.s.recover("dialog", "「報酬スキップ」确认没有对应决策：点キャンセル 回到饮料页重新决策")
             self.s.record(obs, decision=d, timings_ms={"total": (time.monotonic() - t0) * 1000})
             return
