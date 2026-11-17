@@ -105,3 +105,39 @@ def test_resume_stops_when_never_recognized(monkeypatch):
     with pytest.raises(ResumeBlocked, match="续跑进培育"):
         finish.resume_produce(rt, timeout=20)
     assert rt.raw_device.taps == []
+
+
+def test_finish_go_home_from_tower_result(monkeypatch):
+    """11-17 Mac：run_hif new 起跑时停在偶像之路第 19 层 PERFECT 结果页（再挑戦 / 一覧に戻る，没有首页按钮），
+    结算收尾一直点空白，180 秒超时。现在点「一覧に戻る」回层选择页，再点那里左下的首页；绝不点「再挑戦」。"""
+    result = frame({}, [T("PERFECT", 360, 240), T("再挑戦", 130, 1160), T("→ 一覧に戻る", 350, 1160)])
+    layers = frame({"Common.ButtonToolbarHome": (85, 1211)}, [T("挑戦する", 446, 987)])
+    rt, _ = rig(monkeypatch, [result], on_tap=lambda taps: [layers] if len(taps) == 1 else [frame(HOME)])
+    assert finish.finish_produce_end(rt, go_home=True) is True
+    assert rt.raw_device.taps == [(350, 1160), (85, 1211)]
+
+
+def test_goto_home_from_tower_result(monkeypatch):
+    from hiro.runtime import nav
+
+    result = frame({}, [T("再挑戦", 130, 1160), T("→一覧に戻る", 351, 1160)])
+    rt, _ = rig(monkeypatch, [result], on_tap=lambda taps: [frame({"Common.ButtonToolbarHome": (85, 1211)})] if len(taps) == 1 else [frame(HOME)])
+    nav.goto_home(rt)
+    assert rt.raw_device.taps == [(351, 1160), (85, 1211)]
+
+
+@pytest.mark.parametrize("name", ["09_result.png", "100_perfect_result.png", "60_failed_ranking.png"])
+def test_tower_back_on_real_frames(name):
+    import os
+    from pathlib import Path
+
+    import cv2
+
+    from hiro.runtime import nav
+    from hiro.runtime.frame import Frame
+
+    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "tower" / "pages" / name
+    if not path.exists():
+        pytest.skip(f"需要实机截图 tower/pages/{name}")
+    b = nav.tower_back(Frame(cv2.resize(cv2.imread(str(path)), (720, 1280)), 0.0))
+    assert b is not None and abs(b.rect.center.x - 350) < 20 and abs(b.rect.center.y - 1160) < 20

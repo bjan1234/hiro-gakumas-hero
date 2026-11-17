@@ -22,8 +22,17 @@ def at_home(f) -> bool:
     return find(f, "Daily.ButtonHomeCurrent") is not None
 
 
+TOWER_BACK = "一覧に戻る"  # 偶像之路结果页 / 不合格名次页底部：回层选择页（那里有左下首页按钮）
+
+
+def tower_back(f):
+    """偶像之路结果页 / 不合格名次页的「一覧に戻る」按钮（底部）；没有返回 None。这两页没有首页按钮（11-17 Mac：
+    run_hif new 起跑时停在第 19 层 PERFECT 结果页，结算收尾一直点空白，180 秒超时）。旁边的「再挑戦」绝不点。"""
+    return next((t for t in f.texts if TOWER_BACK in t.text.replace(" ", "") and t.rect.center.y > 1000), None)
+
+
 def goto_home(rt, timeout: float = HOME_TIMEOUT):
-    """回首页：点首页 / 工具栏首页 / ✕，直到认出首页（同 KAA goto_home）。返回首页那一帧。"""
+    """回首页：点首页 / 工具栏首页 / ✕，直到认出首页（同 KAA goto_home）；偶像之路结果页先点「一覧に戻る」。返回首页那一帧。"""
 
     def step(f):
         if at_home(f):
@@ -32,6 +41,8 @@ def goto_home(rt, timeout: float = HOME_TIMEOUT):
             if (m := find(f, name)) is not None:
                 tap_match(rt, m)
                 return None
+        if (b := tower_back(f)) is not None:
+            rt.device.tap(*b.rect.center)
         return None
 
     return rt.drive(step, timeout, "回首页")

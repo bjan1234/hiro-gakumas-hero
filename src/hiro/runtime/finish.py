@@ -121,6 +121,9 @@ def finish_produce_end(rt, *, go_home: bool = False, timeout: float = FINISH_TIM
                 if (m := nav.find(f, name)) is not None:
                     nav.tap_match(rt, m)
                     return None
+            if (b := nav.tower_back(f)) is not None:
+                rt.device.tap(*b.rect.center)  # 偶像之路结果页 / 不合格名次页：回层选择页，下一拍点那里的首页
+                return None
         for name in ("InProduce.End.ButtonGenerate", "Produce.SaveMemoPic.ButtonConfirm", "Common.ButtonIconClose",
                      "InProduce.ButtonNextNoIcon", "Common.ButtonNext"):  # fmt: skip
             if (m := nav.find(f, name)) is not None:
