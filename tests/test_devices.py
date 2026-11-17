@@ -173,6 +173,40 @@ def test_maatools_errors_map_to_device_errors():
         dev.screenshot()
 
 
+def test_maatools_empty_frames_retry_then_black_then_gone(monkeypatch):
+    """11-17 Mac p15c：LandscapeGuard 刚切全屏，MaaTools 返回空帧，原来直接抛 DeviceUnavailable、整局崩掉。
+    现在：短暂空帧重试后用新帧；一直空就给上一帧尺寸的黑帧（这一拍当没截到）；连续 EMPTY_MAX_S 秒才报 DeviceGone。"""
+    from hiro.devices import maatools as mt
+
+    now = [0.0]
+    seq = []
+
+    class Client:
+        _sock = None
+
+        def screenshot(self):
+            item = seq.pop(0) if seq else None
+            if item is None:
+                raise RuntimeError("MaaTools 返回空帧")
+            return item
+
+    dev = MaaToolsDevice(port=1, client=Client())
+    dev._clock = lambda: now[0]
+    dev._sleep = lambda s: now.__setitem__(0, now[0] + s)
+    with pytest.raises(DeviceUnavailable):  # 还没截到过画面：不知道尺寸，照旧报不可用
+        dev.screenshot()
+    seq[:] = [bgr(720, 1280)]
+    assert dev.screenshot().shape == (1280, 720, 3)
+    seq[:] = [None, None, bgr(1280, 720)]  # 两次空帧后恢复（横屏 LIVE）
+    assert dev.screenshot().max() == 128 and dev._empty_since is None  # 真画面，不是黑帧
+    seq[:] = []  # 一直空：重试 EMPTY_RETRY_S 后给黑帧
+    img = dev.screenshot()
+    assert img.max() == 0 and dev._empty_since is not None
+    now[0] += mt.EMPTY_MAX_S
+    with pytest.raises(DeviceGone, match="空帧"):
+        dev.screenshot()
+
+
 def test_old_device_module_reexports_maatools_client():
     pytest.importorskip("kotonebot")
     import hiro.device as old

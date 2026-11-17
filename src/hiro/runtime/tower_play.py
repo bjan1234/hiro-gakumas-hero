@@ -23,6 +23,7 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
+from hiro.devices.base import DeviceError
 from hiro.loop.errors import ResumeBlocked
 from hiro.runtime import tower_cache
 from hiro.runtime.loop import DONE, STAY, Outcome
@@ -555,6 +556,10 @@ def run(args) -> int:
     except ResumeBlocked as e:
         logger.error("%s", e)
         print(str(e))
+        return 3
+    except DeviceError as e:  # 设备没了 / 连续空帧（hiro.devices）：停机交给人，不带着 traceback 整个崩掉
+        logger.error("设备出错，停机：%s: %s", type(e).__name__, e)
+        print(f"设备出错，停机：{e}")
         return 3
     finally:
         active.use(None)
