@@ -446,3 +446,14 @@ def test_event_choice_pure_dialogue_picks_first():
                 [{"index": 0, "text": "A", "no_effect": True}, {"index": 1, "text": "B", "no_effect": True}]):
         d = pd.decide("EVENT_CHOICE", GameState(produce=prod, page_fields={"choices": chs}))
         assert d.action.args == {"select": 0} and d.source == "rule" and "没有效果" in d.reason
+
+
+def test_hajime_full_stamina_prefers_shop_over_outing():
+    """初实机（协调 11-17）：体力 30/30、没课的周，原来选了外出。满体力外出回体力用不上：相談排在外出前，外出只在没别的可选时去。"""
+    opts = [_opt("outing"), _opt("shop"), _opt("rest")]
+    o, reason, _ = _pick(_st(stamina=30, max_stamina=30, produce_point=60), opts)
+    assert o["option"] == "shop" and "外出排最后" in reason
+    o, _, _ = _pick(_st(stamina=30, max_stamina=30), [_opt("outing"), _opt("rest")])
+    assert o["option"] == "outing"  # 满体力不能休息、只剩外出
+    o, _, _ = _pick(_st(stamina=22, max_stamina=30, produce_point=60), opts)
+    assert o["option"] == "outing"  # 少了 8（不算满、也不算累）：外出照旧排在 P 不足时的相談前
