@@ -586,7 +586,10 @@ def test_card_pick_rerolls_when_all_unwanted_then_least_polluting():
     d = _card_pick("produce-004", [RESTART, LOVELY_WINK, MINNA])
     assert d.action.kind.name == "REROLL"
     d = _card_pick("produce-004", [RESTART, HIGH_TENSION, MINNA], rerolls=0)
-    assert _picked(d) == 2 and "不污染" in d.reason
+    assert d.action.kind.name == "EXCLUDE_CARD"  # 刷新用完、禁用还有：先禁用（协调 11-18）
+    d = _card_pick("produce-004", [RESTART, HIGH_TENSION, MINNA], rerolls=0, excludes=0)
+    # 都冲突：みんな大好き（好印象の90%分）主打好印象排最后；リスタート 可复用、ハイテンション 一次性 → 一次性的污染小
+    assert _picked(d) == 1 and "不污染" in d.reason
 
 
 @pytest.mark.sim_master
@@ -726,3 +729,29 @@ def test_hajime_nia_drink_no_hif_sim():
     """初 / N.I.A 的饮料比较不跑 H.I.F 选拔考试的模拟。"""
     pd = _pd()
     assert pd._drink_sim_context(pd.produce_state(_live_state()), "selection") is None
+
+
+# ---- 主打好印象的卡（协调 11-18 N.I.A 第二局：拿了 キラメキ / キセキの魔法 / ファンシーチャーム）----
+KIRAMEKI, KISEKI, FANCY, TEBYOSHI = "p_card-02-act-2_048", "p_card-02-act-3_052", "p_card-02-men-2_058", "p_card-02-act-1_003"
+PASTEL, SHIAWASE, OTOME, HONBAN, OMOIDASHI = "p_card-02-men-1_033", "p_card-02-men-1_035", "p_card-02-men-2_060", "p_card-02-men-2_054", "p_card-02-men-1_032"
+
+
+@pytest.mark.sim_master
+def test_impression_main_cards_detected():
+    """卡面「好印象のN%分パラメータ上昇」「好印象がN以上の場合、使用可」「以降…好印象+」算主打好印象；
+    ゆめみごこち / あのときの約束（只消費好印象）、成長痛 / 止められない想い（顺带加好印象）不算。"""
+    from hiro.brain.deciders import _impression_main
+
+    assert all(_impression_main(c) for c in (KIRAMEKI, KISEKI, FANCY, TEBYOSHI))
+    assert not any(_impression_main(c) for c in ("p_card-02-men-2_057", "p_card-02-act-3_045", "p_card-02-men-2_111", "p_card-02-men-2_056", KAIKA))
+
+
+@pytest.mark.sim_master
+def test_impression_main_not_taken_even_if_once():
+    """打法匹配先于一次性：キラメキ（一次性、主打好印象）不拿；刷新用完先禁用；禁用也用完才在三张里挑，主打好印象的排最后。"""
+    d = _card_pick("produce-004", [KIRAMEKI, PASTEL, SHIAWASE], rerolls=0, excludes=0)
+    assert _picked(d) == 1  # パステル気分：可复用、不冲突，比主打好印象 / 纯好印象的都强
+    d = _card_pick("produce-004", [FANCY, HONBAN, OMOIDASHI], rerolls=0, excludes=2)
+    assert d.action.kind.name == "EXCLUDE_CARD" and d.action.args["pick_index"] == 0 and "主打好印象" in d.reason
+    d = _card_pick("produce-004", [OTOME, TEBYOSHI, KISEKI], rerolls=0, excludes=0)
+    assert _picked(d) == 0  # 都冲突：不拿主打好印象的 手拍子 / キセキの魔法
