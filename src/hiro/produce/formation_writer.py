@@ -1,8 +1,9 @@
 # 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
-"""开局时把编成位改成方案（hiro.brain.formation_plan）：第 2 步支援卡、第 3 步回忆，就地修正对不上的格子。
+"""把编成位改成方案（hiro.brain.formation_plan）：支援卡、回忆，就地修正对不上的格子。
 
-只在 KAA 已经切到方案的编成号（建议 20 号专用位）之后、点「次へ」之前运行；不进菜单、不碰其他编成位。开关
-HIRO_FORMATION_AUTOFIX=1 才启用（默认关，2026-11-06：执行步骤还没实机验证）。
+两个用处：开局第 2 步支援卡（HIRO_FORMATION_AUTOFIX=1 才启用，在 KAA 切到方案的编成号之后、点「次へ」之前）；
+编成菜单（hiro.produce.formation_menu，tools/write_formation.py）里写支援卡和回忆。开局第 3 步不再写回忆、只核对
+（协调 11-17：第 3 步选择页只露约 3 行、排序和菜单不同，按库存行号找不准）。不碰方案编成号以外的编成位。
 
 规则：
 - 只改必须改的格子：已经在编成里的方案卡不动；先换「认出来但不在方案里」的格子，再用认不出的格子。
@@ -154,29 +155,30 @@ def pick_support(dev: Device, target: str, *, read_list) -> None:
 SETTLE_READS, SETTLE_GAP_S = 8, 0.5
 
 
-def _settled_step2(dev: Device, read_formation):
+def _settled_step2(dev: Device, read_formation, view: str = "step2"):
     """第 2 步 5 格读到连续两次一样才算数（刚从别的编成号翻过来时卡片还在动画里，第 1 格常读成认不出，
     11-16 Mac 实机：于是去列表里找一张已经在编成里的卡，找不到就不开局）。读不到稳定结果时用最后一次。"""
     prev, page = None, None
     for _ in range(SETTLE_READS):
         page = read_formation(dev.shoot())
-        if page is not None and page.get("view") == "step2":
+        if page is not None and page.get("view") == view:
             cur = [s.get("support_card_id") for s in page["slots"]]
             if cur == prev:
                 return page
             prev = cur
         dev.sleep(SETTLE_GAP_S)
-    return page if page is not None and page.get("view") == "step2" else None
+    return page if page is not None and page.get("view") == view else None
 
 
-def fix_support(dev: Device, plan: dict, *, read_formation, read_list) -> list[dict]:
-    """第 2 步：读 5 格，和方案不一致的格子逐个点开、选方案的卡、決定，再核对。返回改动记录。"""
+def fix_support(dev: Device, plan: dict, *, read_formation, read_list, view: str = "step2") -> list[dict]:
+    """第 2 步：读 5 格，和方案不一致的格子逐个点开、选方案的卡、決定，再核对。返回改动记录。
+    view：read_formation 的页面类型，开局第 2 步是 step2，编成菜单（hiro.produce.formation_menu）是 formation。"""
     want = [o["support_card_id"] for o in (plan.get("support") or {}).get("own") or []]
     if not want:
         return []
-    page = _settled_step2(dev, read_formation)
+    page = _settled_step2(dev, read_formation, view)
     if page is None:
-        raise FormationWriteError("不在第 2 步支援卡页面")
+        raise FormationWriteError("不在第 2 步支援卡页面" if view == "step2" else "不在支援卡编成页")
     current = [s.get("support_card_id") for s in page["slots"]]
     moves = fix_plan(current, want)
     done = []
@@ -186,9 +188,9 @@ def fix_support(dev: Device, plan: dict, *, read_formation, read_list) -> list[d
         dev.click(*tile["center"])
         dev.sleep(1.5)
         pick_support(dev, target, read_list=read_list)
-        img, page2 = _wait(dev, read_formation, lambda p: p.get("view") == "step2")
+        img, page2 = _wait(dev, read_formation, lambda p: p.get("view") == view)
         if page2 is None:
-            raise FormationWriteError("決定后没回到第 2 步")
+            raise FormationWriteError("決定后没回到第 2 步" if view == "step2" else "決定后没回到支援卡编成页")
         got = page2["slots"][slot].get("support_card_id")
         if got != target:
             dev.snap(img, f"support-verify-fail-{slot}")
@@ -279,8 +281,9 @@ def pick_memory(picker, target: dict, *, decide=PICKER_DECIDE) -> None:
     raise FormationWriteError(f"回忆选择页第 {row} 行上下 {SEARCH_ROWS} 行里没找到方案里的回忆（试了 {tried} 格），库存可能过期，请重扫")
 
 
-def fix_memory(dev: Device, plan: dict, *, read_icons, make_picker) -> list[dict]:
-    """第 3 步：认四格回忆的卡，和方案不一致的格子逐个点开、按库存位置选那份回忆、決定，再认一次核对。"""
+def fix_memory(dev: Device, plan: dict, *, read_icons, make_picker, slots=STEP3_SLOTS) -> list[dict]:
+    """第 3 步：认四格回忆的卡，和方案不一致的格子逐个点开、按库存位置选那份回忆、決定，再认一次核对。
+    slots：点开选择页的四个位置（编成菜单用 formation_menu.MEMORY_TILES）。"""
     from hiro.vision.memory_icons import card_key
 
     chosen = (plan.get("memory") or {}).get("chosen") or []
@@ -304,7 +307,7 @@ def fix_memory(dev: Device, plan: dict, *, read_icons, make_picker) -> list[dict
         picker, opened = make_picker(), False
         for attempt in range(PICKER_OPEN_TRIES):  # 页面打开有时慢（11-16 Mac 实机：1.5 秒后还没开 → 不开局）：多等、没开再点一次
             if attempt == 0 or attempt == PICKER_OPEN_TRIES // 2:
-                dev.click(*STEP3_SLOTS[slot])
+                dev.click(*slots[slot])
             dev.sleep(1.5)
             if picker_open(picker.ocr(picker.shoot())):
                 opened = True

@@ -222,28 +222,6 @@ def _autofix_support() -> None:
     formation_steps.autofix_support(_writer_device("支援卡"), kaa_env.ACTIVE_PLAN)
 
 
-def _autofix_memory() -> None:
-    """第 3 步：回忆格和方案不一致时自动改（hiro.produce.formation_steps.autofix_memory）；
-    旧设备的回忆列表滚动临时用「终点停住」防惯性（同 hiro.memory_scan）。"""
-    if not _autofix_on():
-        return
-    from hiro import device as hdev
-    from hiro import kaa_env
-    from hiro.produce import formation_steps
-    from hiro.produce.memory_picker import SWIPE_DURATION, SWIPE_HOLD, Picker
-
-    impl = getattr(hdev.DEVICE, "_touch", None) if hdev.DEVICE is not None else None  # 最近一次 connect() 的设备
-    old_hold = getattr(impl, "swipe_hold", None)
-    if impl is not None and old_hold is not None:
-        impl.swipe_hold = SWIPE_HOLD
-    try:
-        formation_steps.autofix_memory(_writer_device("回忆"), kaa_env.ACTIVE_PLAN, lambda: Picker(
-            device.screenshot, lambda x, y: device.click(x, y), lambda x1, y1, x2, y2: device.swipe(x1, y1, x2, y2, duration=SWIPE_DURATION)))
-    finally:
-        if impl is not None and old_hold is not None:
-            impl.swipe_hold = old_hold
-
-
 def _check_memory_set() -> None:
     """有开局编成方案时核对回忆编成号和四格回忆卡（hiro.produce.formation_steps.check_memory_set）。"""
     from hiro import kaa_env
@@ -314,8 +292,7 @@ def _snap_step3(orig):
             logger.warning("第 3 步截图失败：%s", e)
         r = orig(*a, **k)
         if r:
-            _autofix_memory()
-            _check_memory_set()  # KAA 选完编成、点「次へ」之前
+            _check_memory_set()  # KAA 选完编成、点「次へ」之前（第 3 步只核对，回忆在编成菜单里写：hiro.produce.formation_menu）
         return r
 
     wrapped._hiro_snap = True

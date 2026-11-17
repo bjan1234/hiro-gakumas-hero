@@ -303,24 +303,15 @@ MEMORY_UNSET_TITLE = "メモリー編成確認"  # 第 3 步点次へ 时有空�
 
 
 def step3(rt, *, set_no: int | None, plan: dict | None = None) -> None:
-    """第 3 步：翻到回忆编成 set_no → 按方案自动改（HIRO_FORMATION_AUTOFIX=1）→ 核对编成号和回忆卡 → 次へ（中途「有可用租借次数」
-    提示点确认），到第 4 步。"""
+    """第 3 步：翻到回忆编成 set_no → 核对编成号和回忆卡（只核对，不写；回忆在编成菜单里写，hiro.produce.formation_menu）
+    → 次へ（中途「有可用租借次数」提示点确认），到第 4 步。"""
     from hiro.produce import formation_steps, prep_steps
-    from hiro.produce.formation_writer import Device as WriterDevice
-    from hiro.produce.memory_picker import SWIPE_DURATION, SWIPE_HOLD, Picker
 
     rt.drive(lambda f: True if nav.find(f, "Produce.TextStepIndicator3") is not None else None, STEP_TIMEOUT, "等第 3 步")
     if set_no is None:
         raise ResumeBlocked("没有回忆编成号（HIRO_MEMORY_SET / 开局编成方案），不开局")
     if not prep_steps.select_set(set_no, shoot=lambda: rt.screen.shot().img, tap=rt.device.tap, sleep=rt.sleep, clock=rt.clock):
         raise ResumeBlocked(f"回忆编成翻不到 {set_no} 号")
-    dev = _RentalDevice(rt)
-
-    def make_picker():  # 回忆列表慢滑 + 终点停住，不带惯性
-        return Picker(dev.screenshot, dev.click,
-                      lambda x1, y1, x2, y2: rt.device.swipe(x1, y1, x2, y2, duration=SWIPE_DURATION, hold=SWIPE_HOLD))  # fmt: skip
-
-    formation_steps.autofix_memory(WriterDevice(shoot=dev.screenshot, click=dev.click, swipe=dev.swipe, sleep=rt.sleep), plan, make_picker)
     formation_steps.check_memory_set(rt.screen.shot().img, plan, set_no)
 
     want = len(((plan or {}).get("memory") or {}).get("chosen") or [])
