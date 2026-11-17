@@ -446,6 +446,12 @@ def test_event_choice_pure_dialogue_picks_first():
                 [{"index": 0, "text": "A", "no_effect": True}, {"index": 1, "text": "B", "no_effect": True}]):
         d = pd.decide("EVENT_CHOICE", GameState(produce=prod, page_fields={"choices": chs}))
         assert d.action.args == {"select": 0} and d.source == "rule" and "没有效果" in d.reason
+    # 平台的 page_fields.dialogue_only（ef07f2b）：选项只有文字、没读 effect，也直接选第一个；false 时照旧走粗估 / 停机
+    chs = [{"index": 0, "text": "よろしく"}, {"index": 1, "text": "がんばろう"}]
+    d = pd.decide("EVENT_CHOICE", GameState(produce=prod, page_fields={"choices": chs, "dialogue_only": True}))
+    assert d.action.args == {"select": 0} and d.source == "rule" and "纯台词" in d.reason
+    d = pd.decide("EVENT_CHOICE", GameState(produce=prod, page_fields={"choices": chs, "dialogue_only": False}))
+    assert "纯台词" not in d.reason
 
 
 def test_hajime_full_stamina_prefers_shop_over_outing():

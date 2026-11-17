@@ -2265,7 +2265,8 @@ class ProduceDeciders:
 
         page_fields（平台模块的新主循环读出来交给这里，页面层不写选择规则）：
           title：事件标题（可空）；kind：random / support / start …（可空，只给 LLM 看）；
-          choices：[{index, text, effect?（选中后弹出的效果说明）, cost_hp?, cost_p?, trouble?}]，按画面从上到下。
+          choices：[{index, text, effect?（选中后弹出的效果说明）, cost_hp?, cost_p?, trouble?}]，按画面从上到下；
+          dialogue_only：平台判的纯台词页（每个按钮都没有效果），true 时直接选第一个。
         输出 EventSelect {"select": index}；source = rule（严格占优）/ llm / fallback（粗估分）；读不出选项、或有选项效果没解析出来
         而 LLM 给不出答案时 WAIT（停机等人，同现在的做法）。LLM 路径开关 event_choice（HIRO_PRODUCE_LLM）。"""
         from hiro.brain import event_choice as ev
@@ -2274,6 +2275,10 @@ class ProduceDeciders:
         choices = sorted(pf.get("choices") or [], key=lambda c: c.get("index", 0))
         title = pf.get("title") or ""
         stop = lambda why, w: Decision(Action.ui(ActionKind.WAIT, why=why), why, "fallback", 0.1, warnings=w, decider="event_choice")  # noqa: E731
+        if pf.get("dialogue_only") is True and choices:
+            # 平台按按钮外观判的纯台词页（白底深色字、没有图标 / 代价角标 / トラブル，ef07f2b）：选第一个，不停机
+            return Decision(Action.event_select(choices[0]["index"]), f"事件「{title or '未识别'}」：{len(choices)} 个选项都是纯台词（没有效果），选第一个",
+                            "rule", 0.9, decider="event_choice")  # fmt: skip
         if len(choices) < 2:
             return stop("事件选项没读出来（少于 2 个）：停下等人", ["EVENT_CHOICE choices 缺失"])
         if all(c.get("no_effect") or (c.get("effect") == "" and not any(c.get(k) for k in ("cost_hp", "cost_p", "trouble"))) for c in choices):
