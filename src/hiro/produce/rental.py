@@ -42,10 +42,26 @@ MAX_SCREENS = 10  # 每页最多滑几次
 TOP_LEVEL = 60
 
 
+SWIPE_BACK = (360, 640, 360, 1000, 0.8)  # 往上翻（看更靠前的行），同 SWIPE 的幅度和速度（不带惯性，不漏行）
+TOP_MAX_SWIPES = 30
+
+
+def _players() -> list:
+    return [r.get("player") for r in _rows()["rows"]]
+
+
 def _to_top():
-    for _ in range(MAX_SCREENS):
+    """滑到列表最上面：一直往上翻到连续两次画面不动（原来固定滑 10 次，长列表从底部回不到顶，11-17 Mac p15 没找到最好的那行）。"""
+    last, still = _players(), 0
+    for _ in range(TOP_MAX_SWIPES):
         device.swipe(360, 640, 360, 1000, 0.5)
-    _sleep(1.0)
+        _sleep(0.8)
+        cur = _players()
+        still = still + 1 if cur == last else 0
+        if still >= 2:
+            break
+        last = cur
+    _sleep(0.5)
 
 
 def _goto_page(page: int, pager: dict):
@@ -119,7 +135,7 @@ def scored_best(rows: list[dict], scorer, exclude: set | None = None) -> tuple[d
     return (best[1], best[0][0]) if best else None
 
 
-RETURN_EXTRA_SCREENS = 3
+SEEK_MAX_SWIPES = 40  # 回去找那一行：往上 + 往下一共最多滑这么多次
 RENTAL_REFRESHES = 2  # 两页都没有合适的卡时最多刷新租借列表几次（刷新免费）
 
 
@@ -144,6 +160,33 @@ def progress(why: str) -> None:
     _p(why)
 
 
+def _seek(match, scorer=None, exclude=None, max_swipes: int = SEEK_MAX_SWIPES):
+    """从当前位置先往上逐屏找、到顶后往下逐屏找，match(rows) 命中就停（不再往后滑，调用方直接点）。
+    返回 (命中的行或 None, 最后一屏读数, 途中看到的价值最高的 (行, 价值) 或 None, 途中读到的玩家)。
+    到头：连续两次滑了画面不动（只一次不动可能是滑动没走满）。"""
+    seen_best, seen_players, lst = None, [], {"rows": []}
+    swipes = 0
+    for swipe in (SWIPE_BACK, SWIPE):
+        last, still = None, 0
+        while swipes <= max_swipes:
+            lst = _rows()
+            row = match(lst["rows"])
+            if row is not None:
+                return row, lst, seen_best, seen_players
+            players = [r.get("player") for r in lst["rows"]]
+            seen_players += [p for p in players if p not in seen_players]
+            if scorer is not None and (hit := scored_best(lst["rows"], scorer, exclude)) is not None and (seen_best is None or hit[1] > seen_best[1]):
+                seen_best = (hit[0], hit[1])
+            still = still + 1 if players == last else 0
+            if still >= 2:
+                break
+            last = players
+            device.swipe(*swipe)
+            _sleep(1.2)
+            swipes += 1
+    return None, lst, seen_best, seen_players
+
+
 def _pick_once(attr: str, exclude: set, scorer=None, refreshes: int = RENTAL_REFRESHES) -> str | None:
     """两页都从顶滑到底，记下最好的一张（页、滑动次数、玩家名），回去点它。返回选中的卡名。
     没有 scorer 时遇到满级（Lv60）主属性卡立刻选；有 scorer 时要看完全部再挑价值最高的。"""
@@ -154,10 +197,17 @@ def _pick_once(attr: str, exclude: set, scorer=None, refreshes: int = RENTAL_REF
     ctrl, pager = first.get("controls") or {}, first.get("pager") or {}
     pages = pager.get("pages") or 1
     best = None  # (level, breaks, page, screen, player)
+    page1_top = None
     for page in range(1, pages + 1):
         if page > 1:
             _goto_page(page, pager)
             _to_top()
+            if _players() == page1_top:
+                # 「1/2」是上面卡片详情区的翻页，不是列表的（11-17 Mac p15：翻过去列表行一模一样，又从头扫了一遍）
+                logger.info("租借：翻到第 %d 页后列表没变（翻页是详情区的），不再扫", page)
+                break
+        elif page1_top is None:
+            page1_top = _players()
         last_players = None
         for screen in range(MAX_SCREENS):
             progress(f"租借：第 {page} 页第 {screen + 1} 屏")  # 两页翻完约 55s，每屏报一次进展（D38）
@@ -208,46 +258,24 @@ def _pick_once(attr: str, exclude: set, scorer=None, refreshes: int = RENTAL_REF
         device.click(*(ctrl.get("cancel") or (220, 1157)))
         return None
     _, _, _, page, screen, player, sig = best
-    _goto_page(page, pager)
-    _to_top()
-    # 回到那一行：滑动有惯性，滑同样次数不一定回到同一屏（11-16 Mac 实机：没找到就取消、不开局）。
-    # 从顶往下逐屏找这位玩家，最多比记下的屏数多滑 RETURN_EXTRA_SCREENS 次
-    row, lst, last_players, still = None, None, None, 0
-    seen_best = None  # 往回找途中看到的价值最高的一行（找不到原玩家时的退路；回去的路上屏幕和扫描时可能不一样）
-    seen_players: list = []
-    for _ in range(screen + 1 + RETURN_EXTRA_SCREENS):
-        lst = _rows()
-        row = _find_row(lst["rows"], player, sig)
-        if row is not None:
-            break
-        seen_players += [r.get("player") for r in lst["rows"]]
-        if scorer is not None and (hit := scored_best(lst["rows"], scorer, exclude)) is not None and (seen_best is None or hit[1] > seen_best[1]):
-            seen_best = (lst, hit[1], hit[0])
-        players = [r.get("player") for r in lst["rows"]]
-        still = still + 1 if players == last_players else 0
-        if still >= 2:
-            break  # 连续两次滑了画面不动 = 到底（只一次不动可能是滑动没走满）
-        last_players = players
-        device.swipe(*SWIPE)
-        _sleep(1.2)
+    if pages > 1:
+        _goto_page(page, pager)
+    # 回到那一行：滑动有惯性，滑同样次数不一定回到同一屏（11-16 Mac 实机）；从顶滑同样屏数也可能回不到（p15：从底部回不到顶）。
+    # 从当前位置先往上、再往下逐屏找，看到就点（_seek）；整条列表都没找到，才退回这一趟看到的最好一行，按它自己的玩家 / 卡去找
+    row, lst, seen_best, seen_players = _seek(lambda rows: _find_row(rows, player, sig), scorer, exclude)
     if row is None and seen_best is not None:
-        # 退回往回找时看到的最好一行：需要回到那一屏
-        logger.warning("租借：回到最佳行时没找到（玩家 %s，卡 %s），改租往回找时看到的最好一张（价值 %.0f，最好的是 %.0f）；往回找时读到的玩家 %s",
-                       player, sig, seen_best[1], best[0], seen_players)  # fmt: skip
-        target = seen_best[2].get("player")
-        _to_top()
-        for _ in range(screen + 1 + RETURN_EXTRA_SCREENS):
-            lst = _rows()
-            row = next((r for r in lst["rows"] if r.get("player") == target and r.get("card")), None)
-            if row is not None:
-                break
-            device.swipe(*SWIPE)
-            _sleep(1.2)
+        sb_row, sb_value = seen_best
+        sb_player, sb_sig = sb_row.get("player"), _card_sig(sb_row)
+        logger.warning("租借：回到最佳行时没找到（玩家 %s，卡 %s），改租往回找时看到的最好一张 %s（玩家 %s，价值 %.0f，最好的是 %.0f）；往回找时读到的玩家 %s",
+                       player, sig, sb_sig[0], sb_player, sb_value, best[0], seen_players)  # fmt: skip
+        row, lst, _, _ = _seek(lambda rows: _find_row(rows, sb_player, sb_sig), None, exclude)
+        if row is None:
+            logger.warning("租借：往回找时看到的那张（玩家 %s，卡 %s）也没再找到", sb_player, sb_sig)
     if row is None:
         hit = scored_best(lst["rows"], scorer, exclude) if scorer is not None else None
         row = hit[0] if hit else (best_row(lst["rows"], attr, exclude) if scorer is None else None)
     if row is None:
-        logger.warning("租借：回到最佳行时没找到（玩家 %s），取消", player)
+        logger.warning("租借：回到最佳行时没找到（玩家 %s，卡 %s），取消", player, sig)
         device.click(*(ctrl.get("cancel") or (220, 1157)))
         return None
     _tap_and_decide(row, ctrl)
