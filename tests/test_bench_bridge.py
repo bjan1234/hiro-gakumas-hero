@@ -813,3 +813,12 @@ def test_tower_status_sync_opt_in():
     off.begin(SimpleNamespace(loadout=TTMR16, known_draws=None, obs=obs))
     off._align(obs)
     assert off.rx.lesson_buff == 0
+
+
+@pytest.mark.parametrize("label, produce, step", [
+    ("hajime-lesson-32", "produce-006", 32), ("hajime-lesson-vo", "produce-001", 1), ("hajime-lesson-vo-sp", "produce-001", 2),
+    ("hajime-lesson-da-hard", "produce-002", 6), ("hajime-lesson-vi-sp", "produce-001", 8),
+    ("hajime-lesson-da-sp", "produce-006", 32), ("hajime-lesson-vi", "produce-006", 33), ("hajime-lesson-x", "produce-001", None)])  # fmt: skip
+def test_lesson_label_to_step_type(label, produce, step):
+    """平台从画面读到属性 + SP / 追い込み 就给 hajime-lesson-<属性>[-sp|-hard]；LEGEND（produce-006）的课是 29–34。"""
+    assert exam_fields(label, idol=None, plan=4, produce=produce)["step"] == step
