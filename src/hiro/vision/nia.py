@@ -12,8 +12,10 @@ sales_place / sales_event / audition_select）。实机样本：tests/fixtures/p
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 
 import cv2
+import numpy as np
 
 PLACE_KINDS = (("自治体", "local"), ("企業", "corporate"), ("商業", "commercial"), ("ゾート", "resort"))  # 「リゾート施設」展开时 OCR 读成「ノゾート施談」
 ICON_ATTR_HUE = {"Vo": (155, 180), "Da": (95, 120), "Vi": (12, 35)}  # 话题按钮左侧圆形图标：粉 / 蓝 / 黄
@@ -37,8 +39,136 @@ def _num(s: str) -> int | None:
     return int(m.group(0).replace(",", "")) if m else None
 
 
-def read_sales_place(texts) -> dict | None:
+# ---------------------------------------------------------------- 営業场所：图形为主（用户 11-17：名字读不出不要紧，认准图标 / 颜色和收益）
+CARD_X = 60  # 卡片左边缘那一列：按颜色切出每张卡
+CARD_Y = (380, 1180)
+CARD_MIN_H = 25
+CARD_HUE = (("local", 18, 32), ("corporate", 78, 96), ("commercial", 120, 150), ("resort", 45, 75))  # 黄 / 青绿 / 紫 / 绿
+EXPANDED_MIN_H = 300  # 展开的那张特别长（实机 411 / 480 px）；收起的最下面一张到画面底也有 233
+PILL_X = (480, 640)  # 「消費」药丸：卡片同色、亮度压到 95–175
+HEART_X = (425, 465)  # 药丸里的爱心图标（高亮）：有爱心 = 耗体力（实机 540+），「消費なし」没有（≤ 20）
+HEART_MIN = 200
+START_X = (380, 660)  # 「営業開始」橙色按钮
+REWARD_DX, REWARD_X0, REWARD_DY = 96, 112, -28  # 獲得報酬小图标：第一格中心 x 112、间距 96，在「営業開始」上方约 28 像素
+# 有模板的：card（卡片带星，リゾート展开实机）/ card_plus（卡片右上带「+」，商業展开实机）/ stamina（心）。
+# 两种卡图标的含义（技能卡获得 / 强化…）交给决策层按攻略对；P 点、饮料还没有样本，认不出记 unknown
+REWARD_KINDS = ("card", "card_plus", "stamina")
+
+
+def _card_kind(px) -> str | None:
+    h, s, v = int(px[0]), int(px[1]), int(px[2])
+    if s < 90 or v < 150:
+        return None
+    return next((k for k, lo, hi in CARD_HUE if lo <= h <= hi), None)
+
+
+def _card_segments(hsv) -> list[tuple[str, int, int]]:
+    y0, y1 = CARD_Y
+    col = [_card_kind(hsv[y, CARD_X]) for y in range(y0, y1)]
+    segs, cur, start = [], None, 0
+    for i, k in enumerate([*col, None]):
+        if k != cur:
+            if cur is not None and i - start >= CARD_MIN_H:
+                segs.append((cur, y0 + start, y0 + i))
+            cur, start = k, i
+    return segs
+
+
+def _pill_rows(hsv, a: int, b: int) -> tuple[int, int] | None:
+    band = hsv[:, PILL_X[0] : PILL_X[1]]
+    # 「消費なし」的白字会把药丸中间几行切断：取窗口里所有符合的行，首尾当药丸上下沿（只看卡片头部 160 行）
+    rows = [y for y in range(a, min(b, a + 160)) if ((band[y, :, 2] >= 95) & (band[y, :, 2] <= 175) & (band[y, :, 1] >= 100)).mean() > 0.7]
+    groups: list[list[int]] = []
+    for y in rows:  # 允许中间断几行（白字），卡片上沿的零星几行、下面「大成功ボーナス」压暗块分开算
+        if groups and y - groups[-1][-1] <= 8:
+            groups[-1].append(y)
+        else:
+            groups.append([y])
+    pill = next((g for g in groups if 25 <= g[-1] - g[0] <= 60), None)
+    return (pill[0], pill[-1]) if pill else None
+
+
+def _has_heart(hsv, y1: int, y2: int) -> bool:
+    reg = hsv[y1 + 4 : y2 - 3, HEART_X[0] : HEART_X[1]]
+    return int(((reg[..., 2] >= 200) & (reg[..., 1] >= 150)).sum()) >= HEART_MIN
+
+
+def _start_button(hsv, a: int, b: int) -> tuple[int, int] | None:
+    reg = hsv[a:b, START_X[0] : START_X[1]]
+    m = (reg[..., 0] >= 5) & (reg[..., 0] <= 18) & (reg[..., 1] >= 180) & (reg[..., 2] >= 200)
+    if m.sum() < 1500:
+        return None
+    ys, xs = np.where(m)
+    return int(xs.mean()) + START_X[0], int(ys.mean()) + a
+
+
+@lru_cache(maxsize=1)
+def _reward_templates() -> dict:
+    from pathlib import Path
+
+    d = Path(__file__).with_name("templates")
+    return {k: cv2.imread(str(d / f"nia_reward_{k}.png"), cv2.IMREAD_GRAYSCALE) > 127 for k in REWARD_KINDS}
+
+
+def _glyph(img, cx: int, cy: int, r: int = 22):
+    hsv = cv2.cvtColor(img[cy - r : cy + r, cx - r : cx + r], cv2.COLOR_BGR2HSV)
+    return (hsv[..., 1] < 60) & (hsv[..., 2] > 220)
+
+
+def read_rewards(img, start: tuple[int, int]) -> list[str]:
+    """展开卡「獲得報酬」那一行的小图标（白色图形）→ ["card", "stamina", "unknown", …]，按模板 IoU 认。"""
+    out = []
+    cy = start[1] + REWARD_DY
+    for k in range(4):
+        cx = REWARD_X0 + REWARD_DX * k
+        if _glyph(img, cx, cy).sum() < 150:
+            break  # 这一格没有图标
+        best = (0.0, None)
+        for dy in range(-8, 9, 2):  # 位置随卡片高度略有偏差：附近找最像的
+            for dx in range(-8, 9, 2):
+                g = _glyph(img, cx + dx, cy + dy)
+                for name, t in _reward_templates().items():
+                    best = max(best, (float((g & t).sum() / max(1, (g | t).sum())), name))
+        out.append(best[1] if best[0] >= 0.5 else "unknown")
+    return out
+
+
+def read_sales_place(texts, img=None) -> dict | None:
+    """営業场所页。以卡片颜色定种类（黄 自治体 / 青绿 企業 / 紫 商業 / 绿 リゾート）、药丸里有没有爱心定耗不耗体力、
+    「営業開始」橙色按钮定展开的是哪张、獲得報酬小图标定收益；名字、金额、体力数值读得到就补上（只用来记日志 / 兜底）。
+    没有截图时退回纯文字读法。"""
     tx = _t(texts)
+    prompt = any("営業先" in s for s, _, _ in tx) or any(s == "営業" and x < 180 and y < 140 for s, x, y in tx)
+    if img is None:
+        return _read_sales_place_text(tx)
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    segs = _card_segments(hsv)
+    if len(segs) < 2:
+        return _read_sales_place_text(tx) if prompt else None
+    starts = [(i, st) for i, (_, a, b) in enumerate(segs) if (st := _start_button(hsv, a, b)) is not None]
+    if not (prompt or starts):
+        return None
+    places = []
+    for i, (kind, a, b) in enumerate(segs):
+        pill = _pill_rows(hsv, a, b)
+        cost = None
+        if pill is not None:
+            heart = _has_heart(hsv, *pill)
+            num = next((_num(s) for s, x, y in tx if x > 480 and pill[0] - 10 <= y <= pill[1] + 10 and re.fullmatch(r"-?\d{1,2}", s)), None)
+            cost = (num or 5) if heart else 0  # 有爱心但数字没读到：N.I.A 营業实测都是 -5
+        name = next((s for s, x, y in tx if x < 360 and a <= y <= a + 60 and ("会場" in s or "施" in s or "ゾート" in s)), None)
+        gain = next((_num(s) for s, x, y in tx if s.startswith("+") and x < 360 and a + 30 <= y <= a + 110), None)
+        places.append({"index": i, "kind": kind, "name": name, "gain": gain, "hp_cost": cost, "center": [360, a + 70]})
+    out = {"places": places, "expanded": bool(starts)}
+    if starts:
+        i, st = starts[0]
+        out.update(selected=i, start=list(st), rewards=read_rewards(img, st))
+        places[i]["rewards"] = out["rewards"]
+    return out
+
+
+def _read_sales_place_text(tx) -> dict | None:
+    """没有截图（或者颜色切不出卡）时的文字读法（原来的实现）。"""
     titles = []
     for s, x, y in tx:
         kind = next((k for w, k in PLACE_KINDS if w in s), None)
@@ -64,18 +194,46 @@ def read_sales_place(texts) -> dict | None:
     return out
 
 
+TOPIC_ICON = (40, 96, 24)  # 话题按钮左侧圆形图标：x 范围、上下半高（实机按钮中心 y 699 / 800 / 901）
+
+
+@lru_cache(maxsize=1)
+def _topic_templates() -> dict:
+    from pathlib import Path
+
+    d = Path(__file__).with_name("templates")
+    return {a: cv2.imread(str(d / f"nia_topic_{a}.png"), cv2.IMREAD_GRAYSCALE) > 127 for a in ("Vo", "Da", "Vi")}
+
+
+def _icon_mask(img, y: int, dx: int = 0, dy: int = 0):
+    x1, x2, r = TOPIC_ICON
+    hsv = cv2.cvtColor(img[max(0, y + dy - r) : y + dy + r, x1 + dx : x2 + dx], cv2.COLOR_BGR2HSV)
+    return (hsv[..., 1] >= 110) & (hsv[..., 2] >= 150)
+
+
 def _icon_attr(img, y: int) -> str | None:
-    """话题按钮左侧的圆形图标（x 40–90）主色 → 属性。"""
+    """话题按钮左侧图标 → 属性：先比图形（话筒 = Vo、鞋 = Da、人像 = Vi，实机切的形状模板，附近 ±6 像素找最像的），
+    再按颜色（粉 / 蓝 / 橙黄）。用户 11-17：图标优先，文字只兜底。"""
     if img is None:
         return None
-    hsv = cv2.cvtColor(img[max(0, y - 22) : y + 22, 40:95], cv2.COLOR_BGR2HSV)
+    best = (0.0, None)
+    for dy in range(-6, 7, 2):
+        for dx in range(-6, 7, 2):
+            m = _icon_mask(img, y, dx, dy)
+            for a, t in _topic_templates().items():
+                if m.shape == t.shape:
+                    best = max(best, (float((m & t).sum() / max(1, (m | t).sum())), a))
+    if best[0] >= 0.45:
+        return best[1]
+    x1, x2, r = TOPIC_ICON
+    hsv = cv2.cvtColor(img[max(0, y - r) : y + r, x1:x2], cv2.COLOR_BGR2HSV)
     sat = (hsv[..., 1] >= 120) & (hsv[..., 2] >= 150)
     if sat.sum() < 60:
         return None
     hue = hsv[..., 0][sat]
-    best = max(ICON_ATTR_HUE, key=lambda a: int(((hue >= ICON_ATTR_HUE[a][0]) & (hue <= ICON_ATTR_HUE[a][1])).sum()))
-    lo, hi = ICON_ATTR_HUE[best]
-    return best if int(((hue >= lo) & (hue <= hi)).sum()) >= 40 else None
+    cnt = {a: int(((hue >= lo) & (hue <= hi)).sum()) for a, (lo, hi) in ICON_ATTR_HUE.items()}
+    a = max(cnt, key=cnt.get)
+    return a if cnt[a] >= 40 else None
 
 
 def read_sales_event(texts, img=None) -> dict | None:
@@ -159,7 +317,7 @@ def read_nia_page(texts, img=None) -> tuple[str, dict] | None:
     """N.I.A 特有页面 → (页面名, 字段)；都不是 None。"""
     if (bonus := read_audition_bonus(texts)) is not None:
         return "NIA_AUDITION_BONUS", bonus
-    for name, fn in (("NIA_AUDITION_SELECT", lambda: read_audition_select(texts, img)), ("NIA_SALES_PLACE", lambda: read_sales_place(texts)),
+    for name, fn in (("NIA_AUDITION_SELECT", lambda: read_audition_select(texts, img)), ("NIA_SALES_PLACE", lambda: read_sales_place(texts, img)),
                      ("NIA_SALES_EVENT", lambda: read_sales_event(texts, img))):  # fmt: skip
         if (f := fn()) is not None:
             return name, f
