@@ -155,7 +155,7 @@ class ProduceDeciders:
             from hiro.state.produce import FINALS
 
             ps = self.produce_state(state)
-            if ps is None or ps.mode == FINALS or not ps.deck:
+            if ps is None or ps.mode == FINALS or not ps.deck or _is_hajime_nia(ps.mode):  # 初 / N.I.A 不按 H.I.F 选拔考试预热
                 return
             from hiro.sim import resource as rv
 
@@ -239,6 +239,13 @@ class ProduceDeciders:
             produce["idol_card_id"] = self.profile.idol_id
         if self.main_attr and not produce.get("main_attr"):
             produce["main_attr"] = self.main_attr
+        if HAJIME_NIA_STATE and _is_hajime_nia(produce.get("mode")):
+            # 初 / N.I.A 没有星星：star=0 是真值（协调 11-17）；step 没读到补 0，unknown_fields 按原始局面仍当未观测。
+            # 原来这两个字段缺了 produce_state() 就是 None，选饮料 / 相談 / 特別指導 / 饮料溢出都在走兜底
+            if produce.get("star") is None:
+                produce["star"] = 0
+            if produce.get("step") is None:
+                produce["step"] = 0
         return replace(state, produce=produce).produce_state()
 
     # ---------------------------------------------------------------- 选行动
@@ -945,6 +952,8 @@ class ProduceDeciders:
         """饮料比较的模拟上下文：牌组（状态机记账；没有时 resource 用参考牌组）、体力（下一场考试开考时：选拔开考自动回复，按满体力算）、倍率。"""
         if ps is None or not _sim_ready():
             return None  # 开源版：模拟器主数据没构建时只按社区规则
+        if _is_hajime_nia(ps.mode):
+            return None  # 初 / N.I.A：饮料模拟用的是 H.I.F 选拔考试的配置，对不上，只按社区默认档位比
         deck = [(c.card_id, c.upgrade) for c in ps.deck] if ps.deck else None
         permil = None
         if stage != "selection":
@@ -1618,6 +1627,8 @@ class ProduceDeciders:
                             warnings=["识别未提供 shelf：删眠気 / 强化 / 换饮料都没做"], decider="consult")  # fmt: skip
         if ps is None:
             return Decision(Action(ActionKind.SHOP_END), "P 点等局面未识别，不买", "fallback", 0.3, warnings=["ProduceState 不全"], decider="consult")
+        if _is_hajime_nia(ps.mode):
+            return self._hajime_nia_consult(state, ps, services)
         if ps.mode != FINALS:
             return self._selection_consult(state, ps, shelf or [], services)
         unknown = self.unknown_fields(state, ps)
@@ -1676,6 +1687,32 @@ class ProduceDeciders:
             return done(Action(ActionKind.REROLL, {"scope": "consult"}),
                         f"【刷新】本战相談免费刷新（あと {state.page_fields.get('rerolls_left')} 回）：当前货架按价值没有值得买的饮料（{why}），刷新再估一次")  # fmt: skip
         return done(Action(ActionKind.SHOP_END), f"本战相談给轮间留 P 点（{p}P）：轮间卡便宜，补卡、R2 饮料、回体力都要用钱 [もなみ][もりし]{('；' + why) if why else ''}")
+
+    def _hajime_nia_consult(self, state: GameState, ps: ProduceState, services: dict) -> Decision:
+        """初 / N.I.A 相談：只删卡（H.I.F 选拔的 P 点预算、第 19 天特別指導预留在这两个模式里不适用）。
+        删的顺序同换 / 删（cull_pool）：トラブル > 不带「レッスン中1回」、不带再動的非核心卡 > 冲突 / 好印象系 > 「○○の基本」等初始卡，
+        核心卡和循环卡不删 [g8-NIAM nia.delete_order][g8-PRO hajime.consult_price]。不买饮料、不买卡（以前局面构造不出时一律不买，这里先只加删卡）。"""
+        from hiro.brain import hajime_nia_rules as hr
+        from hiro.state.modes import NIA, family
+
+        unknown = self.unknown_fields(state, ps)
+        p = ps.produce_point if "produce_point" not in unknown else (state.page_fields.get("produce_point") or 0)
+        delete = services.get("delete") or {}
+        rid = "nia.delete_order" if family(ps.mode) == NIA else "hajime.consult_price"
+        if "deck" in unknown or not ps.deck:
+            return Decision(Action(ActionKind.SHOP_END), "相談：牌组没识别，不删卡", "rule", 0.5, warnings=["牌组未识别：没有做删卡"], decider="consult")
+        if not delete.get("available", True) or not _affordable(delete, p):
+            return Decision(Action(ActionKind.SHOP_END), f"相談：删卡用不了或 P 点不够（{p}P），不买", "rule", 0.6, decider="consult")
+        cards = [{"index": i, "card_id": c.card_id, "upgrade": c.upgrade, "customized": c.customized} for i, c in enumerate(ps.deck)]
+        counts, _ = self._deck_counts(state)
+        pool = [c for c in cull_pool(cards, "delete", counts=counts) if qualify_consult_deletable(c["card_id"], c.get("upgrade") or 0)]
+        if not pool:
+            return Decision(Action(ActionKind.SHOP_END), "相談：牌组里没有该删的卡（トラブル / 可复用的非核心卡 / 冲突卡 / 基本卡都没有了），不买", "rule", 0.7,
+                            decider="consult")  # fmt: skip
+        c = pool[0]
+        return Decision(Action(ActionKind.SHOP_BUY, {"service": "delete", "card_index": c["index"]}),
+                        f"相談删{CULL_TIERS.get(cull_tier(c['card_id']), '')} {_card_label(c)}（{delete.get('price')}P；{hr.cite(rid)}）", "rule", 0.8,
+                        decider="consult")  # fmt: skip
 
     # ---- 选拔相談：P 点预算 + 选项表（用户 2026-11-02 第十六局复盘）
     def _consult_visit(self, state: GameState, ps: ProduceState, shelf: list, services: dict) -> dict:
@@ -3043,6 +3080,15 @@ SELECT_NONE_LEAN = True  # 开源版默认开（主仓库 D40）
 # 初 / N.I.A 选卡走 hajime_nia 规则（_select_card_hajime_nia）：协调 11-17 派的「N.I.A 必拿卡表」；只影响初 / N.I.A，H.I.F 照旧。
 # HIRO_HAJIME_NIA_CARD_PICK=0 退回 H.I.F 的选卡逻辑
 HAJIME_NIA_CARD_PICK = os.environ.get("HIRO_HAJIME_NIA_CARD_PICK", "1") != "0"
+# 初 / N.I.A 的局面：没有 star（补 0，真值）、step 没读到时也构造 ProduceState（协调 11-17 派）；相談只删卡、饮料不跑 H.I.F 模拟。
+# HIRO_HAJIME_NIA_STATE=0 退回原来（局面构造不出、这几个决策器走兜底）
+HAJIME_NIA_STATE = os.environ.get("HIRO_HAJIME_NIA_STATE", "1") != "0"
+
+
+def _is_hajime_nia(mode: str | None) -> bool:
+    from hiro.state.modes import HAJIME, NIA, family
+
+    return family(mode) in (HAJIME, NIA)
 SELECTION_LEAN_PICK = False  # 选拔里必拿已齐、候选无核心卡时按瘦牌组规则选（不调 LLM；协调 2026-11-03 提速）。行为变化，默认关，等用户答复（总控 2026-11-03）
 def _sim_ready() -> bool:
     """模拟器可用：引擎能导入、主数据（catalog.sqlite）已构建。HIRO_SIM=0 强制不用（只按社区规则）。"""
