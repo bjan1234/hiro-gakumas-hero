@@ -282,6 +282,10 @@ def test_sales_place_skips_unaffordable_and_reports_expected_votes():
     unknown = [{"index": 0, "hp_cost": 3, "votes": 2000}, {"index": 1, "hp_cost": 5, "votes": 2000, "great_rate": 0.5}]
     i, reason, _ = choose_sales_place(_nia(stamina=25), unknown)
     assert i == 1 and "期望票数最高" in reason
+    # 平台 d07e8bf 的字段：展开那张卡的大成功概率（0–100）和大成功多拿的票；基础票数读不到时只在理由里写
+    places = [dict(_pl(0, "local", 5), p_cost=0, great_success_pct=90, great_success_votes=840), _pl(1, "commercial", 5)]
+    i, reason, _ = choose_sales_place(_nia(stamina=25, produce_point=20), places)
+    assert i == 0 and "大成功 90%、多 840 票（期望多 756）" in reason
 
 
 def test_sales_place_corporate_when_low_stamina_and_no_resort():

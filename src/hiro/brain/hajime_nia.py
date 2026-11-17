@@ -295,8 +295,9 @@ def choose_study(st: Status, choices: list[dict]) -> tuple[int, str, list[str]]:
 
 # ---------------------------------------------------------------- N.I.A 营业 / 试镜选档
 # 页面字段（和平台约定，采样后可能调整）：
-#   NIA_SALES_PLACE  page_fields.places  = [{index, kind: resort|local|corporate|commercial, hp_cost, p_cost?, votes?, great_rate?（0–1）, name?}]
-#     p_cost / votes / great_rate：服务器逐个下发的 P 点消耗、票数、大成功概率（协调 11-17 逆向，平台读出后给）
+#   NIA_SALES_PLACE  page_fields.places  = [{index, kind: resort|local|corporate|commercial, hp_cost, p_cost?, name?,
+#                                            great_success_pct?（0–100）, great_success_votes?（大成功多拿的票）, votes?}]
+#     p_cost：P 点消耗（平台 d07e8bf）；大成功两项只有画面上展开的那张卡读得到；votes（基础票数）现在还读不到
 #   NIA_SALES_EVENT  page_fields.choices = [{index, attr?, text?}]
 #   NIA_AUDITION_SELECT page_fields.votes, page_fields.tiers = [{index, number, vote_need, locked}]
 SALES_KEEP_STAMINA = 8  # 营业后体力要 ≥ 8（SP 课程耗 8，体力 ≥ 消耗就能上）[g8-NIAM]
@@ -317,7 +318,10 @@ def choose_sales_place(st: Status, places: list[dict], drinks: list | None = Non
 
     def ev(pl) -> str:
         e = _expected_votes(pl)
-        return f"，期望票数 {e:.0f}" if e is not None else ""
+        if e is not None:
+            return f"，期望票数 {e:.0f}"
+        rate, bonus = _great_rate(pl), pl.get("great_success_votes")
+        return f"，大成功 {rate:.0%}、多 {bonus} 票（期望多 {rate * bonus:.0f}）" if rate is not None and bonus is not None else ""
 
     if st.difficulty == "master" and drinks is not None and len(drinks) < 2 and "corporate" in by:
         p.use("nia.sales_corporate_drinks")
@@ -345,14 +349,26 @@ def _can_go(st: Status, pl: dict) -> bool:
     return st.produce_point >= int(pl.get("p_cost") or 0) and st.stamina >= int(pl.get("hp_cost") or 0)
 
 
+def _great_rate(pl: dict) -> float | None:
+    """大成功概率 0–1：great_success_pct（平台 d07e8bf，0–100）/ great_rate / great_permil；读不到 None。"""
+    if pl.get("great_success_pct") is not None:
+        return float(pl["great_success_pct"]) / 100
+    if pl.get("great_rate") is not None:
+        return float(pl["great_rate"])
+    if pl.get("great_permil") is not None:
+        return float(pl["great_permil"]) / 1000
+    return None
+
+
 def _expected_votes(pl: dict) -> float | None:
-    """期望票数 = 票数 ×（1 + 0.3 × 大成功概率）；票数没读到返回 None，概率没读到按 0。"""
+    """期望票数：基础票数 votes 读到时 = votes + 概率 × 大成功多拿的票（读到的话），否则 votes ×（1 + 0.3 × 概率）（协调 11-17）。
+    基础票数没读到返回 None（现在实机都读不到）。"""
     if pl.get("votes") is None:
         return None
-    rate = pl.get("great_rate")
-    if rate is None and pl.get("great_permil") is not None:
-        rate = pl["great_permil"] / 1000
-    return float(pl["votes"]) * (1 + GREAT_BONUS * float(rate or 0))
+    rate = _great_rate(pl) or 0.0
+    if pl.get("great_success_votes") is not None:
+        return float(pl["votes"]) + rate * float(pl["great_success_votes"])
+    return float(pl["votes"]) * (1 + GREAT_BONUS * rate)
 
 
 def choose_sales_event(st: Status, choices: list[dict]) -> tuple[int, str, list[str]]:
