@@ -96,6 +96,13 @@ def option_regions(img) -> list:
     return [r[3] for r in regions if r[1]]
 
 
+def _outing_options(img) -> int:
+    """外出页的选项数：亮按钮（option_regions）+ 灰色选不了的（P 不够；初 Mac 11-17 外出三档两档是灰的，原来只数到 1 个判 IDLE，180 秒停）。"""
+    from hiro.vision.event import grey_rows
+
+    return option_buttons(img) + len(grey_rows(img))
+
+
 # ---------------------------------------------------------------- KAA check_scene 的同一套模板判据（只判不点）
 def _any(img, *names) -> bool:
     return any(tpl(n).exists(img) for n in names)
@@ -135,7 +142,7 @@ def template_scene(img) -> str | None:
         if _any(img, "InProduce.IconTitleStudy"):
             return "STUDY" if option_buttons(img) > 1 else "IDLE"
         if _any(img, "InProduce.TitleIconOuting"):
-            return "OUTING" if option_buttons(img) > 1 else "IDLE"
+            return "OUTING" if _outing_options(img) > 1 else "IDLE"
         if _any(img, "InProduce.IconTitleConsult"):
             return "CONSULT"
         if _any(img, "InProduce.IconTitleAllowance"):
@@ -149,7 +156,7 @@ def template_scene(img) -> str | None:
         # 支援能力横幅盖住时签名也认不出。相談标题图标只在培育的相談页出现，单独认
         return "CONSULT"
     elif _any(img, "InProduce.TitleIconOuting"):
-        return "OUTING" if option_buttons(img) > 1 else "IDLE"
+        return "OUTING" if _outing_options(img) > 1 else "IDLE"
     if _any(img, "InProduce.TextClearUntil", "InProduce.TextPerfectUntil"):
         return "PRACTICE"
     if _any(img, "InProduce.TextExamRankSmallFirst", "InProduce.TextExamRankLargeFirst"):
