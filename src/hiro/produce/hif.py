@@ -52,6 +52,14 @@ logger = logging.getLogger(__name__)
 ACTION_REQUIRED = ("stamina", "produce_point", "params", "options")
 TAP_RETRIES = 2
 EXAM_END_LOOP_TIMEOUT = 90.0  # 考试结束后点「次へ」/ 结果页的总时长上限
+def drink_full_auto() -> bool:
+    """开关 HIRO_DRINK_FULL_AUTO=1（默认关，协调 11-17）：选饮料页饮料已满时，LLM 给出的换 / 不换也照执行（原来只认 rule / sim，
+    初 REGULAR 实机 LLM 和规则结论一样还是被当成「认不出」停机）；决策认不出（兜底）时默认跳过这瓶，不停机。"""
+    import os
+
+    return os.environ.get("HIRO_DRINK_FULL_AUTO") == "1"
+
+
 def _page_name(page) -> str | None:
     return page.get("name") if isinstance(page, dict) else getattr(page, "name", None)
 
@@ -675,9 +683,18 @@ class HifCore:
         # 用户 2026-11-02：按「换进来之后的持有组合」挑候选（hiro.brain.drinks），不再用单瓶静态排名
         best = dk.best_incoming(cands, held, dk.stage_of(produce.get("mode")), produce.get("drink_capacity") or max(3, len(held or [])))
         d = self.deciders.decide("PDRINK_MAX", dc_replace(self.s.state, page_fields={"incoming": best, "held": held}) if best else self.s.state)
-        if d.source not in self.DRINK_FULL_SOURCES:
+        auto = drink_full_auto()
+        sources = (*self.DRINK_FULL_SOURCES, "llm") if auto else self.DRINK_FULL_SOURCES
+        if d.source not in sources:
             # 规则 / 模拟偏离（> 2 SE，第二十一局 06:01 source=sim 被当成「认不出」停机）都是有效决策；兜底 / LLM 才说明认不出
-            self._stop("SELECT_DRINK", f"饮料已满（所持上限），持有或新饮料认不出，不能判断换不换：{d.reason}", obs=obs, decision=d)
+            why = f"饮料已满（所持上限），持有或新饮料认不出，不能判断换不换：{d.reason}"
+            if not auto:
+                self._stop("SELECT_DRINK", why, obs=obs, decision=d)
+            # 开关 HIRO_DRINK_FULL_AUTO=1（协调 11-17，初 REGULAR 实机停在这里）：认不出就默认不收这瓶（跳一瓶饮料损失很小），不停机
+            self.s.note(f"{why}；HIRO_DRINK_FULL_AUTO：默认跳过这瓶")
+            logger.warning("%s；默认跳过", why)
+            d = Decision(Action(ActionKind.DISCARD_DRINK, {"discard": [], "receive": False}), f"饮料已满、认不出换不换，默认跳过（原决策 {d.source}：{d.reason}）",
+                         "fallback", 0.3, warnings=["HIRO_DRINK_FULL_AUTO 默认跳过"], decider="drink_overflow")  # fmt: skip
         if d.action.args.get("receive") and d.action.args.get("discard"):
             # 先在底栏丢掉决策选的那瓶，再领取最好的候选（游戏执行 5cb96a4；读不出就一下都不点）
             from hiro.produce.drink_swap import discard_then_receive
@@ -974,13 +991,15 @@ class HifCore:
         btn_n = n_options
         choices = self.s.state.page_fields.get("choices") or []
         if n_options is not None and len(choices) > n_options:
-            # 第二十五局本战授業：3 项里第 3 项「声の細かいチェック」被下方对话框挡住一半，按钮识别只认出 2 项。
-            # 选项数按识别层的 choices；选到按钮识别没认出的那项时按识别层的 center 点（点两下 = 选中再确认）
+            # 第二十五局本战授業：3 项里第 3 项「声の細かいチェック」被下方对话框挡住一半，按钮识别只认出 2 项（前 2 项照旧走按钮提交）；
+            # 初外出（协调 11-17）：P 不够的两档是灰的（disabled），按钮识别只认出最下面那 1 项——按钮序号和选项序号对不上
+            #（按钮 0 是第 3 项），这时一律按识别层的 center 点。选项数按识别层的 choices（点两下 = 选中再确认）
             n_options = len(choices)
             btn_commit = commit_index
+            grey = any(c.get("disabled") for c in choices)
 
             def commit_index(i):  # noqa: F811
-                if i < btn_n:
+                if i < btn_n and not grey:
                     return btn_commit(i)
                 c = next((c for c in choices if c.get("index") == i and c.get("center")), None)
                 if c is None:
@@ -989,6 +1008,8 @@ class HifCore:
                 for _ in range(2):
                     device.click(int(x), int(y))
                     sleep(0.5)
+                if page == "OUTING":
+                    self._outing_ap_check()
                 return True
 
             self.s.note(f"{page}：按钮识别认出 {btn_n} 项，识别层 {len(choices)} 项（有选项被挡住），按识别层")
@@ -1028,8 +1049,11 @@ class HifCore:
             raise ValueError(f"选项 {i} 不在 {len(buttons)} 个按钮里")
         device.double_click(*buttons[i].center)
         sleep(2)
-        if not outing:
-            return
+        if outing:
+            self._outing_ap_check()
+
+    def _outing_ap_check(self) -> None:
+        """外出选完后盯 3 秒「AP 已满」确认框，出了点确定。"""
         end = time.monotonic() + 3.0
         while time.monotonic() < end:
             img = device.screenshot()
