@@ -49,8 +49,12 @@ ACTIONS = [
     (re.compile(r"差し入れ"), "present"),
     (re.compile(r"特別指導"), "special_training"),
     (re.compile(r"おでかけ"), "outing"),
+    # N.I.A「Vo.自主レッスン」：属性前缀和「レッスン」之间夹着「自主」，要先于下面的 lesson（11-17 N.I.A 采样：attr 读成 None）
+    (re.compile(r"(Vo|Da|Vi)\.?自主レッ[スズ]ン"), "self_lesson"),
     (re.compile(r"(Vo|Da|Vi)?\.?レッ[スズ]ン"), "lesson"),
 ]
+# 课程按钮左上角的 SP 角标（InProduce.IconSp）相对按钮文字中心的位置：N.I.A 实机 (−67, −146)
+SP_DX, SP_DY = (-110, -20), (-190, -100)
 # 授業按钮右下角属性小图标的色相（OpenCV 0–180）：粉=Vo、蓝=Da、黄=Vi
 ATTR_HUE = {"vo": (160, 180), "da": (95, 115), "vi": (15, 35)}
 
@@ -63,6 +67,7 @@ class ActionOption:
     center: tuple[int, int]
     hp_cost: int | None = None  # 课程卡右上角「-8」
     hp_gain: int | None = None  # 「休む」左上角的回复量
+    sp: bool | None = None  # 课程（lesson / self_lesson）左上角有 SP 角标；其余 None
 
 
 @dataclass
@@ -171,6 +176,8 @@ def _options(img: MatLike) -> list[ActionOption]:
             if attr is None and kind in ("open_lesson", "lesson"):
                 attr = _attr_by_band(img, cx, ty)
             option = ActionOption(kind, compact, attr, center)
+            if kind in ("lesson", "self_lesson"):
+                option.sp = any(SP_DX[0] < x - cx < SP_DX[1] and SP_DY[0] < y - ty < SP_DY[1] for x, y in _sp_badges(img))
             if kind == "rest":
                 # 回复量在按钮左上角的爱心徽章里（白字深描边），位于文字左上方
                 option.hp_gain = read_number(img, (cx - 58, ty - 96, cx - 14, ty - 54))
@@ -182,6 +189,12 @@ def _options(img: MatLike) -> list[ActionOption]:
             out.append(option)
             break
     return sorted(out, key=lambda o: (o.center[1] > 950, o.center[0]))
+
+
+def _sp_badges(img) -> list[tuple[int, int]]:
+    from hiro.vision.ui_templates import tpl
+
+    return [(m.rect.center.x, m.rect.center.y) for m in tpl("InProduce.IconSp").find_all(img)]
 
 
 STAMINA_SLASH_MISREAD = "10"  # 「/」被 Apple Vision 认成的字符（画面稍亮时「33/33」→「33133」「33033」）

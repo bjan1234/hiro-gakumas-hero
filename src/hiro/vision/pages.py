@@ -20,6 +20,7 @@ HEADER_MIN_FRAC = 0.55  # 行内橙黄像素占比（标题条 0.67–0.76，其
 HEADER_H = (25, 70)
 HEADER_KEEP_FRAC = 0.45  # 标题条开始要 ≥ HEADER_MIN_FRAC，之后 ≥ 这个值就算同一条（滞回）：
 # 「プロデュース再開」标题条右侧有白色「リタイア」按钮，几行橙色只占 0.54，原来标题条被切断、整个框认不出（第二十局 r1 #207）
+HEADER_LONG_TITLE_FRAC = 0.3  # 第二级滞回：长标题白字压低了中间几行的橙色占比
 TITLE_WHITE_MIN = 0.03  # 标题条左段白字像素占比：弹窗 0.046–0.126；获得演出名称栏、橙色背景 ≤ 0.009
 # 标题关键字 → kind（按顺序匹配；OCR 偶有错字，用关键字而不是全文）
 DIALOG_KINDS = (
@@ -73,6 +74,10 @@ def _header_bands(img: MatLike) -> list[tuple[int, int]]:
         # 一条带白字标题的都没有时才放宽（滞回）：开始仍要 ≥ HEADER_MIN_FRAC，之后 ≥ HEADER_KEEP_FRAC 就算同一条。
         # 原算法认得出的框结果不变（全帧放宽会把标题条和下方橙色区域连成一片、超高被丢，61 帧回退）
         out = [(y1, y2) for y1, y2 in _bands(frac, HEADER_KEEP_FRAC) if _white_body(img, y2)]  # 放宽后还要求下方是白色框体（砖墙背景的误检没有）
+    if not any(_title_white(img, y1, y2) for y1, y2 in out):
+        # 再放宽一级：标题很长、白字占满整条（N.I.A「NEXT IDOL AUDITIONライブ設定」11-17：中间几行橙色只占 0.36–0.53，
+        # 标题条被切成几段、每段都不够 HEADER_H，整个框认不出，中断层看不到）。同样要求下方是白色框体
+        out = [(y1, y2) for y1, y2 in _bands(frac, HEADER_LONG_TITLE_FRAC) if _white_body(img, y2)]
     return out
 
 

@@ -104,3 +104,69 @@ def test_sampler_save_tap_always_saves(tmp_path):
     s.save_tap(f, 34, 596)
     rows = [json.loads(line) for line in (tmp_path / "frames" / "frames.jsonl").read_text(encoding="utf-8").splitlines()]
     assert [r["page"] for r in rows] == ["tap-34-596", "tap-34-596"]
+
+
+FIXP = __import__("pathlib").Path(__file__).with_name("fixtures") / "pages"
+
+
+def _real(name):
+    import cv2
+
+    p = FIXP / name
+    if not p.exists():
+        pytest.skip(f"需要实机截图 pages/{name}")
+    return cv2.imread(str(p))
+
+
+def test_self_lesson_options_on_real_frame():
+    """N.I.A 第 1 周「Vo. / Da. / Vi. 自主レッスン」（实机帧）：training + 属性 + SP（原来 attr=None，决策找不到按钮）。"""
+    from hiro.vision.extract import extract
+    from hiro.vision.observe import observation
+
+    raw, _ = extract("ACTION_SELECT", _real("nia-action-week1.png"))
+    opts = observation(1, 0.0, "ACTION_SELECT", raw).fields["options"]
+    assert [(o["option"], o["attr"], o.get("sp"), o["hp_cost"]) for o in opts] == [("training", a, True, 8) for a in ("Vo", "Da", "Vi")]
+
+
+def test_param_up_bubble_tapped_on_unknown(tmp_path, monkeypatch):
+    """自主课结算「Da.が147上昇した!」（实机帧）判 unknown：底部气泡是结算类的话就点一下，不按认不出停。"""
+    from hiro.runtime import play
+    from hiro.runtime.frame import Frame
+
+    monkeypatch.setattr(play, "advance", lambda *a: pytest.fail("认不出的画面不交给 play.advance"))
+    now = [0.0]
+    rt, taps = _rt(tmp_path, now)
+    adv = ns.make_advance(ns.Sampler(lambda img: UNKNOWN, tmp_path / "frames"))
+    assert adv(rt, Frame(_real("nia-param-up-bubble.jpg"), 0.0), UNKNOWN) is True and taps == [ns.BUBBLE_TAP]
+
+
+def test_upgrade_result_is_a_show_page(tmp_path):
+    """支援卡事件强化后的「〜を強化しました」（实机帧，page_ocr 判 UPGRADE_RESULT）：advance 点一下就过
+    （原来交 burst，被禁点词「強化」拦住）。"""
+    from hiro.runtime import play
+    from hiro.runtime.frame import Frame
+
+    now = [0.0]
+    rt, taps = _rt(tmp_path, now)
+    f = Frame(_real("nia-upgrade-result.jpg"), 0.0)
+    assert play.advance(rt, f, PageHit("UPGRADE_RESULT", "page_ocr")) is True and taps
+
+
+def test_consult_recognized_without_review_criteria():
+    """N.I.A 右上没有「審査基準」：相談页（被支援能力横幅盖住页头的实机帧）也要认成 CONSULT。"""
+    from hiro.vision.classify import classify
+
+    assert classify(_real("nia-consult-banner.jpg")).name == "CONSULT"
+
+
+def test_consult_end_confirm_interrupt():
+    """「相談終了確認」单独留在画面上（实机帧）：中断层点「決定」。"""
+    from hiro.runtime import interrupts
+    from hiro.runtime.frame import Frame
+    from test_runtime import frame as fake_frame
+    from test_runtime import runtime
+
+    rt, _ = runtime([fake_frame()])
+    assert "相談終了" in interrupts.check(Frame(_real("nia-consult-end-confirm.jpg"), 0.0), rt)
+    (x, y), = rt.raw_device.taps
+    assert x > 400 and abs(y - 1160) < 20

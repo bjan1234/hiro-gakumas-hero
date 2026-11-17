@@ -396,17 +396,30 @@ def quick_page(img: MatLike) -> dict | None:
         return done("TRANSITION", fields={"kind": "day_countdown", "text": cd})
     if _schedule_overlay(hsv):
         return done("TRANSITION", tap=SCHEDULE_CLOSE, fields={"kind": "schedule"})  # 日程表覆盖层：点底部 ✕ 关掉
-    runs = _runs(white, *BUBBLE_Y, 40)
-    if runs and not _runs(white, *PANEL_Y, 40) and _hit(gray, "quick_hud_label"):  # 剧情对话框 / 事件过场 / 主页菜单下方也有白块
-        # 有字的行白色占比不到 0.85：从白色段往上扩到占比 < 0.5，才是气泡上沿（第一行字在上面）
-        x1, x2 = WHITE_X
-        frac = ((hsv[:, x1:x2, 2] >= 235) & (hsv[:, x1:x2, 1] <= 25)).mean(axis=1)
-        top = runs[0][0]
-        while top > PANEL_Y[0] and frac[top - 1] >= 0.5:
-            top -= 1
-        page, fields = read_bubble(img, top, runs[-1][1])
-        return done(page, tap=SKIP_TAP, fields=fields)
+    if _hit(gray, "quick_hud_label"):  # 剧情对话框 / 事件过场 / 主页菜单下方也有白块：只在培育画面（右上「審査基準」）认气泡
+        if (bubble := bottom_bubble(img, hsv, white)) is not None:
+            page, fields = bubble
+            return done(page, tap=SKIP_TAP, fields=fields)
     return None
+
+
+def bottom_bubble(img: MatLike, hsv: np.ndarray | None = None, white: np.ndarray | None = None) -> tuple[str, dict] | None:
+    """底部白色消息气泡（上方没有选择面板）→ read_bubble 的 (页面名, 字段)；没有气泡 None。
+    不看是不是培育画面：调用方自己把关（quick_page 要右上「審査基準」；N.I.A 采样只在认不出的画面上用）。"""
+    if hsv is None:
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    if white is None:
+        white = _white_rows(hsv)
+    runs = _runs(white, *BUBBLE_Y, 40)
+    if not runs or _runs(white, *PANEL_Y, 40):
+        return None
+    # 有字的行白色占比不到 0.85：从白色段往上扩到占比 < 0.5，才是气泡上沿（第一行字在上面）
+    x1, x2 = WHITE_X
+    frac = ((hsv[:, x1:x2, 2] >= 235) & (hsv[:, x1:x2, 1] <= 25)).mean(axis=1)
+    top = runs[0][0]
+    while top > PANEL_Y[0] and frac[top - 1] >= 0.5:
+        top -= 1
+    return read_bubble(img, top, runs[-1][1])
 
 
 def _schedule_overlay(hsv) -> bool:

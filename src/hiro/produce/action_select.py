@@ -28,6 +28,9 @@ def action_commit(button: ActionButton, *, clock=time.monotonic) -> None:
         device.click(*button.rect.center)
         sleep(0.3)
     logger.info("选行动：点了 %s", button.label)
+    if not button.template:
+        sleep(0.8)  # 按页面读数补的按钮（没有模板，hif._page_buttons）：点完不等模板消失，交主循环看下一页
+        return
     end = clock() + DISAPPEAR_TIMEOUT
     while tpl(button.template).exists(device.screenshot()):
         if clock() >= end:

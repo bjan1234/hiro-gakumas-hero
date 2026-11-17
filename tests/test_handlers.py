@@ -171,3 +171,18 @@ def test_special_guidance_reentry_continues_customizing(monkeypatch):
     core.deciders = NS(decide=lambda page, st: decisions.pop(0))
     core.on_special_guidance(None)
     assert calls == [("customize", 1), "leave"]  # 已经在里面：不再 enter；接着定制一张，决策结束就离开
+
+
+def test_page_read_buttons_fill_in_for_missing_templates():
+    """N.I.A「自主レッスン」没有模板按钮：用选行动页读数里的位置补上，决策 training/Da/SP 能对上按钮。"""
+    from types import SimpleNamespace as NS
+
+    from hiro.contracts import Action
+    from hiro.produce.hif import HifCore
+
+    core = HifCore.__new__(HifCore)
+    core.s = NS(state=NS(page_fields={"options": [{"option": "training", "attr": a, "sp": True, "center": [x, 1011]}
+                                                 for a, x in (("Vo", 197), ("Da", 360), ("Vi", 521))]}))  # fmt: skip
+    buttons = core._with_page_buttons([])
+    b = HifCore._match_button(Action.produce_next("training", attr="Da", sp=True), buttons)
+    assert b is not None and tuple(b.rect.center) == (360, 1011) and b.template == ""

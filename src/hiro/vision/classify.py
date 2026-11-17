@@ -144,6 +144,12 @@ def template_scene(img) -> str | None:
             return "HIF_ROUND_INTERVAL"
         if option_buttons(img) > 1:
             return "INITIAL_CHOICE"  # 开局饮料 / 卡二选一：KAA 双击第一项，这里交给决策层
+    elif _any(img, "InProduce.IconTitleConsult"):
+        # N.I.A 右上不是「審査基準」（是投票数面板），上面这组按标题图标认的页一个都进不来：N.I.A 采样 11-17 相談页全判 unknown，
+        # 支援能力横幅盖住时签名也认不出。相談标题图标只在培育的相談页出现，单独认
+        return "CONSULT"
+    elif _any(img, "InProduce.TitleIconOuting"):
+        return "OUTING" if option_buttons(img) > 1 else "IDLE"
     if _any(img, "InProduce.TextClearUntil", "InProduce.TextPerfectUntil"):
         return "PRACTICE"
     if _any(img, "InProduce.TextExamRankSmallFirst", "InProduce.TextExamRankLargeFirst"):

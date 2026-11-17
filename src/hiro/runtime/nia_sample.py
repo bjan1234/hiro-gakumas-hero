@@ -140,7 +140,7 @@ def make_advance(sampler: Sampler, stop_s: float = UNKNOWN_STOP_S):
     def advance(rt, frame, hit) -> bool:
         landscape = frame.img is not None and frame.img.shape[1] > frame.img.shape[0]
         if hit.name == "unknown" and not play._produce_finished(frame) and not landscape:
-            did = False
+            did = _nia_bubble(rt, frame)
         else:
             did = play.advance(rt, frame, hit)
         if did or landscape:
@@ -156,6 +156,29 @@ def make_advance(sampler: Sampler, stop_s: float = UNKNOWN_STOP_S):
         return False
 
     return advance
+
+
+BUBBLE_TAP = (12, 12)
+BUBBLE_WORDS = ("上昇した", "を強化しました", "をカスタマイズしまし", "を削除しまし", "獲得しました")
+
+
+def _nia_bubble(rt, frame) -> bool:
+    """认不出的画面底部有白色消息气泡、写的是结算类的话（「Da.が147上昇した!」等，N.I.A 自主レッスン结算）：点一下就过。
+    快速判页认气泡要右上「審査基準」（H.I.F 的 HUD），N.I.A 右上是投票数面板，认不出（11-17 N.I.A 采样停在这一页）。"""
+    from hiro.vision.quick import bottom_bubble
+
+    if frame.img is None:
+        return False
+    bubble = bottom_bubble(frame.img)
+    if bubble is None:
+        return False
+    page, fields = bubble
+    text = (fields or {}).get("text") or ""
+    if page == "TRANSITION" and not any(w in text for w in BUBBLE_WORDS):
+        return False
+    logger.info("N.I.A 采样：底部气泡「%s」（%s），点一下", text or page, page)
+    rt.device.tap(*BUBBLE_TAP)
+    return True
 
 
 def _save_stop_frame(rt, sampler: Sampler, frame, hit) -> str:
