@@ -282,10 +282,22 @@ def test_sales_place_skips_unaffordable_and_reports_expected_votes():
     unknown = [{"index": 0, "hp_cost": 3, "votes": 2000}, {"index": 1, "hp_cost": 5, "votes": 2000, "great_rate": 0.5}]
     i, reason, _ = choose_sales_place(_nia(stamina=25), unknown)
     assert i == 1 and "期望票数最高" in reason
-    # 平台 d07e8bf 的字段：展开那张卡的大成功概率（0–100）和大成功多拿的票；基础票数读不到时只在理由里写
-    places = [dict(_pl(0, "local", 5), p_cost=0, great_success_pct=90, great_success_votes=840), _pl(1, "commercial", 5)]
-    i, reason, _ = choose_sales_place(_nia(stamina=25, produce_point=20), places)
-    assert i == 0 and "大成功 90%、多 840 票（期望多 756）" in reason
+
+
+
+@pytest.mark.sim_master
+def test_sales_place_expected_votes_from_master():
+    """营业票数查主数据（段 × 场所，协调 11-17）：N.I.A PRO 1 次前 黄 2400 / 大成功 3120、绿 1700 / 2210。
+    期望票数 = 普通 ×（1 − p）+ 大成功 × p，× 营业票数加成；p 只有展开那张卡读得到（平台 d07e8bf great_success_pct），没读到按 0。"""
+    st = _nia(stamina=25, produce_point=20, stage="mid1", idol="i_card-shro-3-007")
+    places = [dict(_pl(0, "local", 5), great_success_pct=90, great_success_votes=840), _pl(1, "commercial", 5)]
+    i, reason, _ = choose_sales_place(st, places)
+    assert i == 0 and "期望票数 3048" in reason and "大成功 90%" in reason  # 2400×0.1 + 3120×0.9
+    st = _nia(stamina=12, stage="final", idol="i_card-shro-3-007", business_vote_permil=100)
+    i, reason, _ = choose_sales_place(st, [_pl(0, "resort", 0), _pl(1, "local", 5)])
+    assert i == 0 and "期望票数 3080" in reason  # 绿 最终前 2800 × 1.1
+    i, reason, _ = choose_sales_place(_nia(stamina=25), [_pl(0, "local", 5)])
+    assert "期望票数" not in reason  # 下一场是哪场不知道：不查
 
 
 def test_sales_place_corporate_when_low_stamina_and_no_resort():
@@ -482,13 +494,39 @@ def test_event_choice_pure_dialogue_picks_first():
 
 
 def test_hajime_full_stamina_prefers_shop_over_outing():
-    """初实机（协调 11-17）：体力 30/30、没课的周，原来选了外出。满体力外出回体力用不上：相談排在外出前，外出只在没别的可选时去。"""
+    """初实机（协调 11-17）：体力 30/30、没课的周，原来选了外出。满体力外出回体力用不上：P 点够删卡时相談排在外出前。"""
     opts = [_opt("outing"), _opt("shop"), _opt("rest")]
-    o, reason, _ = _pick(_st(stamina=30, max_stamina=30, produce_point=60), opts)
-    assert o["option"] == "shop" and "外出排最后" in reason
+    o, reason, _ = _pick(_st(stamina=30, max_stamina=30, produce_point=150), opts)
+    assert o["option"] == "shop"
+
+
+def test_hajime_shop_only_when_affordable():
+    """初第二局第 4 周（协调 11-17）：外出 / 相談、体力 29/30、P 30 选了相談，游戏弹「P ポイントが少ない」。
+    相談要 P 点 ≥ 删卡价（局面给了 consult_delete_price 就用它，否则 100P）才去；做不成就外出，体力几乎满也一样。"""
+    o, reason, _ = _pick(_st(stamina=29, max_stamina=30, produce_point=30), [_opt("outing"), _opt("shop")])
+    assert o["option"] == "outing" and "相談 P 点不够（30P < 100P）" in reason
+    o, _, _ = _pick(_st(stamina=29, max_stamina=30, produce_point=80, consult_price=75), [_opt("outing"), _opt("shop")])
+    assert o["option"] == "shop"
+    o, _, _ = _pick(_st(stamina=29, max_stamina=30, produce_point=30), [_opt("shop")])
+    assert o["option"] == "shop"  # 只剩相談：没得选
+    o, _, _ = _pick(_nia(stamina=25, produce_point=30), [_opt("shop"), _opt("rest")])
+    assert o["option"] == "rest"  # N.I.A 同样：相談做不成事排最后
+
+
+
+def test_declined_option_not_chosen_again():
+    """平台点掉相談開始確認（P 点太少）后回到选行动页，page_fields.declined_options=["shop"]：这一周不再选相談。"""
+    from hiro.contracts import GameState
+
+    prod = {"mode": "produce-001", "stamina": 29, "max_stamina": 30, "produce_point": 120, "params": {"Vo": 1, "Da": 1, "Vi": 1}}
+    opts = [{"option": "shop"}, {"option": "outing"}]
+    d = _pd().decide("ACTION_SELECT", GameState(produce=prod, page_fields={"options": opts}))
+    assert d.action.args.get("option") == "shop"
+    d = _pd().decide("ACTION_SELECT", GameState(produce=prod, page_fields={"options": opts, "declined_options": ["shop"]}))
+    assert d.action.args.get("option") == "outing"
     o, _, _ = _pick(_st(stamina=30, max_stamina=30), [_opt("outing"), _opt("rest")])
     assert o["option"] == "outing"  # 满体力不能休息、只剩外出
-    o, _, _ = _pick(_st(stamina=22, max_stamina=30, produce_point=60), opts)
+    o, _, _ = _pick(_st(stamina=22, max_stamina=30, produce_point=60), [_opt("outing"), _opt("shop"), _opt("rest")])
     assert o["option"] == "outing"  # 少了 8（不算满、也不算累）：外出照旧排在 P 不足时的相談前
 
 

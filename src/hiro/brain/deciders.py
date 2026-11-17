@@ -284,8 +284,12 @@ class ProduceDeciders:
         from hiro.brain.hajime_nia import choose_action
 
         prod = dict(state.produce or {})
-        # 没有 option 名的项（识别没认出是什么按钮）跳过，不让整个决策器抛异常
-        opts = [o for o in (state.page_fields.get("options") or []) if o.get("option") and o.get("option") not in self.unavailable_options]
+        # 没有 option 名的项（识别没认出是什么按钮）跳过，不让整个决策器抛异常。
+        # page_fields.declined_options：这一周游戏弹过警告、已经取消掉的选项（相談開始確認「Pポイントの所持数が少ないです」→ shop，
+        # 平台点キャンセル后回到选行动页时给），这次不再选（全被排除时照旧全部可选）
+        declined = set(state.page_fields.get("declined_options") or ())
+        all_opts = [o for o in (state.page_fields.get("options") or []) if o.get("option") and o.get("option") not in self.unavailable_options]
+        opts = [o for o in all_opts if o["option"] not in declined] or all_opts
         cands = [Candidate(Action.produce_next(o["option"], attr=o.get("attr"), sp=o.get("sp"))) for o in opts]
         if not opts:
             return Decision(Action.ui(ActionKind.WAIT, why="没有可用行动"), "没有可选的行动", "fallback", 0.1, cands, decider="action_select")
@@ -326,7 +330,9 @@ class ProduceDeciders:
         return Status(mode=prod["mode"], step=int(prod.get("step") or 0), stamina=int(prod.get("stamina") or 0),
                       max_stamina=int(prod.get("max_stamina") or prod.get("stamina") or 1), produce_point=int(prod.get("produce_point") or 0),
                       params=dict(prod.get("params") or {}), rest_left=prod.get("rest_left"), main_attr=prod.get("main_attr") or self.main_attr,
-                      criteria=criteria)  # fmt: skip
+                      criteria=criteria, stage=pf.get("exam_next"), idol=prod.get("idol_card_id") or (self.profile.idol_id if self.profile else None),
+                      business_vote_permil=int(prod.get("business_vote_permil") or 0),
+                      consult_price=prod.get("consult_delete_price"))  # fmt: skip
 
     def _hajime_nia_choice(self, state: GameState, decider: str) -> Decision | None:
         """初 / N.I.A 的外出 / 授業（hiro.brain.hajime_nia）；别的模式返回 None，照 H.I.F 原逻辑。没有结构化 choices 时选中间那项兜底。"""
