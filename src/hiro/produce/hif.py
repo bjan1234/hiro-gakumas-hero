@@ -260,6 +260,7 @@ class HifCore:
         from hiro.vision.action_buttons import available_actions
 
         t0 = time.monotonic()
+        self._maybe_probe_schedule()
         obs = self.s.observe_complete("ACTION_SELECT", ACTION_REQUIRED)
         # 先等选行动页读完整（淡入结束、能点了）再开牌组一览（第二十局开局：页面刚出来就点，一览很晚才弹）
         self._maybe_review_deck()
@@ -308,6 +309,24 @@ class HifCore:
         taps = [[int(choice.rect.center.x), int(choice.rect.center.y)]]
         result = self._act(lambda: action_commit(choice), d.action, page_before="ACTION_SELECT", taps=taps)
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
+
+    _schedule_probed = False  # 日程列表探针每个进程只跑一次
+
+    def _maybe_probe_schedule(self) -> None:
+        """开关 HIRO_SCHEDULE_PROBE=1（默认关）：初 / N.I.A 第一次到选行动页时点开日程列表采样（hiro.produce.schedule_probe）。"""
+        from hiro.produce import schedule_probe
+        from hiro.state.modes import HAJIME, NIA, family
+
+        if type(self)._schedule_probed or not schedule_probe.enabled() or family((self.s.state.produce or {}).get("mode")) not in (HAJIME, NIA):
+            return
+        type(self)._schedule_probed = True
+        try:
+            schedule_probe.probe(Path(self.s.trace.dir) / "schedule-probe", shoot=device.screenshot, click=device.click, swipe=device.swipe,
+                                 sleep=sleep, note=self.s.note)  # fmt: skip
+        except ResumeBlocked:
+            raise
+        except Exception as e:  # noqa: BLE001  采样失败不影响这一局
+            logger.warning("日程列表探针出错：%s", e)
 
     MAX_CUSTOMIZE_STEPS = 4
 

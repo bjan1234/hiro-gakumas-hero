@@ -60,6 +60,12 @@ def steps(produce_id: str) -> int:
     return int(master().one("Produce", produce_id)["steps"])
 
 
+# ---------------------------------------------------------------- N.I.A PRO 简单模式
+# 账号偏好 ProduceNextIdolAuditionProEasyMode 打开时，N.I.A PRO 开局拿到 P 道具「N.I.Aキー（黄緑）」：对手分数 −80%
+#（主数据 Produce.easyProduceItemIds，逆向 10.4）。MASTER 没有。偏好只读，不改。
+NIA_EASY_KEY = "pitem_00-3-330-0"
+
+
 # ---------------------------------------------------------------- 页头周数 → step
 # 各场考试在日程里的位置（第几步）。主数据没有这张表（Produce 只有总步数），按实机页头序列定：
 # 初 REGULAR（13 步）：中間まで 5→1 週 = 第 1–5 步，第 6 步中間；最終まで 6→1 週 = 第 7–12 步，第 13 步最終（初 Mac 11-17 两局）。
