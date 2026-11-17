@@ -472,3 +472,96 @@ def test_hajime_full_stamina_prefers_shop_over_outing():
     assert o["option"] == "outing"  # 满体力不能休息、只剩外出
     o, _, _ = _pick(_st(stamina=22, max_stamina=30, produce_point=60), opts)
     assert o["option"] == "outing"  # 少了 8（不算满、也不算累）：外出照旧排在 P 不足时的相談前
+
+
+# ---- 初 / N.I.A 选卡（协调 11-17「N.I.A 必拿卡表」；实机 11-17：H.I.F 必拿表让每页为 せのびの魔法 刷新 / 禁用用光） ----
+TELEVI, GENKI_AISATSU, YURUFUWA, KAIKA = "p_card-00-men-3_012", "p_card-02-act-1_004", "p_card-02-act-1_028", "p_card-02-act-3_038"
+LOVELY_WINK, MINNA, HIGH_TENSION, KIRAKIRA = "p_card-02-act-2_046", "p_card-02-act-2_049", "p_card-00-men-2_014", "p_card-02-act-2_062"
+RESTART, SHIKIRI, GAMUSHARA = "p_card-02-men-1_030", "p_card-00-men-3_005", "p_card-02-act-1_071"
+
+
+def _picked(d):
+    return (d.action.args.get("pick_indexes") or [None])[0]
+
+
+def _card_pick(mode, cands, deck=(), rerolls=4, excludes=2):
+    from hiro.brain.deciders import ProduceDeciders
+    from hiro.brain.state import CAMPUS_HIRO
+    from hiro.contracts import GameState
+
+    prod = {"idol_card_id": "i_card-shro-3-007", "mode": mode, "step": 4, "stamina": 20, "max_stamina": 30, "produce_point": 50,
+            "params": {"Vo": 200, "Da": 200, "Vi": 200}, "growth_permil": {}, "star": 0, "rerolls_left": rerolls, "excludes_left": excludes,
+            "deck": [{"card_id": c, "upgrade": 0} for c in deck]}  # fmt: skip
+    pd = ProduceDeciders(CAMPUS_HIRO, None)
+    return pd.decide("SELECT_CARD", GameState(produce=prod, page_fields={"candidates": [{"card_id": c, "upgrade": 0} for c in cands]}))
+
+
+@pytest.mark.sim_master
+@pytest.mark.parametrize("mode", ["produce-004", "produce-001"])
+def test_card_pick_no_fishing_for_hif_musts(mode):
+    """候选里有一次性、不冲突的卡：直接拿，不为 H.I.F 必拿（せのびの魔法）刷新。"""
+    d = _card_pick(mode, [RESTART, GENKI_AISATSU, LOVELY_WINK])
+    assert d.action.kind.name == "ACTIVATE_EFFECT" and _picked(d) == 1, d.reason
+    assert "せのび" not in d.reason and d.source == "rule"
+
+
+@pytest.mark.sim_master
+def test_card_pick_prefers_signature_buff_then_value():
+    """一次性的卡里：社区 S / A 先；同档时加やる気的先 [g8-試験]。"""
+    d = _card_pick("produce-004", [TELEVI, YURUFUWA, GENKI_AISATSU])
+    assert _picked(d) == 1 and "やる気" in d.reason
+    d = _card_pick("produce-004", [YURUFUWA, SHIKIRI, KAIKA])
+    assert _picked(d) == 1  # 仕切り直し：社区 S
+    d = _card_pick("produce-001", [KAIKA, GENKI_AISATSU, GAMUSHARA])
+    assert _picked(d) == 0  # 都是一次性、加やる気：SSR 開花 在 R がむしゃら（卡表里只是换卡保留）前（11-17 初实机这一页）
+
+
+@pytest.mark.sim_master
+def test_nia_card_pick_prefers_owned_once_copy():
+    """N.I.A：同档的一次性卡，牌组里已经有的先 [ww-NIA]；初不看这条。"""
+    deck = [GENKI_AISATSU, "p_card-02-act-1_003"]
+    d = _card_pick("produce-004", [YURUFUWA, KAIKA], deck=[*deck, KAIKA])
+    assert _picked(d) == 1 and "已有 1 张" in d.reason and "ww-NIA" in d.reason
+
+
+@pytest.mark.sim_master
+def test_card_pick_rerolls_when_all_unwanted_then_least_polluting():
+    """三张都不该拿（冲突 / 可复用非循环卡）：先刷新；刷新用完拿最不污染的（可复用 > 冲突）。"""
+    d = _card_pick("produce-004", [RESTART, LOVELY_WINK, MINNA])
+    assert d.action.kind.name == "REROLL"
+    d = _card_pick("produce-004", [RESTART, HIGH_TENSION, MINNA], rerolls=0)
+    assert _picked(d) == 2 and "不污染" in d.reason
+
+
+@pytest.mark.sim_master
+def test_card_pick_loop_part_until_kept():
+    """循环卡（きらきら紙吹雪）还没有时拿；牌组里已有 1 张（保留数 1）后算「已够」，不再拿。"""
+    d = _card_pick("produce-004", [KIRAKIRA, RESTART], deck=[GENKI_AISATSU])
+    assert _picked(d) == 0 and "循环" in d.reason
+    d = _card_pick("produce-004", [KIRAKIRA, TELEVI], deck=[GENKI_AISATSU, KIRAKIRA])
+    assert _picked(d) == 1
+    eieio, imetore = "p_card-02-men-1_031", "p_card-02-men-2_008"
+    d = _card_pick("produce-001", [eieio, imetore, GAMUSHARA], deck=[GENKI_AISATSU])
+    assert _picked(d) == 0  # えいえいおー（固有 P 道具的触发牌，保留 2 张）还缺：排在一次性的 イメトレ 前（11-17 初实机这一页）
+
+
+@pytest.mark.sim_master
+def test_hif_card_pick_unchanged():
+    """H.I.F 不走这条路：仍按必拿还缺 せのびの魔法 刷新。"""
+    d = _card_pick("produce-007", [RESTART, GENKI_AISATSU, LOVELY_WINK])
+    assert "せのび" in d.reason
+
+
+@pytest.mark.sim_master
+def test_card_pick_live_produce_without_step_star():
+    """实机局面（11-17 N.I.A trace）没有 step / star、多一个 deck_size：仍按 N.I.A 规则选，牌组张数照算。"""
+    from hiro.brain.deciders import ProduceDeciders
+    from hiro.brain.state import CAMPUS_HIRO
+    from hiro.contracts import GameState
+
+    prod = {"mode": "produce-004", "stamina": 20, "max_stamina": 30, "produce_point": 50, "params": {"Vo": 200, "Da": 200, "Vi": 200},
+            "growth_permil": {}, "drinks": [], "param_cap": 1000, "deck_size": 2,
+            "deck": [{"card_id": KAIKA, "upgrade": 0}, {"card_id": GENKI_AISATSU, "upgrade": 0}]}  # fmt: skip
+    pd = ProduceDeciders(CAMPUS_HIRO, None)
+    d = pd.decide("SELECT_CARD", GameState(produce=prod, page_fields={"candidates": [{"card_id": RESTART}, {"card_id": YURUFUWA}, {"card_id": KAIKA}]}))
+    assert _picked(d) == 2 and "已有 1 张" in d.reason and "せのび" not in d.reason

@@ -497,6 +497,57 @@
    "rule": "コンテスト厳選：最终试镜选 Quartet 不选 finale",
    "source": "ww-NIA",
    "quote": "最終オーディションではfinaleではなくQuartetを選ぶことでSSに到達しやすくなる。"
+  },
+  {
+   "id": "nia.card_once_first",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "选卡优先拿带「レッスン中1回」（打出后除外）的卡",
+   "source": "g8-NIAM",
+   "quote": "「レッスン中1回」が付いたカードを優先的に取る"
+  },
+  {
+   "id": "nia.card_loop_three",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "可复用的卡只留最终循环要的几种",
+   "source": "g8-NIAM",
+   "quote": "NIAマスターでハイスコアを出すコツは、「レッスン中1回」の制限がないカードが3種類のみになるようデッキを組むことです。"
+  },
+  {
+   "id": "nia.card_dup_once",
+   "families": [
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "一次性的卡优先拿牌组里已有的（抽到的概率高）",
+   "source": "ww-NIA",
+   "quote": "取得するカードは消えるカードかつすでに持っているものを集めて抽選確率をできる限り上げる"
+  },
+  {
+   "id": "hajime.card_signature_buff",
+   "families": [
+    "hajime",
+    "nia"
+   ],
+   "difficulties": null,
+   "rule": "优先拿能上偶像拿手 buff 的卡（广：やる気）",
+   "source": "g8-試験",
+   "quote": "そのため、得意なバフをかけるスキルカードを優先して取得して、試験で使いましょう。"
+  },
+  {
+   "id": "hajime.card_slim",
+   "families": [
+    "hajime"
+   ],
+   "difficulties": null,
+   "rule": "牌组精简，用不上的卡不拿",
+   "source": "g8-PRO",
+   "quote": "不要なスキルを削除することで強いカードが手札に来やすくなるので安定して強い立ち回りができます。"
   }
  ]
 }
