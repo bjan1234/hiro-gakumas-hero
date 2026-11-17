@@ -22,11 +22,13 @@ class ExamGnrpa(TowerGnrpa):
         lo = dict(ctx.loadout or {})
         if lo.get("produce_id") == "tower":
             return super().begin(ctx)
-        from hiro.search.exam_env import exam_env, from_hif_loadout, objective
+        from hiro.search.exam_env import exam_env, from_hif_loadout, loadout_npc_permil, objective, scale_npc_range
 
         self.lo = from_hif_loadout(lo) if lo.get("deck_cards") is not None else lo
+        # bench 裁判（GKMS）给的对手区间没算对手分增减（AuditionNpcEnhancePermil），按 P 道具推的千分比缩放（客户端算法）
+        permil = loadout_npc_permil(self.lo)
         rivals = [
-            int(r["score_max"])
+            scale_npc_range(int(r.get("score_min") or r["score_max"]), int(r["score_max"]), permil)[1]
             for r in (getattr(ctx, "meta", None) or {}).get("rival_scores") or ()
             if r.get("score_max") is not None
         ]

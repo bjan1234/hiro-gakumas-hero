@@ -17,7 +17,7 @@ bench 题（gkms.hif_loadout.v1，初 / N.I.A 的试镜）先用 from_hif_loadou
 
 from __future__ import annotations
 
-from functools import cache
+from functools import cache, lru_cache
 
 STEP_TYPES = {
     "mid1": "ProduceStepType_AuditionMid1",
@@ -152,9 +152,9 @@ def audition_row(idol_card_id: str, produce_id: str, round_key: str, number: int
 def turn_weights(lo: dict) -> dict | None:
     """这场考试三属性回合的权重 {1: Vo, 2: Da, 3: Vi}（主数据 ProduceExamBattleConfig.vocal / dance / visual）；查不到 None。"""
     try:
-        import hiro.sim  # noqa: F401  引擎路径
         from gakumas_exam.master import shared
 
+        import hiro.sim  # noqa: F401  引擎路径
         from hiro.sim.engine import master_commit
 
         cid = (lo.get("exam") or {}).get("produce_exam_battle_config_id")
@@ -198,6 +198,82 @@ def from_hif_loadout(doc: dict) -> dict:
     }  # fmt: skip
 
 
+# ---------------------------------------------------------------- 对手分增减（AuditionNpcEnhancePermil）
+# 引擎（gakumas_exam）没实现对手分的增减；客户端是这么算的（2026-11-17 反汇编 11-14 客户端
+# ExamParameterModel.CalculateAuditionNpc @0x36df15c）：permil ≠ 0 时
+#   f = 1 + FloatFromPermil(permil)（float32，permil / 1000.0f）
+#   新下限 = Math.Round(f × scoreMin)，新区间 = Math.Round(f × (scoreMax − scoreMin))（float32 乘，四舍六入五取偶）
+# 之后按新下限 / 区间逐回合生成对手分（GetScoreList）。permil = UserProduceProgress.AuditionNpcEnhancePermil，服务器按持有的 P 道具算：
+#   Σ 道具的 AuditionNpcEnhance（+）/ AuditionNpcWeaken（−）值 × 该道具已发动次数（fire_count；没发动过算 0）
+# 对过 GKMS 抓包里 7 组（100 / 1010 / 1250 / −800），全对。N.I.Aキー（黄緑，N.I.A PRO 简单模式开局给，开局就发动）= −800。
+
+
+def _f32(x: float) -> float:
+    import struct
+
+    return struct.unpack("<f", struct.pack("<f", float(x)))[0]
+
+
+def scale_npc_range(score_min: int, score_max: int, permil: int | None) -> tuple[int, int]:
+    """对手分区间按 AuditionNpcEnhancePermil 缩放（客户端算法，见上）。"""
+    if not permil:
+        return int(score_min), int(score_max)
+    f = _f32(_f32(_f32(int(permil)) / _f32(1000.0)) + 1.0)
+    lo = round(_f32(f * _f32(int(score_min))))  # Python round：五取偶，同 C# Math.Round
+    rg = round(_f32(f * _f32(int(score_max) - int(score_min))))
+    return lo, lo + rg
+
+
+@lru_cache(maxsize=1)
+def _npc_item_values() -> dict:
+    """P 道具 id → 它的对手分增减值（千分比，增 +、减 −）；没有这种效果的不在表里。"""
+    from hiro.bench_bridge import tower as tw
+
+    m = tw.master()
+    pe = {r["id"]: r for r in m.rows("ProduceEffect")}
+    ie = {r["id"]: r for r in m.rows("ProduceItemEffect")}
+    out: dict = {}
+    for it in m.rows("ProduceItem"):
+        v = 0
+        for e in it.get("produceItemEffectIds") or ():
+            q = pe.get((ie.get(e) or {}).get("produceEffectId")) or {}
+            t = str(q.get("produceEffectType") or "")
+            if t.endswith("AuditionNpcEnhance"):
+                v += int(q.get("effectValueMin") or 0)
+            elif t.endswith("AuditionNpcWeaken"):
+                v -= int(q.get("effectValueMin") or 0)
+        if v:
+            out[it["id"]] = v
+    return out
+
+
+def npc_enhance_permil(items) -> tuple[int, list[str]]:
+    """持有的 P 道具 → (对手分增减千分比, 不确定的道具)。items 写成 id 或 {produce_item_id / id, fire_count}。
+    给了 fire_count 就按它；只给 id（我们的 P 道具账本不记发动次数）时：N.I.Aキー 这类开局就发动的按 1 次，
+    チャレンジP道具 这类按条件累计发动的按 1 次并记进「不确定」（实际可能 3–5 次，见抓包）。"""
+    values = _npc_item_values()
+    total, unsure = 0, []
+    for it in items or ():
+        iid = it if isinstance(it, str) else (it.get("produce_item_id") or it.get("id"))
+        v = values.get(iid)
+        if not v:
+            continue
+        if isinstance(it, dict) and "fire_count" in it:
+            total += v * int(it.get("fire_count") or 0)
+        else:
+            total += v
+            if "challenge" in str(iid):
+                unsure.append(iid)
+    return total, unsure
+
+
+def loadout_npc_permil(lo: dict) -> int:
+    """这一场对手分增减千分比：lo 里显式给了 npc_enhance_permil（画面 / 抓包读到的）就用，否则按 P 道具推。"""
+    if lo.get("npc_enhance_permil") is not None:
+        return int(lo["npc_enhance_permil"])
+    return npc_enhance_permil(lo.get("produce_item_ids") or ())[0]
+
+
 def objective(lo: dict, rivals: list | None = None) -> dict:
     """search / plan_many 的终局目标（rivals：对手终局分，从高到低）：画面 / ctx.meta 给的优先，没有用主数据对手组的 scoreMax（保守）；
     再加按场次的目标（stage_objective：过关名次、分数封顶、课程合格线）。"""
@@ -208,7 +284,8 @@ def objective(lo: dict, rivals: list | None = None) -> dict:
     else:
         npc = (lo.get("exam") or {}).get("produce_exam_battle_npc_group_id")
         rows = [r for r in tw.master().rows("ProduceExamBattleNpcGroup") if r.get("id") == npc] if npc else []
-        top = sorted((int(r["scoreMax"]) for r in rows), reverse=True)
+        permil = loadout_npc_permil(lo)  # 主数据区间没算对手分增减（N.I.Aキー −80%、チャレンジP道具 +…%）：按客户端算法缩放
+        top = sorted((scale_npc_range(int(r["scoreMin"]), int(r["scoreMax"]), permil)[1] for r in rows), reverse=True)
     out = {"rivals": top, "lost_ssr_max": None, "debuffs_min": None}
     out.update(stage_objective(lo))
     return out
