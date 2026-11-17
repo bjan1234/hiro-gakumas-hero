@@ -1,5 +1,7 @@
 """bench 中转层：局面 → UIObs、出招插件的动作映射与退回规则（不需要 gkbench / 模型：算法用替身）。"""
 
+from types import SimpleNamespace
+
 import pytest
 
 from hiro.bench_bridge import advisor as A
@@ -837,3 +839,120 @@ def test_tower_status_sync_opt_in():
 def test_lesson_label_to_step_type(label, produce, step):
     """平台从画面读到属性 + SP / 追い込み 就给 hajime-lesson-<属性>[-sp|-hard]；LEGEND（produce-006）的课是 29–34。"""
     assert exam_fields(label, idol=None, plan=4, produce=produce)["step"] == step
+
+
+def test_audition_number_from_label_tag():
+    assert A._audition_number("nia-mid1#audition-2") == 2
+    assert A._audition_number("nia-final#x#audition-4") == 4
+    assert A._audition_number("nia-mid1") is None and A._audition_number(None) is None
+    assert exam_fields("nia-mid1#audition-2", idol="i", plan=3)["step"] == "AUDITION_MID1"  # tag 不影响场次
+
+
+@pytest.mark.bench_on
+def test_nia_tier_from_label_without_loadout(monkeypatch):
+    """平台 11-17：选档页选了第几档写进标签 tag（nia-mid1#audition-2）；没有编成时按主数据补审查基准和回合数。"""
+    monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    got = {}
+
+    def ac(label, idol, number, produce=None):
+        got.update(label=label, number=number)
+        return {"crit": [178, 217, 263], "turns": 9}
+
+    monkeypatch.setattr("hiro.bench_bridge.screen.audition_context", ac)
+    algo = _Algo(("play", 0))
+    monkeypatch.setattr(A, "load_algo", lambda *a, **k: algo)
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    adv.on_round_start(1, {"exam": "nia-mid1#audition-2", "idol": "i_card-x", "deck": []})
+    assert got["number"] == 2 and adv.exam["crit"] == [178, 217, 263] and adv.exam["turns"] == 9
+    assert adv.exam["step"] == "AUDITION_MID1" and adv.exam["permil_default"] == {}
+
+
+@pytest.mark.bench_on
+def test_nia_tag_number_fills_loadout_and_ctx_gets_full_loadout(monkeypatch, tmp_path):
+    seen = {}
+
+    def xc(lo):
+        seen["lo"] = lo
+        return {"turns": 9, "crit": [1, 2, 3], "permil_fixed": None, "max_stamina": 30, "idol": "i_card-x", "produce": "produce-005",
+                "deck": [("p_card-a", 0)]}  # fmt: skip
+
+    monkeypatch.setattr("hiro.bench_bridge.screen.exam_context", xc)
+    p = tmp_path / "lo.json"
+    p.write_text('{"loadout": {"produce_id": "produce-005", "round": "mid1", "deck_cards": ["p_card-a"]}}')
+    monkeypatch.setenv("HIRO_EXAM_LOADOUT", str(p))
+    algo = _Algo(("play", 0))
+    monkeypatch.setattr(A, "load_algo", lambda *a, **k: algo)
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    adv.on_round_start(1, {"exam": "nia-mid1#audition-2", "idol": None, "deck": []})
+    assert seen["lo"]["audition_number"] == 2
+    st, mem = _state([_card(0, "p_card-a")], remaining=9, turn=1)
+    adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    assert algo.ctx.loadout["deck_cards"] == ["p_card-a"] and algo.ctx.loadout["audition_number"] == 2
+
+
+@pytest.mark.bench_on
+@pytest.mark.parametrize("spec, fail, uses", [(None, False, "hif"), ("my.gnrpa:Search", False, "search"), ("my.gnrpa:Search", True, "hif")])
+def test_hajime_nia_search_switch_default_off(monkeypatch, spec, fail, uses):
+    """初 / N.I.A：HIRO_EXAM_SEARCH_ALGO 设了才走搜索（缺省 uinet，行为变化开关默认关）；加载失败 uinet 兜底并写明。"""
+    monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    if spec:
+        monkeypatch.setenv("HIRO_EXAM_SEARCH_ALGO", spec)
+    else:
+        monkeypatch.delenv("HIRO_EXAM_SEARCH_ALGO", raising=False)
+    hif, search = _Algo(("play", 0)), _Algo(("play", 0))
+
+    def load(s=None, **kw):
+        if s and s.startswith("my.gnrpa"):
+            if fail:
+                raise ImportError("no rust")
+            return search
+        return hif
+
+    monkeypatch.setattr(A, "load_algo", load)
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    adv.on_round_start(1, {"exam": "nia-mid2", "idol": None, "deck": []})
+    st, mem = _state([_card(0, "p_card-a")], remaining=9, turn=1)
+    d = adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    assert (len(search.seen), len(hif.seen)) == ((1, 0) if uses == "search" else (0, 1))
+    assert ("兜底" in d.reason) == bool(fail)
+
+
+@pytest.mark.bench_on
+def test_live_exam_loadout_built_on_first_decision(monkeypatch):
+    """协调 11-17：实机初 / N.I.A 没有 HIRO_EXAM_LOADOUT 时，中转层在第一次决策时自己拼编成：牌组账本 + run_loadout（道具 / 支援卡）
+    + 画面（体力 / 倍率）+ 标签的场次和档位 → 试镜行（exam / audition，按场次的目标要用）。回忆附魔只认 H.I.F 的，初 / N.I.A 给空。"""
+    monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    monkeypatch.setenv("HIRO_FORMATION_PLAN", "off")
+    row = {"produceExamBattleConfigId": "bc", "produceExamGimmickEffectGroupId": "", "produceExamBattleNpcGroupId": "npc",
+           "rankThreshold": 1, "baseScore": 0, "forceEndScore": 0, "voteCount": 4000, "isStaticNpcScore": False, "number": 3}  # fmt: skip
+    asked = {}
+
+    def ar(idol, produce, rnd, number=None):
+        asked.update(idol=idol, produce=produce, rnd=rnd, number=number)
+        return row
+
+    monkeypatch.setattr("hiro.search.exam_env.audition_row", ar)
+    monkeypatch.setattr("hiro.search.loadout.run_loadout",
+                        lambda produce, plan: ({"items": ("pitem_k",), "supports": ({"_supportCardId": "s"},), "skills": ("hif_skill",)}, []))  # fmt: skip
+    monkeypatch.setattr("hiro.bench_bridge.screen.audition_context", lambda *a, **k: {"crit": [1, 2, 3], "turns": 12})
+    algo = _Algo(("play", 0))
+    monkeypatch.setattr(A, "load_algo", lambda *a, **k: algo)
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    sess = SimpleNamespace(state=SimpleNamespace(produce={"items": ["pitem_k"]}))
+    adv.on_round_start(1, {"exam": "nia-mid2#audition-3", "idol": "i_card-x", "deck": [("p_card-a", 1), ("p_card-b", 0)], "session": sess})
+    st, mem = _state([_card(0, "p_card-a", 1)], remaining=12, turn=1)
+    adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    lo = algo.ctx.loadout
+    assert asked == {"idol": "i_card-x", "produce": "produce-004", "rnd": "mid2", "number": 3}
+    assert lo["produce_cards"] == ["p_card-a+1", "p_card-b"] and lo["exam"]["produce_exam_battle_config_id"] == "bc"
+    assert lo["audition"]["rankThreshold"] == 1 and lo["produce_item_ids"] == ["pitem_k"] and lo["supports"] == [{"_supportCardId": "s"}]
+    assert lo["skills"] == [] and lo["round"] == "mid2" and lo["idol_card_id"] == "i_card-x"
+    adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    assert algo.ctx.loadout is not lo or algo.ctx.loadout == lo  # 只拼一次（第二步用同一份）
+
+
+def test_exam_env_support_passthrough_engine_format():
+    from hiro.search.exam_env import _support
+
+    e = {"_supportCardId": "s", "_produceCardUpgradePermil": 50}
+    assert _support(None, e) == e

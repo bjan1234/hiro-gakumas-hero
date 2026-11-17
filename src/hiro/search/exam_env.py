@@ -5,7 +5,8 @@ lo 的字段（缺的按缺省）：
   produce_cards       牌组，"p_card-…+1/p_card_custom-…" 或 dict（hiro.search.loadout.parse_deck_entry）
   produce_item_ids    P 道具（引擎按道具挂附魔）
   start_enchant_ids   另外的开考附魔（bench 题的 main_item_enchant_ids + lesson_start_enchant_ids）
-  supports            支援卡 ["s_card-3-0010:64", …]（id:等级，考试里抽牌时按概率强化）
+  supports            支援卡 ["s_card-3-0010:64", …]（id:强化概率千分比）或引擎写法 {_supportCardId, …}（run_loadout 给的）
+  skills              回忆 / 支援 / 偶像的考试附魔（ProduceSkill id，run_loadout 给的）
   idol_card_id / starting_stamina / max_stamina / drink_ids
   score_bonus_permils 三属性倍率，列表 [Vo, Da, Vi] 或字典 {"1": …}
   exam                {produce_exam_battle_config_id, produce_exam_gimmick_effect_group_id}；回合数和审查基准取 battle config，
@@ -77,7 +78,7 @@ def exam_env(lo: dict, seed: int, *, guid_prefix: str = "card-exam"):
     ex = new_exam(None, m, seed, deck=deck, items=list(lo.get("produce_item_ids") or []), stamina=hp, max_stamina=int(lo["max_stamina"]),
                   randomize_turns=True, config_weights=weights, bonus_permil=bonus_permils(lo["score_bonus_permils"]),
                   drinks=list(lo.get("drink_ids") or []), plan_type=PLAN_TYPES.get(plan, 0), gimmicks=[gimmick] if gimmick else None,
-                  start_enchants=list(lo.get("start_enchant_ids") or []), supports=supports)  # fmt: skip
+                  start_enchants=list(lo.get("start_enchant_ids") or []), supports=supports, skills=list(lo.get("skills") or []) or None)  # fmt: skip
     attrs = [{1: "Vo", 2: "Da", 3: "Vi"}[t] for t in ex.turn_types]
     env = FidelityBattle(ex, FidelityBattle._turn_table(ex, attrs, 3), attrs, turn_offset=0, draw=3)
     env.seed = seed
@@ -91,6 +92,8 @@ def _support(m, s) -> dict:
     from gakumas_exam.loadout import _support as row_of
     from gakumas_exam.loadout import support_entry
 
+    if isinstance(s, dict) and "_supportCardId" in s:  # 已经是引擎写法（hiro.search.loadout.run_loadout 给的）
+        return dict(s)
     if isinstance(s, dict):
         sid, permil, level = s.get("support_card_id") or s.get("id"), s.get("permil"), s.get("level")
     else:

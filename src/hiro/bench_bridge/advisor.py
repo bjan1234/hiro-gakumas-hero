@@ -174,6 +174,11 @@ def tower_algo_spec() -> str:
     return (os.environ.get("HIRO_TOWER_ALGO") or TOWER_DEFAULT_ALGO).strip()
 
 
+def exam_search_algo_spec() -> str:
+    """初 / N.I.A 场次的出牌算法（HIRO_EXAM_SEARCH_ALGO）；缺省空 = 用 H.I.F 那个（uinet）。"""
+    return (os.environ.get("HIRO_EXAM_SEARCH_ALGO") or "").strip()
+
+
 def load_algo(spec: str | None = None, *, download: bool = True):
     """按名字加载 bench 算法。uinet 自动带上我们的主数据和模型（spec 里写了 master= / model= 就用写的）。"""
     _engine_on_path()
@@ -294,6 +299,15 @@ def _round_defaults(label: str | None, deck: list) -> tuple[dict, dict | None]:
     return permil, alloc
 
 
+def _audition_number(label: str | None) -> int | None:
+    """标签 tag 里的试镜档位：nia-mid1#audition-2 → 2（平台 11-17 约定）。"""
+    for tag in str(label or "").split("#")[1:]:
+        k, _, v = tag.partition("-")
+        if k == "audition" and v.isdigit():
+            return int(v)
+    return None
+
+
 def _exam_loadout(ctx: dict) -> dict | None:
     """初 / N.I.A 这一场的编成：context 的 exam_loadout，或 HIRO_EXAM_LOADOUT 指的 JSON 文件（bench 题存档或编成本身）。没有就 None。"""
     if isinstance(ctx.get("exam_loadout"), dict):
@@ -386,6 +400,10 @@ class BenchAdvisor:
         self.round_note = ""  # 兜底说明：偶像之路没用上指定算法时写原因
         self._tower_algos: dict = {}  # spec → 算法或加载失败的说明（同一进程多场只载一次）
         self.tower_loadout: dict | None = None
+        self.exam_loadout: dict | None = None
+        self._session = None
+        self._number: int | None = None
+        self._live_built = False
         self.known_draws: list | None = None
         self.load_error: str | None = None
         self.exam: dict = {}
@@ -446,7 +464,25 @@ class BenchAdvisor:
                 self.deck = list(tc["deck"])
             logger.info("[%s] 偶像之路编成：%d 回合，倍率 %s，最大体力 %s，开局牌组 %d 张", self.label, tc["turns"] or 0,
                         tc["permil_fixed"], tc["max_stamina"], len(self.deck))  # fmt: skip
-        if str(self.label or "").lower().startswith(("hajime", "nia")) and (lo := _exam_loadout(ctx)) is not None:
+        self._session = ctx.get("session")
+        self._number = number = _audition_number(self.label)
+        self._live_built = False
+        lo = _exam_loadout(ctx) if str(self.label or "").lower().startswith(("hajime", "nia")) else None
+        if lo is not None and number and not lo.get("audition_number"):
+            lo = {**lo, "audition_number": number}  # 平台在标签里带的档位（nia-mid1#audition-2）
+        self.exam_loadout = lo
+        if lo is None and number and str(self.label or "").lower().startswith(("hajime", "nia")):
+            from hiro.bench_bridge.screen import audition_context
+
+            try:
+                ac = audition_context(self.label, idol, number)
+            except Exception as e:  # noqa: BLE001  查不到：只靠画面
+                logger.warning("[%s] 档位 %s 查不到审查基准：%s: %s", self.label, number, type(e).__name__, e)
+            else:
+                self.exam["crit"], self.exam["permil_default"], self.exam["allocation"] = ac["crit"], {}, None
+                if ac["turns"]:
+                    self.exam["turns"] = ac["turns"]
+        if lo is not None:
             from hiro.bench_bridge.screen import exam_context, exam_fields
 
             try:
@@ -482,9 +518,20 @@ class BenchAdvisor:
     def _pick_algo(self) -> None:
         """这一场用哪个算法：偶像之路用 HIRO_TOWER_ALGO（加载失败或没配置就用 H.I.F 的算法兜底，写明原因），其余用 H.I.F 的。"""
         self.round_algo, self.round_name, self.round_note = self.algo, algo_spec().split(":")[0], ""
-        if not str(self.label or "").lower().startswith("tower") or not enabled():
+        label = str(self.label or "").lower()
+        if not enabled():
             return
-        spec = tower_algo_spec()
+        if label.startswith(("hajime", "nia")):
+            # 初 / N.I.A：HIRO_EXAM_SEARCH_ALGO 设了才走搜索（如 hiro.search.exam_algo:ExamGnrpa，自己按 UIObs 对齐引擎局面，
+            # 不要 screen_source 跟踪）；缺省不设 = uinet（行为变化开关默认关：bench 上 GNRPA 还只比 uinet 略好，目标没按场次填）
+            spec = exam_search_algo_spec()
+            if not spec:
+                return
+            what = "初 / N.I.A"
+        elif label.startswith("tower"):
+            spec, what = tower_algo_spec(), "偶像之路"
+        else:
+            return
         if not spec:
             self.round_note = "偶像之路指定算法（GNRPA）还没接上，HIRO_TOWER_ALGO 未设"
         else:
@@ -496,12 +543,70 @@ class BenchAdvisor:
                     got = f"{type(e).__name__}: {e}"
                 self._tower_algos[spec] = got
             if isinstance(got, str):
-                self.round_note = f"偶像之路指定算法 {spec} 加载失败（{got}）"
+                self.round_note = f"{what}指定算法 {spec} 加载失败（{got}）"
             else:
                 self.round_algo, self.round_name = got, spec.split(":")[-1] if ":" in spec else spec
-                logger.info("[%s] 偶像之路出牌：%s", self.label, spec)
+                logger.info("[%s] %s出牌：%s", self.label, what, spec)
                 return
         logger.warning("[%s] %s，用 %s 兜底", self.label, self.round_note, self.round_name)
+
+    def _live_exam_loadout(self, obs: dict) -> dict | None:
+        """实机初 / N.I.A：没有 HIRO_EXAM_LOADOUT 时，在这场第一次决策时拼编成（协调 11-17 定：中转层自己拼）。
+        牌组 = 执行层给的培育牌组账本；P 道具 / 支援卡 / 回忆附魔 = hiro.search.loadout.run_loadout（培育记账 + 开局编成方案）；
+        倍率 / 体力 = 这一帧画面（倍率只读到当前属性时按编成的 permil_fixed，没有就是画面补齐的值）；
+        场次 + 档位 = 标签（nia-mid2#audition-3）→ 主数据的试镜行（exam、audition：搜索按场次的目标要用）。拼不出返回 None。"""
+        import os
+
+        from hiro.search.exam_env import ExamUnsupported, audition_row
+
+        base = str(self.label or "").split("#", 1)[0].lower()
+        rnd = base.partition("-")[2]
+        if rnd.startswith("lesson"):
+            return None  # 课程：引擎还不支持
+        idol, produce = self.exam.get("idol"), self.exam.get("produce")
+        if not idol or not self.deck:
+            logger.info("[%s] 拼不了编成（偶像 %s、牌组 %d 张）", self.label, idol, len(self.deck))
+            return None
+        try:
+            row = audition_row(idol, produce, rnd, self._number)
+        except ExamUnsupported as e:
+            logger.warning("[%s] 拼编成时查不到试镜行：%s", self.label, e)
+            return None
+        num = obs.get("num") or {}
+        pm = self.exam.get("permil_fixed") or dict(zip(("Vo", "Da", "Vi"), (obs.get("exam") or {}).get("permil") or (0, 0, 0)))
+        lo = {"produce_id": produce, "round": rnd, "idol_card_id": idol,
+              "produce_cards": [f"{c}+{u}" if u else c for c, u in self.deck],
+              "starting_stamina": int(num.get("stamina") or 0) or None, "max_stamina": int(num.get("max_stamina") or 0) or None,
+              "score_bonus_permils": [int(pm.get(a) or 0) for a in ("Vo", "Da", "Vi")], "drink_ids": list(obs.get("drinks") or []),
+              "exam": {"produce_exam_battle_config_id": row["produceExamBattleConfigId"],
+                       "produce_exam_gimmick_effect_group_id": row.get("produceExamGimmickEffectGroupId") or None,
+                       "produce_exam_battle_npc_group_id": row["produceExamBattleNpcGroupId"]},
+              "audition": {k: row.get(k) for k in ("rankThreshold", "baseScore", "forceEndScore", "voteCount", "isStaticNpcScore", "number")}}  # fmt: skip
+        try:
+            from hiro.search.loadout import run_loadout
+
+            produce_state = (getattr(getattr(self._session, "state", None), "produce", None) or {}) if self._session is not None else {}
+            plan = None
+            if os.environ.get("HIRO_FORMATION_PLAN", "").lower() != "off":
+                try:
+                    from hiro.brain.formation_plan import load
+
+                    plan = load(os.environ.get("HIRO_FORMATION_PLAN") or None)
+                except Exception as e:  # noqa: BLE001
+                    logger.info("开局编成方案读不了：%s", e)
+            run, notes = run_loadout(produce_state, plan)
+            # 回忆附魔（run["skills"]）只认 H.I.F 回忆技能（触发 p_trigger-start_audition-for_hif_memory，只在 H.I.F 考试生效），
+            # 初 / N.I.A 不给；N.I.A 回忆能力（「1次オーディション開始時、30%の確率で…」）还没解析，先按没有（3940a9 11-17）
+            lo.update(produce_item_ids=list(run["items"]), supports=list(run["supports"]), skills=[])
+            if notes:
+                logger.info("[%s] 拼编成：%s", self.label, "；".join(notes))
+        except Exception as e:  # noqa: BLE001  道具 / 支援卡拼不出：按没有搜
+            logger.info("[%s] 拼编成时 run_loadout 失败（按没有道具 / 支援卡）：%s: %s", self.label, type(e).__name__, e)
+        if not lo["max_stamina"] or not all(lo["score_bonus_permils"]):
+            logger.info("[%s] 拼编成：最大体力 / 倍率读数不全（%s / %s），照样交给算法", self.label, lo["max_stamina"], lo["score_bonus_permils"])
+        logger.info("[%s] 现拼编成：牌组 %d 张、P 道具 %d、支援卡 %d、档位 %s", self.label, len(lo["produce_cards"]),
+                    len(lo.get("produce_item_ids") or ()), len(lo.get("supports") or ()), row.get("number"))  # fmt: skip
+        return lo
 
     def on_round_end(self, result: dict[str, Any] | None) -> None:
         logger.info("[%s] 考试出牌统计：bench %d 步，规则 %d 步", self.label, self.stats["bench"], self.stats["rules"])
@@ -536,7 +641,8 @@ class BenchAdvisor:
 
         meta = {"produce_id": self.exam.get("produce"), "step_type": self.exam.get("step"), "plan_type": self.exam.get("plan"),
                 "idol_card_id": self.exam.get("idol")}
-        loadout = dict(self.tower_loadout or {}) if self.tower_loadout else {"idol_card_id": self.exam.get("idol")}
+        full = self.tower_loadout or self.exam_loadout  # 搜索类算法要整份编成（偶像之路 / 初 / N.I.A）
+        loadout = dict(full) if full else {"idol_card_id": self.exam.get("idol")}
         return SimpleNamespace(obs=obs, budget=DECIDE_BUDGET_S, loadout=loadout, meta=meta, known_draws=self.known_draws,
                                rng=self.rng, worlds=worlds, true_session=None, seed=None)  # fmt: skip
 
@@ -557,6 +663,9 @@ class BenchAdvisor:
             # 每步给算法的 UIObs 记进运行日志（复盘用：实机局能直接看出 UINet 看到的局面和画面差在哪）
             uiobs_log.info("[%s T%s %s] %s", self.label, getattr(memory, "turn", None), origin,
                            json.dumps(obs, ensure_ascii=False, separators=(",", ":")))
+            if self.exam_loadout is None and not self._live_built and str(self.label or "").lower().startswith(("hajime", "nia")):
+                self._live_built = True
+                self.exam_loadout = self._live_exam_loadout(obs)
             ctx = self._ctx(obs)
             if not self.began:
                 algo.begin(ctx)
