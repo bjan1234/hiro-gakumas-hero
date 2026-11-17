@@ -242,12 +242,14 @@ def nia_core(scenario_mode: str):
 
     class NiaSampleCore(HifCore):
         nia_audition_number = None  # 试镜选档页选的档（NiaPages 设）：标签带上「#audition-N」，8a3a1e7 的中转层按它查战斗配置
+        nia_stage = None  # 试镜选档页左上读到的场次（mid1 / mid2 / final）；读不到才按进了几场数
 
         def _battle_label(self, ctx) -> str:
             n = self.exam_count
             self.exam_count += 1
             type(self).exams_done = self.exam_count
-            label = STAGES[min(n, len(STAGES) - 1)]
+            label = f"nia-{self.nia_stage}" if self.nia_stage else STAGES[min(n, len(STAGES) - 1)]
+            self.nia_stage = None
             if self.nia_audition_number is not None:
                 label = f"{label}#audition-{self.nia_audition_number}"
                 self.nia_audition_number = None

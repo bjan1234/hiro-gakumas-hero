@@ -102,6 +102,19 @@ def read_votes(img) -> int | None:
     return next((n for n in nums if n is not None), None)
 
 
+STAGE_WORDS = (("最終", "final"), ("2次", "mid2"), ("1次", "mid1"))
+
+
+def _audition_stage(tx) -> str | None:
+    """左上「1次 / 2次 / 最終」+「オーディション」（实机 OCR「1次」在 (68,97)）→ mid1 / mid2 / final；页中间的大标题也认。"""
+    for s, x, y in tx:
+        if y < 260:
+            for w, stage in STAGE_WORDS:
+                if w in s and (x < 200 or "オーディ" in s or "ション" in s or y > 180):
+                    return stage
+    return None
+
+
 def read_audition_select(texts, img=None) -> dict | None:
     tx = _t(texts)
     prompt = any("オーディションを選択" in s for s, _, _ in tx)
@@ -121,7 +134,7 @@ def read_audition_select(texts, img=None) -> dict | None:
     order = sorted({n for _, n in labels})
     tiers = [{"index": i, "number": order.index(n) + 1, "vote_need": n, "locked": False, "center": [360, y - 50]}
              for i, (y, n) in enumerate(labels)]  # fmt: skip
-    out = {"tiers": tiers, "votes": read_votes(img), "expanded": start is not None}
+    out = {"tiers": tiers, "votes": read_votes(img), "expanded": start is not None, "stage": _audition_stage(tx)}
     if start is not None:
         below = [(y, n) for y, n in labels if 0 < y - start[1] < 120]
         out["chosen_need"] = below[0][1] if below else None

@@ -95,6 +95,8 @@ class NiaPages:
                 return STAY
             self.audition_choice = tiers[int(i)]["vote_need"]
             self.core.nia_audition_number = args.get("audition_number") or tiers[int(i)].get("number")
+            if fields.get("stage"):
+                self.core.nia_stage = fields["stage"]  # 考试标签按这一场（mid1 / mid2 / final），不按进了几场数（中间夹着営業、自主课）
         target = next((t for t in tiers if t["vote_need"] == self.audition_choice), None)
         if fields.get("expanded") and fields.get("chosen_need") == self.audition_choice and fields.get("start"):
             logger.info("N.I.A 试镜：门槛 %s（档 %s），点「オーディション開始」", self.audition_choice, self.core.nia_audition_number)

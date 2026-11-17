@@ -44,7 +44,7 @@ def test_sales_event_reading():
 
 def test_audition_select_reading():
     name, f = _read("nia-audition-select-1.png")
-    assert name == "NIA_AUDITION_SELECT" and f["votes"] == 4680 and not f["expanded"]
+    assert name == "NIA_AUDITION_SELECT" and f["votes"] == 4680 and not f["expanded"] and f["stage"] == "mid1"
     assert [(t["vote_need"], t["number"]) for t in f["tiers"]] == [(9000, 3), (4000, 2), (0, 1)]
     name, f = _read("nia-audition-select-1-chosen.png")
     assert f["expanded"] and f["chosen_need"] == 4000 and abs(f["start"][1] - 889) < 15
@@ -102,8 +102,8 @@ def test_audition_two_steps_sets_audition_number():
     core, _ = _core(1, number=2)
     p = NiaPages(core)
     rt, now, taps = _rt()
-    assert p.on_audition_select(rt, None, NS(fields={"tiers": tiers, "expanded": False})) is DONE and taps == [(360, 891)]
-    assert core.nia_audition_number == 2
+    assert p.on_audition_select(rt, None, NS(fields={"tiers": tiers, "expanded": False, "stage": "mid2"})) is DONE and taps == [(360, 891)]
+    assert core.nia_audition_number == 2 and core.nia_stage == "mid2"
     now[0] += ACT_WAIT_S
     chosen = {"tiers": tiers[1:], "expanded": True, "chosen_need": 4000, "start": [360, 889]}
     assert p.on_audition_select(rt, None, NS(fields=chosen)) is DONE and taps[-1] == (360, 889)
@@ -151,6 +151,16 @@ def test_exam_label_carries_audition_number():
     c.exam_count, c.nia_audition_number = 0, 2
     assert c._battle_label(None) == "nia-mid1#audition-2" and c.nia_audition_number is None
     assert c._battle_label(None) == "nia-mid2"
+
+
+def test_exam_label_uses_stage_from_select_page():
+    """8a3a1e7 / 协调 11-17：第 2 场标签还是 nia-mid1（按进了几场数，中间夹着営業、自主课）。选档页读到的场次优先。"""
+    from hiro.runtime import nia_sample as ns
+
+    Core = ns.nia_core("produce-004")
+    c = Core.__new__(Core)
+    c.exam_count, c.nia_stage, c.nia_audition_number = 5, "mid2", 3  # 前面已经「数」过好几场（课程等）
+    assert c._battle_label(None) == "nia-mid2#audition-3" and c.nia_stage is None
 
 
 def test_sampler_rechecks_dialog_as_sales_place(tmp_path):
