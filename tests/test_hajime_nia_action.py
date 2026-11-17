@@ -565,3 +565,55 @@ def test_card_pick_live_produce_without_step_star():
     pd = ProduceDeciders(CAMPUS_HIRO, None)
     d = pd.decide("SELECT_CARD", GameState(produce=prod, page_fields={"candidates": [{"card_id": RESTART}, {"card_id": YURUFUWA}, {"card_id": KAIKA}]}))
     assert _picked(d) == 2 and "已有 1 张" in d.reason and "せのび" not in d.reason
+
+
+# ---- 初 / N.I.A 的局面（协调 11-17 ②：没有 star 是真值、step 缺失按未知）----
+LIVE_NIA_DECK = ["p_card-02-ido-3_105", "p_card-02-act-1_037", "p_card-00-act-0_001", "p_card-02-men-1_031", "p_card-02-men-2_004"]
+
+
+def _live_state(mode="produce-004", deck=LIVE_NIA_DECK, **pf):
+    from hiro.contracts import GameState
+
+    prod = {"mode": mode, "stamina": 20, "max_stamina": 30, "produce_point": 160, "params": {"Vo": 200, "Da": 200, "Vi": 200},
+            "growth_permil": {}, "drinks": [], "deck_size": len(deck), "deck": [{"card_id": c, "upgrade": 0} for c in deck]}  # fmt: skip
+    return GameState(produce=prod, page_fields=pf)
+
+
+def _pd():
+    from hiro.brain.deciders import ProduceDeciders
+    from hiro.brain.state import CAMPUS_HIRO
+
+    return ProduceDeciders(CAMPUS_HIRO, None)
+
+
+def test_produce_state_hajime_nia_without_step_star():
+    """实机局面没有 step / star：初 / N.I.A 照样构造出局面，star=0，step 记为未观测；H.I.F 缺 star 仍构造不出。"""
+    pd = _pd()
+    for mode in ("produce-004", "produce-001"):
+        st = _live_state(mode)
+        ps = pd.produce_state(st)
+        assert ps is not None and ps.mode == mode and ps.star == 0 and len(ps.deck) == 5
+        assert "step" in pd.unknown_fields(st, ps) and "star" in pd.unknown_fields(st, ps)
+    assert pd.produce_state(_live_state("produce-007")) is None
+
+
+@pytest.mark.sim_master
+def test_nia_consult_deletes_basic_card():
+    """N.I.A 相談：删「○○の基本」（不走 H.I.F 选拔的 P 点预算）；没有该删的、牌组没识别、P 不够时不买。"""
+    pd = _pd()
+    svc = {"delete": {"price": 100, "available": True}}
+    d = pd.decide("CONSULT", _live_state(shelf=[], services=svc))
+    assert d.action.kind.name == "SHOP_BUY" and d.action.args == {"service": "delete", "card_index": 2}, d.reason
+    assert "アピールの基本" in d.reason and "g8-NIAM" in d.reason
+    keep = [c for c in LIVE_NIA_DECK if c != "p_card-00-act-0_001"]
+    assert pd.decide("CONSULT", _live_state(deck=keep, shelf=[], services=svc)).action.kind.name == "SHOP_END"
+    poor = {"delete": {"price": 200, "available": True}}
+    assert pd.decide("CONSULT", _live_state(shelf=[], services=poor)).action.kind.name == "SHOP_END"
+    d = pd.decide("CONSULT", _live_state("produce-001", shelf=[], services=svc))
+    assert d.action.args.get("card_index") == 2 and "g8-PRO" in d.reason
+
+
+def test_hajime_nia_drink_no_hif_sim():
+    """初 / N.I.A 的饮料比较不跑 H.I.F 选拔考试的模拟。"""
+    pd = _pd()
+    assert pd._drink_sim_context(pd.produce_state(_live_state()), "selection") is None
