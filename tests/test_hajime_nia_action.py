@@ -401,3 +401,14 @@ def test_select_pitem_routes_nia():
     items = [{"index": 0, "name": "N.I.Aトートバッグ"}, {"index": 1, "name": "N.I.Aスマホリング"}, {"index": 2, "name": "N.I.Aパスケース"}]
     d = ProduceDeciders(CAMPUS_HIRO, None).decide("SELECT_PITEM", GameState(produce=prod, page_fields={"pitems": items}))
     assert d.action.args["pick_indexes"] == [2] and "[ww-NIAM]" in d.reason
+
+
+def test_nia_action_without_step_is_rule():
+    """N.I.A 读不到 step：规则照常选，来源记 rule 不记 fallback。"""
+    from hiro.brain.deciders import ProduceDeciders
+    from hiro.brain.state import CAMPUS_HIRO
+    from hiro.contracts import GameState
+
+    prod = {"mode": "produce-004", "stamina": 20, "max_stamina": 30, "produce_point": 0, "params": {"Vo": 1, "Da": 1, "Vi": 1}}
+    d = ProduceDeciders(CAMPUS_HIRO, None).decide("ACTION_SELECT", GameState(produce=prod, page_fields={"options": [_opt("sales")]}))
+    assert d.source == "rule" and not d.warnings

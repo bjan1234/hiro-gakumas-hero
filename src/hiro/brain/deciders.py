@@ -284,7 +284,8 @@ class ProduceDeciders:
         cands = [Candidate(Action.produce_next(o["option"], attr=o.get("attr"), sp=o.get("sp"))) for o in opts]
         if not opts:
             return Decision(Action.ui(ActionKind.WAIT, why="没有可用行动"), "没有可选的行动", "fallback", 0.1, cands, decider="action_select")
-        missing = [k for k in ("step", "stamina", "max_stamina") if prod.get(k) is None]
+        # step（第几周）N.I.A 画面上读不到，规则也只有初 MASTER「第 6 周前不能休息」用它：不算状态不全（N.I.A 实机 11-17 选行动 25 次全记成 fallback）
+        missing = [k for k in ("stamina", "max_stamina") if prod.get(k) is None]
         st = self._hajime_nia_status(state)
         i, reason, rules = choose_action(st, opts)
         o = opts[i]
