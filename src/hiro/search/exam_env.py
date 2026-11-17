@@ -17,9 +17,7 @@ bench 题（gkms.hif_loadout.v1，初 / N.I.A 的试镜）先用 from_hif_loadou
 
 from __future__ import annotations
 
-from functools import lru_cache
-
-from functools import cache
+from functools import cache, lru_cache
 
 STEP_TYPES = {
     "mid1": "ProduceStepType_AuditionMid1",
@@ -154,9 +152,9 @@ def audition_row(idol_card_id: str, produce_id: str, round_key: str, number: int
 def turn_weights(lo: dict) -> dict | None:
     """这场考试三属性回合的权重 {1: Vo, 2: Da, 3: Vi}（主数据 ProduceExamBattleConfig.vocal / dance / visual）；查不到 None。"""
     try:
-        import hiro.sim  # noqa: F401  引擎路径
         from gakumas_exam.master import shared
 
+        import hiro.sim  # noqa: F401  引擎路径
         from hiro.sim.engine import master_commit
 
         cid = (lo.get("exam") or {}).get("produce_exam_battle_config_id")
