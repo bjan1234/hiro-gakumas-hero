@@ -60,6 +60,36 @@ def steps(produce_id: str) -> int:
     return int(master().one("Produce", produce_id)["steps"])
 
 
+# ---------------------------------------------------------------- 页头周数 → step
+# 各场考试在日程里的位置（第几步）。主数据没有这张表（Produce 只有总步数），按实机页头序列定：
+# 初 REGULAR（13 步）：中間まで 5→1 週 = 第 1–5 步，第 6 步中間；最終まで 6→1 週 = 第 7–12 步，第 13 步最終（初 Mac 11-17 两局）。
+# N.I.A PRO（27 步）：1次 / 2次 / 最終まで 各 8→1 週，考试在第 9 / 18 / 27 步（N.I.A Mac 11-17）。
+# 最终考试总在最后一步（steps）；其余模式的中间几场没有实机数据，不猜（给 None）。
+EXAM_STEPS = {"produce-001": {"mid1": 6, "final": 13}, "produce-004": {"mid1": 9, "mid2": 18, "final": 27}}
+
+
+def exam_step(produce_id: str, stage: str) -> int | None:
+    """这场考试（mid1 / mid2 / final）在日程里是第几步；不知道 None。"""
+    pos = EXAM_STEPS.get(produce_id, {}).get(stage)
+    if pos is None and stage == "final":
+        try:
+            pos = steps(produce_id)
+        except Exception:  # noqa: BLE001  没有主数据
+            return None
+    return pos
+
+
+def step_from_header(produce_id: str | None, stage: str | None, weeks: int | None) -> int | None:
+    """选行动页头「<stage>まで N週」→ 当前 step（= 考试所在步 − N，同 H.I.F「選抜試験1まで 6日」→ 7 − 6）。算出来不在 1..steps 里给 None。"""
+    if not produce_id or not stage or weeks is None or family(produce_id) not in (HAJIME, NIA):
+        return None
+    pos = exam_step(produce_id, stage)
+    if pos is None:
+        return None
+    step = pos - int(weeks)
+    return step if 1 <= step < pos else None
+
+
 # ---------------------------------------------------------------- 考试 / 试镜档位
 
 STAGE_KIND = {"ProduceStepType_AuditionMid1": "mid1", "ProduceStepType_AuditionMid2": "mid2", "ProduceStepType_AuditionFinal": "final"}

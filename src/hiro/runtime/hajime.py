@@ -183,7 +183,9 @@ def run(args) -> int:
         logger.error("new 开局要编成号：--support-set / --memory-set，或开局编成方案")
         return 2
     mode = MODES[args.difficulty]
-    session = Session(TraceWriter(name=args.trace))
+    from hiro.runtime.segments import trace_name
+
+    session = Session(TraceWriter(name=trace_name("hajime", args.command, args.trace)))  # 续跑接上一段（体力 / P / 属性 / step 打底）
     Core = hajime_core(mode)
     for k, v in {"session": session, "use_llm": not args.no_llm, "llm_spec": args.llm, "main_attr": args.main_attr, "exams_done": 0}.items():
         setattr(Core, k, v)
