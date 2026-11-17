@@ -11,11 +11,13 @@ from __future__ import annotations
 import logging
 import time
 
+from hiro.loop.errors import ResumeBlocked
 from hiro.runtime.loop import DONE, STAY
 
 logger = logging.getLogger(__name__)
 
 ACT_WAIT_S = 2.5
+UNDECIDED_STOP_S = 15.0  # 同一页一直决策不出（字段读不全 → Wait）这么久：存帧停下交人，不空等 180 秒
 
 
 class NiaPages:
@@ -24,6 +26,7 @@ class NiaPages:
         self._acted: tuple[str, float] | None = None
         self.place_choice: str | None = None  # 场所种类（kind）
         self.audition_choice: int | None = None  # 门槛票数（vote_need）
+        self._undecided: tuple[str, float] | None = None  # (页面, 从什么时候起一直决策不出)
 
     def _now(self, rt) -> float:
         clock = getattr(rt, "clock", None)
@@ -36,12 +39,25 @@ class NiaPages:
         rt.device.tap(int(pos[0]), int(pos[1]))
         self._acted = (page, self._now(rt))
 
-    def _decide(self, page: str, fields: dict):
+    def _decide(self, rt, page: str, fields: dict):
+        """观测 → 决策。字段已经是决策器要的格式，ready=True 原样进 page_fields（不传 ready 时 observation() 只保留登记过转换的
+        页面的字段，N.I.A 新页面的字段全被丢掉，决策器一直「没读到」，N.I.A 采样 11-17 停了 180 秒）。
+        页面还在防抖（状态没切到这一页）先不决策；决策不出（Wait）连续 UNDECIDED_STOP_S 秒就停下。返回 Decision 或 None。"""
         s = self.core.s
-        obs = s.observe(scene=page, fields=dict(fields))
+        obs = s.observe(scene=page, fields=dict(fields), ready=True)
+        if s.state.page.name != page:
+            return None  # 防抖中：page_fields 还是上一页的，下一拍再决策
         d = self.core.deciders.decide(page, s.state)
         s.record(obs, decision=d)
         logger.info("N.I.A %s ← %s：%s", page, d.source, d.reason)
+        now = self._now(rt)
+        if d.action.kind.name == "WAIT" or (d.action.args or {}).get("select") is None:
+            if self._undecided is None or self._undecided[0] != page:
+                self._undecided = (page, now)
+            elif now - self._undecided[1] >= UNDECIDED_STOP_S:
+                raise ResumeBlocked(f"N.I.A {page} {now - self._undecided[1]:.0f}s 都决策不出（{d.reason}），停下交人")
+            return None
+        self._undecided = None
         return d
 
     # ---------------------------------------------------------------- 営業场所
@@ -51,8 +67,8 @@ class NiaPages:
             return STAY
         places = fields.get("places") or []
         if not fields.get("expanded") or self.place_choice is None:
-            d = self._decide(page, fields)
-            i = (d.action.args or {}).get("select")
+            d = self._decide(rt, page, fields)
+            i = (d.action.args or {}).get("select") if d else None
             if i is None or not 0 <= int(i) < len(places):
                 return STAY  # 决策没给出（读不全）：等下一帧
             self.place_choice = places[int(i)]["kind"]
@@ -73,8 +89,8 @@ class NiaPages:
         if self._wait(rt, page):
             return STAY
         choices = fields.get("choices") or []
-        d = self._decide(page, fields)
-        i = (d.action.args or {}).get("select")
+        d = self._decide(rt, page, fields)
+        i = (d.action.args or {}).get("select") if d else None
         if i is None or not 0 <= int(i) < len(choices):
             return STAY
         logger.info("N.I.A 営業话题：%s", choices[int(i)].get("text"))
@@ -88,8 +104,8 @@ class NiaPages:
             return STAY
         tiers = fields.get("tiers") or []
         if not fields.get("expanded") or self.audition_choice is None:
-            d = self._decide(page, fields)
-            args = d.action.args or {}
+            d = self._decide(rt, page, fields)
+            args = (d.action.args or {}) if d else {}
             i = args.get("select")
             if i is None or not 0 <= int(i) < len(tiers):
                 return STAY

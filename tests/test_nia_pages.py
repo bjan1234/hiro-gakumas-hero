@@ -63,7 +63,14 @@ def _core(select, number=None):
     rec = []
     args = {"select": select} | ({"audition_number": number} if number else {})
     d = Decision(Action(ActionKind.EVENT_SELECT, args), "测试", "rule", 0.7)
-    s = NS(state=NS(), observe=lambda **kw: rec.append(kw["scene"]) or kw, record=lambda *a, **k: None)
+    state = NS(page=NS(name=None))
+
+    def observe(**kw):
+        rec.append(kw["scene"])
+        state.page.name = kw["scene"]  # 假 Session：一观测就切到这一页（真的 Session 有防抖，见下面的端到端用例）
+        return kw
+
+    s = NS(state=state, observe=observe, record=lambda *a, **k: None)
     return NS(s=s, deciders=NS(decide=lambda page, st: d), nia_audition_number=None), rec
 
 
@@ -199,3 +206,35 @@ def test_audition_select_second_stage():
     assert [(t["vote_need"], t["number"]) for t in f["tiers"]] == [(25000, 3), (14000, 2), (0, 1)]
     name, f = _read("nia-audition-select-2-chosen.png")
     assert name == "NIA_AUDITION_SELECT" and f["stage"] == "mid2" and f["expanded"]
+
+
+def test_resort_layout_reading():
+    """协调 11-17：リゾート施設（绿，+2,800，消費なし）/ 企業 +4,000 / 商業 +4,000 -5；展开态把リゾート施設读成「ノゾート施談」也认。"""
+    name, f = _read("nia-sales-place-resort.png")
+    assert [(p["kind"], p["gain"], p["hp_cost"]) for p in f["places"]] == [("resort", 2800, 0), ("corporate", 4000, 0), ("commercial", 4000, 5)]
+    name, f = _read("nia-sales-place-camp-expanded.png")
+    assert f["places"][0]["kind"] == "resort" and f["expanded"] and f["selected"] == 0 and abs(f["start"][1] - 779) < 15
+
+
+def test_fields_reach_real_decider_through_session(tmp_path):
+    """端到端：真 Session + 真决策器。原来 observation() 把 N.I.A 页的字段丢掉，决策器一直「营业场所没读到」，180 秒停。"""
+    from hiro.brain.deciders import ProduceDeciders
+    from hiro.contracts import TraceWriter
+    from hiro.loop.session import Session
+    from hiro.produce.nia import NiaPages
+    from hiro.vision.nia import read_sales_place
+    from hiro.vision.ocr import screen_texts
+
+    img = _img("nia-sales-place-resort.png")
+    fields = read_sales_place(screen_texts(img))
+    session = Session(TraceWriter(name="nia-e2e", root=tmp_path), shoot=lambda: img)
+    session.state.produce = {"mode": "produce-004", "stamina": 22, "max_stamina": 30, "produce_point": 60, "step": 5,
+                             "params": {"Vo": 193, "Da": 616, "Vi": 238}}  # fmt: skip
+    core = NS(s=session, deciders=ProduceDeciders(None, None), nia_audition_number=None)
+    rt, now, taps = _rt()
+    p = NiaPages(core)
+    for _ in range(4):  # 防抖几拍后决策、点卡
+        now[0] += 3.0
+        if p.on_sales_place(rt, None, NS(fields=fields)) is DONE:
+            break
+    assert taps and taps[0][1] in (740, 878, 1016)

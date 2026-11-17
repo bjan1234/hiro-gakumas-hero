@@ -15,7 +15,7 @@ import re
 
 import cv2
 
-PLACE_KINDS = (("自治体", "local"), ("企業", "corporate"), ("商業", "commercial"), ("リゾート", "resort"))
+PLACE_KINDS = (("自治体", "local"), ("企業", "corporate"), ("商業", "commercial"), ("ゾート", "resort"))  # 「リゾート施設」展开时 OCR 读成「ノゾート施談」
 ICON_ATTR_HUE = {"Vo": (155, 180), "Da": (95, 120), "Vi": (12, 35)}  # 话题按钮左侧圆形图标：粉 / 蓝 / 黄
 VOTES_BOX = (540, 120, 700, 170)  # 右上投票数（「4,680」，上面一行「9,000」是下一档目标）
 
@@ -42,7 +42,7 @@ def read_sales_place(texts) -> dict | None:
     titles = []
     for s, x, y in tx:
         kind = next((k for w, k in PLACE_KINDS if w in s), None)
-        if kind and x < 360 and ("会場" in s or "施設" in s or "リゾート" in s):
+        if kind and x < 360 and ("会場" in s or "施設" in s or "施談" in s or "ゾート" in s):
             titles.append((y, kind, s))
     has_prompt = any("営業先を選択" in s for s, _, _ in tx)
     start = next(((x, y) for s, x, y in tx if "営業開始" in s), None)
