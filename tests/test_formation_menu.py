@@ -77,8 +77,15 @@ class FakeGame:
             if (x, y) == fm.IDOL_TAB:
                 self.where = "idol_panel"
         elif self.where == "idol_panel":
-            if (x, y) == (196, 578):
+            if (x, y) == (243, 832):
+                self.where = "submenu"  # 「プロデュース編成・スキルカード」→ 弹出子菜单
+            else:
+                raise AssertionError(f"点了不该点的地方 {(x, y)}（{self.where}）")
+        elif self.where == "submenu":
+            if (x, y) == (198, 579):
                 self.where = "menu"
+            else:
+                raise AssertionError(f"点了不该点的地方 {(x, y)}（{self.where}）")
         elif self.where == "dialog":
             banner = next((k for k, v in fm.MODE_BANNERS.items() if v == (x, y)), None)
             if banner:
@@ -102,8 +109,11 @@ class FakeGame:
 def _menu_texts(img):
     if img["where"] == "home":
         return [("ホーム", (330, 1180, 390, 1200)), ("コンテスト", (430, 1180, 520, 1200))]
-    if img["where"] == "idol_panel":
-        return [("プロデュース編成", (140, 565, 252, 591))]
+    if img["where"] == "idol_panel":  # 11-17 Mac 实机：アイドル 面板上是「プロデュース編成・スキルカード」
+        return [("プロデュース編成・スキルカード", (110, 818, 376, 846)), ("ホーム", (330, 1180, 390, 1200))]
+    if img["where"] == "submenu":  # 弹出的子菜单（实机帧 01-menu-wait-fail：「プロデュース編成」(198,579)）
+        return [("編成", (100, 520, 156, 542)), ("プロデュース編成", (140, 567, 256, 591)), ("スキルカード", (130, 630, 220, 654)),
+                ("プロデュース編成・スキルカード", (110, 818, 376, 846))]  # fmt: skip
     if img["where"] == "dialog":
         return [("キャンセル", (154, 1144, 311, 1178)), ("決定", (493, 1146, 551, 1176))]
     return [("menu", (0, 0, 1, 1))]
@@ -222,3 +232,20 @@ def test_run_order_and_sets(game, monkeypatch):
 def test_menu_requires_ocr():
     with pytest.raises(ValueError):
         fm.Menu(NS(ocr=None))
+
+
+def test_open_taps_submenu_item_on_device_frame(monkeypatch):
+    """11-17 Mac：アイドル 面板弹出的子菜单（实机帧）。要点子菜单里的「プロデュース編成」(198,579)，
+    不是面板按钮「プロデュース編成・スキルカード」(243,832)。"""
+    img = _frame("idol-submenu")
+    clicks = []
+    state = {"menu": False}
+    monkeypatch.setattr(fm, "read_menu", lambda im, texts: {"mode": "hajime", "tab": "support", "number": 1, "buttons": {}} if state["menu"] else None)
+
+    def click(x, y):
+        clicks.append((x, y))
+        state["menu"] = True
+
+    dev = Device(shoot=lambda: img, click=click, swipe=lambda *a: None, ocr=_ocr, sleep=lambda s: None)
+    fm.Menu(dev).open()
+    assert len(clicks) == 1 and abs(clicks[0][0] - 198) < 20 and abs(clicks[0][1] - 579) < 20
