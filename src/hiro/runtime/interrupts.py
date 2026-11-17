@@ -339,9 +339,29 @@ def consult_end_confirm(frame, rt) -> str | None:
     return "相談終了確認：点「決定」"
 
 
+REST_CONFIRM_REST, REST_CONFIRM_CANCEL = (498, 1159), (236, 1161)
+
+
+def rest_confirm(frame, rt) -> str | None:
+    """「休み確認：休んで体力を回復させますか？」（キャンセル / 休む）单独留在画面上（初 Mac 11-17：续跑时停在这一框，DIALOG 没有处理器，
+    181 秒停）。选行动的执行器（action_select._rest）自己会点掉，走到这里说明决策后的确认没在执行器里完成：
+    session 记的最近一次决策是选行动「休息」就点「休む」，否则（续跑后不知道、或者选的不是休息）点「キャンセル」回选行动页重新决策。"""
+    if not frame.has_dialog or "休み確認" not in str((frame.dialog or {}).get("title") or ""):
+        return None
+    if _recently(rt, "rest_confirm"):
+        return "休み確認：刚点过，等框关"
+    last = getattr(getattr(rt, "session", None), "last_decision", None)
+    rest = bool(last) and last[0] == "ACTION_SELECT" and (last[1].action.args or {}).get("option") == "rest"
+    word, fallback = ("休む", REST_CONFIRM_REST) if rest else ("キャンセル", REST_CONFIRM_CANCEL)
+    btn = next((t for t in frame.texts if t.text.replace(" ", "").strip() == word and t.rect.center.y > 1000), None)
+    rt.device.tap(*(btn.rect.center if btn is not None else fallback))
+    _tapped(rt, "rest_confirm")
+    return f"休み確認：{'刚才决策是休息，点「休む」' if rest else '最近的决策不是休息（或续跑后不知道），点「キャンセル」回选行动页重新决策'}"
+
+
 Interrupt = Callable[[object, object], "str | None"]
 DEFAULT: tuple[Interrupt, ...] = (red_line, comm, stop_notice, date_changed, settings, customize_confirm, tutorial, reroll_confirm,
-                                   achievement_toast, affection_unlock, use_limit, live_setting, consult_end_confirm)
+                                   achievement_toast, affection_unlock, use_limit, live_setting, consult_end_confirm, rest_confirm)
 
 
 def check(frame, rt, interrupts: tuple[Interrupt, ...] = DEFAULT) -> str | None:

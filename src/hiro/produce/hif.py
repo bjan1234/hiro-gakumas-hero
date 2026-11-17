@@ -991,13 +991,15 @@ class HifCore:
         btn_n = n_options
         choices = self.s.state.page_fields.get("choices") or []
         if n_options is not None and len(choices) > n_options:
-            # 第二十五局本战授業：3 项里第 3 项「声の細かいチェック」被下方对话框挡住一半，按钮识别只认出 2 项。
-            # 选项数按识别层的 choices；选到按钮识别没认出的那项时按识别层的 center 点（点两下 = 选中再确认）
+            # 第二十五局本战授業：3 项里第 3 项「声の細かいチェック」被下方对话框挡住一半，按钮识别只认出 2 项（前 2 项照旧走按钮提交）；
+            # 初外出（协调 11-17）：P 不够的两档是灰的（disabled），按钮识别只认出最下面那 1 项——按钮序号和选项序号对不上
+            #（按钮 0 是第 3 项），这时一律按识别层的 center 点。选项数按识别层的 choices（点两下 = 选中再确认）
             n_options = len(choices)
             btn_commit = commit_index
+            grey = any(c.get("disabled") for c in choices)
 
             def commit_index(i):  # noqa: F811
-                if i < btn_n:
+                if i < btn_n and not grey:
                     return btn_commit(i)
                 c = next((c for c in choices if c.get("index") == i and c.get("center")), None)
                 if c is None:
@@ -1006,6 +1008,8 @@ class HifCore:
                 for _ in range(2):
                     device.click(int(x), int(y))
                     sleep(0.5)
+                if page == "OUTING":
+                    self._outing_ap_check()
                 return True
 
             self.s.note(f"{page}：按钮识别认出 {btn_n} 项，识别层 {len(choices)} 项（有选项被挡住），按识别层")
@@ -1045,8 +1049,11 @@ class HifCore:
             raise ValueError(f"选项 {i} 不在 {len(buttons)} 个按钮里")
         device.double_click(*buttons[i].center)
         sleep(2)
-        if not outing:
-            return
+        if outing:
+            self._outing_ap_check()
+
+    def _outing_ap_check(self) -> None:
+        """外出选完后盯 3 秒「AP 已满」确认框，出了点确定。"""
         end = time.monotonic() + 3.0
         while time.monotonic() < end:
             img = device.screenshot()
