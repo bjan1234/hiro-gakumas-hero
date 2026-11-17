@@ -840,7 +840,7 @@ class ProduceDeciders:
             raw_drinks = [d.get("drink_id") if isinstance(d, dict) else d for d in (state.produce or {}).get("drinks") or []]
             held, w = _resolve_held(held, list(ps.drinks) if ps is not None and ps.drinks else (raw_drinks or None))
             warn += w
-        capacity = (ps.drink_capacity if ps is not None and ps.drink_capacity else None) or 4
+        capacity = (ps.drink_capacity if ps is not None and ps.drink_capacity else None) or 3  # 同 ProduceState.drink_capacity 的缺省
         full = state.page_fields.get("full")
         if full is None:
             full = held is not None and len(held) >= capacity
