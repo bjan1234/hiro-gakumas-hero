@@ -103,11 +103,15 @@ def test_nia_always_sp_lesson_lowest_attr():
     assert (o["attr"], o["sp"]) == ("Vi", True) and "nia.lesson_sp" in rules
 
 
-def test_nia_lesson_needs_more_stamina_than_cost():
-    """体力 ≤ 消耗不能上课（SP 耗 8）：体力 8 时 SP 上不了，改上普通课程（耗 6）。"""
+def test_nia_lesson_stamina_at_least_cost():
+    """体力 ≥ 实际消耗就能上（客户端 IsSelfLessonStaminaSufficient，协调 11-17 逆向）：体力 8 能上 SP（耗 8）；体力 7 上不了 SP，改上普通课程（耗 6）。"""
     opts = [_opt("training", "Vo", True, 8), _opt("training", "Da", False, 6)]
     o, _, rules = _pick(_nia(stamina=8), opts)
+    assert (o["attr"], o["sp"]) == ("Vo", True)
+    o, _, rules = _pick(_nia(stamina=7), opts)
     assert (o["attr"], o["sp"]) == ("Da", False) and "nia.lesson_stamina" in rules
+    o, _, _ = _pick(_nia(stamina=8), [_opt("gift"), _opt("rest")])
+    assert o["option"] == "gift"  # 没课的周体力 8：下周 SP 照样能上，不休息
 
 
 def test_nia_sales_when_no_lesson():
@@ -268,6 +272,20 @@ def test_sales_place_resort_when_stamina_would_block_lesson():
     """营业后体力会不到 SP 课程要的 8 以上：去绿（リゾート）回体力。"""
     i, _, rules = choose_sales_place(_nia(stamina=12), [_pl(0, "resort", 0), _pl(1, "local", 5), _pl(2, "commercial", 5)])
     assert i == 0 and "nia.sales_green_low" in rules
+
+
+def test_sales_place_skips_unaffordable_and_reports_expected_votes():
+    """去得了 = P 点 ≥ P 点消耗 且 体力 ≥ 体力消耗（客户端 CheckIfGoBusiness）；理由里带期望票数 = 票数 ×（1 + 0.3 × 大成功概率）。"""
+    places = [dict(_pl(0, "local", 5), p_cost=0, votes=3000, great_rate=0.5), dict(_pl(1, "commercial", 5), p_cost=150, votes=3000, great_rate=1.0)]
+    i, reason, _ = choose_sales_place(_nia(stamina=25, produce_point=120), places)  # P 点 ≥ 100 本来去紫，但紫要 150P
+    assert i == 0 and "期望票数 3450" in reason
+    unknown = [{"index": 0, "hp_cost": 3, "votes": 2000}, {"index": 1, "hp_cost": 5, "votes": 2000, "great_rate": 0.5}]
+    i, reason, _ = choose_sales_place(_nia(stamina=25), unknown)
+    assert i == 1 and "期望票数最高" in reason
+    # 平台 d07e8bf 的字段：展开那张卡的大成功概率（0–100）和大成功多拿的票；基础票数读不到时只在理由里写
+    places = [dict(_pl(0, "local", 5), p_cost=0, great_success_pct=90, great_success_votes=840), _pl(1, "commercial", 5)]
+    i, reason, _ = choose_sales_place(_nia(stamina=25, produce_point=20), places)
+    assert i == 0 and "大成功 90%、多 840 票（期望多 756）" in reason
 
 
 def test_sales_place_corporate_when_low_stamina_and_no_resort():
@@ -587,14 +605,67 @@ def _pd():
 
 
 def test_produce_state_hajime_nia_without_step_star():
-    """实机局面没有 step / star：初 / N.I.A 照样构造出局面，star=0，step 记为未观测；H.I.F 缺 star 仍构造不出。"""
+    """实机局面没有 step / star：初 / N.I.A 照样构造出局面，没有星星（star 留 None，用户 11-17：完全不用处理），step 记为未观测；
+    H.I.F 缺 star 仍构造不出。"""
+    from hiro.contracts import GameState
+
     pd = _pd()
     for mode in ("produce-004", "produce-001"):
         st = _live_state(mode)
         ps = pd.produce_state(st)
-        assert ps is not None and ps.mode == mode and ps.star == 0 and len(ps.deck) == 5
-        assert "step" in pd.unknown_fields(st, ps) and "star" in pd.unknown_fields(st, ps)
+        assert ps is not None and ps.mode == mode and ps.star is None and len(ps.deck) == 5
+        assert "step" in pd.unknown_fields(st, ps)
     assert pd.produce_state(_live_state("produce-007")) is None
+    full = dict(_live_state("produce-007").produce, idol_card_id="i_card-shro-3-007", step=3)
+    assert GameState(produce=full).produce_state() is None  # H.I.F：只缺 star 也不构造
+    assert GameState(produce=dict(full, star=120)).produce_state().star == 120
+
+
+@pytest.mark.sim_master
+def test_hajime_nia_texts_have_no_star():
+    """初 / N.I.A 给 LLM 的局面文本、选卡预演、提示词里都没有星星（也没有 H.I.F 的ワッペン / 选拔 / 本战）。"""
+    import json
+
+    from hiro.brain import hajime_nia_rules as hr
+    from hiro.brain.llm import load_prompt
+    from hiro.state.context import preview_card_pick, situation
+
+    pd = _pd()
+    for mode in ("produce-004", "produce-001"):
+        st = _live_state(mode)
+        ps = pd.produce_state(st)
+        text = json.dumps(situation(ps, pd.unknown_fields(st, ps)), ensure_ascii=False)
+        assert not any(w in text for w in ("星", "ワッペン", "选拔", "本战")), text
+        pick = preview_card_pick(ps, [{"card_id": KAIKA}, {"card_id": TELEVI}], unknown=pd.unknown_fields(st, ps))
+        assert "ワッペン星星" not in pick and all("star" not in r["delta"] for r in pick["候选"])
+    for fam, diff in (("hajime", "regular"), ("hajime", "master"), ("nia", "pro"), ("nia", "master")):
+        system = load_prompt("hajime_nia_choice.md") + hr.guide(fam, diff)
+        assert "星" not in system and "H.I.F" not in system
+
+
+@pytest.mark.sim_master
+def test_hajime_nia_llm_choice_uses_own_prompt(monkeypatch):
+    """初 / N.I.A 的 LLM 选择（事件选项等）用 hajime_nia_choice.md + 规则清单，不带 hif_produce.md 和广的 H.I.F 打法。"""
+    from hiro.brain.deciders import Action, Decision
+
+    seen = {}
+
+    class LLM:
+        def ask_json(self, system, user):
+            from hiro.brain.llm import LLMResult
+
+            seen["system"], seen["user"] = system, user
+            return LLMResult(data={"choice": 1, "reason": "test"}, raw="", seconds=0.0)
+
+    monkeypatch.setenv("HIRO_PRODUCE_LLM", "all")
+    pd = _pd()
+    pd.llm = LLM()
+    rule = Decision(Action.event_select(0), "规则", "rule", 0.5, decider="event_choice")
+    d = pd._ask_choice("event_choice", rule, [(Action.event_select(0), {"选项": "a"}), (Action.event_select(1), {"选项": "b"})], "q", "why",
+                       _live_state("produce-004"))  # fmt: skip
+    assert d.source == "llm" and d.action.args == {"select": 1}
+    assert "N.I.A PRO 的社区规则" in seen["system"] and "H.I.F" not in seen["system"] and "星" not in seen["system"]
+    assert "星" not in seen["user"]
 
 
 @pytest.mark.sim_master

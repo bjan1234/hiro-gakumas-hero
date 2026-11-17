@@ -77,7 +77,11 @@ class GameState(Contract):
 
         if not self.produce:
             return None
+        from hiro.state.modes import HAJIME, NIA, family
+
         required = [f.name for f in fields(ProduceState) if f.default is MISSING and f.default_factory is MISSING]
+        if family(self.produce.get("mode")) not in (HAJIME, NIA):
+            required.append("star")  # H.I.F 必须有星星；初 / N.I.A 没有星星（用户 11-17），不要求
         if any(self.produce.get(k) is None for k in required):
             return None
         known = {f.name for f in fields(ProduceState)}

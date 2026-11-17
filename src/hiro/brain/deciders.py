@@ -240,10 +240,8 @@ class ProduceDeciders:
         if self.main_attr and not produce.get("main_attr"):
             produce["main_attr"] = self.main_attr
         if HAJIME_NIA_STATE and _is_hajime_nia(produce.get("mode")):
-            # 初 / N.I.A 没有星星：star=0 是真值（协调 11-17）；step 没读到补 0，unknown_fields 按原始局面仍当未观测。
-            # 原来这两个字段缺了 produce_state() 就是 None，选饮料 / 相談 / 特別指導 / 饮料溢出都在走兜底
-            if produce.get("star") is None:
-                produce["star"] = 0
+            # 初 / N.I.A：没有星星（用户 11-17「完全不用处理」，star 留 None，GameState.produce_state() 在这两个模式不要求它）；
+            # step 没读到补 0，unknown_fields 按原始局面仍当未观测。原来缺 step 时 produce_state() 是 None，选饮料 / 相談 / 特別指導 / 饮料溢出都在走兜底
             if produce.get("step") is None:
                 produce["step"] = 0
         return replace(state, produce=produce).produce_state()
@@ -302,7 +300,7 @@ class ProduceDeciders:
 
     def _loose_hajime_nia_state(self, state: GameState) -> ProduceState | None:
         """初 / N.I.A 的 ProduceState：实机局面没有 step、star（11-17 trace），produce_state() 构造不出、选卡退回了 H.I.F 的占位局面
-        （mode=produce-007、牌组为空）。star 在初 / N.I.A 不存在，补 0；其余没读到的补占位值，unknown_fields 仍按原始局面把它们当未观测。
+        （mode=produce-007、牌组为空）。初 / N.I.A 没有星星，不补；其余没读到的补占位值，unknown_fields 仍按原始局面把它们当未观测。
         只给选卡用；别的模式返回 None。"""
         from hiro.state.modes import HAJIME, NIA, family
 
@@ -310,7 +308,7 @@ class ProduceDeciders:
         if family(raw.get("mode")) not in (HAJIME, NIA):
             return None
         # 续跑没读到页头的帧只有 mode / 牌组（11-17 trace）：选卡用不到体力 / P 点 / 属性，补占位值，unknown_fields 仍当未观测
-        for k, v in (("star", 0), ("step", 0), ("stamina", 0), ("max_stamina", 0), ("produce_point", 0), ("params", {}), ("growth_permil", {})):
+        for k, v in (("step", 0), ("stamina", 0), ("max_stamina", 0), ("produce_point", 0), ("params", {}), ("growth_permil", {})):
             if raw.get(k) is None:
                 raw[k] = v
         return self.produce_state(replace(state, produce=raw))
@@ -2974,8 +2972,8 @@ class ProduceDeciders:
         placeholder = {"idol_card_id": self.profile.idol_id if self.profile else "", "mode": "produce-008", "step": 8,
                        "params": {}, "growth_permil": {}, "star": 0}  # fmt: skip
         for f in fields(ProduceState):
-            if f.default is MISSING and f.default_factory is MISSING and produce.get(f.name) is None:
-                produce[f.name] = placeholder.get(f.name)
+            if (f.name == "star" or (f.default is MISSING and f.default_factory is MISSING)) and produce.get(f.name) is None:
+                produce[f.name] = placeholder.get(f.name)  # star 有默认值（初 / N.I.A 没有星星），但 H.I.F 构造时必须有：照旧补占位
         if self.main_attr and not produce.get("main_attr"):
             produce["main_attr"] = self.main_attr
         ps = replace(state, produce=produce).produce_state()
@@ -3006,9 +3004,10 @@ class ProduceDeciders:
                         warnings=[skipped], decider="interval")  # fmt: skip
 
     # ---------------------------------------------------------------- 公共
-    def _ask(self, prompts: list[str], user: dict) -> tuple[dict | None, list[dict]]:
-        version = prompt_version(*prompts)
-        res = self.llm.ask_json(load_prompt(*prompts), json.dumps(user, ensure_ascii=False))
+    def _ask(self, prompts: list[str], user: dict, *, extra_system: str = "", extra_version: str = "") -> tuple[dict | None, list[dict]]:
+        version = prompt_version(*prompts) + (f"+{extra_version}" if extra_version else "")
+        system = load_prompt(*prompts) + (f"\n\n{extra_system}" if extra_system else "")
+        res = self.llm.ask_json(system, json.dumps(user, ensure_ascii=False))
         return res.data, [res.record(prompt_version=version)]
 
     def _ask_choice(self, path: str, rule: Decision, options: list[tuple[Action, dict]], question: str, why: str, state: GameState,
@@ -3025,7 +3024,20 @@ class ProduceDeciders:
                 "问题": question, "规则为什么拿不准": why,
                 "候选": [dict(序号=i, **info) for i, (_, info) in enumerate(options)],
                 "规则的选择": 0} | (extra or {})  # fmt: skip
-        data, calls = self._ask(["produce_choice.md", "hif_produce.md", *self.playbook], user)
+        mode = ps.mode if ps is not None else (state.produce or {}).get("mode")
+        if HAJIME_NIA_STATE and _is_hajime_nia(mode):
+            # 初 / N.I.A：不带 H.I.F 的培育说明和广的 H.I.F 打法（选拔 / 本战、星星），打法用这个模式的社区规则清单
+            from hiro.brain import hajime_nia_rules as hr
+            from hiro.state.modes import family as _family, mode as _mode
+
+            try:
+                diff = _mode(mode).difficulty
+            except KeyError:
+                diff = None
+            data, calls = self._ask(["hajime_nia_choice.md"], user, extra_system=hr.guide(_family(mode), diff),
+                                    extra_version=f"hajime_nia_rules@{hr.load().get('captured_at', '?')}")  # fmt: skip
+        else:
+            data, calls = self._ask(["produce_choice.md", "hif_produce.md", *self.playbook], user)
         k = _int(data, "choice")
         traces = [llm_trace_from_call(c) for c in calls]
         if k is None or not 0 <= k < len(options):
@@ -3080,7 +3092,8 @@ SELECT_NONE_LEAN = True  # 开源版默认开（主仓库 D40）
 # 初 / N.I.A 选卡走 hajime_nia 规则（_select_card_hajime_nia）：协调 11-17 派的「N.I.A 必拿卡表」；只影响初 / N.I.A，H.I.F 照旧。
 # HIRO_HAJIME_NIA_CARD_PICK=0 退回 H.I.F 的选卡逻辑
 HAJIME_NIA_CARD_PICK = os.environ.get("HIRO_HAJIME_NIA_CARD_PICK", "1") != "0"
-# 初 / N.I.A 的局面：没有 star（补 0，真值）、step 没读到时也构造 ProduceState（协调 11-17 派）；相談只删卡、饮料不跑 H.I.F 模拟。
+# 初 / N.I.A 的局面：没有星星（star 一直 None）、step 没读到时也构造 ProduceState（协调 11-17 派）；相談只删卡、饮料不跑 H.I.F 模拟、
+# LLM 用初 / N.I.A 自己的提示词和局面文本（不带 H.I.F、星星）。
 # HIRO_HAJIME_NIA_STATE=0 退回原来（局面构造不出、这几个决策器走兜底）
 HAJIME_NIA_STATE = os.environ.get("HIRO_HAJIME_NIA_STATE", "1") != "0"
 
