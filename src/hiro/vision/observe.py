@@ -353,6 +353,8 @@ FIELD_ADAPTERS = {
     "SPECIAL_GUIDANCE": _special_guidance_observation,
     "STUDY": _event_observation,
     "OUTING": _event_observation,
+    # 事件选项页：原来没登记，observation 把读出的选项整个丢掉，决策器看到 0 项停机（初开场二选一，协调 11-17）
+    "EVENT_CHOICE": lambda f: {**_event_observation(f), "dialogue_only": f.get("dialogue_only")},
     "SELECT_PITEM": _select_pitem_observation,
     "PRODUCE_START_CONFIRM": _start_confirm_observation,
     "DECK_LIST": _deck_list_observation,
@@ -381,6 +383,7 @@ FIELD_METHODS: dict[str, dict[str, str]] = {
     "SELECT_DRINK": {"candidates": "template", "held": "template", "full": "ocr"},
     "STUDY": {"choices": "ocr", "selected": "derived", "effect": "ocr", "complete": "derived"},
     "OUTING": {"choices": "ocr", "selected": "derived", "effect": "ocr", "complete": "derived"},
+    "EVENT_CHOICE": {"choices": "ocr", "selected": "derived", "effect": "ocr", "complete": "derived", "dialogue_only": "template"},
     "SELECT_PITEM": {"pitems": "template", "selected": "derived", "confirm_enabled": "kaa"},
     "PRODUCE_START_CONFIRM": {"supports": "template", "main_attr": "derived"},
     "CONSULT": {"shelf": "template", "services": "ocr", "rerolls_left": "ocr", "complete": "ocr", "drinks": "template", "drink_capacity": "template",

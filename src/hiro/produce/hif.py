@@ -993,6 +993,12 @@ class HifCore:
 
             self.s.note(f"{page}：按钮识别认出 {btn_n} 项，识别层 {len(choices)} 项（有选项被挡住），按识别层")
         d = self.deciders.decide(page, self.s.state, n_options=n_options)
+        pf = self.s.state.page_fields or {}
+        if page == "EVENT_CHOICE" and d.action.kind is ActionKind.WAIT and pf.get("dialogue_only") and len(choices := pf.get("choices") or []) >= 2:
+            # 纯台词按钮（白底深色字、没有图标 / 代价，选哪个都没有效果；初开场二选一，协调 11-17）：决策器给不出就选最后一项
+            last = choices[-1]["index"]
+            d = Decision(Action.event_select(last), f"纯台词：{len(choices)} 项都没有效果，选第 {last + 1} 项「{choices[-1].get('text') or ''}」",
+                         "rule", 0.6, warnings=[*d.warnings, f"决策器给的是 {d.action}（{d.reason}）"], decider="event_choice")  # fmt: skip
         self._note_fallback(page, d)
         i = int(d.action.args.get("select", -1)) if d.action.kind is ActionKind.EVENT_SELECT else -1
         if d.action.kind is not ActionKind.EVENT_SELECT or (n_options is not None and not 0 <= i < n_options):
