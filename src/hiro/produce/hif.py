@@ -52,6 +52,14 @@ logger = logging.getLogger(__name__)
 ACTION_REQUIRED = ("stamina", "produce_point", "params", "options")
 TAP_RETRIES = 2
 EXAM_END_LOOP_TIMEOUT = 90.0  # 考试结束后点「次へ」/ 结果页的总时长上限
+def drink_full_auto() -> bool:
+    """开关 HIRO_DRINK_FULL_AUTO=1（默认关，协调 11-17）：选饮料页饮料已满时，LLM 给出的换 / 不换也照执行（原来只认 rule / sim，
+    初 REGULAR 实机 LLM 和规则结论一样还是被当成「认不出」停机）；决策认不出（兜底）时默认跳过这瓶，不停机。"""
+    import os
+
+    return os.environ.get("HIRO_DRINK_FULL_AUTO") == "1"
+
+
 def _page_name(page) -> str | None:
     return page.get("name") if isinstance(page, dict) else getattr(page, "name", None)
 
@@ -675,9 +683,18 @@ class HifCore:
         # 用户 2026-11-02：按「换进来之后的持有组合」挑候选（hiro.brain.drinks），不再用单瓶静态排名
         best = dk.best_incoming(cands, held, dk.stage_of(produce.get("mode")), produce.get("drink_capacity") or max(3, len(held or [])))
         d = self.deciders.decide("PDRINK_MAX", dc_replace(self.s.state, page_fields={"incoming": best, "held": held}) if best else self.s.state)
-        if d.source not in self.DRINK_FULL_SOURCES:
+        auto = drink_full_auto()
+        sources = (*self.DRINK_FULL_SOURCES, "llm") if auto else self.DRINK_FULL_SOURCES
+        if d.source not in sources:
             # 规则 / 模拟偏离（> 2 SE，第二十一局 06:01 source=sim 被当成「认不出」停机）都是有效决策；兜底 / LLM 才说明认不出
-            self._stop("SELECT_DRINK", f"饮料已满（所持上限），持有或新饮料认不出，不能判断换不换：{d.reason}", obs=obs, decision=d)
+            why = f"饮料已满（所持上限），持有或新饮料认不出，不能判断换不换：{d.reason}"
+            if not auto:
+                self._stop("SELECT_DRINK", why, obs=obs, decision=d)
+            # 开关 HIRO_DRINK_FULL_AUTO=1（协调 11-17，初 REGULAR 实机停在这里）：认不出就默认不收这瓶（跳一瓶饮料损失很小），不停机
+            self.s.note(f"{why}；HIRO_DRINK_FULL_AUTO：默认跳过这瓶")
+            logger.warning("%s；默认跳过", why)
+            d = Decision(Action(ActionKind.DISCARD_DRINK, {"discard": [], "receive": False}), f"饮料已满、认不出换不换，默认跳过（原决策 {d.source}：{d.reason}）",
+                         "fallback", 0.3, warnings=["HIRO_DRINK_FULL_AUTO 默认跳过"], decider="drink_overflow")  # fmt: skip
         if d.action.args.get("receive") and d.action.args.get("discard"):
             # 先在底栏丢掉决策选的那瓶，再领取最好的候选（游戏执行 5cb96a4；读不出就一下都不点）
             from hiro.produce.drink_swap import discard_then_receive
