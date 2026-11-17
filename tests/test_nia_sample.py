@@ -92,3 +92,15 @@ def test_set_mode():
     s = NS(state=NS(produce={"step": 3}))
     ns.set_mode(s, "produce-004")
     assert s.state.produce == {"step": 3, "mode": "produce-004"}
+
+
+def test_sampler_save_tap_always_saves(tmp_path):
+    """开局阶段（rt.drive 不调 classify）每次点击都存一帧，同一画面也存。"""
+    from hiro.runtime.frame import Frame
+
+    s = ns.Sampler(lambda img: UNKNOWN, tmp_path / "frames")
+    f = Frame(np.full((1280, 720, 3), 50, np.uint8), 0.0)
+    s.save_tap(f, 34, 596)
+    s.save_tap(f, 34, 596)
+    rows = [json.loads(line) for line in (tmp_path / "frames" / "frames.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [r["page"] for r in rows] == ["tap-34-596", "tap-34-596"]

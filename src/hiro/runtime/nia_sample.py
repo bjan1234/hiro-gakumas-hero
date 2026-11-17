@@ -43,25 +43,6 @@ STAGES = ("nia-mid1", "nia-mid2", "nia-final")
 
 
 # ---------------------------------------------------------------- 开局
-def select_scenario(rt, logo: str, timeout: float = opening.LOGO_TIMEOUT) -> None:
-    """剧本选择页翻到 logo：先往前翻到目标或最前面的「初」，再往后翻（同 opening.select_hif）。"""
-    from hiro.vision.ui_templates import point
-
-    turned = {"back": False}
-
-    def step(f):
-        if nav.find(f, logo) is not None:
-            return True
-        if not turned["back"] and nav.find(f, "Produce.LogoHajime") is None:
-            rt.device.tap(*point("Produce.PointPrev"))
-        else:
-            turned["back"] = True
-            rt.device.tap(*point("Produce.PointNext"))
-        return None
-
-    rt.drive(step, timeout, f"翻到 {logo}")
-
-
 def choose_difficulty(rt, difficulty: str, timeout: float = opening.MODE_TIMEOUT) -> None:
     """剧本页点难度按钮（OCR 找「プロ / PRO」），直到进了第 1 步。AP 不足只喝 APドリンク（同 opening.choose_mode）。"""
     from hiro.loop import ap_refill
@@ -96,7 +77,7 @@ def new_produce(rt, difficulty: str, **prep) -> None:
     """培育入口 → N.I.A → 难度 → 第 1–4 步（同 H.I.F 选拔）→ プロデュース開始（使用者放行开局后才跑）。"""
     if opening.enter_produce(rt, new=True) != "new":
         raise ResumeBlocked("没进到剧本选择页")
-    select_scenario(rt, "Produce.LogoNia")
+    opening.select_scenario(rt, "Produce.LogoNia")
     choose_difficulty(rt, difficulty)
     opening.prepare(rt, "qualify", **prep)
     opening.start(rt)
@@ -126,12 +107,19 @@ class Sampler:
         self.save(img, hit)
         return hit
 
-    def save(self, img, hit) -> None:
+    def save_tap(self, frame, x: int, y: int) -> None:
+        """每次点击前存一帧（点之前看到的画面），页面名记成 tap-x-y（开局阶段 rt.drive 不走 classify，原来一帧都没存）。"""
+        from hiro.vision.classify import PageHit
+
+        if frame is not None and frame.img is not None:
+            self.save(frame.img, PageHit(f"tap-{x}-{y}", "tap"), force=True)
+
+    def save(self, img, hit, force: bool = False) -> None:
         if img is None:
             return
         thumb = cv2.resize(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), (90, 160)).astype(np.float32)
         d = 255.0 if self.last_thumb is None else float(np.abs(thumb - self.last_thumb).mean())
-        if d < FRAME_DIFF and hit.name == self.last_page:
+        if not force and d < FRAME_DIFF and hit.name == self.last_page:
             return
         self.seq += 1
         name = f"{self.seq:05d}-{time.strftime('%H%M%S')}-{hit.name}.jpg"
@@ -234,13 +222,24 @@ def run(args) -> int:
                  landscape=LandscapeGuard(active=getattr(device, "name", "") == "maatools"), idle_stop_s=play.IDLE_STOP_S)  # fmt: skip
     active.use(rt)
     logger.info("N.I.A 采样：%s（%s），帧存到 %s", args.difficulty, mode, sampler.out)
+    from hiro.vision.classify import PageHit
+
+    rt.device.on_tap = lambda x, y: sampler.save_tap(rt.screen.frame, x, y)  # 每次点击都存一帧（开局、处理器、advance）
+    raw_shot = rt.screen.shot
+
+    def opening_shot():  # 开局阶段（rt.drive 不调 classify）：画面变了就存，页面名 opening
+        f = raw_shot()
+        sampler.save(f.img, PageHit("opening", "opening"))
+        return f
     try:
+        rt.screen.shot = opening_shot
         if args.command == "new":
             finish.finish_produce_end(rt, go_home=True)
             new_produce(rt, args.difficulty, idol=args.idol, support_set=support_set, memory_set=memory_set, plan=kaa_env.ACTIVE_PLAN,
                         rental_attr=args.main_attr, main_attr=args.main_attr)  # fmt: skip
         else:
             finish.resume_produce(rt)
+        rt.screen.shot = raw_shot
         set_mode(session, mode)
         rt.run(until=lambda: getattr(rt, "finished", False))
         return 0

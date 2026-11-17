@@ -96,12 +96,32 @@ def test_enter_produce_discard_dialog_only_cancels(monkeypatch):
 
 
 def test_select_hif_goes_back_then_forward(monkeypatch):
-    prev, nxt = tuple(opening.point("Produce.PointPrev")), tuple(opening.point("Produce.PointNext"))
-    pages = [frame({"Produce.LogoNia": (1, 1)}), frame({"Produce.LogoHajime": (1, 1)}), frame({"Produce.LogoNia": (1, 1)}),
-             frame({"Produce.LogoHif": (1, 1)})]  # fmt: skip
+    """认出当前剧本按顺序点：N.I.A → H.I.F 只点一次「下一页」。"""
+    nxt = tuple(opening.point("Produce.PointNext"))
+    pages = [frame({"Produce.LogoNia": (1, 1)}), frame({"Produce.LogoHif": (1, 1)})]
     rt, _ = rig(monkeypatch, [pages[0]], on_tap=lambda taps: [pages[len(taps)]])
     opening.select_hif(rt)
-    assert rt.raw_device.taps == [prev, nxt, nxt]
+    assert rt.raw_device.taps == [nxt]
+
+
+def test_select_scenario_waits_for_flip_animation(monkeypatch):
+    """N.I.A 采样第一次实机 11-17：翻页动画中认不出 logo 还每拍都点，来回翻、30 秒停在 H.I.F。
+    现在点一下后等画面换到别的剧本：动画帧（认不出）不点；H.I.F → N.I.A 只点一次「上一页」。"""
+    prev = tuple(opening.point("Produce.PointPrev"))
+    anim = frame({})
+    rt, _ = rig(monkeypatch, [frame({"Produce.LogoHif": (1, 1)})],
+                on_tap=lambda taps: [anim, anim, anim, frame({"Produce.LogoNia": (1, 1)})])  # fmt: skip
+    opening.select_scenario(rt, "Produce.LogoNia")
+    assert rt.raw_device.taps == [prev]
+
+
+def test_select_scenario_retaps_when_page_did_not_change(monkeypatch):
+    """点了画面一直没换（点击没生效）：FLIP_WAIT_S 后再点一次。"""
+    nxt = tuple(opening.point("Produce.PointNext"))
+    hajime = frame({"Produce.LogoHajime": (1, 1)})
+    rt, _ = rig(monkeypatch, [hajime], on_tap=lambda taps: [hajime] if len(taps) == 1 else [frame({"Produce.LogoNia": (1, 1)})])
+    opening.select_scenario(rt, "Produce.LogoNia")
+    assert rt.raw_device.taps == [nxt, nxt]
 
 
 def test_choose_mode_refills_ap_once(monkeypatch):

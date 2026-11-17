@@ -62,21 +62,38 @@ def enter_produce(rt, *, new: bool, timeout: float = ENTER_TIMEOUT) -> str:
     return rt.drive(step, timeout, "进培育入口")
 
 
-def select_hif(rt, timeout: float = LOGO_TIMEOUT) -> None:
-    """剧本选择页翻到 H.I.F：先往前翻到 H.I.F 或最前面的はじめ，再往后翻到 H.I.F（同 KAA）。"""
-    turned = {"back": False}
+SCENARIO_ORDER = ("Produce.LogoHajime", "Produce.LogoNia", "Produce.LogoHif")  # 剧本页从左到右：初、N.I.A、H.I.F
+FLIP_WAIT_S = 4.0  # 点了左右箭头后等画面换到别的剧本；这么久还是原来那个（或认不出）才再点
+
+
+def select_scenario(rt, logo: str, timeout: float = LOGO_TIMEOUT) -> None:
+    """剧本选择页翻到 logo：认出当前是哪个剧本，按顺序往前 / 往后点一下箭头，等画面换到别的剧本再决定下一下。
+    原来每拍都点（N.I.A 采样第一次实机 11-17：翻页动画中认不出 logo 又连着点，来回翻，30 秒停在 H.I.F）。"""
+    from hiro.vision.ui_templates import point
+
+    state = {"at": None, "from": None}
 
     def step(f):
-        if nav.find(f, "Produce.LogoHif") is not None:
+        cur = next((n for n in SCENARIO_ORDER if nav.find(f, n) is not None), None)
+        if cur == logo:
             return True
-        if not turned["back"] and nav.find(f, "Produce.LogoHajime") is None:
-            rt.device.tap(*point("Produce.PointPrev"))
-        else:
-            turned["back"] = True
-            rt.device.tap(*point("Produce.PointNext"))
+        now = rt.clock()
+        if state["at"] is not None and (cur is None or cur == state["from"]) and now - state["at"] < FLIP_WAIT_S:
+            return None  # 刚点过：翻页动画还没完 / 画面还没换
+        if cur is None:
+            return None  # 认不出是哪个剧本（还没到剧本页 / 动画中）：不点
+        name = "Produce.PointPrev" if SCENARIO_ORDER.index(cur) > SCENARIO_ORDER.index(logo) else "Produce.PointNext"
+        logger.info("剧本页：现在是 %s，要 %s，点 %s", cur, logo, name)
+        rt.device.tap(*point(name))
+        state["at"], state["from"] = now, cur
         return None
 
-    rt.drive(step, timeout, "翻到 H.I.F")
+    rt.drive(step, timeout, f"翻到 {logo}")
+
+
+def select_hif(rt, timeout: float = LOGO_TIMEOUT) -> None:
+    """剧本选择页翻到 H.I.F（select_scenario）。"""
+    select_scenario(rt, "Produce.LogoHif", timeout)
 
 
 IN_PRODUCE_PAGES = ("ACTION_SELECT", "STUDY", "OUTING", "CONSULT", "SELECT_CARD", "SELECT_DRINK", "SELECT_PITEM", "HIF_EXAM_BRIEFING",
