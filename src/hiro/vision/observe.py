@@ -17,6 +17,8 @@ OPTION_NAME = {
     "lesson": "training",
     "self_lesson": "training",  # N.I.A 自主レッスン
     "sales": "sales",  # N.I.A 営業
+    "allowance": "allowance",  # 初 活動支給
+    "oikomi": "training",  # 初 追い込みレッスン（选项带 oikomi: true）
     "class": "class",
     "outing": "outing",
     "present": "gift",
@@ -86,9 +88,12 @@ def produce_observation(action: dict) -> dict:
             "hp_gain": o.get("hp_gain"),
             "center": list(o["center"]),
             **({"sp": o["sp"]} if o.get("sp") is not None else {}),
+            **({"oikomi": True} if o["kind"] == "oikomi" else {}),
         }
         for o in action.get("options", [])
     ]
+    if action.get("exam_next"):
+        obs["exam_next"] = action["exam_next"]
     obs["complete"] = bool(action.get("complete"))
     return obs
 

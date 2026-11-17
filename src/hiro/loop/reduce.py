@@ -19,7 +19,7 @@ DEBOUNCE = 3  # 不合法跳变需要连续多少帧才接受
 STABLE = 2  # 连续多少帧算稳定
 
 # 页面局部字段：换页清空，不进 produce / exam
-PAGE_LOCAL = {"options", "complete", "advice", "candidates", "recommended", "cards", "problems"}
+PAGE_LOCAL = {"options", "complete", "advice", "candidates", "recommended", "cards", "problems", "exam_next"}
 # 哪个页面的字段写进哪个分区
 SECTION = {"ACTION_SELECT": "produce", "DECK_LIST": "produce", "HIF_EXAM": "exam", "SELECT_CARD": None, "SELECT_DRINK": None, "HIF_EXAM_RESULT": None}
 # 考试页面里整段替换（不逐项合并）的列表 / 字典字段

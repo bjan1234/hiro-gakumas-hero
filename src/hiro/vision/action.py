@@ -50,6 +50,7 @@ ACTIONS = [
     (re.compile(r"特別指導"), "special_training"),
     (re.compile(r"おでかけ"), "outing"),
     (re.compile(r"^営業$"), "sales"),  # N.I.A 営業（2次まで 6 週 等只有这一个按钮，11-17 原来读不出、决策 Wait 停）
+    (re.compile(r"活動支給"), "allowance"),  # 初 普通周的「活動支給」（领饮料 / 卡），3940a9 的 hajime_nia 决策认 allowance
     # N.I.A「Vo.自主レッスン」：属性前缀和「レッスン」之间夹着「自主」，要先于下面的 lesson（11-17 N.I.A 采样：attr 读成 None）
     (re.compile(r"(Vo|Da|Vi)?\.?自主レッ[スズ]ン"), "self_lesson"),
     (re.compile(r"(Vo|Da|Vi)?\.?レッ[スズ]ン"), "lesson"),
@@ -84,11 +85,14 @@ class ActionSelectState:
     star: int | None
     advice: str | None
     options: list[ActionOption] = field(default_factory=list)
+    exam_next: str | None = None  # 初：页头「中間まで / 最終まで」→ mid1 / final（3940a9 按它查下一场的审查基准）
 
     @property
     def complete(self) -> bool:
-        """头部数值齐全、有可选行动且课程类按钮都认出了属性。按钮滑入动画中的帧不完整，应等下一帧。"""
-        lessons_ok = all(o.attr for o in self.options if o.kind in ("class", "open_lesson"))
+        """头部数值齐全、有可选行动且课程类按钮都认出了属性。按钮滑入动画中的帧不完整，应等下一帧。
+        初的「授業」只有一个按钮、不分属性（3940a9 11-17），不要求属性。"""
+        need_attr = ("open_lesson",) if self.exam_next else ("class", "open_lesson")
+        lessons_ok = all(o.attr for o in self.options if o.kind in need_attr)
         return (None not in (self.days_left, self.stamina, self.p_points) and None not in self.params.values()
                 and bool(self.options) and lessons_ok)
 
@@ -150,7 +154,43 @@ def _cost_by_heart(img: MatLike, cx: int, ty: int, read: int | None) -> int | No
     return int(m.group(1)) if m else None
 
 
-def _options(img: MatLike) -> list[ActionOption]:
+OIKOMI = re.compile(r"(ボーカル|ダンス|ビジュアル)を重点的")
+OIKOMI_ATTR = {"ボーカル": "vo", "ダンス": "da", "ビジュアル": "vi"}
+OIKOMI_BAND = (600, 1000)  # 追い込み三选一「〜を重点的に」的 y 范围（初 Mac 11-17：约 y 700 / 800 / 902）
+OIKOMI_ICON_X = (55, 115)  # 选项条左边的属性图标
+
+
+def _oikomi_options(img: MatLike) -> list[ActionOption]:
+    """初「追い込みレッスン」：选行动页上盖着三条「ボーカル / ダンス / ビジュアルを重点的に」。属性按左边图标颜色认（用户 11-17：图标优先），
+    认不出再看文字。没有这三条返回空。"""
+    y1, y2 = OIKOMI_BAND
+    out = []
+    for text, _, b in ocr_boxes(img[y1:y2], scale=2):
+        m = OIKOMI.search(text.replace(" ", ""))
+        if not m:
+            continue
+        cy = (b[1] + b[3]) // 2 + y1
+        hsv = cv2.cvtColor(img[cy - 22 : cy + 22, OIKOMI_ICON_X[0] : OIKOMI_ICON_X[1]], cv2.COLOR_BGR2HSV)
+        vivid = (hsv[:, :, 1] > 100) & (hsv[:, :, 2] > 120)
+        hues = hsv[:, :, 0][vivid]
+        counts = {a: int(((hues >= lo) & (hues <= hi)).sum()) for a, (lo, hi) in ATTR_HUE.items()}
+        best = max(counts, key=counts.get)
+        attr = best if counts[best] >= 40 else OIKOMI_ATTR[m.group(1)]
+        out.append(ActionOption("oikomi", text.replace(" ", ""), attr, ((b[0] + b[2]) // 2, cy)))
+    return sorted(out, key=lambda o: o.center[1]) if len(out) == 3 else []
+
+
+OIKOMI_STAT_BAND = (425, 485)  # 追い込み页的三维数值换成大号排版（约 y 455，x 150 / 380 / 610），普通页的 STAT_ROW 读不到
+
+
+def _oikomi_params(img: MatLike) -> dict:
+    y1, y2 = OIKOMI_STAT_BAND
+    # 左边的属性图标常被读成一个字（「込260」）：取末尾的数字
+    nums = sorted(((b[0] + b[2]) / 2, int(m.group(1))) for t, _, b in ocr_boxes(img[y1:y2], scale=2) if (m := re.search(r"(\d{2,4})$", t.strip())))
+    return dict(zip(ATTRS, (v for _, v in nums))) if len(nums) == 3 else {a: None for a in ATTRS}
+
+
+def _options(img: MatLike, *, hajime: bool = False) -> list[ActionOption]:
     y1, y2 = BUTTON_BAND
     tokens = [(t, (b[0], b[1] + y1, b[2], b[3] + y1)) for t, _, b in ocr_boxes(img[y1:y2], scale=2)]
     costs = []
@@ -175,7 +215,7 @@ def _options(img: MatLike) -> list[ActionOption]:
                 attr = _attr_by_badge(img, cx, ty - 20) or (m.group(1).lower() if m.group(1) else None)
             elif m.groups() and m.group(1):
                 attr = m.group(1).lower()
-            elif kind == "class":
+            elif kind == "class" and not hajime:  # 初的「授業」不分属性（右下小图标是别的东西，读出来是幻影 Da）
                 attr = _attr_by_badge(img, cx, ty - 20)
             if attr is None and kind in ("open_lesson", "lesson"):
                 attr = _attr_by_band(img, cx, ty)
@@ -254,6 +294,9 @@ def normalize_hif(text: str) -> str:
     return re.sub(r"H[\s.．。、,，「」|｜lI1Ｉ]{0,4}F", "H.I.F", text)
 
 
+HAJIME_HEADER = {"中間": "mid1", "最終": "final"}  # 初 页头「中間まで / 最終まで」（H.I.F 是「選抜試験1まで」「H.I.F本戦まで」）
+
+
 def read_action_select(img: MatLike) -> ActionSelectState:
     header = " ".join(t for t, _ in ocr(img[:HEADER_BAND, :280], scale=2))
     exam = re.search(r"(\S+?)まで", header)
@@ -274,18 +317,21 @@ def read_action_select(img: MatLike) -> ActionSelectState:
         g = re.search(r"(\d+(?:\.\d)?)\s*%", small_text(GROWTH_BOXES[a]))
         growth[a] = float(g.group(1)) if g else None
     advice = "".join(t for t, _ in ocr(img[slice(*ADVICE_BAND)], scale=2)) or None
+    exam_next = next((v for k, v in HAJIME_HEADER.items() if exam and k in exam.group(1)), None)
+    options = _oikomi_options(img) if exam_next else []
     return ActionSelectState(
         exam=normalize_hif(exam.group(1)) if exam else None,
         days_left=days if days is not None else _days_dddd(img),
         stamina=stamina[0] if stamina else None,
         max_stamina=stamina[1] if stamina else None,
         p_points=int(points.group()) if points else None,
-        params={a: read_number(img, box) for a, box in stat_boxes(img).items()},
+        params=_oikomi_params(img) if options else {a: read_number(img, box) for a, box in stat_boxes(img).items()},
         param_caps=caps,
         growth_pct=growth,
         star=read_number(img, STAR_BOX),
         advice=advice,
-        options=_options(img),
+        options=options or _options(img, hajime=exam_next is not None),
+        exam_next=exam_next,
     )
 
 
