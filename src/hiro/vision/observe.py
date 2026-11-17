@@ -15,6 +15,7 @@ ATTR_KEY = {"vo": "Vo", "da": "Da", "vi": "Vi"}
 OPTION_NAME = {
     "open_lesson": "training",
     "lesson": "training",
+    "self_lesson": "training",  # N.I.A 自主レッスン
     "class": "class",
     "outing": "outing",
     "present": "gift",
@@ -83,6 +84,7 @@ def produce_observation(action: dict) -> dict:
             "hp_cost": o.get("hp_cost"),
             "hp_gain": o.get("hp_gain"),
             "center": list(o["center"]),
+            **({"sp": o["sp"]} if o.get("sp") is not None else {}),
         }
         for o in action.get("options", [])
     ]

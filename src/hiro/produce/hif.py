@@ -228,6 +228,23 @@ class HifCore:
 
     ACTION_WAIT_RETRIES = 3
 
+    def _with_page_buttons(self, buttons: list) -> list:
+        """模板认出的行动按钮 + 选行动页读数里有位置、但模板没认出的选项（N.I.A「自主レッスン」等，11-17 N.I.A 采样：
+        决策 training/Da 在画面上没有对应的模板按钮就停了）。同一 (选项, 属性) 已有模板按钮的不补。"""
+        from hiro.vision.action_buttons import ActionButton
+        from hiro.vision.ocr import Box
+
+        have = {(b.option, b.attr) for b in buttons}
+        extra = []
+        for o in (self.s.state.page_fields or {}).get("options") or []:
+            c = o.get("center")
+            if not c or not o.get("option") or (o["option"], o.get("attr")) in have:
+                continue
+            x, y = int(c[0]), int(c[1])
+            extra.append(ActionButton(o["option"], o.get("attr"), o.get("sp"), Box(x - 40, y - 40, x + 40, y + 40), ""))
+            have.add((o["option"], o.get("attr")))
+        return [*buttons, *extra]
+
     def on_action_select(self, ctx=None):
         """选行动：识别可点的行动按钮（hiro.vision.action_buttons，替换 KAA fetch_available_actions）→ 决策 → 提交
         （hiro.produce.action_select.action_commit）。决策和全部候选都对不上按钮时：KAA 主循环仍交给 KAA，新主循环停机。"""
@@ -238,7 +255,7 @@ class HifCore:
         obs = self.s.observe_complete("ACTION_SELECT", ACTION_REQUIRED)
         # 先等选行动页读完整（淡入结束、能点了）再开牌组一览（第二十局开局：页面刚出来就点，一览很晚才弹）
         self._maybe_review_deck()
-        buttons = available_actions(device.screenshot())
+        buttons = self._with_page_buttons(available_actions(device.screenshot()))
         d = self.deciders.decide("ACTION_SELECT", self.s.state)
         for _ in range(self.ACTION_WAIT_RETRIES):
             # 决策器异常 / 读数被拦（第十九局本战第 1 天 Da 2296 读成 3296 被不变量拦下 → 决策器缺属性抛异常 → Wait）：
@@ -248,7 +265,7 @@ class HifCore:
             sleep(self.SELECT_RETRY_WAIT)
             device.screenshot()
             obs = self.s.observe_complete("ACTION_SELECT", ACTION_REQUIRED)
-            buttons = available_actions(device.screenshot())
+            buttons = self._with_page_buttons(available_actions(device.screenshot()))
             d = self.deciders.decide("ACTION_SELECT", self.s.state)
         if d.action.kind is ActionKind.WAIT:
             self._stop("ACTION_SELECT", f"选行动重读 {self.ACTION_WAIT_RETRIES} 次决策仍是 Wait（{d.reason}），不交给 KAA 盲选", obs=obs, decision=d)

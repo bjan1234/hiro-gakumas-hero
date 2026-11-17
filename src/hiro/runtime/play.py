@@ -22,7 +22,9 @@ ADVANCE_PAGES = ("unknown", "IDLE", "TRANSITION", "LOADING", "commu", "LIVE",
                  "ACQUIRE", "STAR_GAIN", "UPGRADE_RESULT", "DELETE_RESULT", "CUSTOMIZE_RESULT")  # fmt: skip
 # 没有按钮、只有效果说明的展示页：说明文字常带 BLOCK_WORDS（「レッスン終了時」的「終了」），不过文字过滤，没有弹窗标题条就点一下空白
 # （P 道具「カスタマイズ完了」：Mac h10 11-15 原来没人点，180 秒停机）
-SHOW_PAGES = ("PITEM_CUSTOMIZE_DONE",)
+# 结果气泡页（「〜を強化しました」「〜をカスタマイズしました」「〜を削除しました」）也只是展示：页面判页（page_ocr）认出来时
+# 交 advance 会被禁点词「強化 / 削除」拦住不点（N.I.A 采样 11-17：支援卡事件强化后停了；H.I.F 平时由快速判页先认出、点 (12,12)）
+SHOW_PAGES = ("PITEM_CUSTOMIZE_DONE", "UPGRADE_RESULT", "CUSTOMIZE_RESULT", "DELETE_RESULT")
 # 快速判页（hiro.vision.quick）认出的「点一下就过」的页（获得演出、结果气泡、TAP 提示、礼物箱…）带 tap 直接点；
 # 不点的页（读取 / 闪屏 / 考前说明演出）同一种连续 QUICK_WAIT_TAP_S 秒没过就点一下兜底（同旧主循环 HiroController._quick_page）
 IDLE_STOP_S = 180.0  # H.I.F：这么久没有任何操作就停机（会动的画面「画面没变」看门狗管不到）
