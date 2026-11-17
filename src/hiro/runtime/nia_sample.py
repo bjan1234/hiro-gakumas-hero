@@ -43,11 +43,12 @@ STAGES = ("nia-mid1", "nia-mid2", "nia-final")
 
 
 # ---------------------------------------------------------------- 开局
-def choose_difficulty(rt, difficulty: str, timeout: float = opening.MODE_TIMEOUT) -> None:
-    """剧本页点难度按钮（OCR 找「プロ / PRO」），直到进了第 1 步。AP 不足只喝 APドリンク（同 opening.choose_mode）。"""
+def choose_difficulty(rt, difficulty: str, timeout: float = opening.MODE_TIMEOUT, *, words: tuple[str, ...] | None = None) -> None:
+    """剧本页点难度按钮（OCR 找「プロ / PRO」），直到进了第 1 步。AP 不足只喝 APドリンク（同 opening.choose_mode）。
+    words：按钮字样（初的「レギュラー / REGULAR」由 hiro.runtime.hajime 传），不给按 DIFFICULTY_WORDS。"""
     from hiro.loop import ap_refill
 
-    words = DIFFICULTY_WORDS[difficulty]
+    words = words or DIFFICULTY_WORDS[difficulty]
     state = {"refilled": False}
 
     def step(f):
@@ -65,12 +66,12 @@ def choose_difficulty(rt, difficulty: str, timeout: float = opening.MODE_TIMEOUT
         lo, hi = DIFFICULTY_BAND
         btn = next((t for t in f.texts if lo <= t.rect.center.y <= hi and any(w == t.text.replace(" ", "") for w in words)), None)
         if btn is not None:
-            logger.info("N.I.A：点「%s」%s", btn.text, tuple(btn.rect.center))
+            logger.info("剧本页难度：点「%s」%s", btn.text, tuple(btn.rect.center))
             rt.device.tap(*btn.rect.center)
             rt.sleep(1.5)
         return None
 
-    rt.drive(step, timeout, f"进 N.I.A {difficulty}")
+    rt.drive(step, timeout, f"进 {difficulty}")
 
 
 def new_produce(rt, difficulty: str, **prep) -> None:
@@ -87,8 +88,8 @@ def new_produce(rt, difficulty: str, **prep) -> None:
 class Sampler:
     """包住 classify：存帧（画面或页面名变了）；TOWER_EXAM 当考试（N.I.A 试镜可能被偶像之路的考试判据认中），其余 TOWER_* 当认不出。"""
 
-    def __init__(self, classify, out: Path, clock=time.monotonic):
-        self.classify, self.out, self.clock = classify, Path(out), clock
+    def __init__(self, classify, out: Path, clock=time.monotonic, *, nia: bool = True):
+        self.classify, self.out, self.clock, self.nia = classify, Path(out), clock, nia  # nia=False：不整帧 OCR 找 N.I.A 特有页（初用）
         self.out.mkdir(parents=True, exist_ok=True)
         self.index = self.out / "frames.jsonl"
         self.seq = sum(1 for _ in self.index.open(encoding="utf-8")) if self.index.exists() else 0
@@ -98,7 +99,7 @@ class Sampler:
 
     def __call__(self, img):
         hit = self.classify(img)
-        if hit.name in self.NIA_RECHECK and img is not None and img.shape[0] > img.shape[1]:
+        if self.nia and hit.name in self.NIA_RECHECK and img is not None and img.shape[0] > img.shape[1]:
             from hiro.vision.classify import PageHit
             from hiro.vision.nia import read_nia_page
             from hiro.vision.ocr import screen_texts

@@ -287,6 +287,9 @@ class HifCore:
                 choice = alt[1]
             else:
                 d.warnings.append(f"决策 {d.action} 与全部候选在可用行动 {[b.label for b in buttons]} 里都找不到")
+        self.last_action_choice = choice  # 初：练习课标签按选了哪个课程（属性 / SP / 追い込み）给（hiro.runtime.hajime）
+        self.last_action_options = list((self.s.state.page_fields or {}).get("options") or [])
+        self.last_exam_next = (self.s.state.page_fields or {}).get("exam_next") or getattr(self, "last_exam_next", None)
         self.rec.log("action_select", image=self.s.img, available=[b.label for b in buttons], choice=choice.label if choice else None, source=d.source, reason=d.reason)
         logger.info("选行动 %s ← %s：%s", choice.label if choice else None, d.source, d.reason)
         if choice is None:
