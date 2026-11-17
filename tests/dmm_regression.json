@@ -3500,14 +3500,25 @@
  },
  {
   "file": "qualifydmm2-20261111-002000-00081.jpg",
-  "note": "qualifydmm2-20261111-002000",
-  "quick": null,
+  "note": "qualifydmm2-20261111-002000；支援能力横幅盖着「パワフル漢方ドリンク」获得演出（同 qualifyz1 11-17 17:35 停机），快速判页应认成获得页点过（9580c0c 目视核对）",
+  "quick": "ACQUIRE",
   "scene": "DIALOG",
   "fields": {
    "kind": "other",
    "danger": false
   },
-  "page": "DIALOG"
+  "page": "DIALOG",
+  "tap": [
+   12,
+   12
+  ],
+  "quick_fields": {
+   "kind": "drink",
+   "drink_id": "pdrink_00-2-009"
+  },
+  "xfail_on": {
+   "windows": "RapidOCR 读不出被横幅压住的名称栏（只读到「正」），快速判页认不成获得页；Mac Vision 能读"
+  }
  },
  {
   "file": "qualifydmm2-20261111-002000-00091.jpg",
