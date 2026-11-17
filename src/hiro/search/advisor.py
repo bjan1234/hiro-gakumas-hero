@@ -42,7 +42,7 @@ def _rs():
 
 
 def check(rx, state, legal: list[Action]) -> str | None:
-    """引擎局面和画面核对：对不上返回原因。核引擎算出来、画面也看得到的：手牌（卡 id、顺序）、能打出的牌、饮料数。"""
+    """引擎局面和画面核对：对不上返回原因。核引擎算出来、画面也看得到的：手牌（卡 id、顺序）、能打出的牌（引擎不能比画面松）、饮料数。"""
     hand = list(state.hand or [])
     eng = [rx.card_info(g)[0] for g in rx.zone("hand")]
     scr = [c.card_id for c in hand]
@@ -55,7 +55,10 @@ def check(rx, state, legal: list[Action]) -> str | None:
     eng_play = {int(a[1]) for a in c.legal_actions() if a[0] == "play"}
     keys = [a if isinstance(a, str) else a.legal_key() for a in legal]  # Action 或 legal_key 字符串（BattleState.legal_actions）
     scr_play = {int(k.split(":")[1]) for k in keys if k and k.startswith("play:")}
-    if eng_play != scr_play:
+    # 引擎比画面严（画面判可打、引擎判不可打）不算对不上：好印象 / やる気等消耗不够时游戏不让打、卡面却不变灰，引擎是对的
+    # （DMM mainverify2 R2：ゆめみごこち 好印象不够，退回 UINet 后选了它、连点 3 次停在选中态）；搜索只在引擎可打的牌里选，画面上都能打。
+    # 引擎比画面松（引擎判可打、画面灰着）才退回：搜索可能选到打不出的牌（mainverify2 R1：元気 0 读成 10，「届いて！」）
+    if eng_play - scr_play:
         return f"能打出的牌对不上：引擎 {sorted(eng_play)} / 画面 {sorted(scr_play)}"
     scr_drinks = [d for d in state.drinks or [] if getattr(d, "drink_id", None)]
     if len(rx.drinks) != len(scr_drinks):

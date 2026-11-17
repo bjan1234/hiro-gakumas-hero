@@ -959,7 +959,27 @@ def read_hif_hud(img: MatLike, *, fallback: bool = False) -> dict:
     字体比对没把握（被特效遮住）时为 None；fallback=True 时退回 ddddocr（每个约 200ms）。"""
     read = read_number if fallback else read_int
     return {"remaining_turns": read(img, BOX_TURNS, align=True), "hp": read(img, BOX_HP, align=True),
-            "genki": read(img, BOX_GENKI, align=True)}  # fmt: skip
+            "genki": read_genki(img) if fallback else read_int(img, BOX_GENKI, align=True)}  # fmt: skip
+
+
+def read_genki(img: MatLike) -> int | None:
+    """考试 HUD 元気：字体比对有把握就用；没把握时只认白色数字（read_white_digits），不让 ddddocr 读整个放宽框——
+    框左放宽 20 是为了不切掉四位数首位，没满的体力条右端深灰圆头会被读成「1」（DMM mainverify2 11-17：元気 0 读成 10，
+    引擎以为「届いて！」（元気 ≥7）能打，搜索判「能打出的牌对不上」退回 UINet）。两种读数一个是另一个去掉开头几位时取短的
+    （多出来的是框左边伸进来的东西），其他不一致时用白色读数。"""
+    from hiro.vision.digits import read_white_digits
+
+    value = read_int(img, BOX_GENKI, align=True)
+    if value is not None:
+        return value
+    whole, white = read_number(img, BOX_GENKI, align=True), read_white_digits(img, BOX_GENKI)
+    if whole is None or white is None or whole == white:
+        return white if white is not None else whole
+    a, b = str(whole), str(white)
+    if a.endswith(b) or b.endswith(a):
+        # 多出来的是框左边的东西：整框读进了体力条圆头（0 → 10、700 → 5700），白色读进了角标左边的白色装饰（23 → 423）
+        return min(whole, white, key=lambda v: len(str(v)))
+    return white
 
 
 def read_hif_exam(img: MatLike, *, cache: RegionCache | None = EXAM_CACHE) -> dict:
@@ -993,7 +1013,7 @@ def _read_hif_exam(img: MatLike, cache: RegionCache | None) -> dict:
         **cached(cache, "ranking", img[y1:y2, x1:x2], lambda: read_ranking(img)),
         **(_parse_breakthrough(texts["break"]) if not finals else {"rank_line": None, "participants": None}),
         "finals": finals,
-        "genki": num("genki", BOX_GENKI),
+        "genki": cached(cache, "num:genki", img[BOX_GENKI[1] : BOX_GENKI[3], BOX_GENKI[0] : BOX_GENKI[2]], lambda: read_genki(img)),
         "hp": num("hp", BOX_HP),
         "deck_count": None,  # 画面上没有山札张数（旧版读的是 P 道具剩余次数，见 pitem_charges）
         "pitem_charges": num("pitem_charges", BOX_PITEM_CHARGES),

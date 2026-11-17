@@ -99,3 +99,44 @@ def test_without_rust_search_falls_back_and_says_why(monkeypatch):
     a.on_round_start(1, {"exam": "r2", "idol": "i_card-shro-3-007", "deck": [list(c) for c in DECK]})
     d = a.decide(SimpleNamespace(), SimpleNamespace(turn=1), None, [Action.skip()])
     assert d.source == "rule" and any(sa.NO_RS in w for w in d.warnings)
+
+
+class _FakeRx:
+    """check() 用到的引擎接口：手牌卡 id、推进后的合法动作、饮料。"""
+
+    def __init__(self, hand, playable):
+        self._hand, self._playable, self.drinks, self.ended = hand, playable, [], False
+
+    def zone(self, z):
+        return list(range(len(self._hand))) if z == "hand" else []
+
+    def card_info(self, g):
+        return (self._hand[g], 0, None)
+
+    def clone(self):
+        return self
+
+    def advance(self):
+        pass
+
+    def legal_actions(self):
+        return [("play", i) for i in self._playable] + [("end",)]
+
+
+def _check(eng_play, scr_play):
+    from hiro.search.advisor import check
+
+    hand = ["c0", "c1", "c2"]
+    state = SimpleNamespace(hand=[SimpleNamespace(slot=i, card_id=c) for i, c in enumerate(hand)], drinks=[])
+    return check(_FakeRx(hand, eng_play), state, [f"play:{i}" for i in scr_play] + ["skip"])
+
+
+def test_engine_stricter_than_screen_still_searches():
+    """DMM mainverify2 R2 T7（11-17）：ゆめみごこち 要消耗好印象 2，不够时游戏不让打、卡面却不变灰；画面判可打、引擎判不可打。
+    原来整步退回 UINet，UINet 选了它，连点 3 次停在选中态才禁用。引擎更严时照常搜：搜索只在引擎可打的牌里选，画面上都能打。"""
+    assert _check({0, 1}, {0, 1, 2}) is None
+
+
+def test_engine_looser_than_screen_is_a_mismatch():
+    """引擎认为能打、画面灰着（mainverify2 R1：元気 0 读成 10，引擎以为「届いて！」（元気 ≥7）能打）：搜索可能选到打不出的牌，照旧退回。"""
+    assert "能打出的牌对不上" in (_check({0, 1, 2}, {0, 1}) or "")
