@@ -40,6 +40,8 @@ def _acquire(obs, f: dict) -> list[Event]:
         agree = f.get("agree")
         conf, note = {True: (1.0, None), None: (0.8, "缩略图没认出，只按名称栏"), False: (0.5, "名称栏与缩略图不一致，以名称栏为准")}[agree]
         args = {"card_id": f.get("card_id"), "upgrade": f.get("upgrade")}
+        if f.get("memory_effect"):
+            args["memory_effect"] = True  # 回忆效果展示：没配上动作、牌组里已有低一级的同一张时状态层记成强化（hiro.loop.events）
         return [_event(obs, "CARD_ACQUIRE", args, confirmed=True, confidence=conf, note=note)]
     if kind == "drink":
         return [_event(obs, "DRINK_ACQUIRE", {"drink_id": f.get("drink_id")}, confirmed=True, confidence=1.0)]

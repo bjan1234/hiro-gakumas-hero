@@ -11,6 +11,7 @@ reduce 本身仍是纯函数；Session.observe 依次调用 check → gate → r
 from __future__ import annotations
 
 import copy
+import dataclasses
 from typing import Any
 
 from hiro.contracts import Check, Event, Expect, GameState, Observation, Prediction
@@ -28,6 +29,7 @@ def _no_prediction(state, event) -> list:
 # ---------------------------------------------------------------------------- 事件
 def apply_event(state: GameState, event: Event, *, predictor=None) -> tuple[GameState, list[Prediction]]:
     """纯函数：返回新状态与预测。牌组按事件增减（已知时）；字段状态记 predicted。"""
+    event = _memory_upgrade(state, event)
     s = copy.deepcopy(state)
     s.ledger.append(event)
     del s.ledger[:-LEDGER_KEEP]
@@ -57,6 +59,22 @@ def _prediction(p: Any) -> Prediction:
               for k, v in (p.get("fields") or {}).items()}  # fmt: skip
     return Prediction(seq=p.get("seq", 0), event_seq=p.get("event_seq", 0), fields=fields, due=p.get("due", "any"),
                       expires_after=p.get("expires_after"))  # fmt: skip
+
+
+def _memory_upgrade(state: GameState, event: Event) -> Event:
+    """回忆效果展示的卡（识别给 memory_effect）：牌组里已有同一张、强化次数更低 → 是回忆把它强化了，改记 CARD_UPGRADE；
+    没有 → 照旧是获得（开局回忆卡加入牌组也是这个画面，events/acquire-memory-00028）。DMM q4 11-17：选拔试验后两张回忆卡
+    私がスター / 届いて！ 被强化成 +，原来各记一次获得，账本多 2 张。只看没配上动作的识别事件（apply_event 只收没配上的）。"""
+    a = event.args or {}
+    if event.kind != "CARD_ACQUIRE" or event.origin != "observed" or not a.get("memory_effect") or not a.get("card_id"):
+        return event
+    up = int(a.get("upgrade") or 0)
+    deck = (state.produce or {}).get("deck") or []
+    lower = [int(c.get("upgrade") or 0) for c in deck if c.get("card_id") == a["card_id"] and int(c.get("upgrade") or 0) < up]
+    if not up or not lower:
+        return event
+    return dataclasses.replace(event, kind="CARD_UPGRADE", args={"card_id": a["card_id"], "upgrade": max(lower), "source": "memory"},
+                               note=f"回忆效果展示 {a['card_id']}+{up}：牌组里已有强化 {max(lower)} 的同一张，记成强化（不是获得）")  # fmt: skip
 
 
 def _apply_deck(s: GameState, e: Event) -> None:

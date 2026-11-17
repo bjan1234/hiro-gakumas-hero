@@ -62,7 +62,7 @@ FIELD_CATALOG: dict[str, tuple[str, ...]] = {
                          "produce_point", "stamina", "max_stamina"),
     # 页面地图（docs/pages-hif.md）：KAA 认不出的 H.I.F 页面
     "DIALOG": ('kind', 'title', 'danger', 'confirm'),
-    "ACQUIRE": ('kind', 'card_id', 'drink_id', 'pitem_id', 'pitem_ids', 'name', 'upgrade', 'agree'),
+    "ACQUIRE": ('kind', 'card_id', 'drink_id', 'pitem_id', 'pitem_ids', 'name', 'upgrade', 'agree', 'memory_effect'),
     "STAR_GAIN": ('gain', 'star', 'star_shown'),
     "HIF_EXAM_BRIEFING": ('exam_no', 'rank_line', 'participants', 'star', 'star_ok', 'params', 'multiplier_pct', 'complete', 'finals'),
     "PITEM_CUSTOMIZE": (),
