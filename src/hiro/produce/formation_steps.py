@@ -114,11 +114,43 @@ def memory_card_problems(img, plan: dict) -> tuple[list[str], list[str]]:
 MEMORY_MENU_HINT = "回忆请在编成菜单里写：PYTHONPATH=src python tools/write_formation.py --mode <hajime|nia|hif> --what memory"
 
 
-def check_memory_set(img, plan: dict | None, set_no=None) -> None:
+STEP3_SETTLE_READS, STEP3_SETTLE_GAP_S = 8, 0.5
+
+
+def settled_step3(shoot, plan: dict, sleep=None):
+    """第 3 步翻完编成号后等四格回忆图标停稳，返回那一帧：连续两次读到的卡一样（含认不认得出），或者四格都认出、
+    都是方案的卡就直接用。读不到稳定结果时用最后一帧（11-17 Mac p15c：翻 1 → 20 的动画还没完就读了，四格都认不出；
+    0.6 秒后的帧四格全对）。"""
+    import time
+
+    from hiro.vision.memory_icons import card_key, read_step3_icons
+
+    sleep = sleep or time.sleep
+    want = {card_key(c) for c in (plan.get("memory") or {}).get("cards") or [] if card_key(c)}
+    prev, img = None, None
+    for i in range(STEP3_SETTLE_READS):
+        img = shoot()
+        cur = [(r.get("card") if r.get("known") else None) for r in read_step3_icons(img)]
+        if want and all(cur) and set(cur) <= want:
+            return img
+        if cur == prev:
+            return img
+        prev = cur
+        if i + 1 < STEP3_SETTLE_READS:
+            sleep(STEP3_SETTLE_GAP_S)
+    return img
+
+
+def check_memory_set(img, plan: dict | None, set_no=None, *, shoot=None, sleep=None) -> None:
     """有开局编成方案时，选完回忆编成后读「N/20」核对编成号，再核对四格回忆卡；对不上抛 FormationMismatch
-    （第 3 步不自动写回忆，提示去编成菜单写，见 MEMORY_MENU_HINT）。"""
+    （第 3 步不自动写回忆，提示去编成菜单写，见 MEMORY_MENU_HINT）。给了 shoot 就先等四格图标停稳（settled_step3）再核对。"""
     if not plan:
         return
+    if shoot is not None:
+        try:
+            img = settled_step3(shoot, plan, sleep)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("第 3 步等回忆图标停稳失败，用当前帧核对：%s", e)
     from hiro.produce.formation_check import check_memory_step3, memory_set_number
     from hiro.vision.ocr import screen_texts
 

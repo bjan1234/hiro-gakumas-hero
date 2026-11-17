@@ -312,7 +312,7 @@ def step3(rt, *, set_no: int | None, plan: dict | None = None) -> None:
         raise ResumeBlocked("没有回忆编成号（HIRO_MEMORY_SET / 开局编成方案），不开局")
     if not prep_steps.select_set(set_no, shoot=lambda: rt.screen.shot().img, tap=rt.device.tap, sleep=rt.sleep, clock=rt.clock):
         raise ResumeBlocked(f"回忆编成翻不到 {set_no} 号")
-    formation_steps.check_memory_set(rt.screen.shot().img, plan, set_no)
+    formation_steps.check_memory_set(rt.screen.shot().img, plan, set_no, shoot=lambda: rt.screen.shot().img, sleep=rt.sleep)
 
     want = len(((plan or {}).get("memory") or {}).get("chosen") or [])
 

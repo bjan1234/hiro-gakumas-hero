@@ -240,7 +240,7 @@ def test_step3_confirms_rent_tip_then_next(monkeypatch):
 
     monkeypatch.setattr(prep_steps, "select_set", lambda n, **kw: True)
     checked = []
-    monkeypatch.setattr(formation_steps, "check_memory_set", lambda img, plan, n: checked.append(n))
+    monkeypatch.setattr(formation_steps, "check_memory_set", lambda img, plan, n, **kw: checked.append(n))
     s3 = frame({"Produce.TextStepIndicator3": (1, 1), "Produce.Step3.ButtonNext": (500, 1160)})
     tip = frame({"Produce.TextRentAvailable": (360, 600), "Produce.RentAvailableConfirmButton": (360, 900)})
     s4 = frame({"Produce.TextStepIndicator4Or2": (1, 1)})
@@ -293,7 +293,7 @@ def _memory_unset_rig(monkeypatch, chosen):
     from hiro.vision.ocr import Box as OBox, Text
 
     monkeypatch.setattr(prep_steps, "select_set", lambda n, **kw: True)
-    monkeypatch.setattr(formation_steps, "check_memory_set", lambda img, plan, n: None)
+    monkeypatch.setattr(formation_steps, "check_memory_set", lambda img, plan, n, **kw: None)
     s3 = frame({"Produce.TextStepIndicator3": (1, 1), "Produce.Step3.ButtonNext": (500, 1160)})
     dlg = frame({}, [Text("キャンセル", OBox(162, 1144, 311, 1180)), Text("く完了する", OBox(394, 1144, 577, 1176))])
     dlg.__dict__.update(has_dialog=True, dialog={"kind": "other", "title": "メモリー編成確認", "danger": False, "y": 937, "body": ""})
