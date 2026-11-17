@@ -518,8 +518,10 @@ class HifCore:
         raw = dict(raw or {})
         raw["recommended"] = rec_index
         obs = self.s.observe(scene="SELECT_CARD", img=img, fields=raw)
-        for _ in range(2):  # 页面切换防抖中字段没进 state（同 on_select_drink）：再观测一两次让页面落定
-            if self.s.state.page_fields.get("candidates") or not raw.get("candidates"):
+        for _ in range(4):  # 页面切换防抖中字段没进 state（同 on_select_drink）：再观测几次让页面落定（不合法跳转要 DEBOUNCE=3 帧）
+            # extract 的键是 options（candidates 是换算后的观测字段）：原来查 candidates 永远为空、一次都不重观测。
+            # H.I.F 前一页到选卡是合法跳转，一次就落定，看不出来；N.I.A 営業话题 → 营業奖励选卡要防抖，决策器读到空候选停了（11-17）
+            if self.s.state.page_fields.get("candidates") or not (raw.get("options") or raw.get("candidates")):
                 break
             obs = self.s.observe(scene="SELECT_CARD", img=img, fields=raw)
         d = self.deciders.decide("SELECT_CARD", self.s.state, n_options=len(options))
