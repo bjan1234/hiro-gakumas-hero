@@ -266,7 +266,9 @@ def _icon_attr(img, y: int) -> str | None:
             m = _icon_mask(img, y, dx, dy)
             for a, t in _topic_templates().items():
                 if m.shape == t.shape:
-                    best = max(best, (float((m & t).sum() / max(1, (m | t).sum())), a))
+                    s = float((m & t).sum() / max(1, (m | t).sum()))
+                    if s > best[0]:  # 只比分数：分数打平（例如都是 0）时元组会去比属性名和 None，抛 TypeError（N.I.A 第二局 11-18 停机）
+                        best = (s, a)
     if best[0] >= 0.45:
         return best[1]
     x1, x2, r = TOPIC_ICON
