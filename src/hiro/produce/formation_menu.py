@@ -134,28 +134,35 @@ class Menu:
         raise FormationWriteError(f"等不到{why}")
 
     def open(self) -> dict:
-        """停在 プロデュース編成 页就直接用；在主页就点 アイドル → プロデュース編成；别的页面停下。"""
+        """停在 プロデュース編成 页就直接用；在主页就点 アイドル →「プロデュース編成・スキルカード」→ 子菜单「プロデュース編成」；
+        别的页面停下。11-17 Mac 第一次实机：面板上的「プロデュース編成・スキルカード」(243,832) 也含「プロデュース編成」，
+        原来点了它就去等编成页，没点弹出的子菜单里的「プロデュース編成」(198,579)。"""
         img, texts, m = self.look()
         if m is not None:
             return m
         if not (_find(texts, "ホーム", y_min=1050) and _find(texts, "コンテスト", y_min=1050)) and _find(texts, "プロデュース編成") is None:
             self.dev.snap(img, "menu-not-home")
             raise FormationWriteError("不在主页也不在プロデュース編成页：请先回主页再运行")
-        btn = _find(texts, "プロデュース編成")
-        if btn is None:
-            idol = _find(texts, "アイドル", y_min=1050)
-            self.dev.click(*(_center(idol) if idol else IDOL_TAB))
-            for _ in range(WAIT_TRIES):
-                self.dev.sleep(WAIT_GAP)
-                img = self.dev.shoot()
-                btn = _find(_texts(img, self.dev.ocr), "プロデュース編成")
-                if btn is not None:
-                    break
-            if btn is None:
-                self.dev.snap(img, "menu-no-produce-formation")
-                raise FormationWriteError("点了アイドル，没看到「プロデュース編成」")
-        self.dev.click(*_center(btn))
-        return self.wait_menu(why="プロデュース編成页")[1]
+        tapped_idol = tapped_panel = False
+        for _ in range(WAIT_TRIES * 2):
+            if (m := read_menu(img, texts)) is not None:
+                return m
+            item = next((b for t, b in texts if t == "プロデュース編成"), None)  # 子菜单里的那一项（完全等于这几个字）
+            panel = next((b for t, b in texts if "プロデュース編成" in t and t != "プロデュース編成"), None)  # 面板按钮「…・スキルカード」
+            if item is not None:
+                self.dev.click(*_center(item))
+                return self.wait_menu(why="プロデュース編成页")[1]
+            if panel is not None and not tapped_panel:
+                self.dev.click(*_center(panel))  # 打开子菜单
+                tapped_panel = True
+            elif not tapped_idol and panel is None:
+                idol = _find(texts, "アイドル", y_min=1050)
+                self.dev.click(*(_center(idol) if idol else IDOL_TAB))
+                tapped_idol = True
+            self.dev.sleep(WAIT_GAP)
+            img, texts, m = self.look()
+        self.dev.snap(img, "menu-no-produce-formation")
+        raise FormationWriteError("点了アイドル，没进到「プロデュース編成」（面板按钮 / 子菜单都没认出）")
 
     def ensure_mode(self, mode: str) -> dict:
         """模式不对就 プロデュース切替 → 点横幅 → 決定，回到菜单后模式标签必须变成 mode。"""
