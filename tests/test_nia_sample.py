@@ -150,3 +150,23 @@ def test_upgrade_result_is_a_show_page(tmp_path):
     rt, taps = _rt(tmp_path, now)
     f = Frame(_real("nia-upgrade-result.jpg"), 0.0)
     assert play.advance(rt, f, PageHit("UPGRADE_RESULT", "page_ocr")) is True and taps
+
+
+def test_consult_recognized_without_review_criteria():
+    """N.I.A 右上没有「審査基準」：相談页（被支援能力横幅盖住页头的实机帧）也要认成 CONSULT。"""
+    from hiro.vision.classify import classify
+
+    assert classify(_real("nia-consult-banner.jpg")).name == "CONSULT"
+
+
+def test_consult_end_confirm_interrupt():
+    """「相談終了確認」单独留在画面上（实机帧）：中断层点「決定」。"""
+    from hiro.runtime import interrupts
+    from hiro.runtime.frame import Frame
+    from test_runtime import frame as fake_frame
+    from test_runtime import runtime
+
+    rt, _ = runtime([fake_frame()])
+    assert "相談終了" in interrupts.check(Frame(_real("nia-consult-end-confirm.jpg"), 0.0), rt)
+    (x, y), = rt.raw_device.taps
+    assert x > 400 and abs(y - 1160) < 20

@@ -323,9 +323,25 @@ def live_setting(frame, rt) -> str | None:
     return "ライブ設定：默认选项，点「決定」"
 
 
+CONSULT_END_DECIDE = (500, 1160)
+
+
+def consult_end_confirm(frame, rt) -> str | None:
+    """「相談終了確認」（まだ交換可能です。相談を終了しますか？）单独留在画面上（N.I.A 采样 11-17：人手点了「終了」后停在这里，
+    DIALOG 没有处理器）：已经按了「終了」，点「決定」结束相談。相談处理器自己结束时会在执行器里点掉，不走到这里。"""
+    if not frame.has_dialog or (frame.dialog or {}).get("kind") != "consult_end":
+        return None
+    if _recently(rt, "consult_end"):
+        return "相談終了確認：刚点过「決定」，等框关"
+    btn = next((t for t in frame.texts if t.text.strip() == "決定" and t.rect.center.x > 360 and t.rect.center.y > 1000), None)
+    rt.device.tap(*(btn.rect.center if btn is not None else CONSULT_END_DECIDE))
+    _tapped(rt, "consult_end")
+    return "相談終了確認：点「決定」"
+
+
 Interrupt = Callable[[object, object], "str | None"]
 DEFAULT: tuple[Interrupt, ...] = (red_line, comm, stop_notice, date_changed, settings, customize_confirm, tutorial, reroll_confirm,
-                                   achievement_toast, affection_unlock, use_limit, live_setting)
+                                   achievement_toast, affection_unlock, use_limit, live_setting, consult_end_confirm)
 
 
 def check(frame, rt, interrupts: tuple[Interrupt, ...] = DEFAULT) -> str | None:
