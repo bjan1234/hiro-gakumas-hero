@@ -227,7 +227,7 @@ def _check_memory_set() -> None:
     from hiro import kaa_env
     from hiro.produce import formation_steps
 
-    formation_steps.check_memory_set(device.screenshot(), kaa_env.ACTIVE_PLAN, kaa_env.MEMORY_SET)
+    formation_steps.check_memory_set(device.screenshot(), kaa_env.ACTIVE_PLAN, kaa_env.MEMORY_SET, shoot=device.screenshot)
 
 
 def select_set(index: int) -> None:
