@@ -169,3 +169,56 @@ def test_review_deck_waits_for_bounce_and_stops_when_complete(monkeypatch):
                        clock=lambda: t[0])  # fmt: skip
     assert r["deck"] == whole and r["screens"] == 2 and state["screen"] == 1  # 第 2 屏拼完整就停，没再滑
     assert reads == [10, 60]  # 读的是停稳后的帧，每屏只读一次
+
+
+def _strategy(monkeypatch, deck, pending, calls, ok=True):
+    from types import SimpleNamespace as NS
+
+    import hiro.produce.hif as hif
+    from hiro.contracts import GameState
+
+    monkeypatch.setattr(hif, "device", NS(screenshot=lambda: None, click=lambda *a: None, swipe=lambda *a: None))
+    page = {"deck": deck, "deck_size": len(deck), "complete": True}
+    monkeypatch.setattr(dr, "review_deck", lambda **kw: calls.append(1) or {"deck": deck if ok else None, "deck_size": len(deck), "opened": True,
+                                                                           "closed": True, "problems": [] if ok else ["读不全"], "page": page})  # fmt: skip
+    st = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
+    st.exam_count, st._reviewed_at_exam = 0, 0  # 这一考试段已经读过一次（开局那次）
+    gs = GameState(produce={"deck": deck, "step": 3})
+    gs.pending_review = ["produce.deck"] if pending else []
+    st.s = NS(state=gs, trace=NS(next_seq=lambda: 1), emit=lambda ev: None, note=lambda t: None, observe=lambda **kw: None)
+    return st
+
+
+def test_pending_deck_review_runs_without_flag(monkeypatch):
+    """DMM mainverify2（11-17）：开局读过牌组（19 张）之后，支援事件给的「頭上に注意！」跳过剧情时没有获得页，账本漏记，
+    R1 搜索整场跟丢。剧情跳过后牌组标成待复核（pending_review）：下次到选行动页不开 HIRO_DECK_REVIEW 也读一次。"""
+    monkeypatch.delenv("HIRO_DECK_REVIEW", raising=False)
+    calls = []
+    st = _strategy(monkeypatch, [{"card_id": "c0", "upgrade": 0}], True, calls)
+    st._maybe_review_deck()
+    assert calls == [1]
+    calls2 = []
+    st2 = _strategy(monkeypatch, [{"card_id": "c0", "upgrade": 0}], False, calls2)
+    st2._maybe_review_deck()  # 没有待复核、开局已读过：不读
+    assert calls2 == []
+
+
+def test_pending_deck_review_failed_read_not_retried_same_step(monkeypatch):
+    """读不全时待复核还在：同一天（同一 step）不再重读，免得每帧开一次一览；到下一天再试。"""
+    monkeypatch.delenv("HIRO_DECK_REVIEW", raising=False)
+    calls = []
+    st = _strategy(monkeypatch, [{"card_id": "c0", "upgrade": 0}], True, calls, ok=False)
+    st._maybe_review_deck()
+    st._maybe_review_deck()
+    assert calls == [1]
+    st.s.state.produce["step"] = 4
+    st._maybe_review_deck()
+    assert calls == [1, 1]
+
+
+def test_pending_deck_review_can_be_switched_off(monkeypatch):
+    monkeypatch.setenv("HIRO_DECK_REVIEW", "0")
+    calls = []
+    st = _strategy(monkeypatch, [{"card_id": "c0", "upgrade": 0}], True, calls)
+    st._maybe_review_deck()
+    assert calls == []

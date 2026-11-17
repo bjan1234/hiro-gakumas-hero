@@ -34,6 +34,9 @@ FINALS_LABELS = ("r1", "r2")
 ROUNDS = tuple(x.strip().lower() for x in os.environ.get("HIRO_EXAM_SIM_ROUNDS", "r1,r2").split(",") if x.strip())
 PREVIEW_WORLDS = int(os.environ.get("HIRO_EXAM_SIM_WORLDS", "16"))
 PREVIEW_BUDGET_S = float(os.environ.get("HIRO_EXAM_SIM_BUDGET_S", "7.5"))
+# 手牌里有、引擎各区都没有的卡（考试中生成的 眠気、账本漏记的支援事件卡）在当前局面上新建接住（Rust new_card），一场最多这么多张：
+# 再多多半是认卡认错，宁可退回画面读数（DMM mainverify2 11-17）
+NEW_CARD_LIMIT = 8
 
 
 def _round_label(exam: str | None) -> str | None:
@@ -83,6 +86,7 @@ class SimScreenExamStateSource(ScreenExamStateSource):
             self.label = None  # 这一轮不跟踪、不给预演（HIRO_EXAM_SIM_ROUNDS）
         self.tracker = self.game = self.meta = None
         self.setup = None
+        self._created = 0  # 按场算，同 _added
         self._added = 0  # 「一场最多加 6 张」按场算：以前不清零，同一局里 R1、R2 和几次再挑戦累计到 6 张后，后面的考试都加不进、整场给不出预演
         self.lost = None
         self.stats = {"tracked": 0, "rebuilt": 0, "lost": 0}
@@ -202,6 +206,21 @@ class SimScreenExamStateSource(ScreenExamStateSource):
         game.meta = self.meta
         return game
 
+    def _new_card(self, env, cid: str, up) -> Any:
+        """在当前局面上新建一张画面上有、引擎里没有的卡（不进任何区，由重建放进手牌）。不从开局重新编译：考试中引擎自己生成的卡
+        （成長痛 塞进山札的 眠気）留在局面里（DMM mainverify2 R1：引擎里已有一张 眠気、画面两张，_add_basic 加一张重编译后
+        只剩加的那张，「补了応援棒基础卡；画面上的 眠気 在模拟器里找不到」）。旧 Rust 包 / Python 后端没有 new_card：返回 None，走 _add_basic。
+        新建的卡不带定制（customize_counts 为空）：账本漏记的若是特別指導定制过的卡，搜索按没定制算（3940a9：影响不大）。"""
+        rx = getattr(env, "rx", None)
+        if rx is None or not hasattr(rx, "new_card") or getattr(self, "_created", 0) >= NEW_CARD_LIMIT:
+            return None
+        try:
+            g = rx.new_card(cid, int(up or 0))
+        except (KeyError, ValueError):
+            return None
+        self._created = getattr(self, "_created", 0) + 1
+        return g
+
     def _add_basic(self, missing: list) -> bool:
         """R2 応援棒随机补的基础卡（名字含「基本」，实机随机、模拟器按固定轮换补）、考试里生成的基础类卡（成長痛 塞进山札的 眠気 等，
         考试引擎按客户端规则会生成）在合成开局里没有：把画面上这几张加进合成牌组（R2 応援棒少补几张，总数不变）重新编译，
@@ -281,6 +300,8 @@ class SimScreenExamStateSource(ScreenExamStateSource):
                         break
                 if pick is not None:
                     break
+            if pick is None and (pick := self._new_card(env, cid, up)) is not None:
+                notes.append(f"{cid} ← 新建（考试中生成 / 牌组账本没有）")
             if pick is None:
                 self._missing.append((cid, up))
                 continue

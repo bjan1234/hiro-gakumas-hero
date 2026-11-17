@@ -57,7 +57,10 @@ def advance(rt, frame, hit) -> bool:
         return True
     if frame.img is not None and frame.img.shape[1] > frame.img.shape[0]:
         return False  # 横屏演出中：不点
-    if scenes.commu_skip(rt, frame) or scenes.first_run_settings(rt, frame):
+    if scenes.commu_skip(rt, frame):
+        _flag_deck_after_commu(rt)
+        return True
+    if scenes.first_run_settings(rt, frame):
         return True
     if hit.name in SHOW_PAGES:
         if dialog_header(frame.img) is not None:
@@ -71,6 +74,21 @@ def advance(rt, frame, hit) -> bool:
     return n > 0
 
 
+def _flag_deck_after_commu(rt) -> None:
+    """培育中跳过了一段剧情：支援事件给的技能卡在跳过后不弹获得页，账本记不上（DMM mainverify2 11-17：支援卡 s_card-3-0094 的事件给
+    「頭上に注意！」，R1 起手就有、模拟器牌组里没有，搜索整场跟丢）。把牌组标成待复核（UNMODELED_CHANGE），下次到选行动页读一次牌组。"""
+    session = getattr(rt, "session", None)
+    state = getattr(session, "state", None)
+    prod = getattr(state, "produce", None) or {}
+    if not prod.get("deck") or "produce.deck" in (getattr(state, "pending_review", None) or []):
+        return
+    from hiro.contracts import Event
+
+    session.emit(Event(seq=session.trace.next_seq(), kind="UNMODELED_CHANGE", origin="inferred",
+                       args={"field": "produce.deck", "why": "跳过了培育剧情（支援事件可能给卡，不弹获得页）"}, basis="observe_only"))  # fmt: skip
+    logger.info("跳过培育剧情：牌组标成待复核，下次选行动页读一次牌组")
+
+
 def _quick_tap(rt, q: dict, now: float) -> bool:
     """快速判页带 tap 的页直接点；不带 tap 的页同一种等太久点兜底位置。返回是否点了。"""
     from hiro.vision.quick import SAFE_BLANK_TAP
@@ -78,6 +96,8 @@ def _quick_tap(rt, q: dict, now: float) -> bool:
     if q.get("tap") is not None:
         rt._quick_wait = None
         rt.device.tap(*q["tap"])
+        if q["page"] == "commu":
+            _flag_deck_after_commu(rt)
         logger.info("快速判页 %s %s：点 %s", q["page"], (q.get("fields") or {}).get("text") or (q.get("fields") or {}).get("name") or "", q["tap"])
         return True
     kind = (q.get("fields") or {}).get("kind")

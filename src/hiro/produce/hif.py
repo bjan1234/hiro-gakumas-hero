@@ -1005,14 +1005,19 @@ class HifCore:
 
         # 牌组为空（本战开局：本战牌组来自选拔，开局时 produce.deck 是空的；第十九局保护卡 / 必拿因此按空牌组算）：一定读一次。
         # 其余情况仍由 HIRO_DECK_REVIEW 开关（q7 实机 find_deck_button 误开行动记录，识屏已修，礼盒图标约 (558,1200)）
-        empty = not (self.s.state.produce or {}).get("deck")
+        prod = self.s.state.produce or {}
+        empty = not prod.get("deck")
         due = self._reviewed_at_exam != self.exam_count
-        if not (empty and due):
-            if os.environ.get("HIRO_DECK_REVIEW") != "1":
+        flag = os.environ.get("HIRO_DECK_REVIEW")
+        # 牌组待复核（跳过剧情后支援事件可能给了卡、删卡没对上等）：缺省也读，同一天只试一次（读不全不每帧重开一览）；HIRO_DECK_REVIEW=0 关掉
+        # （DMM mainverify2 11-17：开局读过 19 张后支援事件给的「頭上に注意！」漏记，R1 搜索整场跟丢）
+        pending = "produce.deck" in self.s.state.pending_review and flag != "0"
+        pending = pending and getattr(self, "_pending_reviewed_at", None) != (self.exam_count, prod.get("step"))
+        if not ((empty and due) or pending):
+            if flag != "1" or not due:
                 return
-            pending = "produce.deck" in self.s.state.pending_review
-            if not (pending or due):
-                return
+        if pending:
+            self._pending_reviewed_at = (self.exam_count, prod.get("step"))
         from hiro.contracts import Event
         from hiro.produce.deck_review import review_deck
 
