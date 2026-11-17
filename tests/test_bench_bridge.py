@@ -837,3 +837,52 @@ def test_tower_status_sync_opt_in():
 def test_lesson_label_to_step_type(label, produce, step):
     """平台从画面读到属性 + SP / 追い込み 就给 hajime-lesson-<属性>[-sp|-hard]；LEGEND（produce-006）的课是 29–34。"""
     assert exam_fields(label, idol=None, plan=4, produce=produce)["step"] == step
+
+
+def test_audition_number_from_label_tag():
+    assert A._audition_number("nia-mid1#audition-2") == 2
+    assert A._audition_number("nia-final#x#audition-4") == 4
+    assert A._audition_number("nia-mid1") is None and A._audition_number(None) is None
+    assert exam_fields("nia-mid1#audition-2", idol="i", plan=3)["step"] == "AUDITION_MID1"  # tag 不影响场次
+
+
+@pytest.mark.bench_on
+def test_nia_tier_from_label_without_loadout(monkeypatch):
+    """平台 11-17：选档页选了第几档写进标签 tag（nia-mid1#audition-2）；没有编成时按主数据补审查基准和回合数。"""
+    monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    got = {}
+
+    def ac(label, idol, number, produce=None):
+        got.update(label=label, number=number)
+        return {"crit": [178, 217, 263], "turns": 9}
+
+    monkeypatch.setattr("hiro.bench_bridge.screen.audition_context", ac)
+    algo = _Algo(("play", 0))
+    monkeypatch.setattr(A, "load_algo", lambda *a, **k: algo)
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    adv.on_round_start(1, {"exam": "nia-mid1#audition-2", "idol": "i_card-x", "deck": []})
+    assert got["number"] == 2 and adv.exam["crit"] == [178, 217, 263] and adv.exam["turns"] == 9
+    assert adv.exam["step"] == "AUDITION_MID1" and adv.exam["permil_default"] == {}
+
+
+@pytest.mark.bench_on
+def test_nia_tag_number_fills_loadout_and_ctx_gets_full_loadout(monkeypatch, tmp_path):
+    seen = {}
+
+    def xc(lo):
+        seen["lo"] = lo
+        return {"turns": 9, "crit": [1, 2, 3], "permil_fixed": None, "max_stamina": 30, "idol": "i_card-x", "produce": "produce-005",
+                "deck": [("p_card-a", 0)]}  # fmt: skip
+
+    monkeypatch.setattr("hiro.bench_bridge.screen.exam_context", xc)
+    p = tmp_path / "lo.json"
+    p.write_text('{"loadout": {"produce_id": "produce-005", "round": "mid1", "deck_cards": ["p_card-a"]}}')
+    monkeypatch.setenv("HIRO_EXAM_LOADOUT", str(p))
+    algo = _Algo(("play", 0))
+    monkeypatch.setattr(A, "load_algo", lambda *a, **k: algo)
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    adv.on_round_start(1, {"exam": "nia-mid1#audition-2", "idol": None, "deck": []})
+    assert seen["lo"]["audition_number"] == 2
+    st, mem = _state([_card(0, "p_card-a")], remaining=9, turn=1)
+    adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    assert algo.ctx.loadout["deck_cards"] == ["p_card-a"] and algo.ctx.loadout["audition_number"] == 2

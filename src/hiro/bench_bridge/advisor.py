@@ -294,6 +294,15 @@ def _round_defaults(label: str | None, deck: list) -> tuple[dict, dict | None]:
     return permil, alloc
 
 
+def _audition_number(label: str | None) -> int | None:
+    """标签 tag 里的试镜档位：nia-mid1#audition-2 → 2（平台 11-17 约定）。"""
+    for tag in str(label or "").split("#")[1:]:
+        k, _, v = tag.partition("-")
+        if k == "audition" and v.isdigit():
+            return int(v)
+    return None
+
+
 def _exam_loadout(ctx: dict) -> dict | None:
     """初 / N.I.A 这一场的编成：context 的 exam_loadout，或 HIRO_EXAM_LOADOUT 指的 JSON 文件（bench 题存档或编成本身）。没有就 None。"""
     if isinstance(ctx.get("exam_loadout"), dict):
@@ -386,6 +395,7 @@ class BenchAdvisor:
         self.round_note = ""  # 兜底说明：偶像之路没用上指定算法时写原因
         self._tower_algos: dict = {}  # spec → 算法或加载失败的说明（同一进程多场只载一次）
         self.tower_loadout: dict | None = None
+        self.exam_loadout: dict | None = None
         self.known_draws: list | None = None
         self.load_error: str | None = None
         self.exam: dict = {}
@@ -446,7 +456,23 @@ class BenchAdvisor:
                 self.deck = list(tc["deck"])
             logger.info("[%s] 偶像之路编成：%d 回合，倍率 %s，最大体力 %s，开局牌组 %d 张", self.label, tc["turns"] or 0,
                         tc["permil_fixed"], tc["max_stamina"], len(self.deck))  # fmt: skip
-        if str(self.label or "").lower().startswith(("hajime", "nia")) and (lo := _exam_loadout(ctx)) is not None:
+        number = _audition_number(self.label)
+        lo = _exam_loadout(ctx) if str(self.label or "").lower().startswith(("hajime", "nia")) else None
+        if lo is not None and number and not lo.get("audition_number"):
+            lo = {**lo, "audition_number": number}  # 平台在标签里带的档位（nia-mid1#audition-2）
+        self.exam_loadout = lo
+        if lo is None and number and str(self.label or "").lower().startswith(("hajime", "nia")):
+            from hiro.bench_bridge.screen import audition_context
+
+            try:
+                ac = audition_context(self.label, idol, number)
+            except Exception as e:  # noqa: BLE001  查不到：只靠画面
+                logger.warning("[%s] 档位 %s 查不到审查基准：%s: %s", self.label, number, type(e).__name__, e)
+            else:
+                self.exam["crit"], self.exam["permil_default"], self.exam["allocation"] = ac["crit"], {}, None
+                if ac["turns"]:
+                    self.exam["turns"] = ac["turns"]
+        if lo is not None:
             from hiro.bench_bridge.screen import exam_context, exam_fields
 
             try:
@@ -536,7 +562,8 @@ class BenchAdvisor:
 
         meta = {"produce_id": self.exam.get("produce"), "step_type": self.exam.get("step"), "plan_type": self.exam.get("plan"),
                 "idol_card_id": self.exam.get("idol")}
-        loadout = dict(self.tower_loadout or {}) if self.tower_loadout else {"idol_card_id": self.exam.get("idol")}
+        full = self.tower_loadout or self.exam_loadout  # 搜索类算法要整份编成（偶像之路 / 初 / N.I.A）
+        loadout = dict(full) if full else {"idol_card_id": self.exam.get("idol")}
         return SimpleNamespace(obs=obs, budget=DECIDE_BUDGET_S, loadout=loadout, meta=meta, known_draws=self.known_draws,
                                rng=self.rng, worlds=worlds, true_session=None, seed=None)  # fmt: skip
 

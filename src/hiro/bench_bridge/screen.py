@@ -445,6 +445,19 @@ def exam_fields(label: str | None, *, idol: str | None, plan: int | None, crit=N
     return {"produce": produce, "step": step, "plan": plan, "idol": idol, "crit": list(crit or [1, 1, 1])}
 
 
+def audition_context(label: str, idol: str | None, number: int, produce: str | None = None) -> dict:
+    """没有编成、只知道选了第几档时（实机 N.I.A 试镜选档页）：按主数据给这场的审查基准和回合数。"""
+    from hiro.bench_bridge import tower as tw
+    from hiro.search.exam_env import audition_row
+
+    base = str(label or "").split("#", 1)[0].lower()
+    mode, _, rest = base.partition("-")
+    row = audition_row(idol, produce or MODE_PRODUCE[mode], rest, number)
+    cfg = tw.master().battle_config(row["produceExamBattleConfigId"]) or {}
+    return {"crit": [int(cfg[k]) for k in ("vocal", "dance", "visual")] if cfg else [0, 0, 0],
+            "turns": int(cfg["turn"]) if cfg.get("turn") else None, "row": row}
+
+
 def exam_context(loadout: dict) -> dict:
     """初 / N.I.A 这一场的已知量（编成决定的；bench 题 gkms.hif_loadout.v1，或实机编成拼成的同样写法）：回合数、审查基准、
     三属性倍率、最大体力、偶像、开局牌组、培育 id。画面读不全时以这些为准（同 tower_context）。"""
