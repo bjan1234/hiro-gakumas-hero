@@ -2,7 +2,7 @@
 
 ctx.loadout 是 bench 题（gkms.hif_loadout.v1）时先用 exam_env.from_hif_loadout 换写法；是偶像之路编成（produce_id tower）时
 走 TowerGnrpa 原来的路。对手分：ctx.meta.rival_scores 有就用各对手的 score_max（保守），没有按主数据对手组。
-终局目标先用「超过对手」（exam_env.objective），各场次的过关线 / 满分线由 3940a9 填（11-17 约定）。课程还不支持（开局就抛）。
+终局目标 exam_env.objective（超过对手 + 3940a9 按场次的 stage_objective）。初的课程题（round lesson）按课程开局，目标是合格线 + 满分线封顶。
 """
 
 from __future__ import annotations
