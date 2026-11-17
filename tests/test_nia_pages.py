@@ -163,3 +163,20 @@ def test_sampler_rechecks_dialog_as_sales_place(tmp_path):
     hit = s(img)
     assert hit.name == "NIA_SALES_PLACE" and len(hit.fields["places"]) == 3
     assert s(np.zeros((1280, 720, 3), np.uint8)).name == "DIALOG"  # 认不出 N.I.A 页：照旧
+
+
+@pytest.mark.parametrize("name", ["nia-audition-bonus.jpg", "nia-audition-bonus-param.jpg"])
+def test_audition_bonus_is_show_page(name, tmp_path):
+    """试镜结束的「オーディションボーナス」两页（实机帧；第 2 页原来判 DIALOG、第 1 页 unknown）：认成展示页，点 TAP。"""
+    from hiro.produce.nia import NiaPages
+    from hiro.runtime import nia_sample as ns
+    from hiro.vision.classify import UNKNOWN, PageHit
+
+    img = _img(name)
+    hit = ns.Sampler(lambda im: PageHit("DIALOG", "page_ocr") if "param" in name else UNKNOWN, tmp_path / "frames")(img)
+    assert hit.name == "NIA_AUDITION_BONUS"
+    core, _ = _core(0)
+    rt, _, taps = _rt()
+    assert NiaPages(core).on_audition_bonus(rt, None, hit) is DONE
+    (x, y), = taps
+    assert abs(x - 360) < 20 and abs(y - 1222) < 15
