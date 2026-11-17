@@ -771,9 +771,12 @@ class ProduceDeciders:
         def info(i: int) -> tuple[tuple, str]:
             cid, up = raw[i]["card_id"], raw[i].get("upgrade") or 0
             n = (copies or {}).get(cid, 0)
-            if conflict_like(cid) or _is_trouble_card(cid):
-                return (0,), "冲突 / 好印象系"
             once = is_once(cid) is True
+            # 打法匹配先于「一次性」（协调 11-18 N.I.A 第二局拿了 キラメキ / キセキの魔法 / ファンシーチャーム）：
+            # 主要得分 / 使用条件挂在好印象上的卡，对不是好印象流派的偶像一律算冲突；同是冲突时，不主打好印象的、一次性的污染小
+            reliant = buff != "好印象" and _impression_main(cid)
+            if reliant or conflict_like(cid) or _is_trouble_card(cid):
+                return (0, int(not reliant), int(once), card_value(cid, up)), ("主打好印象" if reliant else "冲突 / 好印象系")
             loop_need = cid in SMALL_DECK_CORE and (copies is None or n < core_keep(cid))
             if not once and not loop_need:
                 return (1, -_makes_sleep(cid), card_value(cid, up)), ("循环卡已够张数" if cid in SMALL_DECK_CORE else "可复用、不是循环卡")
@@ -795,13 +798,19 @@ class ProduceDeciders:
             cites = "；".join(hr.cite(r) for r in used)
             return Decision(Action(ActionKind.REROLL), f"选卡：候选里没有一次性的卡或还缺的循环卡，先刷新（{_budget_text(budget)}；{cites}）", "rule", 0.8, cands,
                             decider="select_card")  # fmt: skip
+        if key[0] < 2 and _budget_ok(budget, "exclude") and len(known) > 1:
+            # 刷新用完：先禁用最差的那张换一张新的（协调 11-18：ファンシーチャーム 那页禁用还剩 2 次没用）
+            worst = min(known, key=lambda i: (scored[i][0], i))
+            cites = "；".join(hr.cite(r) for r in used)
+            return Decision(Action.exclude_card(worst), f"选卡：没有一次性的卡或还缺的循环卡、刷新用完，禁用 {_card_label(raw[worst])}（{scored[worst][1]}）换一张"
+                            f"（{_budget_text(budget)}；{cites}）", "rule", 0.75, cands, decider="select_card")  # fmt: skip
         if key[0] == 2:
             if key[3]:
                 use("hajime.card_signature_buff")
             if key[4]:
                 use("nia.card_dup_once")
         cites = "；".join(hr.cite(r) for r in used)
-        lead = "选卡" if key[0] == 2 else "选卡：三张都不理想、刷新用完，拿最不污染的"
+        lead = "选卡" if key[0] == 2 else "选卡：三张都不理想、刷新和禁用用完，拿最不污染的"
         return Decision(Action.activate_effect(best), f"{lead} {_card_label(raw[best])}（{why}）（{cites}）", "rule", 0.85 if key[0] == 2 else 0.6, cands,
                         decider="select_card")  # fmt: skip
 
@@ -3307,6 +3316,25 @@ def _signature_buff(idol_card_id: str | None) -> str | None:
         return SIGNATURE_BUFF.get(catalog().one("IdolCard", idol_card_id).get("examEffectType"))
     except Exception:
         return None
+
+
+_IMPRESSION_MAIN = (r"好印象の\d+%分パラメータ上昇", r"好印象が\d+以上の場合、使用可", r"以降.*好印象\+", r"好印象増加量増加")
+
+
+@lru_cache(maxsize=None)
+def _impression_main(card_id: str) -> bool:
+    """主要得分 / 使用条件挂在好印象上（协调 11-18）：「好印象のN%分パラメータ上昇」「好印象がN以上の場合、使用可」「以降…好印象+」
+    「好印象増加量増加」。只消費好印象、主体是やる気 / 元気的（ゆめみごこち、あのときの約束）、顺带加好印象的（成長痛、止められない想い）不算。"""
+    import re
+
+    from hiro.brain.cards import description_text
+    from hiro.state.context import catalog
+
+    try:
+        text = description_text(catalog().card(card_id, 0)["produceDescriptions"])
+    except Exception:
+        return False
+    return any(re.search(p, text) for p in _IMPRESSION_MAIN)
 
 
 @lru_cache(maxsize=None)
