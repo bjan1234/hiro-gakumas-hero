@@ -146,7 +146,9 @@ def read_rewards(img, start: tuple[int, int]) -> list[str]:
             for dx in range(-8, 9, 2):
                 g = _glyph(img, cx + dx, cy + dy)
                 for name, t in _reward_templates().items():
-                    best = max(best, (float((g & t).sum() / max(1, (g | t).sum())), name))
+                    sc = float((g & t).sum() / max(1, (g | t).sum()))
+                    if sc > best[0]:  # 只比分数：打平（例如都是 0）时元组会去比名字和 None 抛 TypeError（同 _icon_attr，N.I.A 第二局 11-18 停机）
+                        best = (sc, name)
         out.append(best[1] if best[0] >= 0.5 else "unknown")
     return out
 

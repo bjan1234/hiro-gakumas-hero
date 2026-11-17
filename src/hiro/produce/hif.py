@@ -309,6 +309,8 @@ class HifCore:
         taps = [[int(choice.rect.center.x), int(choice.rect.center.y)]]
         result = self._act(lambda: action_commit(choice), d.action, page_before="ACTION_SELECT", taps=taps)
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
+        if (self.s.state.produce or {}).get("declined_options"):  # 这一周已经选了别的行动：「别再选」用完了
+            self.s.state.produce = {k: v for k, v in self.s.state.produce.items() if k != "declined_options"}
 
     _schedule_probed = False  # 日程列表探针每个进程只跑一次
 
