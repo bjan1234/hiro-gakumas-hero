@@ -917,6 +917,54 @@ def test_hajime_nia_search_switch_default_off(monkeypatch, spec, fail, uses):
     assert ("兜底" in d.reason) == bool(fail)
 
 
+def test_exam_search_spec_hajime_default_on(monkeypatch):
+    """协调 11-17：初的中間 / 最終考试缺省走 Rust GNRPA，HIRO_EXAM_SEARCH_HAJIME=0 退回 uinet；课程、N.I.A、H.I.F 缺省不变。"""
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_ALGO", raising=False)
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_HAJIME", raising=False)
+    assert A.exam_search_algo_spec("hajime-mid1") == A.EXAM_DEFAULT_ALGO
+    assert A.exam_search_algo_spec("hajime-final#audition-2") == A.EXAM_DEFAULT_ALGO
+    for label in ("hajime-lesson-vo", "nia-mid1", "nia-final", "r1", ""):
+        assert A.exam_search_algo_spec(label) == ""
+    monkeypatch.setenv("HIRO_EXAM_SEARCH_HAJIME", "0")
+    assert A.exam_search_algo_spec("hajime-mid1") == ""
+    monkeypatch.setenv("HIRO_EXAM_SEARCH_ALGO", "my.x:Y")  # 显式指定的两个家族都管
+    assert A.exam_search_algo_spec("nia-mid1") == A.exam_search_algo_spec("hajime-lesson-vo") == "my.x:Y"
+
+
+class _Broken(_Algo):
+    def __init__(self, action, *, fail_begin=False):
+        super().__init__(action)
+        self.fail_begin, self.begins = fail_begin, 0
+
+    def begin(self, ctx):
+        self.begins += 1
+        if self.fail_begin:
+            raise ValueError("拼不出编成")
+
+    def decide(self, ctx):
+        raise RuntimeError("搜索炸了")
+
+
+@pytest.mark.bench_on
+@pytest.mark.parametrize("fail_begin", [False, True])
+def test_search_step_failure_falls_back_to_hif_algo(monkeypatch, fail_begin):
+    """搜索算法某步搜不了：这一步用 H.I.F 的算法（uinet），不掉到规则，理由写明；开局就失败的这一场剩下都用 uinet、不每步重试。"""
+    monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_ALGO", raising=False)
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_HAJIME", raising=False)
+    hif, search = _Algo(("play", 0)), _Broken(("play", 0), fail_begin=fail_begin)
+    monkeypatch.setattr(A, "load_algo", lambda s=None, **kw: search if s == A.EXAM_DEFAULT_ALGO else hif)
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    adv.on_round_start(1, {"exam": "hajime-mid1", "idol": None, "deck": []})
+    assert adv.round_algo is search
+    for _ in range(2):
+        st, mem = _state([_card(0, "p_card-a")], remaining=9, turn=1)
+        d = adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+        assert d.source == "bench" and "兜底" in d.reason and ("开局失败" if fail_begin else "这一步搜不了") in d.reason
+    assert len(hif.seen) == 2 and adv.stats["rules"] == 0
+    assert search.begins == 1  # 开局失败不重试；开局成功的只 begin 一次
+
+
 @pytest.mark.bench_on
 def test_live_exam_loadout_built_on_first_decision(monkeypatch):
     """协调 11-17：实机初 / N.I.A 没有 HIRO_EXAM_LOADOUT 时，中转层在第一次决策时自己拼编成：牌组账本 + run_loadout（道具 / 支援卡）
