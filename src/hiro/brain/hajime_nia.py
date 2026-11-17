@@ -15,6 +15,7 @@ from hiro.state import modes
 LOW_STAMINA = 8  # 体力低于它时课程周也先休息（初）；N.I.A 的 SP 课程也耗 8
 OUTING_POINTS = 100  # 外出和休息二选一时，P 点到这个数就外出 [g8-外出]
 TIRED_LOST = 15  # 体力少了这么多（或少了一半）算累 [g8-外出]
+NEAR_FULL_LOST = 5  # 体力少了不到这么多算「几乎满」：外出（主要收益是回体力）排到相談之后
 SHOP_POINTS = 100  # 相談删卡 / 强化 100P 起 [g8-PRO]
 CUSTOMIZE_ALERT_DEFAULT = 49  # 主数据 ProduceSetting.stepCustomizeStartAlertProducePointThreshold（取不到时用）
 
@@ -149,6 +150,18 @@ def _hajime(p: _Pick) -> tuple[int, str, list[str]]:
         i = max(oikomi, key=lambda k: st.criteria.get(p.opts[k].get("attr"), 0))
         a = p.opts[i].get("attr")
         return p.done(i, f"追い込みレッスン选审查基准最高的 {a}（{st.criteria.get(a, 0):.0%}）")
+    lost = st.max_stamina - st.stamina
+    tired = lost >= TIRED_LOST or st.stamina * 2 <= st.max_stamina
+    if (lessons or p.idx("class")) and tired:
+        # 累了：课程、授業让位给外出或休息，没有外出就休息（协调 11-17 初 REGULAR 实机：体力 9/30 选 SP 课，游戏弹「体力が低下しています」）
+        p.use("hajime.outing_when")
+        p.use("hajime.outing_vs_rest")
+        outing = p.idx("outing") if not (st.difficulty == "master") else []
+        rest_ok = bool(p.idx("rest")) and _rest_ok(p)
+        if outing and (st.produce_point >= OUTING_POINTS or not rest_ok):
+            return p.done(outing[0], f"体力少了 {lost}（{st.stamina}/{st.max_stamina}），课程让位，去外出")
+        if rest_ok:
+            return p.done(p.idx("rest")[0], f"体力少了 {lost}（{st.stamina}/{st.max_stamina}），课程让位，休息")
     if lessons:
         if st.stamina < LOW_STAMINA and p.idx("rest") and _rest_ok(p):
             return p.done(p.idx("rest")[0], f"课程周体力只剩 {st.stamina}（< {LOW_STAMINA}），先休息")
@@ -179,10 +192,13 @@ def _hajime(p: _Pick) -> tuple[int, str, list[str]]:
     order = ["allowance", "gift"]
     if st.produce_point >= SHOP_POINTS:
         order.append("shop")
-    if outing_ok:
+    near_full = lost < NEAR_FULL_LOST
+    if outing_ok and not near_full:
         order.append("outing")
-    order += ["shop", "rest", "outing"]  # 最后的 outing：MASTER 不推荐，但实在没别的可选
-    return _fallback_order(p, tuple(dict.fromkeys(order)), "没有课程 / 授業")
+    elif outing_ok:
+        p.use("hajime.outing_when")  # 外出是体力少了一半 / 15 以上时用的；满体力去外出主要收益（回体力）用不上（协调 11-17 初实机）
+    order += ["shop", "rest", "outing"]  # 最后的 outing：MASTER / 满体力不推荐，但实在没别的可选
+    return _fallback_order(p, tuple(dict.fromkeys(order)), "没有课程 / 授業" + ("，体力几乎是满的，外出排最后" if outing_ok and near_full else ""))
 
 
 def _nia(p: _Pick) -> tuple[int, str, list[str]]:
