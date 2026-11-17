@@ -170,3 +170,19 @@ def test_consult_end_confirm_interrupt():
     assert "相談終了" in interrupts.check(Frame(_real("nia-consult-end-confirm.jpg"), 0.0), rt)
     (x, y), = rt.raw_device.taps
     assert x > 400 and abs(y - 1160) < 20
+
+
+def test_support_event_art_tapped_on_unknown(tmp_path, monkeypatch):
+    """支援卡事件插画过场（实机帧：蓝绿几何底 + 横幅插画，没有字）判 unknown：点一下；纯蓝绿闪光不点。"""
+    from hiro.runtime import play
+    from hiro.runtime.frame import Frame
+
+    monkeypatch.setattr(play, "advance", lambda *a: pytest.fail("认不出的画面不交给 play.advance"))
+    now = [0.0]
+    rt, taps = _rt(tmp_path, now)
+    adv = ns.make_advance(ns.Sampler(lambda img: UNKNOWN, tmp_path / "frames"))
+    assert adv(rt, Frame(_real("nia-support-event-art.jpg"), 0.0), UNKNOWN) is True and taps == [ns.BUBBLE_TAP]
+    flash = np.zeros((1280, 720, 3), np.uint8)
+    flash[:] = (215, 190, 0)  # BGR 纯蓝绿
+    taps.clear()
+    assert adv(rt, Frame(flash, 0.0), UNKNOWN) is False and taps == []

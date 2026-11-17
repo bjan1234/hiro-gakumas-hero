@@ -153,7 +153,7 @@ def make_advance(sampler: Sampler, stop_s: float = UNKNOWN_STOP_S):
             state["since"] = None  # 右下「CONNECTING」：通信中，当加载等（N.I.A 试镜后 11-17：认不出，119 秒才停）
             return False
         if hit.name == "unknown" and not play._produce_finished(frame) and not landscape:
-            did = _nia_bubble(rt, frame)
+            did = _nia_bubble(rt, frame) or _event_art(rt, frame)
         else:
             did = play.advance(rt, frame, hit)
         if did or landscape:
@@ -180,6 +180,30 @@ def _connecting(img) -> bool:
     from hiro.vision.ui_templates import tpl
 
     return img is not None and img.shape[:2] == (1280, 720) and tpl("Common.TextConnecting").find(img, threshold=0.9) is not None
+
+
+ART_BANDS = ((0, 380), (520, 820), (900, 1280))  # 上 / 中 / 下
+ART_CYAN_MIN, ART_MID_MAX = 0.6, 0.6
+
+
+def _cyan(img, y1: int, y2: int) -> float:
+    hsv = cv2.cvtColor(img[y1:y2], cv2.COLOR_BGR2HSV)
+    return float(((hsv[..., 0] >= 88) & (hsv[..., 0] <= 108) & (hsv[..., 1] >= 120) & (hsv[..., 2] >= 150)).mean())
+
+
+def _event_art(rt, frame) -> bool:
+    """支援卡事件的插画过场：满屏蓝绿底 + 白色几何线条，中间一张横幅插画，没有字（N.I.A 采样 11-17：差し入れ后判 unknown，15 秒停）。
+    上下两段大半是蓝绿、中间不是（纯蓝绿是转场闪光 flash，快速判页已认、不点）→ 点 (12,12)。
+    H.I.F 认不出的画面本来就连点空白过去，所以只在采样里加，不改通用判页。"""
+    img = frame.img
+    if img is None or img.shape[:2] != (1280, 720):
+        return False
+    top, mid, bottom = (_cyan(img, *b) for b in ART_BANDS)
+    if top < ART_CYAN_MIN or bottom < ART_CYAN_MIN or mid >= ART_MID_MAX:
+        return False
+    logger.info("N.I.A 采样：支援事件插画过场（蓝绿 %.2f / %.2f / %.2f），点一下", top, mid, bottom)
+    rt.device.tap(*BUBBLE_TAP)
+    return True
 
 
 def _nia_bubble(rt, frame) -> bool:
@@ -218,12 +242,14 @@ def nia_core(scenario_mode: str):
 
     class NiaSampleCore(HifCore):
         nia_audition_number = None  # 试镜选档页选的档（NiaPages 设）：标签带上「#audition-N」，8a3a1e7 的中转层按它查战斗配置
+        nia_stage = None  # 试镜选档页左上读到的场次（mid1 / mid2 / final）；读不到才按进了几场数
 
         def _battle_label(self, ctx) -> str:
             n = self.exam_count
             self.exam_count += 1
             type(self).exams_done = self.exam_count
-            label = STAGES[min(n, len(STAGES) - 1)]
+            label = f"nia-{self.nia_stage}" if self.nia_stage else STAGES[min(n, len(STAGES) - 1)]
+            self.nia_stage = None
             if self.nia_audition_number is not None:
                 label = f"{label}#audition-{self.nia_audition_number}"
                 self.nia_audition_number = None
