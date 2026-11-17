@@ -361,3 +361,17 @@ def test_drinks_full_flag_caps_capacity():
     pd = ProduceDeciders(CAMPUS_HIRO, None)
     assert pd.produce_state(GameState(produce=prod)).drink_capacity == 4
     assert pd.produce_state(GameState(produce=prod, page_fields={"drinks_full": True})).drink_capacity == 3
+
+
+def test_action_select_skips_options_without_name():
+    """识别没认出名字的选项（没有 option 键）跳过，不让决策器抛 KeyError。"""
+    from hiro.brain.deciders import ProduceDeciders
+    from hiro.brain.state import CAMPUS_HIRO
+    from hiro.contracts import GameState
+
+    prod = {"mode": "produce-004", "step": 5, "stamina": 20, "max_stamina": 30, "produce_point": 0, "params": {"Vo": 1, "Da": 1, "Vi": 1}}
+    pd = ProduceDeciders(CAMPUS_HIRO, None)
+    d = pd.decide("ACTION_SELECT", GameState(produce=prod, page_fields={"options": [{"kind": "??", "center": [1, 1]}, _opt("sales")]}))
+    assert d.action.args["option"] == "sales" and d.source == "rule"
+    d = pd.decide("ACTION_SELECT", GameState(produce=prod, page_fields={"options": [{"kind": "??"}]}))
+    assert d.action.kind.value == "Wait"
