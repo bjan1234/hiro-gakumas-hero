@@ -141,3 +141,36 @@ def test_tower_back_on_real_frames(name):
         pytest.skip(f"需要实机截图 tower/pages/{name}")
     b = nav.tower_back(Frame(cv2.resize(cv2.imread(str(path)), (720, 1280)), 0.0))
     assert b is not None and abs(b.rect.center.x - 350) < 20 and abs(b.rect.center.y - 1160) < 20
+
+
+def test_resume_already_on_nia_page(monkeypatch):
+    """N.I.A 营業话题页上 resume（协调 11-17：40 秒「续跑进培育」没完成）：Runtime 的判页认出 NIA_* 页就算已在培育内。"""
+    monkeypatch.setattr("hiro.vision.quick.quick_page", lambda img: None)
+    monkeypatch.setattr("hiro.vision.classify.classify_scene", lambda img: UNKNOWN)
+    rt, _ = rig(monkeypatch, [frame({})])
+    rt.classify = lambda img: PageHit("NIA_SALES_EVENT", "nia_ocr")
+    assert finish.resume_produce(rt) == "already" and rt.raw_device.taps == []
+
+
+def test_resume_nia_page_on_real_frame(monkeypatch, tmp_path):
+    """实机帧（营業话题，左上「営業」+ 三个话题）：采样的判页包装认出 NIA_SALES_EVENT，resume 直接开始。"""
+    import os
+    from pathlib import Path
+
+    import cv2
+
+    from hiro.runtime import nia_sample as ns
+    from hiro.runtime.frame import Frame
+
+    p = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "nia-sales-event-3.png"
+    if not p.exists():
+        pytest.skip("需要实机截图 pages/nia-sales-event-3.png")
+    img = cv2.imread(str(p))
+    monkeypatch.setattr("hiro.vision.quick.quick_page", lambda im: None)
+    rt, _ = rig(monkeypatch, [frame({})])
+    real = Frame(img, 0.0)
+    rt.screen.shot = lambda: real
+    from hiro.vision.classify import classify
+
+    rt.classify = ns.Sampler(classify, tmp_path / "frames")
+    assert finish.resume_produce(rt) == "already"

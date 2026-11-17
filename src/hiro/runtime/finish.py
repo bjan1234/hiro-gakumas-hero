@@ -55,6 +55,12 @@ def resume_produce(rt, timeout: float = RESUME_TIMEOUT) -> str:
             if hit.area == "produce" or hit.name == "commu":
                 logger.info("已在培育内（%s），直接开始主循环", hit.name)
                 return "already"
+            alt = getattr(rt, "classify", None)
+            if callable(alt) and (h2 := alt(f.img)).name.startswith("NIA_"):
+                # Runtime 自己的判页认出了 N.I.A 特有页（营業场所 / 话题 / 试镜选档 / 加分，hiro.runtime.nia_sample 的判页包装）：
+                # 也是在培育内（协调 11-17：在营業事件页 resume，40 秒「续跑进培育」没完成）
+                logger.info("已在培育内（%s），直接开始主循环", h2.name)
+                return "already"
             now = rt.clock()
             if state["unknown_since"] is None:
                 state["unknown_since"] = now
