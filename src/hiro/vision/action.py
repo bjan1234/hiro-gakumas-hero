@@ -51,7 +51,7 @@ ACTIONS = [
     (re.compile(r"おでかけ"), "outing"),
     (re.compile(r"^営業$"), "sales"),  # N.I.A 営業（2次まで 6 週 等只有这一个按钮，11-17 原来读不出、决策 Wait 停）
     # N.I.A「Vo.自主レッスン」：属性前缀和「レッスン」之间夹着「自主」，要先于下面的 lesson（11-17 N.I.A 采样：attr 读成 None）
-    (re.compile(r"(Vo|Da|Vi)\.?自主レッ[スズ]ン"), "self_lesson"),
+    (re.compile(r"(Vo|Da|Vi)?\.?自主レッ[スズ]ン"), "self_lesson"),
     (re.compile(r"(Vo|Da|Vi)?\.?レッ[スズ]ン"), "lesson"),
 ]
 # 课程按钮左上角的 SP 角标（InProduce.IconSp）相对按钮文字中心的位置：N.I.A 实机 (−67, −146)
@@ -170,7 +170,10 @@ def _options(img: MatLike) -> list[ActionOption]:
             # 按钮图标在文字上方；「休む」是右侧的小按钮，文字在图标下方紧挨着
             center = (cx, ty - 22) if kind == "rest" else (cx, ty - 70)
             attr = None
-            if m.groups() and m.group(1):
+            if kind == "self_lesson":
+                # N.I.A 自主レッスン：按钮右下的属性小图标颜色优先，文字前缀兜底（用户 11-17：图标优先）
+                attr = _attr_by_badge(img, cx, ty - 20) or (m.group(1).lower() if m.group(1) else None)
+            elif m.groups() and m.group(1):
                 attr = m.group(1).lower()
             elif kind == "class":
                 attr = _attr_by_badge(img, cx, ty - 20)

@@ -238,3 +238,35 @@ def test_fields_reach_real_decider_through_session(tmp_path):
         if p.on_sales_place(rt, None, NS(fields=fields)) is DONE:
             break
     assert taps and taps[0][1] in (740, 878, 1016)
+
+
+@pytest.mark.parametrize(("name", "kinds", "costs"), [
+    ("nia-sales-place.png", ["local", "corporate", "commercial"], [5, 0, 5]),
+    ("nia-sales-place-resort.png", ["resort", "corporate", "commercial"], [0, 0, 5]),
+    ("nia-sales-place-expanded.png", ["local", "corporate", "commercial"], [5, 0, 5]),
+    ("nia-sales-place-camp-expanded.png", ["resort", "corporate", "commercial"], [0, 0, 5]),
+])  # fmt: skip
+def test_sales_place_by_icons_without_names(name, kinds, costs):
+    """用户 11-17：名字、金额读不出也要能决策。只给「営業先」提示文字，其余全靠图形：卡片颜色定种类、药丸里的爱心定耗不耗体力。"""
+    from hiro.vision.nia import read_sales_place
+
+    f = read_sales_place([("営業先を選択してください", (200, 540, 520, 560))], _img(name))
+    assert [p["kind"] for p in f["places"]] == kinds and [p["hp_cost"] for p in f["places"]] == costs
+
+
+def test_sales_place_expanded_rewards_by_icon():
+    from hiro.vision.nia import read_sales_place
+
+    f = read_sales_place([("営業先を選択してください", (200, 540, 520, 560))], _img("nia-sales-place-camp-expanded.png"))
+    assert f["selected"] == 0 and f["rewards"] == ["card", "stamina"] and abs(f["start"][1] - 779) < 15
+    f = read_sales_place([("営業先を選択してください", (200, 540, 520, 560))], _img("nia-sales-place-expanded.png"))
+    assert f["selected"] == 2 and f["rewards"] == ["card_plus"]
+
+
+@pytest.mark.parametrize("name", ["nia-sales-event.png", "nia-sales-event-3.png"])
+def test_sales_event_attr_by_icon_shape(name):
+    """营業话题：按左侧图标形状（话筒 Vo / 鞋 Da / 人像 Vi）定属性，文字没意义也一样。"""
+    from hiro.vision.nia import read_sales_event
+
+    texts = [("営業", (91, 52, 134, 75)), ("xxxx", (100, 690, 300, 710)), ("yyyy", (100, 790, 300, 810)), ("zzzz", (100, 890, 300, 910))]
+    assert [c["attr"] for c in read_sales_event(texts, _img(name))["choices"]] == ["Vo", "Da", "Vi"]
