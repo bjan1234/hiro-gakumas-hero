@@ -895,6 +895,7 @@ def test_nia_tag_number_fills_loadout_and_ctx_gets_full_loadout(monkeypatch, tmp
 def test_hajime_nia_search_switch_default_off(monkeypatch, spec, fail, uses):
     """初 / N.I.A：HIRO_EXAM_SEARCH_ALGO 设了才走搜索（缺省 uinet，行为变化开关默认关）；加载失败 uinet 兜底并写明。"""
     monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_NIA", raising=False)
     if spec:
         monkeypatch.setenv("HIRO_EXAM_SEARCH_ALGO", spec)
     else:
@@ -917,16 +918,22 @@ def test_hajime_nia_search_switch_default_off(monkeypatch, spec, fail, uses):
     assert ("兜底" in d.reason) == bool(fail)
 
 
-def test_exam_search_spec_hajime_default_on(monkeypatch):
-    """协调 11-17：初的中間 / 最終考试缺省走 Rust GNRPA，HIRO_EXAM_SEARCH_HAJIME=0 退回 uinet；课程、N.I.A、H.I.F 缺省不变。"""
+def test_exam_search_spec_family_switches(monkeypatch):
+    """协调 11-17 / 11-18：初的中間 / 最終考试和课程缺省走 Rust GNRPA，HIRO_EXAM_SEARCH_HAJIME=0 退回 uinet；N.I.A、H.I.F 缺省不变。"""
     monkeypatch.delenv("HIRO_EXAM_SEARCH_ALGO", raising=False)
     monkeypatch.delenv("HIRO_EXAM_SEARCH_HAJIME", raising=False)
     assert A.exam_search_algo_spec("hajime-mid1") == A.EXAM_DEFAULT_ALGO
     assert A.exam_search_algo_spec("hajime-final#audition-2") == A.EXAM_DEFAULT_ALGO
-    for label in ("hajime-lesson-vo", "nia-mid1", "nia-final", "r1", ""):
+    assert A.exam_search_algo_spec("hajime-lesson-vo-sp#lesson-2") == A.EXAM_DEFAULT_ALGO  # 课程也切（协调 11-18）
+    for label in ("nia-mid1", "nia-final", "r1", ""):
         assert A.exam_search_algo_spec(label) == ""
     monkeypatch.setenv("HIRO_EXAM_SEARCH_HAJIME", "0")
-    assert A.exam_search_algo_spec("hajime-mid1") == ""
+    assert A.exam_search_algo_spec("hajime-mid1") == A.exam_search_algo_spec("hajime-lesson-vo") == ""
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_NIA", raising=False)
+    assert A.exam_search_algo_spec("nia-mid2#audition-3") == ""  # N.I.A 缺省关（协调 11-18）
+    monkeypatch.setenv("HIRO_EXAM_SEARCH_NIA", "1")
+    assert A.exam_search_algo_spec("nia-mid2#audition-3") == A.exam_search_algo_spec("nia-final") == A.EXAM_DEFAULT_ALGO
+    assert A.exam_search_algo_spec("hajime-mid1") == ""  # 两个开关各管各的
     monkeypatch.setenv("HIRO_EXAM_SEARCH_ALGO", "my.x:Y")  # 显式指定的两个家族都管
     assert A.exam_search_algo_spec("nia-mid1") == A.exam_search_algo_spec("hajime-lesson-vo") == "my.x:Y"
 
@@ -986,17 +993,122 @@ def test_live_exam_loadout_built_on_first_decision(monkeypatch):
     algo = _Algo(("play", 0))
     monkeypatch.setattr(A, "load_algo", lambda *a, **k: algo)
     adv = A.BenchAdvisor(CAMPUS_HIRO)
-    sess = SimpleNamespace(state=SimpleNamespace(produce={"items": ["pitem_k"]}))
+    sess = SimpleNamespace(state=SimpleNamespace(produce={"items": ["pitem_k"], "challenge_items": ["pitem_c"], "nia_easy_key": True}))
+    got_items = {}
+    monkeypatch.setattr("hiro.search.exam_env.npc_enhance_permil", lambda items: got_items.update(items=list(items)) or (-700, ["pitem_c"]))
     adv.on_round_start(1, {"exam": "nia-mid2#audition-3", "idol": "i_card-x", "deck": [("p_card-a", 1), ("p_card-b", 0)], "session": sess})
     st, mem = _state([_card(0, "p_card-a", 1)], remaining=12, turn=1)
+    st.attr_permils = {"Vo": 20000, "Da": 30000, "Vi": 10000}  # 画面三项都读到（倍率不全时要等，见 test_hajime_audition_permil_screen_first）
     adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
     lo = algo.ctx.loadout
     assert asked == {"idol": "i_card-x", "produce": "produce-004", "rnd": "mid2", "number": 3}
     assert lo["produce_cards"] == ["p_card-a+1", "p_card-b"] and lo["exam"]["produce_exam_battle_config_id"] == "bc"
     assert lo["audition"]["rankThreshold"] == 1 and lo["produce_item_ids"] == ["pitem_k"] and lo["supports"] == [{"_supportCardId": "s"}]
     assert lo["skills"] == [] and lo["round"] == "mid2" and lo["idol_card_id"] == "i_card-x"
+    # 对手分增减：账本道具 + チャレンジP道具 + N.I.Aキー（平台记的 nia_easy_key，账本里没有）
+    assert got_items["items"] == ["pitem_k", "pitem_c", "pitem_00-3-330-0"] and lo["npc_enhance_permil"] == -700
     adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
     assert algo.ctx.loadout is not lo or algo.ctx.loadout == lo  # 只拼一次（第二步用同一份）
+
+
+@pytest.mark.bench_on
+@pytest.mark.parametrize("screen, want", [
+    ({"turns_total": 7, "clear_target": 40, "perfect_target": None, "level_ids": ["L"], "lesson_limit_up_score": 0}, (7, 40, 80)),
+    ({"turns_total": 6, "clear_target": 25, "perfect_target": 60, "level_ids": None}, (6, 25, 60)),  # 满分线读到了：用画面的
+    ({"turns_total": None, "clear_target": 40}, None),  # 读数不全：不拼，整场 uinet
+    (None, None),  # 平台没给课程读数
+])  # fmt: skip
+def test_live_lesson_from_screen(monkeypatch, screen, want):
+    """协调 / 平台 11-18：实机课程的回合数、合格线用平台的课程画面读数（state.exam_session.lesson），满分线读到就用、没读到按档位
+    （level_ids → resultTargetValueLimit + lesson_limit_up_score）。档位按日程位置定，不按同种同属性第几节查。"""
+    from hiro.bench_bridge import tower as tw
+
+    monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_HAJIME", raising=False)
+    monkeypatch.setenv("HIRO_FORMATION_PLAN", "off")
+    monkeypatch.setattr(tw, "master", lambda: SimpleNamespace(rows=lambda t: [{"id": "L", "limitTurn": 7, "successThreshold": 40,
+                                                                               "resultTargetValueLimit": 80}]))  # fmt: skip
+    monkeypatch.setattr("hiro.search.loadout.run_loadout", lambda produce, plan: ({"items": ("pitem_k",), "supports": (), "skills": ()}, []))
+    algo = _Algo(("play", 0))
+    monkeypatch.setattr(A, "load_algo", lambda *a, **k: algo)
+    es = SimpleNamespace(lesson=dict(screen) if screen else None)
+    sess = SimpleNamespace(state=SimpleNamespace(produce={}, exam_session=es))
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    adv.on_round_start(1, {"exam": "hajime-lesson-da-sp", "idol": None, "deck": [("p_card-a", 0)], "session": sess})
+    assert adv.round_algo is algo
+    st, mem = _state([_card(0, "p_card-a")], remaining=6, turn=1)
+    adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    if want is None:
+        assert adv.exam_loadout is None
+        return
+    les = algo.ctx.loadout["lesson"]
+    assert (les["limit_turn"], les["clear_score"], les["perfect_score"], les["parameter_type"], les["kind"]) == (*want, 2, "SP")
+    assert algo.ctx.loadout["produce_item_ids"] == ["pitem_k"] and "exam" not in algo.ctx.loadout
+
+
+@pytest.mark.bench_on
+def test_live_lesson_perfect_read_midway(monkeypatch):
+    """满分线开课时读不到（档位也对不上）→ 先不封顶；中途画面读到 PERFECTまで（平台给 perfect_target）→ 编成更新，ExamGnrpa 目标跟着封顶。"""
+    from hiro.bench_bridge import tower as tw
+    from hiro.search import exam_algo as X
+
+    monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    monkeypatch.setenv("HIRO_FORMATION_PLAN", "off")
+    monkeypatch.setattr(tw, "master", lambda: SimpleNamespace(rows=lambda t: []))
+    monkeypatch.setattr("hiro.search.exam_env._idol_card", lambda cid: {"planType": "ProducePlanType_Plan2"})
+    algo = _Algo(("play", 0))
+    monkeypatch.setattr(A, "load_algo", lambda *a, **k: algo)
+    es = SimpleNamespace(lesson={"turns_total": 9, "clear_target": 90, "perfect_target": None})
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    adv.on_round_start(1, {"exam": "hajime-lesson-vo-hard", "idol": None, "deck": [("p_card-a", 0)],
+                           "session": SimpleNamespace(state=SimpleNamespace(produce={}, exam_session=es))})  # fmt: skip
+    st, mem = _state([_card(0, "p_card-a")], remaining=9, turn=1)
+    adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    assert algo.ctx.loadout["lesson"]["perfect_score"] is None
+    es.lesson["perfect_target"] = 360
+    adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    assert algo.ctx.loadout["lesson"]["perfect_score"] == 360
+    g = X.ExamGnrpa.__new__(X.ExamGnrpa)
+    g.lo, g.obj, g.stats = {"lesson": {"clear_score": 90, "perfect_score": None}}, {"rivals": [], "clear_score": 90}, __import__("collections").Counter()
+    g._update_lesson(algo.ctx.loadout)
+    assert g.obj["score_cap"] == 360 and g.obj["clear_score"] == 90
+
+
+def test_lesson_levels_by_clear_hard_uses_produce_002():
+    """初 REGULAR 的追い込み实录用的是 produce-002 的 hard 档（平台 11-18：画面 9 / 90、11 / 165 = 002 hard-1 / hard-2）。"""
+    from hiro.search.exam_env import lesson_levels_by_clear
+
+    try:
+        rows = lesson_levels_by_clear("produce-001", "i_card-shro-3-007", "hard", 90)
+    except Exception as e:  # noqa: BLE001  没有主数据
+        pytest.skip(f"没有主数据：{e}")
+    assert rows and {r["resultTargetValueLimit"] for r in rows} == {360} and all("-002-" in r["id"] for r in rows)
+
+
+def test_exam_gnrpa_holds_strong_drinks_in_lessons(monkeypatch):
+    """协调 11-18：课程里强饮料（复制 / 抽牌 / 加行动 / 爆发）留到考试：搜索看到的局面和合法动作里没有它，下标重排，选出的动作换回画面下标。"""
+    from types import SimpleNamespace
+
+    from hiro.search import exam_algo as X
+    from hiro.search import tower_algo as ta
+
+    seen = {}
+
+    def fake_decide(self, ctx):
+        seen["obs"] = ctx.obs
+        seen["budget"] = ctx.budget
+        return ta.Decision(("drink", 0), {})
+
+    monkeypatch.setattr(ta.TowerGnrpa, "decide", fake_decide)
+    monkeypatch.setattr("hiro.search.exam_env.strong_drink", lambda d: d == "strong")
+    algo = X.ExamGnrpa.__new__(X.ExamGnrpa)
+    algo.hold_strong, algo.stats = True, __import__("collections").Counter()
+    obs = {"drinks": ["strong", "weak"], "legal": [["play", 0], ["drink", 0], ["drink", 1], ["end"]]}
+    d = algo.decide(SimpleNamespace(obs=obs, budget=3))
+    assert seen["obs"]["drinks"] == ["weak"] and seen["obs"]["legal"] == [["play", 0], ["drink", 0], ["end"]] and seen["budget"] == 3
+    assert d.action == ("drink", 1) and obs["drinks"] == ["strong", "weak"]  # 换回画面下标；原 obs 不动
+    algo.hold_strong = False
+    assert algo.decide(SimpleNamespace(obs=obs, budget=3)).action == ("drink", 0) and seen["obs"] is obs  # 考试不留
 
 
 def test_exam_env_support_passthrough_engine_format():
@@ -1004,3 +1116,132 @@ def test_exam_env_support_passthrough_engine_format():
 
     e = {"_supportCardId": "s", "_produceCardUpgradePermil": 50}
     assert _support(None, e) == e
+
+
+# ---------------------------------------------------------------- 倍率缺失（初第二局中間：倍率 0 → GNRPA 打 227 分，协调 11-18）
+@pytest.mark.bench_on
+@pytest.mark.parametrize("params, reads, want", [
+    # 初第二局中間：T1 画面倍率 0（正常）→ 这一步 uinet；T2 读到 Vi 3470 → 按 3470 / 1990 的比例从粗算推 Vo / Da
+    ({"Vo": 233, "Da": 247, "Vi": 159}, [{}, {"Vi": 3470}], [None, {"Vo": 5340, "Da": 4730, "Vi": 3470}]),
+    # 三属性没记账：要等画面三项都读到
+    ({}, [{"Vi": 3470}, {"Vi": 3470, "Vo": 5910}, {"Da": 4740}], [None, None, {"Vo": 5910, "Da": 4740, "Vi": 3470}]),
+])  # fmt: skip
+def test_hajime_audition_permil_screen_first(monkeypatch, params, reads, want):
+    """协调 11-18（用户确认）：初的考试画面倍率读数 0 = 画面没给，不能当真值交给 GNRPA。画面读到的那几项为准，没读到的按 实读 / 粗算
+    （三属性 + battle config，同客户端曲线；服务器还乘亲爱度加成，所以只当比例用）推；一项都没读到的步用 uinet，理由写「等画面读到倍率」。"""
+    from hiro.bench_bridge import tower as tw
+
+    monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_ALGO", raising=False)
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_HAJIME", raising=False)
+    monkeypatch.setenv("HIRO_FORMATION_PLAN", "off")
+    row = {"produceExamBattleConfigId": "bc", "produceExamGimmickEffectGroupId": "", "produceExamBattleNpcGroupId": "npc",
+           "rankThreshold": 3, "baseScore": 0, "forceEndScore": 900, "voteCount": 0, "isStaticNpcScore": False, "number": 1}  # fmt: skip
+    asked = {}
+    monkeypatch.setattr("hiro.search.exam_env.audition_row", lambda idol, produce, rnd, number=None: asked.update(produce=produce) or row)
+    monkeypatch.setattr(tw, "master", lambda: SimpleNamespace(battle_config=lambda cid: {"vocal": 30, "dance": 40, "visual": 30, "turn": 9}))
+    monkeypatch.setattr(tw, "score_bonus_permils", lambda cid, p: asked.update(params=p) or [3060, 2710, 1990])
+    monkeypatch.setattr("hiro.search.loadout.run_loadout", lambda produce, plan: ({"items": (), "supports": (), "skills": ()}, []))
+    hif, search = _Algo(("play", 0)), _Algo(("play", 0))
+    monkeypatch.setattr(A, "load_algo", lambda s=None, **kw: search if s == A.EXAM_DEFAULT_ALGO else hif)
+    sess = SimpleNamespace(state=SimpleNamespace(produce={"mode": "produce-002", "params": params}))
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    adv.on_round_start(1, {"exam": "hajime-mid1", "idol": "i_card-x", "deck": [("p_card-a", 0)], "session": sess})
+    assert asked["produce"] == "produce-002" and adv.exam["crit"] == [30, 40, 30] and adv.exam["turns"] == 9
+    for read, w in zip(reads, want):
+        st, mem = _state([_card(0, "p_card-a")], remaining=9, turn=1)
+        st.attr_permils = dict(read)
+        n_hif, n_search = len(hif.seen), len(search.seen)
+        d = adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+        if w is None:
+            assert len(hif.seen) == n_hif + 1 and len(search.seen) == n_search and "等画面读到倍率" in d.reason
+        else:
+            assert len(search.seen) == n_search + 1 and search.ctx.loadout["score_bonus_permils"] == [w["Vo"], w["Da"], w["Vi"]]
+            assert "兜底" not in d.reason
+    assert adv.round_algo is search  # 等倍率的步不算开局失败
+
+
+def test_exam_gnrpa_refuses_zero_permils():
+    """ExamGnrpa 开局：没有编成，或试镜的三属性倍率不全 → ExamUnsupported（中转层整场退回 uinet）；课程没有倍率，不查。"""
+    from hiro.search.exam_algo import ExamGnrpa
+    from hiro.search.exam_env import ExamUnsupported
+
+    for lo, msg in (({"idol_card_id": "i"}, "编成"), ({"produce_cards": ["p"], "score_bonus_permils": [0, 0, 0]}, "倍率"),
+                    ({"produce_cards": ["p"], "score_bonus_permils": {"1": 1000, "2": 0, "3": 1000}}, "倍率")):  # fmt: skip
+        with pytest.raises(ExamUnsupported, match=msg):
+            ExamGnrpa.__new__(ExamGnrpa).begin(SimpleNamespace(loadout=lo, meta={}))  # 不走构造（旧 Rust 包时构造会报错）
+
+
+def _guarded(monkeypatch, steps, lo=None):
+    """ExamGnrpa 的护栏单测：steps = [(画面分, 我们动作后引擎的分, 终局分预测)]，返回每步结果（Decision 或异常）。"""
+    from hiro.search import exam_algo as X
+    from hiro.search import tower_algo as ta
+
+    algo = X.ExamGnrpa.__new__(X.ExamGnrpa)
+    algo.calib, algo._expect, algo.hold_strong, algo.lo = {"pred": 0, "act": 0, "n": 0}, None, False, lo or {}
+    it = iter(steps)
+    out = []
+
+    def fake(self, ctx):
+        self.rx = SimpleNamespace(score=ctx.obs["_engine"], ended=False)
+        return ta.Decision(("play", 0), {"score_quantiles": {"50%": ctx.obs["_q"]}})
+
+    monkeypatch.setattr(ta.TowerGnrpa, "decide", fake)
+    for screen, engine, q in it:
+        try:
+            out.append(algo.decide(SimpleNamespace(obs={"num": {"score": screen}, "_engine": engine, "_q": q, "drinks": [], "legal": []})))
+        except X.SearchDistrust as e:
+            out.append(e)
+    return out
+
+
+def test_guard_engine_vs_screen_calibration(monkeypatch):
+    """引擎算的加分和画面实际加分对账：倍率为 0 时引擎每步 +0、画面 +40 → 3 步后判不可信（整场退回 uinet）；对得上的不报。"""
+    from hiro.search.exam_algo import SearchDistrust
+
+    bad = _guarded(monkeypatch, [(0, 0, 50), (40, 40, 50), (80, 80, 50), (120, 120, 50), (160, 160, 50)])  # 引擎每步 +0，画面 +40
+    assert all(not isinstance(x, SearchDistrust) for x in bad[:3]) and isinstance(bad[3], SearchDistrust) and bad[3].whole_round
+    ok = _guarded(monkeypatch, [(0, 45, 900), (40, 80, 900), (80, 130, 900), (120, 170, 900), (170, 200, 900)])
+    assert not any(isinstance(x, SearchDistrust) for x in ok)
+    noisy = _guarded(monkeypatch, [(0, 20, 900), (40, 60, 900), (100, 120, 900), (160, 170, 900), (200, 230, 900)])  # 0.4 倍：bench 正常局有
+    assert not any(isinstance(x, SearchDistrust) for x in noisy)
+    lesson = _guarded(monkeypatch, [(0, 0, 50), (40, 40, 50), (80, 80, 50), (120, 120, 50), (160, 160, 50)], lo={"lesson": {"clear_score": 40}})
+    assert not any(isinstance(x, SearchDistrust) for x in lesson)  # 课程不查（追い込み加成等已知缺口会让比值很低）
+
+
+def test_guard_zero_prediction(monkeypatch):
+    """终局分预测中位 ≤ 0：这一步不信它（只这一步退回 uinet）。"""
+    from hiro.search.exam_algo import SearchDistrust
+
+    out = _guarded(monkeypatch, [(0, 0, 0)])
+    assert isinstance(out[0], SearchDistrust) and not out[0].whole_round
+
+
+@pytest.mark.bench_on
+def test_search_distrust_whole_round_switches_to_hif(monkeypatch):
+    """搜索判定整场不可信（SearchDistrust whole_round）：这一场剩下都用 uinet，理由写「不可信」，不再回去调搜索。"""
+    from hiro.search.exam_algo import SearchDistrust
+
+    monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_ALGO", raising=False)
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_HAJIME", raising=False)
+
+    class Flaky(_Algo):
+        calls = 0
+
+        def decide(self, ctx):
+            self.calls += 1
+            if self.calls >= 2:
+                raise SearchDistrust("引擎算的加分和画面差太多")
+            return super().decide(ctx)
+
+    hif, search = _Algo(("play", 0)), Flaky(("play", 0))
+    monkeypatch.setattr(A, "load_algo", lambda s=None, **kw: search if s == A.EXAM_DEFAULT_ALGO else hif)
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    adv.on_round_start(1, {"exam": "hajime-final", "idol": None, "deck": []})
+    reasons = []
+    for _ in range(3):
+        st, mem = _state([_card(0, "p_card-a")], remaining=9, turn=1)
+        reasons.append(adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()]).reason)
+    assert search.calls == 2 and len(hif.seen) == 2
+    assert "兜底" not in reasons[0] and all("不可信" in r for r in reasons[1:])

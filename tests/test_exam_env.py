@@ -147,3 +147,14 @@ def test_objective_scales_master_rivals(monkeypatch):
     lo = {"exam": {"produce_exam_battle_npc_group_id": "g"}, "npc_enhance_permil": -800}
     assert E.objective(lo)["rivals"] == [300, 120]  # 1000×0.2 + 500×0.2、500×0.2 + 100×0.2
     assert E.objective({**lo, "npc_enhance_permil": 0})["rivals"] == [1500, 600]
+
+
+def test_score_points_cover_hajime_and_nia():
+    """Master._score_points 以前只收 -tower_ 的行：初 / N.I.A 的 battle score config 查不到，实机按三属性粗算倍率会失败（协调 11-18）。"""
+    from hiro.bench_bridge import tower as tw
+
+    try:
+        pts = tw.master().score_points("p_exam_battle_score_config-voda-03-produce-001-1")
+    except Exception as e:  # noqa: BLE001  没有主数据
+        pytest.skip(f"没有主数据：{e}")
+    assert pts and pts == sorted(pts, key=lambda r: int(r.get("parameter") or 0))
