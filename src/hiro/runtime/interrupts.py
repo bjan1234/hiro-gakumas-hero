@@ -255,9 +255,61 @@ def achievement_toast(frame, rt) -> str | None:
     return "成就提示条盖住页头：等它消失"
 
 
+# 主页通知（Mac 账号 2 11-17：重启、重新数据连携后续跑，主页一连弹 5 个「親愛度STEP3解放」，每个偶像一个，后面跟「使用期限確認」；
+# 判页认不出 → 续跑当成「已在培育内」，182 秒停机）。
+# 親愛度解放：全屏模糊背景 + 底部白色圆形 ×（中心 (360,1200)），没有橙黄标题条。先看 × 的像素（圆环白、中心有深色笔画，约 1 ms），
+# 再 OCR 确认「親愛度」「解放」——日程表浮层底部也有同样的 ×（fixtures 610 张里只有它和这一张过像素判据）。
+AFFECTION_CLOSE = (360, 1200)
+USE_LIMIT_CANCEL = (212, 1161)  # 「使用期限確認」只有左下一个「キャンセル」
+
+
+def _close_button(img) -> bool:
+    import cv2
+    import numpy as np
+
+    if img is None or img.shape[:2] != (1280, 720):
+        return False
+    cx, cy = AFFECTION_CLOSE
+    yy, xx = np.mgrid[cy - 40 : cy + 40, cx - 40 : cx + 40]
+    d = np.hypot(xx - cx, yy - cy)
+    hsv = cv2.cvtColor(img[cy - 40 : cy + 40, cx - 40 : cx + 40], cv2.COLOR_BGR2HSV)
+    white = (hsv[..., 1] < 30) & (hsv[..., 2] > 230)
+    dark = hsv[..., 2] < 110
+    return float(white[(d > 22) & (d < 34)].mean()) >= 0.8 and float(dark[d < 16].mean()) >= 0.1
+
+
+def affection_unlock(frame, rt) -> str | None:
+    """主页「親愛度STEPn解放」通知：点底部 ×。"""
+    if not _close_button(frame.img):
+        return None
+    texts = [t.text.replace(" ", "") for t in frame.texts]
+    if not (any("親愛度" in t for t in texts) and any("解放" in t for t in texts)):
+        return None
+    if _recently(rt, "affection_unlock"):
+        return "親愛度解放通知：刚点过 ×，等它关掉"
+    rt.device.tap(*AFFECTION_CLOSE)
+    _tapped(rt, "affection_unlock")
+    return "親愛度解放通知：点 ×"
+
+
+def use_limit(frame, rt) -> str | None:
+    """主页「使用期限確認」（使用期限の近い持ち物があります）：点「キャンセル」（只是提示，不去持ち物页）。"""
+    if not frame.has_dialog:
+        return None
+    title = (frame.dialog or {}).get("title") or ""
+    if "使用期限" not in title and not any("使用期限の近い" in t.text.replace(" ", "") for t in frame.texts):
+        return None
+    if _recently(rt, "use_limit"):
+        return "使用期限確認：刚点过キャンセル，等它关掉"
+    cancel = _cancel(frame)
+    rt.device.tap(*(cancel.rect.center if cancel is not None else USE_LIMIT_CANCEL))
+    _tapped(rt, "use_limit")
+    return "使用期限確認：点キャンセル"
+
+
 Interrupt = Callable[[object, object], "str | None"]
 DEFAULT: tuple[Interrupt, ...] = (red_line, comm, stop_notice, date_changed, settings, customize_confirm, tutorial, reroll_confirm,
-                                   achievement_toast)
+                                   achievement_toast, affection_unlock, use_limit)
 
 
 def check(frame, rt, interrupts: tuple[Interrupt, ...] = DEFAULT) -> str | None:

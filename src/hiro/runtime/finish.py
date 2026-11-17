@@ -17,6 +17,7 @@ from hiro.vision.ui_templates import box
 logger = logging.getLogger(__name__)
 
 RESUME_TIMEOUT = 40.0
+UNKNOWN_HOME_S = 8.0  # 续跑时画面一直认不出这么久：按回首页的按钮点一下（主页通知框之类，中断层没接的）
 FINISH_TIMEOUT = 180.0
 BLANK_TAP = (12, 12)  # 没有按钮的过场：点左上角空白（同 KAA skip() / hiro.loop.advance.ADVANCE_TAP）
 END = Outcome("end", "培育结束")  # 页面处理器返回它：这一局打完了，Runtime.run 正常结束
@@ -28,11 +29,14 @@ def _texts(f) -> list[str]:
 
 def resume_produce(rt, timeout: float = RESUME_TIMEOUT) -> str:
     """进行中的培育续跑：首页 / 「プロデュース再開」框 → 点「再開する」→ 进培育。返回 resumed（点了再開）/ already（本来就在培育里）。
-    活动登录奖励挡在前面时点底部空白翻掉。"""
+    活动登录奖励挡在前面时点底部空白翻掉。
+    认不出的画面（unknown）不当成「已在培育内」（Mac 账号 2 11-17：主页连弹 5 个「親愛度STEP3解放」+「使用期限確認」，判成 unknown
+    → 直接开主循环，182 秒停机）：先交中断层处理，一直认不出 UNKNOWN_HOME_S 秒就点回首页的按钮；认出培育页 / 剧情才算 already，
+    到超时还认不出就停机（ResumeBlocked），不盲进主循环。"""
     from hiro.vision.classify import classify_scene
     from hiro.vision.quick import quick_page
 
-    state = {"tapped_resume": False, "clicked_ongoing": False}
+    state = {"tapped_resume": False, "clicked_ongoing": False, "unknown_since": None}
 
     def step(f):
         if (btn := rr.resume_button(f.texts)) is not None or (btn := nav.find(f, "Produce.ButtonResume")) is not None:
@@ -48,10 +52,23 @@ def resume_produce(rt, timeout: float = RESUME_TIMEOUT) -> str:
                 rt.device.tap(*q["tap"])  # 活动登录奖励（培育外）：翻掉再说
                 return None
             hit = classify_scene(f.img)
-            if hit.area == "produce" or hit.name in ("commu", "unknown"):
+            if hit.area == "produce" or hit.name == "commu":
                 logger.info("已在培育内（%s），直接开始主循环", hit.name)
                 return "already"
-        elif not state["clicked_ongoing"]:
+            now = rt.clock()
+            if state["unknown_since"] is None:
+                state["unknown_since"] = now
+                logger.info("续跑：画面认不出（%s），不当成培育内，等中断层 / 回首页", hit.name)
+            elif now - state["unknown_since"] >= UNKNOWN_HOME_S:
+                for name in nav.HOME_BUTTONS:
+                    if (m := nav.find(f, name)) is not None:
+                        logger.info("续跑：画面认不出 %.0fs，点 %s 回首页", now - state["unknown_since"], name)
+                        nav.tap_match(rt, m)
+                        state["unknown_since"] = now
+                        break
+            return None
+        state["unknown_since"] = None
+        if home and not state["clicked_ongoing"]:
             rt.device.tap(*box("Produce.BoxProduceOngoing").center)
             state["clicked_ongoing"] = True
         return None

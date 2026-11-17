@@ -80,3 +80,28 @@ def test_run_stops_on_end(monkeypatch):
     rt.classify = lambda img: PageHit("PRODUCE_END", "template")
     rt.handlers = {"PRODUCE_END": lambda rt, f, hit: finish.END}
     assert rt.run(until=lambda: False) == 1
+
+
+def test_resume_unknown_is_not_in_produce(monkeypatch):
+    """认不出的画面不当成「已在培育内」（Mac 账号 2 11-17：主页通知框判 unknown → 直接开主循环，182 秒停机）：
+    认不出时不点，UNKNOWN_HOME_S 秒后按回首页的按钮点；到首页再点「プロデュース中」→「再開する」。"""
+    monkeypatch.setattr("hiro.vision.quick.quick_page", lambda img: None)
+    monkeypatch.setattr("hiro.vision.classify.classify_scene", lambda img: UNKNOWN)
+    popup = frame({"Common.ButtonIconClose": (360, 1200)})
+    dlg = frame({}, [T("プロデュース再開", 360, 500), T("再開する", 500, 1160)])
+    seq = {1: [frame(HOME)], 2: [dlg], 3: [frame({})]}
+    rt, _ = rig(monkeypatch, [popup], on_tap=lambda taps: seq.get(len(taps)))
+    assert finish.resume_produce(rt) == "resumed"
+    assert rt.raw_device.taps[0] == (360, 1200) and rt.raw_device.taps[1] == tuple(finish.box("Produce.BoxProduceOngoing").center)
+
+
+def test_resume_stops_when_never_recognized(monkeypatch):
+    """一直认不出、也没有回首页的按钮：到超时停机，不进主循环。"""
+    monkeypatch.setattr("hiro.vision.quick.quick_page", lambda img: None)
+    monkeypatch.setattr("hiro.vision.classify.classify_scene", lambda img: UNKNOWN)
+    rt, _ = rig(monkeypatch, [frame({})])
+    from hiro.loop.errors import ResumeBlocked
+
+    with pytest.raises(ResumeBlocked, match="续跑进培育"):
+        finish.resume_produce(rt, timeout=20)
+    assert rt.raw_device.taps == []

@@ -651,3 +651,40 @@ def test_idle_stop_logs_and_stops_when_nothing_happens(caplog):
     for _ in range(20):
         rt2.step()
         clock2.now += 10  # 一直有操作：不停
+
+
+def test_affection_unlock_taps_close_on_real_frame(monkeypatch):
+    """主页「親愛度STEP3解放」（Mac 账号 2 11-17，一连 5 个）：点底部 ×；没有这两个字的同款 ×（日程表浮层）不点。"""
+    import os
+    from pathlib import Path
+
+    import cv2
+
+    from hiro.runtime.frame import Frame
+
+    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "home-affection-step-unlock.png"
+    if not path.exists():
+        pytest.skip("需要实机截图 pages/home-affection-step-unlock.png")
+    img = cv2.resize(cv2.imread(str(path)), (720, 1280))
+    rt, clock = runtime([frame()])
+    f = Frame(img, 0.0)
+    f.__dict__["texts"] = [T("親愛度STEP3解放", 360, 480), T("親愛度STEP3が解放されました", 360, 860)]
+    assert "親愛度" in interrupts.affection_unlock(f, rt) and rt.raw_device.taps == [interrupts.AFFECTION_CLOSE]
+    assert "刚点过" in interrupts.affection_unlock(f, rt) and len(rt.raw_device.taps) == 1  # 框淡出中：不连点
+    clock.now += interrupts.TAP_GAP_S
+    assert interrupts.affection_unlock(f, rt) and len(rt.raw_device.taps) == 2  # 下一个偶像的通知
+    other = Frame(img, 0.0)
+    other.__dict__["texts"] = [T("スケジュール", 360, 200)]
+    assert interrupts.affection_unlock(other, rt) is None
+    assert interrupts.affection_unlock(frame(), rt) is None  # 没有 ×：不 OCR、不点
+
+
+def test_use_limit_dialog_taps_cancel():
+    """主页「使用期限確認」：点「キャンセル」（读不到按钮时点左下固定位置）。"""
+    dlg = {"kind": "other", "title": "使用期限確認", "danger": False, "y": 600}
+    rt, _ = runtime([frame()])
+    f = frame([T("使用期限確認", 360, 400), T("使用期限の近い持ち物があります", 360, 600), T("キャンセル", 212, 1161)], dialog=dlg)
+    assert "キャンセル" in interrupts.use_limit(f, rt) and rt.raw_device.taps == [(212, 1161)]
+    rt, _ = runtime([frame()])
+    assert interrupts.use_limit(frame([T("使用期限確認", 360, 400)], dialog=dlg), rt) and rt.raw_device.taps == [interrupts.USE_LIMIT_CANCEL]
+    assert interrupts.use_limit(frame([T("確認", 360, 400)], dialog=PLAIN), rt) is None
