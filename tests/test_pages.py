@@ -362,3 +362,29 @@ def test_consult_hud(rel, hud):
     obs = observation(1, 0.0, "CONSULT", raw)
     assert (obs.fields["stamina"], obs.fields["max_stamina"], obs.fields["produce_point"]) == hud
     assert obs.problems(strict=True) == [] and obs.field_meta["produce_point"].method == "ocr"
+
+
+@pytest.mark.parametrize(("rel", "capacity", "full"), [("pages/consult-acct2-3slots-p15m3.jpg", None, None),
+                                                      ("pages/consult-drinks-full-p15m3.jpg", 3, True)])  # fmt: skip
+def test_consult_drinks_full_and_three_slot_bar(rel, capacity, full):
+    """Mac p15-main3 11-17：账号 2 饮料栏只有 3 格、持有 3 瓶，底栏第 4 个位置原来读成「空槽」、容量写成 4，相談连点货架饮料
+    「交換する」都没亮。现在底栏第 4 格确定存在（有饮料 / 空槽杯子）才给 4，否则不给；选中饮料后「交換する」上方的
+    「Pドリンク所持上限」红标 → drinks_full，容量按持有瓶数（3）。"""
+    from hiro.vision.extract import extract
+    from hiro.vision.observe import observation
+
+    p = FIX / rel
+    if not p.exists():
+        pytest.skip(f"需要实机截图 {rel}")
+    raw, _ = extract("CONSULT", cv2.imread(str(p)))
+    f = observation(1, 0.0, "CONSULT", raw).fields
+    assert len(f["drinks"]) == 3 and f.get("drink_capacity") == capacity and f.get("drinks_full") == full
+
+
+def test_bar_capacity_four_with_empty_cups_on_bright_background():
+    """4 格账号的空槽在亮背景（白墙）上杯子对比度低：按边缘比也要认出第 4 格（scenes/00041 四格全空）。"""
+    from hiro.vision.items import CUP_MIN, _empty_cup, read_drink_slots
+    from hiro.vision.offline import load
+
+    img = load(cv2.imread(str(FIX / "scenes" / "00041-ACTION_SELECT.jpg")))
+    assert all(_empty_cup(img, d["center"]) >= CUP_MIN for d in read_drink_slots(img))

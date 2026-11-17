@@ -1352,6 +1352,16 @@
     360,
     110
    ]
+  },
+  "InProduce.DrinkSlotEmptyCup": {
+   "file": "InProduce.DrinkSlotEmptyCup.png",
+   "slice_rect": [
+    294,
+    1176,
+    48,
+    48
+   ],
+   "source": "hiro tests/fixtures/drinks/r7-00002.jpg（饮料栏空槽的半透明杯子，11-17；hiro.vision.items._empty_cup 按灰度在格子中心附近找）"
   }
  },
  "boxes": {

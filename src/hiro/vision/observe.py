@@ -246,8 +246,12 @@ def _consult_observation(fields: dict) -> dict:
     # 货架没完整出现（入场剧情、获得动画、详情弹窗盖住）时格子会读出幻影（实机第四局 r4 00092 剧情帧读出「私がスター+」）：
     # shelf 给 None，reduce 保留上一帧完整的货架，observe_complete 会等到货架出现
     shelf = fields.get("shelf") if fields.get("complete") is not False else None
+    capacity = fields.get("drink_capacity")
+    if fields.get("drinks_full") and fields.get("drinks") is not None:
+        capacity = len(fields["drinks"])  # 游戏说饮料栏满了：容量就是现在持有的瓶数（底栏读数从不把账号 2 的 3 格读成 4，这个值会留着）
     return {"shelf": shelf, "services": fields.get("services"), "rerolls_left": fields.get("rerolls_left"),
-            "complete": fields.get("complete"), "drinks": fields.get("drinks"), "drink_capacity": fields.get("drink_capacity"),
+            "complete": fields.get("complete"), "drinks": fields.get("drinks"), "drink_capacity": capacity,
+            "drinks_full": fields.get("drinks_full") or None,
             "stamina": fields.get("stamina"), "max_stamina": fields.get("max_stamina"), "produce_point": fields.get("produce_point")}  # fmt: skip
 
 
