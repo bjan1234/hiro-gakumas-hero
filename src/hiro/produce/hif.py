@@ -1469,6 +1469,17 @@ class HifCore:
 
                 forced = choose_card_to_change(self.s.state.page_fields.get("cards") or [], None)
                 if forced is None:
+                    # 一屏卡格全是保护卡（mainz3 11-18：牌组 22 张，整副拼接不可信只留第一屏 12 张）：按牌组账本挑，执行按 card_id 翻屏找
+                    # 局面齐全时用 ProduceState.deck（保护卡按确认张数）；不齐全时用账本原样（保护卡所有副本都不换，更保守）
+                    ps = self.deciders.produce_state(self.s.state)
+                    ledger = list(ps.deck) if ps is not None and ps.deck else [
+                        c if isinstance(c, dict) else {"card_id": getattr(c, "card_id", None), "upgrade": getattr(c, "upgrade", 0)}
+                        for c in (self.s.state.produce or {}).get("deck") or []]  # fmt: skip
+                    forced = choose_card_to_change(ledger, None) if ledger else None
+                    if forced is not None:
+                        d.warnings.append(f"换卡页一屏都是保护卡，按牌组账本换出 {forced}")
+                        args = {**args, "remove_index": None}
+                if forced is None:
                     self._stop("SKILL_CARD_CHANGE_2", f"取消换卡后又回到换卡页，且没有可换出的非保护卡（第 {self._change_cancels} 次）", obs=obs, decision=d)
                 cancel, args = False, {**args, "remove_card_id": forced}
                 d.warnings.append(f"取消会绕回换卡页：改换出价值最低的非保护卡 {forced}")

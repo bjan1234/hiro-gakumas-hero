@@ -153,3 +153,24 @@ def test_change_pick_by_cull():
     on = ProduceDeciders(CAMPUS_HIRO, None, change_controlled=True).change_pick(state).action.args["pick_index"]
     keys = {c["index"]: D.cull_key(c["card_id"], 0, finals=True) for c in cands}
     assert on == max(keys, key=keys.get) and on != 1  # 最晚才会被删的；不挑冲突牌 トキメキ
+
+def test_forced_change_falls_back_to_ledger_when_screen_all_protected():
+    """DMM mainz3（11-18 03:34，窗口 559x993）：牌组 22 张，换卡对话框整副拼接不可信只留第一屏 12 张，全是核心 / 保护卡；
+    取消后绕回换卡页，「没有可换出的非保护卡」停机。一屏里挑不出时按牌组账本挑价值最低的非保护卡，执行按 card_id 翻屏找。"""
+
+    class LedgerSession(StubSession):
+        def observe(self, scene, **_):
+            self.state = GameState(page_fields=dict(self.fields_by_page.get(scene, {})),
+                                   produce={"deck": [{"card_id": DAYDREAM, "upgrade": 1}, {"card_id": BASIC, "upgrade": 0}]})  # fmt: skip
+            return scene
+
+    st = _strategy({})
+    st.s = LedgerSession({"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": DAYDREAM, "upgrade": 1}], "deck_complete": False}})
+    st.CHANGE_OBSERVE_TRIES = 1
+    st.s.recover = lambda *a: None
+    st.deciders.decide = lambda page, state, **kw: __import__("hiro.contracts", fromlist=["Decision"]).Decision(
+        Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7)
+    st._change_cancels = 1
+    ctx = StubCtx(stage=2)
+    st.on_skill_card_change(ctx)
+    assert ctx.calls == [("s2", BASIC, False)] and ctx.stage2_args[0] is None  # 按 card_id 翻屏找，不按格子号
