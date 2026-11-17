@@ -83,10 +83,29 @@ IN_PRODUCE_PAGES = ("ACTION_SELECT", "STUDY", "OUTING", "CONSULT", "SELECT_CARD"
                     "SPECIAL_GUIDANCE", "PRACTICE", "HIF_EXAM", "EXAM")  # fmt: skip  # 已经在培育里的页面：开局流程到此为止，交主循环
 
 
+FINALS_START_BUTTON = "Produce.ButtonHifFinalsStart"  # 「H.I.F本戦へ」按钮字（从 DMM 实机帧切的；本战開始確認页 0.96+，其余 607 张帧 ≤ 0.46）
+
+
+def _norm(s: str) -> str:
+    return s.replace(" ", "").replace("ヘ", "へ").replace("戰", "戦")
+
+
+def _finals_button(f):
+    """「H.I.F本戦へ」按钮的位置 (x, y)：先找按钮模板，再找 OCR 读到的底部「本戦」字。没有返回 None。"""
+    if (m := nav.find(f, FINALS_START_BUTTON)) is not None:
+        return tuple(m.rect.center)
+    b = next((t for t in f.texts if "本戦" in _norm(t.text) and t.rect.center.y > 1000), None)
+    return tuple(b.rect.center) if b is not None else None
+
+
 def _finals_start(f) -> bool:
-    """本战「開始確認」页（选拔回忆概要 + 「H.I.F本戦へ」按钮）。"""
-    texts = [t.text for t in f.texts]
-    return any("本戦へ" in t for t in texts) and any("開始確認" in t for t in texts)
+    """本战「開始確認」页（选拔回忆概要 + 「H.I.F本戦へ」按钮）。按钮字我们的 OCR 常读不出（橙底白字：三张实机帧都没读到），
+    RapidOCR 也读偏过（Windows 9580c0c 11-17：没认出 → 落到 Step1.ButtonNext 模板，把「H.I.F本戦へ」当次へ点了）：
+    按钮模板命中就算；没命中时 OCR 要同时读到页头「開始確認」和底部「本戦」（ヘ / へ、戰 / 戦 都认）。"""
+    if nav.find(f, FINALS_START_BUTTON) is not None:
+        return True
+    texts = [(_norm(t.text), t.rect.center.y) for t in f.texts]
+    return any("本戦" in t and y > 1000 for t, y in texts) and any("開始確認" in t for t, y in texts)
 
 
 def _in_produce(rt, f) -> bool:
@@ -220,8 +239,7 @@ def step1(rt, skin_id: str) -> None:
     def next_step(f):
         if nav.find(f, "Produce.TextStepIndicator2") is not None or nav.find(f, "Produce.TextStepIndicator4Or2") is not None:
             return True
-        if (m := nav.find(f, "Produce.Step1.ButtonNext")) is not None:
-            nav.tap_match(rt, m)
+        _tap_step1_next(rt, f)
         return None
 
     rt.drive(next_step, STEP_TIMEOUT, "第 1 步点次へ")
@@ -385,9 +403,7 @@ def prepare(rt, mode: str, *, idol: str, support_set: int | None = None, memory_
                 return "step4"
             if _in_produce(rt, f):
                 return "started"
-            if (m := nav.find(f, "Produce.Step1.ButtonNext")) is not None:
-                logger.info("本战第 1 步：点 Step1.ButtonNext %s", tuple(m.rect.center))
-                nav.tap_match(rt, m)
+            _tap_step1_next(rt, f)  # 只在认出第 1 步页时点；认不出的页等，不点底部大按钮
             return None
 
         r = rt.drive(to_confirm, STEP_TIMEOUT, "本战第 1 步点次へ")
@@ -402,15 +418,14 @@ def prepare(rt, mode: str, *, idol: str, support_set: int | None = None, memory_
 
 
 def _press_finals_start(rt) -> bool:
-    """「開始確認」页核对过选拔回忆后点「H.I.F本戦へ」（按 OCR 找按钮字），等离开这一页。返回 True（本战已开始，不用再点プロデュース開始）。"""
+    """「開始確認」页核对过选拔回忆后点「H.I.F本戦へ」（按钮模板，退路 OCR 字），等离开这一页。返回 True（本战已开始，不用再点プロデュース開始）。"""
 
     def press(f):
         if not _finals_start(f):
             return True  # 离开开始确认页了（之后的设置框 / 教程 / 选行动由中断层和主循环接）
-        b = next((t for t in f.texts if "本戦へ" in t.text and t.rect.center.y > 1000), None)
-        if b is not None:
-            logger.info("本战开局：点「%s」%s", b.text, tuple(b.rect.center))
-            rt.device.tap(*b.rect.center)
+        if (pos := _finals_button(f)) is not None:
+            logger.info("本战开局：点「H.I.F本戦へ」%s", pos)
+            rt.device.tap(*pos)
             rt.sleep(1.5)
         return None
 
@@ -418,9 +433,50 @@ def _press_finals_start(rt) -> bool:
     return True
 
 
+def _tap_step1_next(rt, f) -> bool:
+    """第 1 步的「次へ」：只有认出第 1 步页（步骤指示器 TextStepIndicator1）才点 Step1.ButtonNext。
+    这个模板是底部大橙按钮，本战開始確認页的「H.I.F本戦へ」也能命中（Windows 9580c0c 11-17：開始確認页没认出，
+    把「H.I.F本戦へ」当次へ点了，选拔回忆核对没跑）；同 KAA prepare_hif_main 只在 TextStepIndicator1 时点。"""
+    if nav.find(f, "Produce.TextStepIndicator1") is None:
+        return False
+    if (m := nav.find(f, "Produce.Step1.ButtonNext")) is None:
+        return False
+    logger.info("第 1 步：点 Step1.ButtonNext %s", tuple(m.rect.center))
+    nav.tap_match(rt, m)
+    return True
+
+
+def _snap_taps(rt):
+    """开局阶段每次点击前存一帧（点之前看到的画面）到 trace，备注点了哪里（Windows 9580c0c 11-17：开局误点了，trace frames 是空的）。"""
+    session = getattr(rt, "session", None)
+    if session is None:
+        return None
+
+    def on_tap(x, y):
+        f = rt.screen.frame
+        if f is None or f.img is None:
+            return
+        shot = session.trace.save_frame(session.trace.next_seq(), f.img)
+        session.note(f"开局点击 ({x}, {y})（帧 {shot}）")
+
+    return on_tap
+
+
 def new_produce(rt, mode: str, **prep) -> None:
     """新开一局（使用者放行开局后才跑）：培育入口 → H.I.F → 选拔 / 本战（AP）→ 编成第 1–4 步 → プロデュース開始 → 跳过交流。
-    本战：开始确认页核对选拔回忆后点「H.I.F本戦へ」；已经在培育里就直接交给主循环。"""
+    本战：开始确认页核对选拔回忆后点「H.I.F本戦へ」；已经在培育里就直接交给主循环。开局阶段每次点击都存一帧（_snap_taps）。"""
+    dev = rt.device
+    prev = getattr(dev, "on_tap", None)
+    if hasattr(dev, "on_tap"):
+        dev.on_tap = _snap_taps(rt)
+    try:
+        _new_produce(rt, mode, **prep)
+    finally:
+        if hasattr(dev, "on_tap"):
+            dev.on_tap = prev
+
+
+def _new_produce(rt, mode: str, **prep) -> None:
     if enter_produce(rt, new=True) != "new":
         raise ResumeBlocked("没进到剧本选择页")
     select_hif(rt)

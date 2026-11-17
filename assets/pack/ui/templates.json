@@ -1336,6 +1336,22 @@
    "file": "InProduce.RestConfirmBtn.png",
    "slice_rect": null,
    "source": "KAA e2c3e555-ce29-4686-af76-015e150cd593.png"
+  },
+  "Produce.ButtonHifFinalsStart": {
+   "file": "Produce.ButtonHifFinalsStart.png",
+   "slice_rect": [
+    282,
+    1062,
+    156,
+    32
+   ],
+   "source": "hiro tests/fixtures/dmm/start-confirm-dmm1.png（本战開始確認「H.I.F本戦へ」按钮字，11-17）",
+   "region": [
+    180,
+    1020,
+    360,
+    110
+   ]
   }
  },
  "boxes": {
