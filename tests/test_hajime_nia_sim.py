@@ -121,7 +121,10 @@ def test_calendar(hn):
     assert len(weeks) == 18 and weeks[7] == ["mid"] and weeks[17] == ["final"] and weeks[3] == ["outing", "consult"]
     with pytest.raises(hn.Unsupported):
         hn.calendar("produce-003")  # 三种周表要指定
-    for pid in ("produce-001", "produce-002", "produce-004", "produce-005"):
+    reg = hn.calendar("produce-001")  # 实机一局还原（篠澤広）
+    assert len(reg) == 13 and reg[4] == ["oikomi"] and reg[5] == ["mid"] and reg[11] == ["oikomi"] and reg[12] == ["final"]
+    assert [i + 1 for i, w in enumerate(reg) if "outing" in w] == [4, 7, 8, 11]  # g8 推荐的 4 / 7 / 11 周都能外出
+    for pid in ("produce-002", "produce-004", "produce-005"):
         with pytest.raises(hn.Unsupported):
             hn.calendar(pid)
     doc = hn.calendar_document()
