@@ -886,3 +886,30 @@ def test_nia_tag_number_fills_loadout_and_ctx_gets_full_loadout(monkeypatch, tmp
     st, mem = _state([_card(0, "p_card-a")], remaining=9, turn=1)
     adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
     assert algo.ctx.loadout["deck_cards"] == ["p_card-a"] and algo.ctx.loadout["audition_number"] == 2
+
+
+@pytest.mark.bench_on
+@pytest.mark.parametrize("spec, fail, uses", [(None, False, "hif"), ("my.gnrpa:Search", False, "search"), ("my.gnrpa:Search", True, "hif")])
+def test_hajime_nia_search_switch_default_off(monkeypatch, spec, fail, uses):
+    """初 / N.I.A：HIRO_EXAM_SEARCH_ALGO 设了才走搜索（缺省 uinet，行为变化开关默认关）；加载失败 uinet 兜底并写明。"""
+    monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    if spec:
+        monkeypatch.setenv("HIRO_EXAM_SEARCH_ALGO", spec)
+    else:
+        monkeypatch.delenv("HIRO_EXAM_SEARCH_ALGO", raising=False)
+    hif, search = _Algo(("play", 0)), _Algo(("play", 0))
+
+    def load(s=None, **kw):
+        if s and s.startswith("my.gnrpa"):
+            if fail:
+                raise ImportError("no rust")
+            return search
+        return hif
+
+    monkeypatch.setattr(A, "load_algo", load)
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    adv.on_round_start(1, {"exam": "nia-mid2", "idol": None, "deck": []})
+    st, mem = _state([_card(0, "p_card-a")], remaining=9, turn=1)
+    d = adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    assert (len(search.seen), len(hif.seen)) == ((1, 0) if uses == "search" else (0, 1))
+    assert ("兜底" in d.reason) == bool(fail)

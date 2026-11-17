@@ -174,6 +174,11 @@ def tower_algo_spec() -> str:
     return (os.environ.get("HIRO_TOWER_ALGO") or TOWER_DEFAULT_ALGO).strip()
 
 
+def exam_search_algo_spec() -> str:
+    """初 / N.I.A 场次的出牌算法（HIRO_EXAM_SEARCH_ALGO）；缺省空 = 用 H.I.F 那个（uinet）。"""
+    return (os.environ.get("HIRO_EXAM_SEARCH_ALGO") or "").strip()
+
+
 def load_algo(spec: str | None = None, *, download: bool = True):
     """按名字加载 bench 算法。uinet 自动带上我们的主数据和模型（spec 里写了 master= / model= 就用写的）。"""
     _engine_on_path()
@@ -508,9 +513,20 @@ class BenchAdvisor:
     def _pick_algo(self) -> None:
         """这一场用哪个算法：偶像之路用 HIRO_TOWER_ALGO（加载失败或没配置就用 H.I.F 的算法兜底，写明原因），其余用 H.I.F 的。"""
         self.round_algo, self.round_name, self.round_note = self.algo, algo_spec().split(":")[0], ""
-        if not str(self.label or "").lower().startswith("tower") or not enabled():
+        label = str(self.label or "").lower()
+        if not enabled():
             return
-        spec = tower_algo_spec()
+        if label.startswith(("hajime", "nia")):
+            # 初 / N.I.A：HIRO_EXAM_SEARCH_ALGO 设了才走搜索（如 hiro.search.exam_algo:ExamGnrpa，自己按 UIObs 对齐引擎局面，
+            # 不要 screen_source 跟踪）；缺省不设 = uinet（行为变化开关默认关：bench 上 GNRPA 还只比 uinet 略好，目标没按场次填）
+            spec = exam_search_algo_spec()
+            if not spec:
+                return
+            what = "初 / N.I.A"
+        elif label.startswith("tower"):
+            spec, what = tower_algo_spec(), "偶像之路"
+        else:
+            return
         if not spec:
             self.round_note = "偶像之路指定算法（GNRPA）还没接上，HIRO_TOWER_ALGO 未设"
         else:
@@ -522,10 +538,10 @@ class BenchAdvisor:
                     got = f"{type(e).__name__}: {e}"
                 self._tower_algos[spec] = got
             if isinstance(got, str):
-                self.round_note = f"偶像之路指定算法 {spec} 加载失败（{got}）"
+                self.round_note = f"{what}指定算法 {spec} 加载失败（{got}）"
             else:
                 self.round_algo, self.round_name = got, spec.split(":")[-1] if ":" in spec else spec
-                logger.info("[%s] 偶像之路出牌：%s", self.label, spec)
+                logger.info("[%s] %s出牌：%s", self.label, what, spec)
                 return
         logger.warning("[%s] %s，用 %s 兜底", self.label, self.round_note, self.round_name)
 
