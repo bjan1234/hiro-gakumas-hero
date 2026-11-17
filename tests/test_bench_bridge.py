@@ -761,8 +761,13 @@ def test_allocate_turns_by_weights():
 
 
 
-TTMR16 = {"produce_id": "tower", "tower_id": "tower_001-ttmr", "layer": 16, "turns": 10, "score_bonus_permils": [23090, 11980, 2600],
-          "max_stamina": 46, "idol_card_id": "i_card-ttmr-2-000",
+# 本层考试设置直接写进来（Windows 本地塔数据可能没有 16 层，协调 11-17）：complete_loadout 有了 battle_config + gimmick 就不再查塔数据
+TTMR16_EXAM = {"produce_exam_battle_config_id": "p_exam_battle_config-tower_001-1954_1434_956-2079_1687_1062-turn_10",
+               "produce_exam_gimmick_effect_group_id": "p_exam_gimmick-tower_001-exam_lesson_buff-0001-stage_016",
+               "produce_exam_battle_npc_group_id": "p_npc_group-tower_001-ttmr-exam_lesson_buff-stage_016"}
+TTMR16 = {"produce_id": "tower", "tower_id": "tower_001-ttmr", "layer": 16, "mechanic": "exam_lesson_buff", "turns": 10,
+          "score_bonus_permils": [23090, 11980, 2600], "exam": TTMR16_EXAM, "produce_item_ids": ["pitem_tower_001-exam_lesson_buff-1-stage_016"],
+          "rivals": [18877, 13561, 9000], "max_stamina": 46, "idol_card_id": "i_card-ttmr-2-000",
           "produce_cards": ["p_card-01-ido-2_017+1", "p_card-00-sup-3_027", "p_card-01-act-2_031", "p_card-01-act-2_001+1", "p_card-01-men-3_036+1",
                             "p_card-01-act-1_021+1", "p_card-01-act-2_032+1", "p_card-01-men-2_038+1", "p_card-01-sup-2_090", "p_card-01-men-1_008+1"]}
 TTMR16_T1 = {"exam": {"produce": "tower", "turn": 1, "limit": 10, "types": [1] * 10, "permil": [23090, 11980, 2600]},
@@ -775,13 +780,23 @@ TTMR16_T1 = {"exam": {"produce": "tower", "turn": 1, "limit": 10, "types": [1] *
              "grave": [], "lost": [], "drinks": [], "legal": [["play", 0], ["play", 1], ["play", 3], ["end"]]}  # fmt: skip  实机 tower-g5c T1
 
 
+def _tower_gnrpa_or_skip():
+    """Rust 后端带 search / plan_many、引擎主数据有这一层的战斗配置时才跑。"""
+    rs = pytest.importorskip("gakumas_exam_rs")
+    if not (hasattr(rs, "search") and hasattr(rs, "plan_many")):
+        pytest.skip("Rust 后端没有 search / plan_many")
+    from hiro.search.exam_env import turn_weights
+
+    if turn_weights({"exam": TTMR16_EXAM}) is None:
+        pytest.skip("引擎主数据里没有手毬 16 层的战斗配置")
+    return rs
+
+
 @pytest.mark.sim_master
 def test_tower_align_trusts_only_seen_turn_types():
     """画面的 types 只有到过的回合可信（ScreenTracker 用当前回合属性填满了没见过的）：T1 之后的回合按战斗配置的权重分配，
     交给搜索打乱（手毬 16 层 T1 以为 10 回合全是 Vo，预测高了约 4 倍，协调 11-17）。"""
-    rs = pytest.importorskip("gakumas_exam_rs")
-    if not (hasattr(rs, "search") and hasattr(rs, "plan_many")):
-        pytest.skip("Rust 后端没有 search / plan_many")
+    _tower_gnrpa_or_skip()
     from types import SimpleNamespace
 
     from hiro.search.tower_algo import TowerGnrpa
@@ -797,7 +812,7 @@ def test_tower_align_trusts_only_seen_turn_types():
 @pytest.mark.sim_master
 def test_tower_status_sync_opt_in():
     """sync_status=True 时画面上的集中 / 好調覆盖进引擎；缺省不覆盖（画面状态读数待核实）。"""
-    rs = pytest.importorskip("gakumas_exam_rs")
+    rs = _tower_gnrpa_or_skip()
     if not hasattr(getattr(rs, "Exam", object), "override_status"):
         pytest.skip("Rust 后端没有 override_status")
     from types import SimpleNamespace
