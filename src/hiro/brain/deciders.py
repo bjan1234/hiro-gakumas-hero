@@ -231,6 +231,10 @@ class ProduceDeciders:
 
     def produce_state(self, state: GameState) -> ProduceState | None:
         produce = dict(state.produce or {})
+        # 页面上「Pドリンク所持上限」（相談的「交換する」上方红标）：饮料栏已满，容量就是现在持有的瓶数。p15 第 12 天账号 2 只有 3 格，
+        # 识别把容量读成 4，相談连点 3 次买饮料「交換する」都没亮（协调 11-17）
+        if (state.page_fields or {}).get("drinks_full") and produce.get("drinks") is not None:
+            produce["drink_capacity"] = len(produce["drinks"])
         if self.profile and not produce.get("idol_card_id"):
             produce["idol_card_id"] = self.profile.idol_id
         if self.main_attr and not produce.get("main_attr"):

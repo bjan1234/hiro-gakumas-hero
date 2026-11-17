@@ -348,3 +348,16 @@ def test_exam_criteria_from_master():
 
     c = exam_criteria("produce-001", "i_card-shro-3-007", "mid1")
     assert c and set(c) == {"Vo", "Da", "Vi"} and abs(sum(c.values()) - 1) < 1e-6
+
+
+def test_drinks_full_flag_caps_capacity():
+    """「Pドリンク所持上限」红标（page_fields.drinks_full）：饮料容量按现在持有的瓶数算（p15 账号 2 只有 3 格，识别读成 4）。"""
+    from hiro.brain.deciders import ProduceDeciders
+    from hiro.brain.state import CAMPUS_HIRO
+    from hiro.contracts import GameState
+
+    prod = {"idol_card_id": "i_card-shro-3-007", "mode": "produce-007", "step": 12, "stamina": 6, "max_stamina": 39, "produce_point": 278,
+            "params": {"Vo": 1, "Da": 1, "Vi": 1}, "growth_permil": {}, "star": 0, "drinks": ["a", "b", "c"], "drink_capacity": 4}
+    pd = ProduceDeciders(CAMPUS_HIRO, None)
+    assert pd.produce_state(GameState(produce=prod)).drink_capacity == 4
+    assert pd.produce_state(GameState(produce=prod, page_fields={"drinks_full": True})).drink_capacity == 3
