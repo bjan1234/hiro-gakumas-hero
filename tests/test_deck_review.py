@@ -222,3 +222,49 @@ def test_pending_deck_review_can_be_switched_off(monkeypatch):
     st = _strategy(monkeypatch, [{"card_id": "c0", "upgrade": 0}], True, calls)
     st._maybe_review_deck()
     assert calls == []
+
+
+def _rows_list(monkeypatch, retry_ok: bool):
+    """一览 4 行 16 张：屏位置 0（顶，第 1–3 行）/ 1（底，第 2–4 行）。逐屏拼接出错（DMM qualifyverify4：拼出 25 张、标签 16 张）。"""
+    import numpy as np
+
+    import hiro.vision.deck as vd
+
+    state = {"open": False, "pos": 0, "swipes": []}
+    monkeypatch.setattr(vd, "find_deck_button", lambda img: (558, 1200))
+    monkeypatch.setattr(vd, "is_deck_list", lambda img: state["open"])
+    monkeypatch.setattr(vd, "read_deck_list", lambda img: {"deck": None, "deck_size": 16, "pos": int(img[600, 300, 0]) // 100, "problems": ["只看到 12 / 16 张"]})
+    monkeypatch.setattr(vd, "merge_deck_list", lambda rs: {"deck": None, "deck_size": 16, "complete": False, "problems": ["拼出 25 张，标签 16 张"]},
+                        raising=False)  # fmt: skip
+    whole = [{"card_id": f"c{i}", "upgrade": 0} for i in range(16)]
+
+    def pages(top, bottom):
+        state["merged"] = (top["pos"], bottom["pos"])
+        ok = retry_ok and (top["pos"], bottom["pos"]) == (0, 1)
+        return {"deck": whole if ok else None, "deck_size": 16, "complete": ok, "problems": [] if ok else ["第 4 行两屏读得不一样"]}
+
+    monkeypatch.setattr(vd, "merge_deck_pages", pages)
+
+    def swipe(x1, y1, x2, y2, d):
+        state["swipes"].append("down" if y1 > y2 else "up")
+        state["pos"] = 1 if y1 > y2 else 0
+
+    def click(x, y):
+        state["open"] = (x, y) == (558, 1200)
+
+    t = [0.0]
+    r = dr.review_deck(shoot=lambda: np.full((1280, 720, 3), 10 + 100 * state["pos"], np.uint8), click=click, swipe=swipe,
+                       ocr_texts=lambda img: [], sleep=lambda s: t.__setitem__(0, t[0] + s), clock=lambda: t[0])  # fmt: skip
+    return r, state, whole
+
+
+def test_count_mismatch_rereads_top_and_bottom(monkeypatch):
+    r, state, whole = _rows_list(monkeypatch, retry_ok=True)
+    assert r["deck"] == whole and state["merged"] == (0, 1)  # 首屏（顶）+ 末屏（底）按行号拼
+    assert "up" in state["swipes"] and state["swipes"][-1] == "down"
+    assert any("按标签 16 张" in p for p in r["problems"])
+
+
+def test_count_mismatch_reread_still_wrong_writes_nothing(monkeypatch):
+    r, _, _ = _rows_list(monkeypatch, retry_ok=False)
+    assert r["deck"] is None and any("不写牌组" in p for p in r["problems"]) and r["closed"]
