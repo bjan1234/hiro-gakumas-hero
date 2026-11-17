@@ -284,8 +284,12 @@ class ProduceDeciders:
         from hiro.brain.hajime_nia import choose_action
 
         prod = dict(state.produce or {})
-        # 没有 option 名的项（识别没认出是什么按钮）跳过，不让整个决策器抛异常
-        opts = [o for o in (state.page_fields.get("options") or []) if o.get("option") and o.get("option") not in self.unavailable_options]
+        # 没有 option 名的项（识别没认出是什么按钮）跳过，不让整个决策器抛异常。
+        # page_fields.declined_options：这一周游戏弹过警告、已经取消掉的选项（相談開始確認「Pポイントの所持数が少ないです」→ shop，
+        # 平台点キャンセル后回到选行动页时给），这次不再选（全被排除时照旧全部可选）
+        declined = set(state.page_fields.get("declined_options") or ())
+        all_opts = [o for o in (state.page_fields.get("options") or []) if o.get("option") and o.get("option") not in self.unavailable_options]
+        opts = [o for o in all_opts if o["option"] not in declined] or all_opts
         cands = [Candidate(Action.produce_next(o["option"], attr=o.get("attr"), sp=o.get("sp"))) for o in opts]
         if not opts:
             return Decision(Action.ui(ActionKind.WAIT, why="没有可用行动"), "没有可选的行动", "fallback", 0.1, cands, decider="action_select")

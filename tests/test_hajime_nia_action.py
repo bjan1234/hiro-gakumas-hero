@@ -511,6 +511,19 @@ def test_hajime_shop_only_when_affordable():
     assert o["option"] == "shop"  # 只剩相談：没得选
     o, _, _ = _pick(_nia(stamina=25, produce_point=30), [_opt("shop"), _opt("rest")])
     assert o["option"] == "rest"  # N.I.A 同样：相談做不成事排最后
+
+
+
+def test_declined_option_not_chosen_again():
+    """平台点掉相談開始確認（P 点太少）后回到选行动页，page_fields.declined_options=["shop"]：这一周不再选相談。"""
+    from hiro.contracts import GameState
+
+    prod = {"mode": "produce-001", "stamina": 29, "max_stamina": 30, "produce_point": 120, "params": {"Vo": 1, "Da": 1, "Vi": 1}}
+    opts = [{"option": "shop"}, {"option": "outing"}]
+    d = _pd().decide("ACTION_SELECT", GameState(produce=prod, page_fields={"options": opts}))
+    assert d.action.args.get("option") == "shop"
+    d = _pd().decide("ACTION_SELECT", GameState(produce=prod, page_fields={"options": opts, "declined_options": ["shop"]}))
+    assert d.action.args.get("option") == "outing"
     o, _, _ = _pick(_st(stamina=30, max_stamina=30), [_opt("outing"), _opt("rest")])
     assert o["option"] == "outing"  # 满体力不能休息、只剩外出
     o, _, _ = _pick(_st(stamina=22, max_stamina=30, produce_point=60), [_opt("outing"), _opt("shop"), _opt("rest")])
