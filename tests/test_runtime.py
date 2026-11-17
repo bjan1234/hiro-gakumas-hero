@@ -705,3 +705,22 @@ def test_use_limit_on_real_frame():
     rt, _ = runtime([frame()])
     assert "使用期限" in interrupts.check(Frame(cv2.resize(cv2.imread(str(path)), (720, 1280)), 0.0), rt)
     assert rt.raw_device.taps == [(212, 1161)]
+
+
+def test_live_setting_dialog_on_real_frame():
+    """N.I.A 第一次进第 2 步弹的「NEXT IDOL AUDITIONライブ設定」（实机帧）：长标题把标题条切断，原来认不出弹窗；
+    现在中断层走到 live_setting，点右下「決定」，默认选项不改。"""
+    import os
+    from pathlib import Path
+
+    import cv2
+
+    from hiro.runtime.frame import Frame
+
+    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "nia-live-setting.png"
+    if not path.exists():
+        pytest.skip("需要实机截图 pages/nia-live-setting.png")
+    rt, _ = runtime([frame()])
+    assert "ライブ設定" in interrupts.check(Frame(cv2.resize(cv2.imread(str(path)), (720, 1280)), 0.0), rt)
+    (x, y), = rt.raw_device.taps
+    assert abs(x - 518) < 30 and abs(y - 1160) < 15

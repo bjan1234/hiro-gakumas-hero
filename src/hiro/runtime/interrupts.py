@@ -307,9 +307,25 @@ def use_limit(frame, rt) -> str | None:
     return "使用期限確認：点キャンセル"
 
 
+LIVE_SETTING_DECIDE = (500, 1160)  # 「…ライブ設定」框右下「決定」（读不到字时）
+
+
+def live_setting(frame, rt) -> str | None:
+    """N.I.A 第一次进第 2 步时弹的「NEXT IDOL AUDITIONライブ設定」（LIVE 演出用 Campus mode!! 还是 Pアイドル楽曲）：
+    默认选项不改，点「決定」（协调 11-17：原来没处理，「第 1 步点次へ」20 秒超时停机）。"""
+    if not frame.has_dialog or "ライブ設定" not in ((frame.dialog or {}).get("title") or ""):
+        return None
+    if _recently(rt, "live_setting"):
+        return "ライブ設定：刚点过「決定」，等框关"
+    btn = next((t for t in frame.texts if t.text.strip() == "決定" and t.rect.center.x > 360 and t.rect.center.y > 1000), None)
+    rt.device.tap(*(btn.rect.center if btn is not None else LIVE_SETTING_DECIDE))
+    _tapped(rt, "live_setting")
+    return "ライブ設定：默认选项，点「決定」"
+
+
 Interrupt = Callable[[object, object], "str | None"]
 DEFAULT: tuple[Interrupt, ...] = (red_line, comm, stop_notice, date_changed, settings, customize_confirm, tutorial, reroll_confirm,
-                                   achievement_toast, affection_unlock, use_limit)
+                                   achievement_toast, affection_unlock, use_limit, live_setting)
 
 
 def check(frame, rt, interrupts: tuple[Interrupt, ...] = DEFAULT) -> str | None:
