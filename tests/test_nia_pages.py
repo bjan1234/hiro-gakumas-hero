@@ -190,3 +190,12 @@ def test_audition_bonus_is_show_page(name, tmp_path):
     assert NiaPages(core).on_audition_bonus(rt, None, hit) is DONE
     (x, y), = taps
     assert abs(x - 360) < 20 and abs(y - 1222) < 15
+
+
+def test_audition_select_second_stage():
+    """第 2 次试镜选档页（左上「2次 オーディション」，GALAXY / POPFair / MELODY Journey）：stage=mid2。"""
+    name, f = _read("nia-audition-select-2.png")
+    assert name == "NIA_AUDITION_SELECT" and f["stage"] == "mid2" and f["votes"] == 15943
+    assert [(t["vote_need"], t["number"]) for t in f["tiers"]] == [(25000, 3), (14000, 2), (0, 1)]
+    name, f = _read("nia-audition-select-2-chosen.png")
+    assert name == "NIA_AUDITION_SELECT" and f["stage"] == "mid2" and f["expanded"]
