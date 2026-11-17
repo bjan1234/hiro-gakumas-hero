@@ -209,7 +209,8 @@ class SimScreenExamStateSource(ScreenExamStateSource):
     def _new_card(self, env, cid: str, up) -> Any:
         """在当前局面上新建一张画面上有、引擎里没有的卡（不进任何区，由重建放进手牌）。不从开局重新编译：考试中引擎自己生成的卡
         （成長痛 塞进山札的 眠気）留在局面里（DMM mainverify2 R1：引擎里已有一张 眠気、画面两张，_add_basic 加一张重编译后
-        只剩加的那张，「补了応援棒基础卡；画面上的 眠気 在模拟器里找不到」）。旧 Rust 包 / Python 后端没有 new_card：返回 None，走 _add_basic。"""
+        只剩加的那张，「补了応援棒基础卡；画面上的 眠気 在模拟器里找不到」）。旧 Rust 包 / Python 后端没有 new_card：返回 None，走 _add_basic。
+        新建的卡不带定制（customize_counts 为空）：账本漏记的若是特別指導定制过的卡，搜索按没定制算（3940a9：影响不大）。"""
         rx = getattr(env, "rx", None)
         if rx is None or not hasattr(rx, "new_card") or getattr(self, "_created", 0) >= NEW_CARD_LIMIT:
             return None
