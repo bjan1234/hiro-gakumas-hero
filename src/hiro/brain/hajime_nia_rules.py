@@ -36,3 +36,10 @@ def cite(rule_id: str) -> str:
 def applies(rule_id: str, family: str | None, difficulty: str | None) -> bool:
     r = rule(rule_id)
     return family in r["families"] and (r["difficulties"] is None or difficulty in r["difficulties"])
+
+
+def guide(family: str | None, difficulty: str | None) -> str:
+    """给 LLM 看的打法说明：这个模式 / 难度适用的全部规则，一条一行「- 规则 [出处]」。"""
+    rows = [f"- {r['rule']} [{r['source']}]" for r in load()["rules"] if applies(r["id"], family, difficulty)]
+    name = {"hajime": "初", "nia": "N.I.A"}.get(family or "", family or "")
+    return f"## {name}{(' ' + difficulty.upper()) if difficulty else ''} 的社区规则\n\n" + "\n".join(rows)

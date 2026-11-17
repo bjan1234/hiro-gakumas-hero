@@ -206,7 +206,8 @@ def _nia(p: _Pick) -> tuple[int, str, list[str]]:
     lessons = p.idx("training")
     if lessons:
         p.use("nia.lesson_sp")
-        ok = [i for i in lessons if p.opts[i].get("hp_cost") is None or st.stamina > int(p.opts[i]["hp_cost"])]
+        # 客户端判断是「体力 ≥ 实际消耗」就能上（IsSelfLessonStaminaSufficient，协调 11-17 逆向）；hp_cost 是画面上的实际消耗
+        ok = [i for i in lessons if p.opts[i].get("hp_cost") is None or st.stamina >= int(p.opts[i]["hp_cost"])]
         if len(ok) < len(lessons):
             p.use("nia.lesson_stamina")
         if ok:
@@ -220,8 +221,8 @@ def _nia(p: _Pick) -> tuple[int, str, list[str]]:
         return p.done(p.idx("sales")[0], "去营业（场所另选）")
     if p.idx("special_guidance") and st.produce_point > _customize_alert(st.mode):
         return p.done(p.idx("special_guidance")[0], f"P 点 {st.produce_point} 够定制，进特別指導")
-    if st.stamina <= LOW_STAMINA and p.idx("rest") and _rest_ok(p):
-        return p.done(p.idx("rest")[0], f"体力 {st.stamina} 太低，休息")
+    if st.stamina < LOW_STAMINA and p.idx("rest") and _rest_ok(p):  # 体力 8 时下周 SP（耗 8）照样能上（体力 ≥ 消耗，协调 11-17 逆向）
+        return p.done(p.idx("rest")[0], f"体力 {st.stamina} 不够下周上 SP（耗 {LOW_STAMINA}），休息")
     order: list[str] = []
     if st.difficulty == "master":
         p.use("nia.outing_default")
@@ -294,21 +295,29 @@ def choose_study(st: Status, choices: list[dict]) -> tuple[int, str, list[str]]:
 
 # ---------------------------------------------------------------- N.I.A 营业 / 试镜选档
 # 页面字段（和平台约定，采样后可能调整）：
-#   NIA_SALES_PLACE  page_fields.places  = [{index, kind: resort|local|corporate|commercial, hp_cost, name?}]
+#   NIA_SALES_PLACE  page_fields.places  = [{index, kind: resort|local|corporate|commercial, hp_cost, p_cost?, votes?, great_rate?（0–1）, name?}]
+#     p_cost / votes / great_rate：服务器逐个下发的 P 点消耗、票数、大成功概率（协调 11-17 逆向，平台读出后给）
 #   NIA_SALES_EVENT  page_fields.choices = [{index, attr?, text?}]
 #   NIA_AUDITION_SELECT page_fields.votes, page_fields.tiers = [{index, number, vote_need, locked}]
-SALES_KEEP_STAMINA = 8  # 营业后体力要留到 8 以上（SP 课程耗 8）[g8-NIAM]
+SALES_KEEP_STAMINA = 8  # 营业后体力要 ≥ 8（SP 课程耗 8，体力 ≥ 消耗就能上）[g8-NIAM]
+GREAT_BONUS = 0.3  # 大成功多 30% 票 [ww-NIA]
 KIND_NAME = {"resort": "绿（リゾート）", "local": "黄（自治体）", "corporate": "青（企業）", "commercial": "紫（商業）"}
 
 
 def choose_sales_place(st: Status, places: list[dict], drinks: list | None = None) -> tuple[int, str, list[str]]:
     """营业场所 → (places 里的 index, 理由, 规则)。"""
     p = _Pick(st, places)
+    # 去得了 = P 点 ≥ P 点消耗 且 体力 ≥ 体力消耗（CheckIfGoBusiness，协调 11-17 逆向）；全都去不了时（读数有误）不筛
+    places = [pl for pl in places if _can_go(st, pl)] or places
     by = {pl.get("kind"): pl for pl in places}
     p.use("nia.sales_cost")
 
     def after(pl):
         return st.stamina - int(pl.get("hp_cost") or 0)
+
+    def ev(pl) -> str:
+        e = _expected_votes(pl)
+        return f"，期望票数 {e:.0f}" if e is not None else ""
 
     if st.difficulty == "master" and drinks is not None and len(drinks) < 2 and "corporate" in by:
         p.use("nia.sales_corporate_drinks")
@@ -319,14 +328,31 @@ def choose_sales_place(st: Status, places: list[dict], drinks: list | None = Non
         want = "commercial" if st.produce_point >= SHOP_POINTS else "local"
         pl = next((x for x in good if x.get("kind") == want), good[0])
         p.use("nia.sales_purple" if pl.get("kind") == "commercial" else "nia.sales_yellow")
-        why = f"体力 {st.stamina} 去完还剩 {after(pl)}，P 点 {st.produce_point}"
+        why = f"体力 {st.stamina} 去完还剩 {after(pl)}，P 点 {st.produce_point}{ev(pl)}"
         return p.done(pl["index"], f"营业去{KIND_NAME[pl['kind']]}（{why}）")
     p.use("nia.sales_green_low")
     for k in ("resort", "corporate"):
         if k in by:
-            return p.done(by[k]["index"], f"体力 {st.stamina} 去黄 / 紫会掉到 {SALES_KEEP_STAMINA} 以下，去{KIND_NAME[k]}")
+            return p.done(by[k]["index"], f"体力 {st.stamina} 去黄 / 紫会掉到 {SALES_KEEP_STAMINA} 以下，去{KIND_NAME[k]}{ev(by[k])}")
+    if any(_expected_votes(x) is not None for x in places):
+        pl = max(places, key=lambda x: (_expected_votes(x) or -1, -int(x.get("hp_cost") or 0)))
+        return p.done(pl["index"], f"没认出场所种类，选期望票数最高的一个{ev(pl)}")
     pl = min(places, key=lambda x: int(x.get("hp_cost") or 0))
     return p.done(pl["index"], "没认出场所种类，选耗体力最少的一个")
+
+
+def _can_go(st: Status, pl: dict) -> bool:
+    return st.produce_point >= int(pl.get("p_cost") or 0) and st.stamina >= int(pl.get("hp_cost") or 0)
+
+
+def _expected_votes(pl: dict) -> float | None:
+    """期望票数 = 票数 ×（1 + 0.3 × 大成功概率）；票数没读到返回 None，概率没读到按 0。"""
+    if pl.get("votes") is None:
+        return None
+    rate = pl.get("great_rate")
+    if rate is None and pl.get("great_permil") is not None:
+        rate = pl["great_permil"] / 1000
+    return float(pl["votes"]) * (1 + GREAT_BONUS * float(rate or 0))
 
 
 def choose_sales_event(st: Status, choices: list[dict]) -> tuple[int, str, list[str]]:
