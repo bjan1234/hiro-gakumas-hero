@@ -171,17 +171,41 @@ class Runtime:
     def drive(self, step: Callable[[Frame], object], timeout: float, what: str, *, every: float = TICK):
         """多步流程的一段：每拍过检查点和中断层后调 step(帧)（可以点），返回非 None 就结束并返回它；
         超时抛 ResumeBlocked（what 写进原因）。开局 / 续跑这类「看画面 → 点 → 等下一页」的步骤都用它。"""
-        t0, paused = self.clock(), 0.0
+        t0, paused, live = self.clock(), 0.0, 0.0
         while True:
             t1 = self.clock()
             f, done = self.tick()
+            if done is None and self._live_beat(f):
+                # 横屏 LIVE（初 True End 等结算流程里的演出，协调 11-17）：步骤是竖屏流程，不交给它点（原来点 (12,12) 空点、黑屏也不切全屏）；
+                # 演出的时间不算这一段的超时（最多 LIVE_MAX_S）
+                live = min(live + self.clock() - t1 + every, LIVE_MAX_S)
+                if self.clock() - t0 - paused - live >= timeout:
+                    raise ResumeBlocked(f"{what}：{timeout:.0f}s 没完成")
+                self.sleep(every)
+                continue
             if done is None and (r := self._guarded(step, f, what)) is not None:
                 return r
             if done is not None:
                 paused = min(paused + self.clock() - t1 + every, timeout * INTERRUPT_EXTRA)  # 处理中断的那拍不算这一段的时间
-            if self.clock() - t0 - paused >= timeout:
+            if self.clock() - t0 - paused - live >= timeout:
                 raise ResumeBlocked(f"{what}：{timeout:.0f}s 没完成")
             self.sleep(every)
+
+    def _live_beat(self, f: Frame) -> bool:
+        """drive 的一拍是不是横屏 LIVE：黑屏够久切全屏（LandscapeGuard.tick，同主循环）、曲目页点「TAP TO START」（scenes.live_start），
+        演出中不点。是 LIVE 返回 True（这一拍不交给步骤）。"""
+        img = getattr(f, "img", None)
+        lg = self.landscape
+        if img is None:
+            return False
+        if lg is not None and lg.tick(img):
+            return True  # 刚切了全屏 / 退了全屏：下一拍重截
+        if img.shape[1] <= img.shape[0] and not (lg is not None and lg.active and lg.in_live(img)):
+            return False  # 竖屏、也不是 LIVE 黑屏（只在 LandscapeGuard 开着的设备上把黑屏当 LIVE）
+        from hiro.runtime import scenes
+
+        scenes.live_start(self, f)
+        return True
 
     # ---------------------------------------------------------------- 主循环
     def step(self) -> Outcome:
