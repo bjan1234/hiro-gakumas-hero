@@ -339,3 +339,26 @@ def choose_audition(st: Status, votes: int | None, tiers: list[dict], *, failed:
     why = f"投票 {votes:,}" if votes is not None else "投票数没读到"
     tail = f"，失败过 {failed} 次，降 {k} 档" if failed else ""
     return t["index"], t.get("number"), f"选第 {t.get('number')} 档（门槛 {need:,}，{why}，够得上的最高档{tail}）[参考 MaaGakumasu]", []
+
+
+# ---------------------------------------------------------------- N.I.A 试镜后的 P 道具三选一（走 SELECT_PITEM，平台 11-17）
+
+
+def choose_nia_pitem(st: Status, items: list[dict], plan: str | None = None) -> tuple[int | None, str, list[str]]:
+    """只覆盖攻略写明白的两种（其余返回 None，交回原有 select_pitem / LLM）：
+    PRO：アノマリー以外选 N.I.Aワッペン [ww-NIA]；MASTER：パスケース（补 P 点，配自治体营业）[ww-NIAM]。按名字匹配。"""
+    p = _Pick(st, items)
+    names = [str(it.get("name") or "") for it in items]
+    if st.difficulty == "pro" and plan != "ProducePlanType_Plan3":
+        hit = next((i for i, n in enumerate(names) if "ワッペン" in n), None)
+        if hit is not None:
+            p.use("nia.pitem_wappen")
+            return p.done(hit, f"试镜后的 P 道具选 {names[hit]}")
+    if st.difficulty == "master":
+        hit = next((i for i, n in enumerate(names) if "パスケース" in n), None)
+        if hit is not None:
+            p.use("nia.pitem_passcase")
+            p.use("nia.pitem_no_best")
+            i, reason, rules = p.done(hit, f"试镜后的 P 道具选 {names[hit]}（三种没有最强的，P 点最缺）")
+            return i, reason, rules
+    return None, "N.I.A P 道具：攻略没写明，交回原有规则", []

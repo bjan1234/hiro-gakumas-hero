@@ -279,11 +279,13 @@ class ProduceDeciders:
         from hiro.brain.hajime_nia import choose_action
 
         prod = dict(state.produce or {})
-        opts = [o for o in (state.page_fields.get("options") or []) if o.get("option") not in self.unavailable_options]
+        # 没有 option 名的项（识别没认出是什么按钮）跳过，不让整个决策器抛异常
+        opts = [o for o in (state.page_fields.get("options") or []) if o.get("option") and o.get("option") not in self.unavailable_options]
         cands = [Candidate(Action.produce_next(o["option"], attr=o.get("attr"), sp=o.get("sp"))) for o in opts]
         if not opts:
             return Decision(Action.ui(ActionKind.WAIT, why="没有可用行动"), "没有可选的行动", "fallback", 0.1, cands, decider="action_select")
-        missing = [k for k in ("step", "stamina", "max_stamina") if prod.get(k) is None]
+        # step（第几周）N.I.A 画面上读不到，规则也只有初 MASTER「第 6 周前不能休息」用它：不算状态不全（N.I.A 实机 11-17 选行动 25 次全记成 fallback）
+        missing = [k for k in ("stamina", "max_stamina") if prod.get(k) is None]
         st = self._hajime_nia_status(state)
         i, reason, rules = choose_action(st, opts)
         o = opts[i]
@@ -2144,8 +2146,22 @@ class ProduceDeciders:
         """P 道具背包三选一（カスタムPアイテム：取得背包 / 第一段 / 第二段定制）。page_fields.pitems = [{index?, item_id?, name?}]。
         社区规则见 hiro.brain.pitem：背包黄 > 緑 > 赤；ロボ > もじゃ；花 > リボン > メダル > 羽。"""
         from hiro.brain import pitem
+        from hiro.state.modes import NIA, family
 
         items = state.page_fields.get("pitems") or []
+        if family((state.produce or {}).get("mode")) == NIA and items:
+            from hiro.brain.hajime_nia import choose_nia_pitem
+
+            plan = None
+            try:
+                from hiro.state import modes
+
+                plan = modes.master().one("IdolCard", (state.produce or {}).get("idol_card_id") or (self.profile.idol_id if self.profile else ""))["planType"]
+            except Exception:  # noqa: BLE001
+                pass
+            k, reason, _ = choose_nia_pitem(self._hajime_nia_status(state), items, plan)
+            if k is not None:
+                return Decision(Action.activate_effect(items[k].get("index", k)), reason, "rule", 0.7, decider="select_pitem")
         parsed = [None if it.get("custom") and not (it.get("name") or it.get("item_id") or it.get("id")) else pitem.parse(it) for it in items]
         if any(q and q["stage"] != "pouch" for q in parsed):
             # 同一页别的候选已是玩偶 / 装饰段：只有颜色（名字没认出）的格子不是背包，按没认出算（原来当「背包 黄」3 分，压过 インコ / うさぎ）
