@@ -239,7 +239,6 @@ def test_step3_confirms_rent_tip_then_next(monkeypatch):
     from hiro.produce import formation_steps, prep_steps
 
     monkeypatch.setattr(prep_steps, "select_set", lambda n, **kw: True)
-    monkeypatch.setattr(formation_steps, "autofix_memory", lambda dev, plan, mk: None)
     checked = []
     monkeypatch.setattr(formation_steps, "check_memory_set", lambda img, plan, n: checked.append(n))
     s3 = frame({"Produce.TextStepIndicator3": (1, 1), "Produce.Step3.ButtonNext": (500, 1160)})
@@ -294,7 +293,6 @@ def _memory_unset_rig(monkeypatch, chosen):
     from hiro.vision.ocr import Box as OBox, Text
 
     monkeypatch.setattr(prep_steps, "select_set", lambda n, **kw: True)
-    monkeypatch.setattr(formation_steps, "autofix_memory", lambda dev, plan, mk: None)
     monkeypatch.setattr(formation_steps, "check_memory_set", lambda img, plan, n: None)
     s3 = frame({"Produce.TextStepIndicator3": (1, 1), "Produce.Step3.ButtonNext": (500, 1160)})
     dlg = frame({}, [Text("キャンセル", OBox(162, 1144, 311, 1180)), Text("く完了する", OBox(394, 1144, 577, 1176))])

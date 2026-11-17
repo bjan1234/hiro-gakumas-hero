@@ -1,0 +1,224 @@
+"""编成菜单写入（hiro.produce.formation_menu）：菜单页读取（实机帧在私有 fixtures）、导航（假设备）、写入后回读核对。"""
+
+from pathlib import Path
+from types import SimpleNamespace as NS
+
+import pytest
+
+from hiro.produce import formation_menu as fm
+from hiro.produce.formation_writer import Device, FormationWriteError
+
+FIX = Path(__file__).parent / "fixtures" / "formation_menu"
+
+
+def _frame(name):
+    import cv2
+
+    p = FIX / f"{name}.jpg"
+    if not p.exists():
+        pytest.skip(f"需要样例 {p}")
+    return cv2.imread(str(p))
+
+
+def _ocr(img):
+    from hiro.vision.ocr import screen_texts
+
+    return [(t.text, 1.0, tuple(int(v) for v in t.rect)) for t in screen_texts(img)]
+
+
+@pytest.mark.parametrize("name, want", [
+    ("hajime-support1", {"mode": "hajime", "tab": "support", "number": 1}),
+    ("hif-memory1", {"mode": "hif", "tab": "memory", "number": 1}),
+    ("hif-support20", {"mode": "hif", "tab": "support", "number": 20}),  # 编号 OCR 是「三 20/20」
+    ("hif-memory20", {"mode": "hif", "tab": "memory", "number": 20}),
+    ("switch-dialog", None),  # 切替框盖着
+    ("hif-memory-picker", None),  # 回忆选择页
+    ("home-popup", None),
+])  # fmt: skip
+def test_read_menu_on_device_frames(name, want):
+    img = _frame(name)
+    m = fm.read_menu(img, fm._texts(img, _ocr))
+    if want is None:
+        assert m is None
+    else:
+        assert {k: m[k] for k in want} == want and m["buttons"]["switch"] is not None
+
+
+def test_read_memory_icons_big_row():
+    """上排大图标：協調 11-17 写好的 メモリー編成 20 = 方案的四张卡；H.I.F 1 号第 4 格分数刚过线、靠领先认出。"""
+    assert [r["card"] for r in fm.read_memory_icons(_frame("hif-memory20"))] == ["men-2_004", "act-1_037", "act-3_039", "men-3_002"]
+    reads = fm.read_memory_icons(_frame("hif-memory1"))
+    assert all(r["known"] for r in reads) and reads[3]["card"] == "act-3_049"
+
+
+def test_read_mode_labels():
+    t = lambda s: [(s, (63, 45, 250, 70))]  # noqa: E731
+    assert fm.read_mode(t("定期公演『初』")) == "hajime"
+    assert fm.read_mode(t("HatsuboshiIDOLFESTIVAL")) == "hif"
+    assert fm.read_mode(t("NEXTIDOLAUDITION")) == "nia"
+    assert fm.read_mode([("定期公演『初』", (63, 300, 250, 330))]) is None  # 不在左上角
+
+
+# ---------------------------------------------------------------- 导航（假设备）
+class FakeGame:
+    """菜单状态机：shoot 给当前状态，click 按坐标改状态；read_menu / _texts 换成读状态。"""
+
+    def __init__(self, mode="hajime", tab="support", number=1, where="menu"):
+        self.mode, self.tab, self.number, self.where = mode, tab, number, where
+        self.pick = None
+        self.clicks = []
+
+    def shoot(self):
+        return dict(vars(self))
+
+    def click(self, x, y):
+        self.clicks.append((x, y))
+        if self.where == "home":
+            if (x, y) == fm.IDOL_TAB:
+                self.where = "idol_panel"
+        elif self.where == "idol_panel":
+            if (x, y) == (196, 578):
+                self.where = "menu"
+        elif self.where == "dialog":
+            banner = next((k for k, v in fm.MODE_BANNERS.items() if v == (x, y)), None)
+            if banner:
+                self.pick = banner
+            elif (x, y) == (522, 1161):
+                self.mode, self.where = self.pick or self.mode, "menu"
+        elif (x, y) == (569, 58):
+            self.where = "dialog"
+        elif (x, y) == (128, 1092):
+            self.tab = "support"
+        elif (x, y) == (333, 1093):
+            self.tab = "memory"
+        elif (x, y) == fm.ARROWS["next"]:
+            self.number = min(20, self.number + 1)
+        elif (x, y) == fm.ARROWS["prev"]:
+            self.number = max(1, self.number - 1)
+        else:
+            raise AssertionError(f"点了不该点的地方 {(x, y)}（{self.where}）")
+
+
+def _menu_texts(img):
+    if img["where"] == "home":
+        return [("ホーム", (330, 1180, 390, 1200)), ("コンテスト", (430, 1180, 520, 1200))]
+    if img["where"] == "idol_panel":
+        return [("プロデュース編成", (140, 565, 252, 591))]
+    if img["where"] == "dialog":
+        return [("キャンセル", (154, 1144, 311, 1178)), ("決定", (493, 1146, 551, 1176))]
+    return [("menu", (0, 0, 1, 1))]
+
+
+def _fake_read_menu(img, texts):
+    if img["where"] != "menu":
+        return None
+    return {"mode": img["mode"], "tab": img["tab"], "number": img["number"],
+            "buttons": {"switch": (569, 58), "support_tab": (128, 1092), "memory_tab": (333, 1093)}}  # fmt: skip
+
+
+@pytest.fixture
+def game(monkeypatch):
+    monkeypatch.setattr(fm, "read_menu", _fake_read_menu)
+    g = FakeGame()
+    dev = Device(shoot=g.shoot, click=g.click, swipe=lambda *a: None, ocr=lambda img: [(t, 1.0, b) for t, b in _menu_texts(img)],
+                 sleep=lambda s: None)  # fmt: skip
+    return g, dev
+
+
+def test_menu_from_home_switch_mode_tab_and_set(game):
+    g, dev = game
+    g.where = "home"
+    menu = fm.Menu(dev)
+    menu.open()
+    assert g.where == "menu"
+    assert menu.ensure_mode("hif")["mode"] == "hif"
+    assert menu.ensure_tab("memory")["tab"] == "memory"
+    assert menu.ensure_set(5)["number"] == 5
+    assert menu.ensure_set(3)["number"] == 3
+    assert g.clicks.count(fm.ARROWS["next"]) == 4 and g.clicks.count(fm.ARROWS["prev"]) == 2
+
+
+def test_menu_stops_off_page(game):
+    g, dev = game
+    g.where = "somewhere"
+    with pytest.raises(FormationWriteError, match="不在主页"):
+        fm.Menu(dev).open()
+
+
+def test_ensure_mode_noop_when_already_there(game):
+    g, dev = game
+    fm.Menu(dev).ensure_mode("hajime")
+    assert g.clicks == []  # 已经是这个模式：一下都不点
+
+
+def test_ensure_set_stuck_arrow_stops(game, monkeypatch):
+    """点了箭头编号不变（翻不动 / 点没生效）：等一会儿就停，不乱点。"""
+    g, dev = game
+    monkeypatch.setattr(fm, "WAIT_TRIES", 2)
+    dev.click = lambda x, y: None
+    with pytest.raises(FormationWriteError, match="编成号从 1 变"):
+        fm.Menu(dev).ensure_set(2)
+    with pytest.raises(ValueError):
+        fm.Menu(dev).ensure_set(21)
+
+
+# ---------------------------------------------------------------- 写入 + 回读
+PLAN = {"memory": {"set": 20, "chosen": [{"card_id": f"p_card-02-men-2_00{i}", "cell": [i, 0], "key": "k"} for i in range(1, 5)]},
+        "support": {"set": 20, "own": [{"support_card_id": f"s_card-{i}"} for i in range(5)]}}  # fmt: skip
+
+
+def _reads(cards):
+    return [{"slot": i, "card": c, "known": c is not None} for i, c in enumerate(cards)]
+
+
+def test_write_memory_only_changes_wrong_slots_and_reads_back(monkeypatch):
+    seq = [_reads(["men-2_001", "act-9_999", "men-2_003", None])] * 2 + [_reads(["men-2_001", "men-2_002", "men-2_003", "men-2_004"])] * 2
+    it = iter(seq)
+    monkeypatch.setattr(fm, "read_memory_icons", lambda img: next(it))
+    calls = []
+    monkeypatch.setattr(fm, "fix_memory", lambda dev, plan, **kw: calls.append(kw["slots"]) or [{"slot": 1}, {"slot": 3}])
+    dev = Device(shoot=lambda: None, click=None, swipe=None, sleep=lambda s: None)
+    assert fm.write_memory(dev, PLAN, make_picker=None) == [{"slot": 1}, {"slot": 3}]
+    assert calls == [fm.MEMORY_TILES]
+
+
+def test_write_memory_read_back_mismatch_stops(monkeypatch):
+    it = iter([_reads(["men-2_001", None, "men-2_003", "men-2_004"])] * 2 + [_reads(["men-2_001", "act-1_001", "men-2_003", "men-2_004"])] * 2)
+    monkeypatch.setattr(fm, "read_memory_icons", lambda img: next(it))
+    monkeypatch.setattr(fm, "fix_memory", lambda dev, plan, **kw: [{"slot": 1}])
+    dev = Device(shoot=lambda: None, click=None, swipe=None, sleep=lambda s: None)
+    with pytest.raises(FormationWriteError, match="回读还差"):
+        fm.write_memory(dev, PLAN, make_picker=None)
+
+
+def test_write_memory_dry_run_touches_nothing(monkeypatch):
+    monkeypatch.setattr(fm, "read_memory_icons", lambda img: _reads(["men-2_001", "x-1_1", "men-2_003", "men-2_004"]))
+    monkeypatch.setattr(fm, "fix_memory", lambda *a, **k: pytest.fail("dry-run 不该写"))
+    dev = Device(shoot=lambda: None, click=lambda *a: pytest.fail("dry-run 不该点"), swipe=None, sleep=lambda s: None)
+    assert fm.write_memory(dev, PLAN, make_picker=None, dry_run=True) == [{"slot": 1, "to": "men-2_002", "dry_run": True}]
+
+
+def test_write_support_uses_formation_view_and_reads_back(monkeypatch):
+    pages = iter([{"view": "formation", "slots": [{"support_card_id": f"s_card-{i}"} for i in (0, 1, 9, 3, 4)]}] * 2
+                 + [{"view": "formation", "slots": [{"support_card_id": f"s_card-{i}"} for i in range(5)]}] * 2)  # fmt: skip
+    seen = []
+    monkeypatch.setattr(fm, "fix_support", lambda dev, plan, **kw: seen.append(kw["view"]) or [{"slot": 2}])
+    dev = Device(shoot=lambda: None, click=None, swipe=None, sleep=lambda s: None)
+    assert fm.write_support(dev, PLAN, read_formation=lambda img: next(pages), read_list=None) == [{"slot": 2}]
+    assert seen == ["formation"]
+
+
+def test_run_order_and_sets(game, monkeypatch):
+    g, dev = game
+    done = []
+    monkeypatch.setattr(fm, "write_support", lambda dev, plan, **kw: done.append(("support", g.mode, g.tab, g.number)) or [])
+    monkeypatch.setattr(fm, "write_memory", lambda dev, plan, mp, **kw: done.append(("memory", g.mode, g.tab, g.number)) or [])
+    out = fm.run(dev, {"support": {"set": 4}, "memory": {"set": 6}}, "nia")
+    assert done == [("support", "nia", "support", 4), ("memory", "nia", "memory", 6)] and out == {"support": [], "memory": []}
+    with pytest.raises(FormationWriteError, match="memory.set"):
+        fm.run(dev, {"support": {"set": 4}, "memory": {}}, "nia", what=("memory",))
+
+
+def test_menu_requires_ocr():
+    with pytest.raises(ValueError):
+        fm.Menu(NS(ocr=None))

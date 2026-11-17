@@ -110,8 +110,13 @@ def memory_card_problems(img, plan: dict) -> tuple[list[str], list[str]]:
     return problems, warnings
 
 
+# 开局第 3 步只核对、不写回忆（协调 11-17：第 3 步选择页只露约 3 行、排序也和菜单不同，按库存行号找不准）
+MEMORY_MENU_HINT = "回忆请在编成菜单里写：PYTHONPATH=src python tools/write_formation.py --mode <hajime|nia|hif> --what memory"
+
+
 def check_memory_set(img, plan: dict | None, set_no=None) -> None:
-    """有开局编成方案时，选完回忆编成后读「N/20」核对编成号，再核对四格回忆卡；对不上抛 FormationMismatch。"""
+    """有开局编成方案时，选完回忆编成后读「N/20」核对编成号，再核对四格回忆卡；对不上抛 FormationMismatch
+    （第 3 步不自动写回忆，提示去编成菜单写，见 MEMORY_MENU_HINT）。"""
     if not plan:
         return
     from hiro.produce.formation_check import check_memory_step3, memory_set_number
@@ -128,23 +133,6 @@ def check_memory_set(img, plan: dict | None, set_no=None) -> None:
     for w in warnings:
         logger.warning("回忆编成核对：%s", w)
     if problems:
-        logger.error("回忆编成和方案对不上，不开局：%s", "；".join(problems))
-        raise FormationMismatch("回忆编成和方案对不上：" + "；".join(problems))
+        logger.error("回忆编成和方案对不上，不开局：%s。%s", "；".join(problems), MEMORY_MENU_HINT)
+        raise FormationMismatch("回忆编成和方案对不上：" + "；".join(problems) + "。" + MEMORY_MENU_HINT)
     logger.info("回忆编成核对通过（メモリー編成 %s）", set_no)
-
-
-def autofix_memory(dev, plan: dict | None, make_picker) -> None:
-    """第 3 步：回忆格和方案不一致时自动改（HIRO_FORMATION_AUTOFIX=1）。dev：formation_writer.Device；make_picker()
-    给回忆选择页的 Picker（列表滚动要「终点停住」防惯性，调用方给对应的 swipe）。失败抛 FormationMismatch。"""
-    if not autofix_on(plan):
-        return
-    from hiro.produce.formation_writer import FormationWriteError, fix_memory
-    from hiro.vision.memory_icons import read_step3_icons
-
-    try:
-        done = fix_memory(dev, plan, read_icons=read_step3_icons, make_picker=make_picker)
-    except FormationWriteError as e:
-        logger.error("开局自动编成（回忆）失败，不开局：%s", e)
-        raise FormationMismatch(f"开局自动编成（回忆）失败：{e}") from e
-    if done:
-        logger.info("开局自动编成（回忆）：改了 %d 格 %s", len(done), done)
