@@ -8,6 +8,7 @@
 - 〔社〕：社区攻略，后面跟原文代号（例如 g8-PRO、ww-初M），原文摘录和链接见文末。
 - 〔GK〕：GKMSProject（yuzeis）的实测。他们是对着服务器录到的整局数据核出来的，文件是 `GakumasCLI/produce/nia_produce.py`、`nia_route.py`。
 - 〔实〕：我们自己在 Mac 账号 2 上跑出来的（篠澤広 Campus mode!!，2026-11-17）。
+- 〔逆〕：客户端逆向（Il2Cpp 导出 + 反汇编），见第 10 节。
 - 〔推〕：推断，还没核对，用的时候要小心。
 
 模拟器是 `vendor/gakumas-player/gakumas_produce/hajime_nia.py`，测试是 `tests/test_hajime_nia_sim.py`。下文提到的函数都在这个模块里。
@@ -132,7 +133,9 @@
 
 - 体力和属性〔主 ProduceStepSelfLesson〕。主数据只有 produce_004 的这 6 行，MASTER 共用。P 点〔社 ww-NIA〕。
 - 属性收益 = 基础值 + floor(基础值 × 加成)〔GK，7 节课里 7 节对上〕。
-- 体力门槛：g8-NIA 原文是「体力が消費体力以下だとレッスンが行えません」，按字面，体力等于消耗时也不能上；g8-NIAM 写的是「営業後の体力が 8 以上」。两种说法对不上，模拟器按严格的读法（体力 ≤ 消耗就不能上）。〔实〕待核对。
+- 体力门槛：体力 **< 消耗**时不能上，体力正好等于消耗可以上〔逆，`ScheduleScreenPresenter.IsSelfLessonStaminaSufficient` 比较 `stamina < 消耗`，为真时弹提示、禁止〕。g8-NIAM「営業後の体力が 8 以上」是对的，g8-NIA 的「以下だとレッスンが行えません」说法不准。
+- 实际消耗 = 基础 6 / 8 按 `SelfLessonTypeStaminaPermils` 调整（支援卡、P 道具的「自主课体力增减」效果给出）〔逆〕。
+- 自主课等级 = 培育的 baseStepLevel + 日程这一周的 AddStepLevel〔逆，日程逐周下发〕，不一定严格按「第几次试镜前」分段；上表按段落写是 ww-NIA 的观察。
 
 ### 5.2 営業
 
@@ -146,7 +149,8 @@
 - 投票数〔主 ProduceStepEventDetail〕。大成功用 `-ex` 那一行，正好是 1.3 倍（例如 3120 / 4160 / 5200）。〔实〕画面上看到的「大成功ボーナス」+720、+960，就是多出来的那 30%。
 - 选项涨的属性：PRO 60 / 80 / 100，MASTER 80 / 110 / 130，**不吃加成**〔主 ProduceStepEventSuggestion；GK〕。三个选项分别涨 Vo、Da、Vi，选哪个就涨哪项。
 - 实际到手的投票 = 票数 × (1000 + 支援卡营业投票加成‰) / 1000〔GK〕。
-- 体力：多数选项扣 5〔GK，实录 business_list〕，主数据里这个字段是 0。ww-NIA 说企業不扣体力，GK 说「多数」扣 5，两边都还没核对。
+- 消耗：每个营业选项的**体力消耗和 P 点消耗都是服务器逐个下发的**（`UserProduceProgressBusiness.Stamina / ProducePoint`），界面上分「体力」「P 点」两种花费〔逆〕；能不能去由客户端判断：P 点 ≥ P 点消耗且体力 ≥ 体力消耗（等于也行）〔逆，`CheckIfGoBusiness`〕。GK 实录多数选项扣 5 体力〔GK〕。
+- 大成功概率也是每个选项单独下发（`ExcellentPermil`，营业页「大成功」说明里显示的就是它）〔逆〕；支援卡、道具有「营业大成功率增减」「营业票数增减」效果〔逆，效果类型 117 / 118、115 / 116〕。
 - 大成功的概率看属性合计：1 次前合计 ≥ 798、2 次前合计 ≥ 1468 时是 100%〔社 ww-NIA，PRO〕。最终段原文说概率曲线有 bug，没给数字。
 - 〔实〕这一页认场所靠图标和颜色，不靠文字；用户定的规矩是「场所没读出来不重要，重点是匹配图标和对应的属性」。
 
@@ -227,10 +231,43 @@ MASTER：1 次 0 / 11000 / 13000 票，2 次 0 / 31000 / 38000 票，最終 0 / 
 1. 初 PRO 和 N.I.A 两档的逐周表，初 REGULAR 其它偶像的周表。要从实机 trace 补（`tools/weeks_from_traces.py`），或者截游戏里的日程页。
 2. 初 MASTER 通常课和 SP 课的主数据行（这份快照里没有）。
 3. 初第 2、3 名的名次分（900 / 500 是推的）。
-4. N.I.A 营业的体力消耗（5 是 GK 的实测，企業扣不扣体力两边说法不一）、最终段的大成功概率。
-5. N.I.A 自主课的体力门槛，「体力等于消耗」时能不能上。
+4. N.I.A 营业的体力 / P 点消耗、大成功概率：服务器逐个下发，画面上能读到（营业页的花费角标和「大成功」说明），不必再推算；要平台读出来。
+5. ~~N.I.A 自主课的体力门槛~~：已由客户端逆向确认，等于消耗可以上。
 6. N.I.A 试镜结算的票数和属性曲线，只有 GK 用录制点拟合的结果，我们自己还没有数据。
 7. 初课程收益公式只核了一节（第 9 周 Vo SP）；支援卡在课后加的属性没有建模。
+
+## 10. 客户端逆向（Il2Cpp，2026-11-14 客户端）
+
+用 Il2CppDumper 对当前安装的客户端重新导出（`~/github/digital-hiro-research/gkmas-code/dump-20261114/`，11-02 那份 `dump/` 地址已经对不上），反汇编工具在 `~/github/digital-hiro/.temp/reverse/asm.py`。只读本机客户端，不改任何文件。
+
+**先说边界**：培育的结算数（最终评价 ProduceScore、试镜给的票数和属性、营业是否大成功）都是服务器算好下发的，客户端里没有这些公式；客户端里有的是「能不能做」的判断、服务器下发了哪些状态、有哪些效果类型。所以评价公式仍然靠 3.1 / 3.2 的核对，不靠逆向。
+
+### 10.1 客户端判断（反汇编确认）
+
+| 判断 | 结论 | 方法 |
+|---|---|---|
+| 自主课能不能上 | 体力 ≥ 实际消耗 | `ScheduleScreenPresenter.IsSelfLessonStaminaSufficient`、`ProduceStepSelfLesson.GetAffectedConsumptionStamina` |
+| 营业能不能去 | P 点 ≥ 该营业 P 点消耗，且体力 ≥ 该营业体力消耗 | `ScheduleBusinessScreenView.CheckIfGoBusiness` |
+| 结算页票数的字母档 | 主数据 `ResultGradePattern` 的 ProduceVoteCount 组：3000 E、5000 D、1 万 C、1.5 万 C+、2 万 B、2.5 万 B+、3 万 A、4 万 A+、6 万 S…（只是显示，不进评价） | `ResultGradeData.CreateProduceVoteCount` |
+
+### 10.2 服务器下发的状态（protobuf 字段，决定了哪些东西是「逐局不同」的）
+
+- **日程整局下发**（`UserProduceProgressSchedule`，每周一条）：`StepNumber`、`StepTypes`（这周能选的行动）、`SelectedStepType`、`AddStepLevel`、各属性自主课 id、`RefreshStamina`（这周休息回多少）、`AuditionRank`、`StepSelectNumber` / `MaxAuditionStepSelectNumber`（试镜选档）。游戏里有日程列表界面（`ScheduleListView`），**读这个界面就能拿到每一局准确的逐周表**，不用靠 trace 拼。
+- **营业**（`UserProduceProgressBusiness`，每个选项一条）：类型、名字、体力消耗、P 点消耗、大成功概率、普通 / 大成功各自的事件 id。
+- **试镜**（`UserProduceProgressAudition`）：三属性倍率、`VoteBonusPermil`（票数加成）、选的档、名次、分数、对手（`AuditionNpcs`）。
+- **整局修正值**（`UserProduceProgress`）：属性上限追加（`VocalAdditionalLimit` 等）、体力回复 / 消耗倍率、P 点获得 / 消耗倍率、`VoteCount`、`AuditionEffectParameterBonusPermil`、`AuditionNpcEnhancePermil`（对手分数增减）、`AuditionParameterGrowthRatePermil`、`EventSchoolStaminaPermil`（授業体力）、`EventActivityProducePointPermil`（活動支給 P 点）、`EventBusinessVoteCountPermil`（营业票数）、三属性 SP 出现率（`Lesson*SpChangeRatePermil`）、`SelfLessonTypeStaminaPermils`、`LessonLimitUpScore`、相談价格（强化 / 删卡价格和各种折扣）、定制折扣。`Star` / `StarPermil` 字段也在，但只在 H.I.F 用；初和 N.I.A 没有星星，决策和模拟都不碰。
+
+### 10.3 步骤和效果类型（枚举全表）
+
+- `ProduceType`：FirstStar 1（初）、NextIdolAudition 2（N.I.A）、HatsuboshiIdolFestival 3（H.I.F）。
+- `ProduceStepType`（初 / N.I.A 用到的）：课程 1–9（Vo/Da/Vi × 通常 / SP / 追い込み）、お出かけ等事件 10、活動支給 11、授業 12、相談 13、休む 14、Present 15、试镜 16–18、自主课 19–24、営業 25、営業事件 26、FanPresent 27、特別指導 28、レジェンドレッスン 29–34、授業分属性 48–50。
+- 营业类型 `ProduceStepBusinessType`：ProduceCard 1（紫）、ProduceDrink 2（青）、ProducePoint 3（黄）、Stamina 4（绿）。营业奖励图标另有 UpgradeCard / Card / Drink / ProducePoint / Stamina 五种。
+- `ProduceEffectType` 里只跟初 / N.I.A 有关的修正（支援卡、P 道具、チャレンジP道具都通过这些生效）：营业票数增减 115 / 116、营业大成功率增减 117 / 118、试镜票数增减 119 / 120、自主课体力增减 121 / 122、试镜前休息回复增减 107 / 108、对手分数增强 / 减弱 97 / 128、直接加票 114、授業体力增减 103 / 104、活動支給 P 点增减 105 / 106、各属性 SP 率 54–58、属性上限提升 90–93、课程上限提升 89、定制张数 111、定制价格 112 / 113、饮料持有上限 133、相談各类价格 65–72 / 98–102。
+
+### 10.4 新发现
+
+- **N.I.A PRO 有「简单模式」**（账号偏好 `ProduceNextIdolAuditionProEasyMode`）。打开后开局拿到 P 道具「N.I.Aキー（黄緑）」（`pitem_00-3-330-0`），效果是**对手分数减少 80%**（主数据 `Produce.easyProduceItemIds`）。MASTER 没有。我们账号开没开还没看。
+- **考试引擎没实现对手分数的增减**（`AuditionNpcEnhance` 97 / `AuditionNpcWeaken` 128 只在 `gakumas_exam/enums.json` 里有名字）。N.I.A 简单模式的 −80%、MASTER チャレンジP道具让对手 +40%，模拟里都没算，按「第 1 名」做目标搜索时会偏。
 
 ## 出处
 

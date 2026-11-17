@@ -93,10 +93,15 @@ def test_nia_sim_walk(hn):
     s.self_lesson("Vo", sp=False)
     assert s.log[-1].detail["gain"] == 100 + 27
     s.stamina = 8
+    s.self_lesson("Da", sp=True)  # 体力正好等于消耗 8 可以上（客户端逆向：体力 < 消耗才禁止）
+    assert s.stamina == 0
+    s.stamina = 7
     with pytest.raises(hn.Unsupported):
-        s.self_lesson("Da", sp=True)  # 体力 8 不高于消耗 8
+        s.self_lesson("Da", sp=True)
     s.rest(before_audition=True)
-    assert s.stamina == 8 + 15
+    assert s.stamina == 7 + 15
+    with pytest.raises(hn.Unsupported):
+        s.business("produce_point", "Vo", pp_cost=s.pp + 1)  # P 点不够这个营业的 P 点消耗
 
 
 def test_hajime_sim_walk(hn):
