@@ -1,6 +1,6 @@
 """培育模式表：produce id → 家族（hif / hajime / nia）、难度、步数、考试过关名次、各场考试的档位。
 
-设计稿 `.temp/plans-20261112/初与NIA-决策-设计.md` 第二节。步数和考试档位来自主数据（`Produce.steps`、`ProduceStepAuditionDifficulty`），
+设计稿 （作者本机，未发布） 第二节。步数和考试档位来自主数据（`Produce.steps`、`ProduceStepAuditionDifficulty`），
 家族 / 难度按 produce id 固定（主数据的 `Produce.name` 只有「プロ」「マスター」，初和 N.I.A 同名，分不出家族）。
 """
 

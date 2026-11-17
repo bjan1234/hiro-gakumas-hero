@@ -1,7 +1,7 @@
 """初 / N.I.A 的社区规则（src/hiro/defaults/hajime_nia_rules.json）：按编号取规则，决策理由里带出处标签。
 
 每条规则：id、families（hajime / nia）、difficulties（None = 全部难度）、rule（中文）、source（出处简称，见 sources）、quote（原文摘录）。
-设计稿：.temp/plans-20261112/初与NIA-决策-设计.md 第四节。
+设计稿：（作者本机，未发布） 第四节。
 """
 
 from __future__ import annotations

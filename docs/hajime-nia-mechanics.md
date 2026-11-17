@@ -238,7 +238,7 @@ MASTER：1 次 0 / 11000 / 13000 票，2 次 0 / 31000 / 38000 票，最終 0 / 
 
 ## 10. 客户端逆向（Il2Cpp，2026-11-14 客户端）
 
-用 Il2CppDumper 对当前安装的客户端重新导出（`~/github/digital-hiro-research/gkmas-code/dump-20261114/`，11-02 那份 `dump/` 地址已经对不上），反汇编工具在 `~/github/digital-hiro/.temp/reverse/asm.py`。只读本机客户端，不改任何文件。
+用 Il2CppDumper 对当前安装的客户端重新导出（11-02 那份导出的地址已经对不上），再反汇编相关方法。只读本机客户端，不改任何文件。
 
 **先说边界**：培育的结算数（最终评价 ProduceScore、试镜给的票数和属性、营业是否大成功）都是服务器算好下发的，客户端里没有这些公式；客户端里有的是「能不能做」的判断、服务器下发了哪些状态、有哪些效果类型。所以评价公式仍然靠 3.1 / 3.2 的核对，不靠逆向。
 
@@ -271,8 +271,8 @@ MASTER：1 次 0 / 11000 / 13000 票，2 次 0 / 31000 / 38000 票，最終 0 / 
 
 ## 出处
 
-- 社区原文摘录：`~/github/digital-hiro/.temp/plans-20261112/初与NIA-攻略摘录.md`（16 篇，game8 和 wikiwiki，各条都标了原文代号）。原文文本在同目录的 `hajime-nia-sources/`。
+- 社区原文摘录：16 篇 game8 和 wikiwiki 攻略（作者本机整理的摘录，不随仓库发布；各条都标了原文代号，链接见下）。
   - g8-PRO <https://game8.jp/gakuen-idolmaster/610357>、g8-NIA <https://game8.jp/gakuen-idolmaster/661665>、g8-NIAM <https://game8.jp/gakuen-idolmaster/688368>
   - ww-初M <https://wikiwiki.jp/gakumas/初_マスター育成>、ww-NIA <https://wikiwiki.jp/gakumas/N.I.A立ち回り>、ww-NIAM <https://wikiwiki.jp/gakumas/N.I.Aマスター/基本>
-- GKMSProject：`~/github/digital-hiro-research/ext/GKMSProject/GakumasCLI/produce/nia_produce.py`、`nia_route.py`、`scenario/nia.py`（41c8778）
-- 实机：`~/github/digital-hiro/.temp/nia-mac/`、`~/github/digital-hiro/.temp/hajime-mac/`，trace 在集成 worktree 的 `traces/20261117-*`
+- GKMSProject（yuzeis）：`GakumasCLI/produce/nia_produce.py`、`nia_route.py`、`scenario/nia.py`（41c8778）
+- 实机：作者 Mac 账号的对局截图和 trace（2026-11-17，不随仓库发布）

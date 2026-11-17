@@ -88,7 +88,7 @@
 
 ## 来源
 
-- 社区摘录：`~/github/digital-hiro/.temp/plans-20261112/初与NIA-攻略摘录.md`
+- 社区摘录：作者本机整理的 game8 / wikiwiki 原文摘录（不随仓库发布），原文链接：
   - g8-PRO 難易度プロの攻略 <https://game8.jp/gakuen-idolmaster/610357>
   - g8-休 お休みを使うタイミング <https://game8.jp/gakuen-idolmaster/609583>
   - g8-SP SPレッスンの条件 <https://game8.jp/gakuen-idolmaster/609972>
@@ -98,4 +98,4 @@
   - g8-授業 授業の効果 <https://game8.jp/gakuen-idolmaster/614057>
   - g8-A+ A+の条件 <https://game8.jp/gakuen-idolmaster/613437>
   - ww-初M 初_マスター育成 <https://wikiwiki.jp/gakumas/初_マスター育成>
-- 决策规则：`src/hiro/defaults/hajime_nia_rules.json`；设计稿：`~/github/digital-hiro/.temp/plans-20261112/初与NIA-决策-设计.md`
+- 决策规则：`src/hiro/defaults/hajime_nia_rules.json`

@@ -1,4 +1,4 @@
-"""初 / N.I.A 的培育决策（通关档：社区规则，每条带出处）。设计稿 .temp/plans-20261112/初与NIA-决策-设计.md 第四节。
+"""初 / N.I.A 的培育决策（通关档：社区规则，每条带出处）。设计稿 （作者本机，未发布） 第四节。
 
 选行动页的选项沿用 H.I.F 的名字：training（课程 / 自主レッスン / 追い込みレッスン，带 attr、sp、hp_cost）、class（授業）、outing、
 gift（差し入れ）、shop（相談）、special_guidance、rest；新增 allowance（初的活動支給）、sales（N.I.A 的営業）。

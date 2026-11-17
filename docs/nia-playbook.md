@@ -103,12 +103,12 @@
 
 ## 来源
 
-- 社区摘录：`~/github/digital-hiro/.temp/plans-20261112/初与NIA-攻略摘录.md`
+- 社区摘录：作者本机整理的 game8 / wikiwiki 原文摘录（不随仓库发布），原文链接：
   - g8-NIA NIAシナリオ攻略 <https://game8.jp/gakuen-idolmaster/661665>（2026-11-16 更新）
   - g8-NIAM NIAマスター攻略 <https://game8.jp/gakuen-idolmaster/688368>（2026-06-02）
   - ww-NIA N.I.A立ち回り <https://wikiwiki.jp/gakumas/N.I.A立ち回り>（2025-05-15，コンテスト向け）
   - ww-NIAM N.I.Aマスター/基本 <https://wikiwiki.jp/gakumas/N.I.Aマスター/基本>（2026-01-18）
   - ww-NIA支 N.I.Aサポートカードの選び方 <https://wikiwiki.jp/gakumas/N.I.Aサポートカードの選び方>（2025-09-29）
-- GKMSProject：`~/github/digital-hiro-research/ext/GKMSProject/GakumasCLI/produce/nia_produce.py`
-- MaaGakumasu：`~/github/digital-hiro-research/maagakumasu/src` 的 ProduceNIA.json（试镜降档）
-- 决策规则：`src/hiro/defaults/hajime_nia_rules.json`；实机样本：`~/github/digital-hiro/.temp/nia-mac/`
+- GKMSProject（yuzeis）：`GakumasCLI/produce/nia_produce.py`
+- MaaGakumasu：`src` 下的 ProduceNIA.json（试镜降档）
+- 决策规则：`src/hiro/defaults/hajime_nia_rules.json`

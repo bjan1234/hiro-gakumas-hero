@@ -1,5 +1,5 @@
 """初 / N.I.A 选行动（hiro.brain.hajime_nia.choose_action）：通关档的社区规则，每条规则至少一个用例。
-设计稿 .temp/plans-20261112/初与NIA-决策-设计.md 第四节；规则文件 src/hiro/defaults/hajime_nia_rules.json。"""
+设计稿 （作者本机，未发布） 第四节；规则文件 src/hiro/defaults/hajime_nia_rules.json。"""
 
 import pytest
 
