@@ -362,22 +362,41 @@ def rest_confirm(frame, rt) -> str | None:
 LESSON_CONFIRM_START, LESSON_CONFIRM_CANCEL = (515, 1160), (236, 1161)
 
 
-def lesson_lowhp_confirm(frame, rt) -> str | None:
-    """「レッスン開始確認：体力が低下しています。レッスンを開始しますか？」（キャンセル / 開始する）：选行动选了课程 / 授業、体力低时游戏
-    弹的确认（初 Mac 11-17 frames/00360）。协调 + 3940a9 定：session 记的最近一次决策是选行动 training / class 就点「開始する」
-    （执行决策器已经做出的选择），否则（含续跑不知道之前选了什么）点「キャンセル」回选行动页重新决策。
-    只认这个标题的框；「開始する」不会点在破棄框上（破棄框由 red_line 先处理）。"""
-    if not frame.has_dialog or "レッスン開始確認" not in str((frame.dialog or {}).get("title") or ""):
+# 决策后游戏再弹的确认框（标题 → 哪些选行动决策算「已经决定了」）：最近一次决策是其中之一就点「開始する」（执行决策器已经做出的选择），
+# 否则（含续跑不知道之前选了什么）点「キャンセル」回选行动页重新决策。协调 + 3940a9 11-17 定，不加开关。
+DECISION_CONFIRMS = {
+    "レッスン開始確認": ("training", "class"),  # 体力が低下しています（初 Mac 11-17 frames/00360）
+    "相談開始確認": ("shop",),  # Pポイントの所持数が少ないです（初第二局 11-18 h2-dialog1）
+}
+
+
+def decision_confirm(frame, rt) -> str | None:
+    """「レッスン開始確認」「相談開始確認」这类确认框（キャンセル / 開始する）。只认 DECISION_CONFIRMS 里的标题；
+    「開始する」不会点在破棄框上（破棄框由 red_line 先处理，标题也不在表里）。"""
+    if not frame.has_dialog:
         return None
-    if _recently(rt, "lesson_confirm"):
-        return "レッスン開始確認：刚点过，等框关"
+    title = str((frame.dialog or {}).get("title") or "")
+    hit = next(((t, opts) for t, opts in DECISION_CONFIRMS.items() if t in title), None)
+    if hit is None:
+        return None
+    name, opts = hit
+    if _recently(rt, "decision_confirm"):
+        return f"{name}：刚点过，等框关"
     last = getattr(getattr(rt, "session", None), "last_decision", None)
-    lesson = bool(last) and last[0] == "ACTION_SELECT" and (last[1].action.args or {}).get("option") in ("training", "class")
-    word, fallback = ("開始する", LESSON_CONFIRM_START) if lesson else ("キャンセル", LESSON_CONFIRM_CANCEL)
-    btn = next((t for t in frame.texts if t.text.replace(" ", "").strip() == word and t.rect.center.y > 1000), None)
-    rt.device.tap(*(btn.rect.center if btn is not None else fallback))
-    _tapped(rt, "lesson_confirm")
-    return f"レッスン開始確認（体力低）：{'刚才决策是课程 / 授業，点「開始する」' if lesson else '最近的决策不是课程（或续跑后不知道），点「キャンセル」回选行动页重新决策'}"
+    go = bool(last) and last[0] == "ACTION_SELECT" and (last[1].action.args or {}).get("option") in opts
+    if go:
+        btn = next((t for t in frame.texts if t.text.replace(" ", "").strip() == "開始する" and t.rect.center.y > 1000), None)
+        pos = btn.rect.center if btn is not None else LESSON_CONFIRM_START
+    else:
+        btn = next((t for t in frame.texts if "キャンセル" in t.text and t.rect.center.y > 1000), None)
+        pos = btn.rect.center if btn is not None else LESSON_CONFIRM_CANCEL
+    rt.device.tap(*pos)
+    _tapped(rt, "decision_confirm")
+    what = "/".join(opts)
+    return f"{name}：{f'刚才决策是 {what}，点「開始する」' if go else f'最近的决策不是 {what}（或续跑后不知道），点「キャンセル」回选行动页重新决策'}"
+
+
+lesson_lowhp_confirm = decision_confirm  # 旧名（ea62356）
 
 
 TAP_NEXT = "TAPで次へ"
@@ -427,7 +446,7 @@ def live_resume(frame, rt) -> str | None:
 Interrupt = Callable[[object, object], "str | None"]
 DEFAULT: tuple[Interrupt, ...] = (red_line, comm, stop_notice, date_changed, settings, customize_confirm, tutorial, reroll_confirm,
                                    achievement_toast, affection_unlock, use_limit, live_setting, consult_end_confirm, rest_confirm,
-                                   lesson_lowhp_confirm, tap_next_dialog, live_resume)
+                                   decision_confirm, tap_next_dialog, live_resume)
 
 
 def check(frame, rt, interrupts: tuple[Interrupt, ...] = DEFAULT) -> str | None:
