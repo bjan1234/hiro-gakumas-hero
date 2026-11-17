@@ -132,14 +132,74 @@ def test_idol_code_from_master():
     assert tp.idol_code("月村 手毬") == "ttmr" and tp.idol_code("不存在") is None
 
 
-def test_layers_locked_or_three_stars_stop(tmp_path):
+class FakeLayers:
+    """层选择页：layers {层: (星, 锁)}；居中 center；拖 d px 挪 round(d / px_per_layer) 层（吸附），往下拖看更高的层。"""
+
+    def __init__(self, layers, center, px_per_layer=200):
+        self.layers, self.center, self.px = layers, center, px_per_layer
+        self.now = 0.0
+        self.taps, self.swipes = [], []
+
+    def rt(self):
+        def swipe(x1, y1, x2, y2, duration=None, hold=None):
+            self.swipes.append((y1, y2))
+            n = round(abs(y2 - y1) / self.px) * (1 if y2 > y1 else -1)
+            self.center = min(max(self.center + n, min(self.layers)), max(self.layers))
+
+        return NS(device=NS(tap=lambda x, y: self.taps.append((x, y)), swipe=swipe), sleep=lambda s: None, clock=lambda: self.now)
+
+    def hit(self):
+        stars, locked = self.layers[self.center]
+        above = locked and self.layers.get(self.center - 1, (0, True))[1]  # 最前沿以上的层没有「挑戦する」
+        return NS(fields={"idol": "月村手毬", "stage": self.center, "stars": stars, "locked": locked,
+                          "challenge": None if above else [480, 988]})  # fmt: skip
+
+
+def _drive(p, game, ticks=60):
+    rt = game.rt()
+    for _ in range(ticks):
+        game.now += 2.0
+        if p.on_layers(rt, None, game.hit()) is DONE and game.taps:
+            return game.center
+    return None
+
+
+def test_layers_three_stars_moves_up_to_frontier(tmp_path):
+    """g7 11-17：打完 17 层回到层选择页，居中 17 层已三星，原来直接停。现在往上滑到最前沿 18 层（没三星）打。"""
+    p = _play(tmp_path)
+    game = FakeLayers({n: (3, False) for n in range(1, 18)} | {18: (0, False), 19: (0, True), 20: (0, True)}, 17)
+    assert _drive(p, game) == 18 and p.layer == 18 and game.swipes[0][1] > game.swipes[0][0]  # 往下拖 = 看更高的层
+
+
+def test_layers_frontier_locked_goes_down_to_first_not_three_star(tmp_path):
+    """最前沿锁着（要攒星）、上面没得打：往下找没三星的层（14 层 1 星）。跳过今天次数用完的 15 层。"""
+    p = _play(tmp_path)
+    p.run.tries[15] = 3
+    game = FakeLayers({n: (3, False) for n in range(1, 14)} | {14: (1, False), 15: (2, False), 16: (0, True), 17: (0, True)}, 16, px_per_layer=260)
+    assert _drive(p, game) == 14
+
+
+def test_layers_overshoot_and_calibration(tmp_path):
+    """滑一下挪了两层（每层间距比初值小）：越过的层回头补看，不漏掉。"""
+    p = _play(tmp_path)
+    game = FakeLayers({n: (3, False) for n in range(1, 18)} | {18: (2, False), 19: (0, True), 20: (0, True), 21: (0, True)}, 17, px_per_layer=80)
+    assert _drive(p, game) == 18
+
+
+def test_layers_nothing_to_play_stops(tmp_path):
+    p = _play(tmp_path)
+    game = FakeLayers({n: (3, False) for n in range(1, 6)} | {6: (0, True), 7: (0, True)}, 5)
+    with pytest.raises(ResumeBlocked, match="没有能打的层"):
+        _drive(p, game)
+    assert game.taps == []
+
+
+def test_layers_without_challenge_button_waits_one_frame(tmp_path):
+    """居中的层没有「挑戦する」：第一帧先等（按钮可能还没出来），第二帧才当锁着往回滑。"""
     p = _play(tmp_path)
     rt, taps = _rt()
-    with pytest.raises(ResumeBlocked, match="锁着"):
-        p.on_layers(rt, None, NS(fields={"idol": "月村手毬", "stage": 16, "stars": 0, "locked": True, "challenge": [482, 989]}))
-    with pytest.raises(ResumeBlocked, match="三星"):
-        p.on_layers(rt, None, NS(fields={"idol": "月村手毬", "stage": 10, "stars": 3, "locked": False, "challenge": [480, 988]}))
-    assert taps == []
+    hit = NS(fields={"idol": "月村手毬", "stage": 19, "stars": 0, "locked": True, "challenge": None})
+    assert p.on_layers(rt, None, hit) is tp.STAY
 
 
 def test_ranking_records_and_taps_next(tmp_path):
