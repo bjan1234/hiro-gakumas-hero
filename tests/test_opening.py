@@ -351,3 +351,68 @@ def test_new_produce_main_already_in_produce_hands_over(monkeypatch):
     rt.classify = lambda img: PageHit("ACTION_SELECT", "pixel")
     opening.new_produce(rt, "main")
     assert called == [] and rt.raw_device.taps == []
+
+
+def test_prepare_main_does_not_tap_bottom_button_without_step1_indicator(monkeypatch):
+    """Windows 9580c0c 11-17：開始確認页没认出，Step1.ButtonNext 模板命中了「H.I.F本戦へ」就点了，选拔回忆核对没跑。
+    现在没有第 1 步指示器就不点底部大按钮：认不出的页一直等到超时停机。"""
+    monkeypatch.setattr(opening, "check_main_memory", lambda rt, expect: pytest.fail("不该走到核对"))
+    rt, _ = rig(monkeypatch, [frame({"Produce.Step1.ButtonNext": (360, 1078)})])
+    with pytest.raises(ResumeBlocked, match="本战第 1 步"):
+        opening.prepare(rt, "main", idol="i", expect_memory=("1",))
+    assert rt.raw_device.taps == []
+    s1 = frame({"Produce.TextStepIndicator1": (60, 50), "Produce.Step1.ButtonNext": (360, 1150)})
+    rt, _ = rig(monkeypatch, [s1], on_tap=lambda taps: [frame({"Produce.TextStepIndicator4Or2": (65, 49)})])
+    monkeypatch.setattr(opening, "check_main_memory", lambda rt, expect: None)
+    monkeypatch.setattr(opening, "step4", lambda rt, **kw: None)
+    assert opening.prepare(rt, "main", idol="i") is False and rt.raw_device.taps == [(360, 1150)]  # 认出第 1 步才点
+
+
+def test_prepare_main_finals_start_by_button_template(monkeypatch):
+    """OCR 一个字都没读到「本戦」（我们的 OCR 在三张实机帧上都读不出橙底白字）：按钮模板命中就认成開始確認页，核对后点模板中心。"""
+    called = []
+    monkeypatch.setattr(opening, "check_main_memory", lambda rt, expect: called.append("memory"))
+    confirm = frame({"Produce.ButtonHifFinalsStart": (360, 1078), "Produce.Step1.ButtonNext": (360, 1078),
+                     "Produce.TextStepIndicator4Or2": (65, 49)})  # fmt: skip
+    rt, _ = rig(monkeypatch, [confirm], on_tap=lambda taps: [frame({})])
+    assert opening.prepare(rt, "main", idol="i", expect_memory=("1",)) is True
+    assert called == ["memory"] and rt.raw_device.taps == [(360, 1078)]
+
+
+def test_finals_start_ocr_variants():
+    """RapidOCR 的读法：「H.I.F本戦ヘ」（片假名ヘ）、空格。要同时有页头「開始確認」。"""
+    f = frame({}, _texts(("開始確認", 65, 48), ("H.I.F 本戦ヘ", 360, 1078)))
+    assert opening._finals_start(f)
+    assert not opening._finals_start(frame({}, _texts(("H.I.F本戦へ", 360, 1078))))  # 只有按钮字不算
+    assert not opening._finals_start(frame({}, _texts(("開始確認", 65, 48), ("本戦へ進む", 360, 400))))  # 正文里的不算
+
+
+@pytest.mark.parametrize("name, want", [("dmm/start-confirm-dmm1.png", True), ("start-confirm-q16.png", True),
+                                        ("finals/start-confirm-540.png", True), ("settings/start-confirm-m23.png", False)])
+def test_finals_start_on_real_frames(name, want):
+    """实机开始确认页：本战（H.I.F本戦へ）认得出；选拔第 2 步的「プロデュース開始」不算。只用模板（不 OCR）。"""
+    import cv2
+
+    from hiro.vision.offline import load
+
+    path = os.path.join(os.environ.get("HIRO_FIXTURES", os.path.join(os.path.dirname(__file__), "fixtures")), name)
+    if not os.path.exists(path):
+        pytest.skip(f"需要实机截图 {name}")
+    f = Frame(load(cv2.imread(path)), 0.0)
+    f.__dict__["texts"] = []
+    assert opening._finals_start(f) is want
+
+
+def test_new_produce_snaps_a_frame_per_tap(monkeypatch):
+    """开局阶段每次点击都存一帧到 trace、记一条备注；开局结束后摘掉钩子。"""
+    saved, notes = [], []
+    rt, _ = rig(monkeypatch, [frame({})])
+    rt.session = type("S", (), {})()
+    rt.session.trace = type("T", (), {"next_seq": lambda self: len(saved) + 1,
+                                      "save_frame": lambda self, seq, img: saved.append(seq) or f"frames/{seq:05d}.jpg"})()  # fmt: skip
+    rt.session.note = notes.append
+    monkeypatch.setattr(opening, "_new_produce", lambda rt, mode, **kw: (rt.screen.shot(), rt.device.tap(10, 20), rt.device.tap(30, 40)))
+    opening.new_produce(rt, "main")
+    assert saved == [1, 2] and notes == ["开局点击 (10, 20)（帧 frames/00001.jpg）", "开局点击 (30, 40)（帧 frames/00002.jpg）"]
+    rt.device.tap(50, 60)
+    assert len(saved) == 2  # 开局之后不再存

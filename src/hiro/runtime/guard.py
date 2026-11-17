@@ -70,16 +70,26 @@ class GuardedDevice:
     def __init__(self, device, screen: Screen, dialog_words: tuple[str, ...] = ()):
         self._device, self._screen, self._dialog_words = device, screen, dialog_words
         self.name = device.name
+        self.on_tap = None  # on_tap(x, y)：过了拦截、真点之前调（开局阶段存帧用，hiro.runtime.opening.new_produce）；出错不影响点击
         if hasattr(device, "real_tap"):  # 只有 MaaToolsDevice 有（PlayCover 真实鼠标兜底）；调用方按 getattr(dev, "real_tap", None) 判断
             self.real_tap = self._real_tap
 
     def tap(self, x: int, y: int) -> None:
         check_tap(self._screen, x, y, self._dialog_words)
+        self._notify(x, y)
         self._device.tap(x, y)
 
     def _real_tap(self, x: int, y: int) -> None:
         check_tap(self._screen, x, y, self._dialog_words)
+        self._notify(x, y)
         self._device.real_tap(x, y)
+
+    def _notify(self, x: int, y: int) -> None:
+        if self.on_tap is not None:
+            try:
+                self.on_tap(x, y)
+            except Exception:  # noqa: BLE001  存帧之类的旁路出错不影响点击
+                pass
 
     def __getattr__(self, name):
         if name in self.PASS:
