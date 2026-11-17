@@ -688,3 +688,20 @@ def test_use_limit_dialog_taps_cancel():
     rt, _ = runtime([frame()])
     assert interrupts.use_limit(frame([T("使用期限確認", 360, 400)], dialog=dlg), rt) and rt.raw_device.taps == [interrupts.USE_LIMIT_CANCEL]
     assert interrupts.use_limit(frame([T("確認", 360, 400)], dialog=PLAIN), rt) is None
+
+
+def test_use_limit_on_real_frame():
+    """实机「使用期限確認」（Mac 11-17，tower-mac/frames/expiry.png）：整条中断层走到 use_limit，点左下「✕キャンセル」，不点「イベントへ」。"""
+    import os
+    from pathlib import Path
+
+    import cv2
+
+    from hiro.runtime.frame import Frame
+
+    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "home-use-limit.png"
+    if not path.exists():
+        pytest.skip("需要实机截图 pages/home-use-limit.png")
+    rt, _ = runtime([frame()])
+    assert "使用期限" in interrupts.check(Frame(cv2.resize(cv2.imread(str(path)), (720, 1280)), 0.0), rt)
+    assert rt.raw_device.taps == [(212, 1161)]
