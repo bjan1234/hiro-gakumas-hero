@@ -359,9 +359,75 @@ def rest_confirm(frame, rt) -> str | None:
     return f"休み確認：{'刚才决策是休息，点「休む」' if rest else '最近的决策不是休息（或续跑后不知道），点「キャンセル」回选行动页重新决策'}"
 
 
+LESSON_CONFIRM_START, LESSON_CONFIRM_CANCEL = (515, 1160), (236, 1161)
+
+
+def lesson_lowhp_confirm(frame, rt) -> str | None:
+    """「レッスン開始確認：体力が低下しています。レッスンを開始しますか？」（キャンセル / 開始する）：选行动选了课程 / 授業、体力低时游戏
+    弹的确认（初 Mac 11-17 frames/00360）。协调 + 3940a9 定：session 记的最近一次决策是选行动 training / class 就点「開始する」
+    （执行决策器已经做出的选择），否则（含续跑不知道之前选了什么）点「キャンセル」回选行动页重新决策。
+    只认这个标题的框；「開始する」不会点在破棄框上（破棄框由 red_line 先处理）。"""
+    if not frame.has_dialog or "レッスン開始確認" not in str((frame.dialog or {}).get("title") or ""):
+        return None
+    if _recently(rt, "lesson_confirm"):
+        return "レッスン開始確認：刚点过，等框关"
+    last = getattr(getattr(rt, "session", None), "last_decision", None)
+    lesson = bool(last) and last[0] == "ACTION_SELECT" and (last[1].action.args or {}).get("option") in ("training", "class")
+    word, fallback = ("開始する", LESSON_CONFIRM_START) if lesson else ("キャンセル", LESSON_CONFIRM_CANCEL)
+    btn = next((t for t in frame.texts if t.text.replace(" ", "").strip() == word and t.rect.center.y > 1000), None)
+    rt.device.tap(*(btn.rect.center if btn is not None else fallback))
+    _tapped(rt, "lesson_confirm")
+    return f"レッスン開始確認（体力低）：{'刚才决策是课程 / 授業，点「開始する」' if lesson else '最近的决策不是课程（或续跑后不知道），点「キャンセル」回选行动页重新决策'}"
+
+
+TAP_NEXT = "TAPで次へ"
+TAP_NEXT_BLOCK = ("キャンセル", "購入", "ジュエル", "破棄", "削除")
+
+
+def tap_next_dialog(frame, rt) -> str | None:
+    """弹窗样式的展示页、底部只有「TAPで次へ」（初结算的 True End 条件页：1 位 + 三个アチーブメント + 「3つのアチーブメントを獲得した
+    状態で試験1位」，协调 11-17：判成 DIALOG 没处理器，182 秒停）：点「TAPで次へ」。有キャンセル / 購入 / ジュエル 等字样的框不点。"""
+    if not frame.has_dialog:
+        return None
+    texts = [t.text.replace(" ", "") for t in frame.texts]
+    if any(w in t for t in texts for w in TAP_NEXT_BLOCK):
+        return None
+    btn = next((t for t in frame.texts if TAP_NEXT in t.text.replace(" ", "") and t.rect.center.y > 1000), None)
+    if btn is None:
+        return None
+    if _recently(rt, "tap_next"):
+        return "「TAPで次へ」：刚点过，等翻页"
+    rt.device.tap(*btn.rect.center)
+    _tapped(rt, "tap_next")
+    return f"展示页「{(frame.dialog or {}).get('title') or ''}」：点「TAPで次へ」"
+
+
+LIVE_RESUME = "画面タップで再開"
+
+
+def live_resume(frame, rt) -> str | None:
+    """LIVE 暂停（「画面タップで再開」，初 True End LIVE 在全屏里暂停、退出全屏后竖屏带黑边显示，协调 11-17）：点这行字继续。
+    先看版面（竖屏、上下两段黑、中间一条横向画面）再 OCR，平常的帧不多花整屏 OCR。"""
+    img = frame.img
+    if img is None or img.shape[0] <= img.shape[1]:
+        return None
+    h = img.shape[0]
+    if float(img[: h * 3 // 10].mean()) > 5 or float(img[h * 7 // 10 :].mean()) > 5 or float(img[h * 4 // 10 : h * 6 // 10].mean()) < 8:
+        return None
+    btn = next((t for t in frame.texts if LIVE_RESUME in t.text.replace(" ", "")), None)
+    if btn is None:
+        return None
+    if _recently(rt, "live_resume"):
+        return "LIVE 暂停：刚点过「画面タップで再開」，等继续"
+    rt.device.tap(*btn.rect.center)
+    _tapped(rt, "live_resume")
+    return "LIVE 暂停：点「画面タップで再開」"
+
+
 Interrupt = Callable[[object, object], "str | None"]
 DEFAULT: tuple[Interrupt, ...] = (red_line, comm, stop_notice, date_changed, settings, customize_confirm, tutorial, reroll_confirm,
-                                   achievement_toast, affection_unlock, use_limit, live_setting, consult_end_confirm, rest_confirm)
+                                   achievement_toast, affection_unlock, use_limit, live_setting, consult_end_confirm, rest_confirm,
+                                   lesson_lowhp_confirm, tap_next_dialog, live_resume)
 
 
 def check(frame, rt, interrupts: tuple[Interrupt, ...] = DEFAULT) -> str | None:

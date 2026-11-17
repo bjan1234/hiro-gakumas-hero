@@ -52,7 +52,8 @@ def resume_produce(rt, timeout: float = RESUME_TIMEOUT) -> str:
                 rt.device.tap(*q["tap"])  # 活动登录奖励（培育外）：翻掉再说
                 return None
             hit = classify_scene(f.img)
-            if hit.area == "produce" or hit.name == "commu":
+            if hit.area == "produce" or hit.name in ("commu", "LIVE"):
+                # LIVE：培育里的横屏演出（初 True End 等，协调 11-17）。主循环有 LandscapeGuard 和「TAP TO START」，交给它
                 logger.info("已在培育内（%s），直接开始主循环", hit.name)
                 return "already"
             alt = getattr(rt, "classify", None)
