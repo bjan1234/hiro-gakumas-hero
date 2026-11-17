@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import random
 import time
@@ -317,6 +318,10 @@ def _round_defaults(label: str | None, deck: list) -> tuple[dict, dict | None]:
     return permil, alloc
 
 
+class _Waiting(Exception):
+    """实机拼编成还在等（倍率没读到）：这一步用 H.I.F 的算法，不算搜索开局失败。"""
+
+
 def _tag_number(label: str | None, key: str) -> int | None:
     """标签 tag 里的编号：nia-mid1#audition-2 → 2（试镜档位，平台 11-17 约定）；hajime-lesson-vo-sp#lesson-3 → 3（同种同属性第几节课）。"""
     for tag in str(label or "").split("#")[1:]:
@@ -426,6 +431,9 @@ class BenchAdvisor:
         self._session = None
         self._number: int | None = None
         self._live_built = False
+        self._calc_pm: dict = {}  # 按三属性粗算的倍率（只当比例用）
+        self._seen_pm: dict = {}  # 这一场画面实读到的倍率（每属性最后一次非 0 的读数）
+        self._live_wait: str | None = None  # 实机拼编成在等什么（倍率没读到）：这一步用 uinet、下一步再拼
         self.known_draws: list | None = None
         self.load_error: str | None = None
         self.exam: dict = {}
@@ -505,6 +513,7 @@ class BenchAdvisor:
                 self.exam["crit"], self.exam["permil_default"], self.exam["allocation"] = ac["crit"], {}, None
                 if ac["turns"]:
                     self.exam["turns"] = ac["turns"]
+        self._calc_pm, self._seen_pm, self._live_wait = {}, {}, None
         base = str(self.label or "").split("#", 1)[0].lower()
         if lo is None and base.startswith(("hajime-", "nia-")) and "-lesson" not in base:
             self._audition_defaults(idol, number)
@@ -609,10 +618,11 @@ class BenchAdvisor:
             except ExamUnsupported as e:
                 logger.warning("[%s] 拼编成时查不到试镜行：%s", self.label, e)
                 return None
-            pm = self.exam.get("permil_fixed") or dict(zip(("Vo", "Da", "Vi"), (obs.get("exam") or {}).get("permil") or (0, 0, 0)))
-            if not all(int(pm.get(a) or 0) > 0 for a in ("Vo", "Da", "Vi")):
-                # 倍率不全不能交给搜索（引擎会以为出牌不加分）：这一场用 H.I.F 的算法（ExamGnrpa 开局会报「倍率读不到」）
-                logger.warning("[%s] 三属性倍率读不全（%s），不拼编成，这一场退回 uinet", self.label, pm)
+            pm, why = self._exam_permils()
+            if pm is None:
+                # 倍率不全不能交给搜索（引擎会以为出牌不加分，初第二局中間 227 分）：这一步用 uinet，下一步画面读到了再拼
+                self._live_wait = why
+                logger.info("[%s] 倍率还不够拼编成（%s），这一步用 uinet", self.label, why)
                 return None
             lo.update(score_bonus_permils=[int(pm.get(a) or 0) for a in ("Vo", "Da", "Vi")],
                       exam={"produce_exam_battle_config_id": row["produceExamBattleConfigId"],
@@ -645,10 +655,31 @@ class BenchAdvisor:
                     len(lo.get("produce_item_ids") or ()), len(lo.get("supports") or ()), row.get("number"))  # fmt: skip
         return lo
 
+    def _exam_permils(self) -> tuple[dict | None, str]:
+        """拼编成用的三属性倍率 → ({Vo, Da, Vi} 或 None, 说明)。编成给了 permil_fixed 就用；否则画面实读的那几项（0 = 画面没给，初的考试
+        常见）为准，没读到的按 实读 / 粗算 的比例（几项取中位数）从粗算推；没有粗算时要三项都读到。一项都没读到 → None（等下一步）。"""
+        if self.exam.get("permil_fixed"):
+            return dict(self.exam["permil_fixed"]), "编成给的"
+        seen = {a: int(v) for a, v in (self._seen_pm or {}).items() if v and int(v) > 0}
+        calc = self._calc_pm or {}
+        if not seen:
+            return None, "画面还没读到倍率"
+        if len(seen) == 3:
+            return seen, "画面三项都读到了"
+        if not all(calc.get(a) for a in ("Vo", "Da", "Vi")):
+            return None, f"画面只读到 {sorted(seen)}、三属性没记账推不出其余"
+        rs = sorted(seen[a] / calc[a] for a in seen)
+        f = rs[len(rs) // 2]
+        pm = {a: seen.get(a) or int(math.ceil(calc[a] * f / 10.0) * 10) for a in ("Vo", "Da", "Vi")}
+        logger.info("[%s] 倍率：画面读到 %s，其余按比例 %.3f 从粗算 %s 推 → %s", self.label, seen, f, calc, pm)
+        return pm, f"画面 {sorted(seen)} + 按比例 {f:.3f} 推"
+
     def _audition_defaults(self, idol: str | None, number: int | None) -> None:
-        """实机初 / N.I.A 试镜、没有编成时：按主数据的试镜行补审查基准 / 回合数，按培育三属性（选行动页读的 produce.params）和 battle config
-        算三属性倍率（同客户端 CalcParameterBonusPermils，hiro.bench_bridge.tower.score_bonus_permils）当缺省——画面读到倍率时以画面为准。
-        初的考试画面读不到倍率：以前 UIObs 和拼的编成里倍率全是 0，GNRPA 以为出牌不加分，T2 起直接结束回合（初第二局中間 227 分，协调 11-18）。"""
+        """实机初 / N.I.A 试镜、没有编成时：按主数据的试镜行补审查基准 / 回合数；按培育三属性（选行动页读的 produce.params）和 battle config
+        粗算三属性倍率（同客户端 CalcParameterBonusPermils 的曲线部分，hiro.bench_bridge.tower.score_bonus_permils）。
+        粗算只当比例用：服务器倍率还乘了亲爱度加成（p_dearness_skill-…-audition_parameter_bonus_multiple，+5%–+50%，账号相关），记账的三属性
+        也可能滞后（初第二局中間：粗算 [3060, 2710, 1990]、画面实读 [5910, 4740, 3470]）。拼编成时画面读到的那几项为准，没读到的按
+        实读 / 粗算 的比例推（_exam_permils）。UIObs 不用它（uinet 看到的和以前一样）。"""
         from hiro.bench_bridge import tower as tw
         from hiro.search.exam_env import audition_row
 
@@ -675,10 +706,10 @@ class BenchAdvisor:
             except Exception as e:  # noqa: BLE001
                 logger.warning("[%s] 按三属性算倍率失败：%s: %s", self.label, type(e).__name__, e)
             else:
-                self.exam["permil_default"], self.exam["allocation"] = dict(zip(("Vo", "Da", "Vi"), pm)), None
-                logger.info("[%s] 倍率按三属性 %s 算：%s（画面读到时以画面为准）", self.label, params, pm)
+                self._calc_pm = dict(zip(("Vo", "Da", "Vi"), pm))
+                logger.info("[%s] 倍率按三属性 %s 粗算：%s（只当比例用：画面读到的那项为准，其余按比例推）", self.label, params, pm)
                 return
-        logger.warning("[%s] 培育三属性没记账（%s），倍率只靠画面", self.label, params)
+        logger.warning("[%s] 培育三属性没记账（%s），倍率要等画面三项都读到", self.label, params)
 
     def _lesson_screen(self) -> dict | None:
         """平台的课程画面读数（state.exam_session.lesson：turns_total / clear_target / perfect_target / level_ids / …，平台 11-18）。"""
@@ -775,13 +806,18 @@ class BenchAdvisor:
             # 每步给算法的 UIObs 记进运行日志（复盘用：实机局能直接看出 UINet 看到的局面和画面差在哪）
             uiobs_log.info("[%s T%s %s] %s", self.label, getattr(memory, "turn", None), origin,
                            json.dumps(obs, ensure_ascii=False, separators=(",", ":")))
+            self._seen_pm.update({k: v for k, v in (getattr(state, "attr_permils", None) or {}).items() if v})
             if self.exam_loadout is None and not self._live_built and str(self.label or "").lower().startswith(("hajime", "nia")):
-                self._live_built = True
+                self._live_wait = None
                 self.exam_loadout = self._live_exam_loadout(obs)
+                self._live_built = self._live_wait is None  # 在等倍率：下一步再拼
             self._refresh_lesson()
             ctx = self._ctx(obs)
             step_note = ""
+            wait = self._live_wait if (self.exam_loadout is None and algo is not self.algo and self.algo is not None) else None
             try:
+                if wait:
+                    raise _Waiting(wait)
                 if not self.began:
                     algo.begin(ctx)
                     self.began = True
@@ -792,8 +828,11 @@ class BenchAdvisor:
                 # 指定的搜索算法（偶像之路 / 初 / N.I.A）这一步搜不了：这一步用 H.I.F 的算法（uinet），理由里写明原因。
                 # 开局就失败（拼不出编成等）的，这一场剩下的步都用 uinet，不每步重试。
                 why = f"{type(e).__name__}: {e}"
-                logger.warning("[%s] %s 这一步搜不了，用 %s：%s", self.label, self.round_name, algo_spec().split(":")[0], why)
-                if not self.began or getattr(e, "whole_round", False):  # 开局失败 / 搜索自己判定这一场的模型不可信：整场 uinet
+                if not isinstance(e, _Waiting):
+                    logger.warning("[%s] %s 这一步搜不了，用 %s：%s", self.label, self.round_name, algo_spec().split(":")[0], why)
+                if isinstance(e, _Waiting):
+                    step_note = f"{self.round_name} 等画面读到倍率（{e}）"
+                elif not self.began or getattr(e, "whole_round", False):  # 开局失败 / 搜索自己判定这一场的模型不可信：整场 uinet
                     what = "开局失败" if not self.began else "不可信"
                     self.round_algo, self.round_note = self.algo, f"{self.round_name} {what}（{why}）"
                     self.round_name = algo_spec().split(":")[0]

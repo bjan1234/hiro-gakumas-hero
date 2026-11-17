@@ -990,6 +990,7 @@ def test_live_exam_loadout_built_on_first_decision(monkeypatch):
     sess = SimpleNamespace(state=SimpleNamespace(produce={"items": ["pitem_k"]}))
     adv.on_round_start(1, {"exam": "nia-mid2#audition-3", "idol": "i_card-x", "deck": [("p_card-a", 1), ("p_card-b", 0)], "session": sess})
     st, mem = _state([_card(0, "p_card-a", 1)], remaining=12, turn=1)
+    st.attr_permils = {"Vo": 20000, "Da": 30000, "Vi": 10000}  # 画面三项都读到（倍率不全时要等，见 test_hajime_audition_permil_screen_first）
     adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
     lo = algo.ctx.loadout
     assert asked == {"idol": "i_card-x", "produce": "produce-004", "rnd": "mid2", "number": 3}
@@ -1109,10 +1110,15 @@ def test_exam_env_support_passthrough_engine_format():
 
 # ---------------------------------------------------------------- 倍率缺失（初第二局中間：倍率 0 → GNRPA 打 227 分，协调 11-18）
 @pytest.mark.bench_on
-@pytest.mark.parametrize("params, want", [({"Vo": 195, "Da": 247, "Vi": 159}, [1100, 1200, 1300]), ({}, None)])
-def test_hajime_audition_permil_from_params(monkeypatch, params, want):
-    """初的考试画面读不到倍率：开场按培育三属性（produce.params）+ battle config 算倍率当缺省，UIObs 和拼的编成都用它；
-    三属性没记账（算不出）时不拼编成，GNRPA 开局失败，整场退回 uinet，理由写明。"""
+@pytest.mark.parametrize("params, reads, want", [
+    # 初第二局中間：T1 画面倍率 0（正常）→ 这一步 uinet；T2 读到 Vi 3470 → 按 3470 / 1990 的比例从粗算推 Vo / Da
+    ({"Vo": 233, "Da": 247, "Vi": 159}, [{}, {"Vi": 3470}], [None, {"Vo": 5340, "Da": 4730, "Vi": 3470}]),
+    # 三属性没记账：要等画面三项都读到
+    ({}, [{"Vi": 3470}, {"Vi": 3470, "Vo": 5910}, {"Da": 4740}], [None, None, {"Vo": 5910, "Da": 4740, "Vi": 3470}]),
+])  # fmt: skip
+def test_hajime_audition_permil_screen_first(monkeypatch, params, reads, want):
+    """协调 11-18（用户确认）：初的考试画面倍率读数 0 = 画面没给，不能当真值交给 GNRPA。画面读到的那几项为准，没读到的按 实读 / 粗算
+    （三属性 + battle config，同客户端曲线；服务器还乘亲爱度加成，所以只当比例用）推；一项都没读到的步用 uinet，理由写「等画面读到倍率」。"""
     from hiro.bench_bridge import tower as tw
 
     monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
@@ -1124,7 +1130,7 @@ def test_hajime_audition_permil_from_params(monkeypatch, params, want):
     asked = {}
     monkeypatch.setattr("hiro.search.exam_env.audition_row", lambda idol, produce, rnd, number=None: asked.update(produce=produce) or row)
     monkeypatch.setattr(tw, "master", lambda: SimpleNamespace(battle_config=lambda cid: {"vocal": 30, "dance": 40, "visual": 30, "turn": 9}))
-    monkeypatch.setattr(tw, "score_bonus_permils", lambda cid, p: asked.update(params=p) or [1100, 1200, 1300])
+    monkeypatch.setattr(tw, "score_bonus_permils", lambda cid, p: asked.update(params=p) or [3060, 2710, 1990])
     monkeypatch.setattr("hiro.search.loadout.run_loadout", lambda produce, plan: ({"items": (), "supports": (), "skills": ()}, []))
     hif, search = _Algo(("play", 0)), _Algo(("play", 0))
     monkeypatch.setattr(A, "load_algo", lambda s=None, **kw: search if s == A.EXAM_DEFAULT_ALGO else hif)
@@ -1132,14 +1138,17 @@ def test_hajime_audition_permil_from_params(monkeypatch, params, want):
     adv = A.BenchAdvisor(CAMPUS_HIRO)
     adv.on_round_start(1, {"exam": "hajime-mid1", "idol": "i_card-x", "deck": [("p_card-a", 0)], "session": sess})
     assert asked["produce"] == "produce-002" and adv.exam["crit"] == [30, 40, 30] and adv.exam["turns"] == 9
-    st, mem = _state([_card(0, "p_card-a")], remaining=9, turn=1)
-    st.attr_permils = {}  # 初：画面读不到倍率
-    adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
-    if want:
-        assert asked["params"] == [195, 247, 159] and search.ctx.loadout["score_bonus_permils"] == want
-        assert search.seen[-1]["exam"]["permil"] == want  # UIObs 也带上（uinet 走这条时同样受益）
-    else:
-        assert adv.exam_loadout is None and search.ctx.loadout.get("produce_cards") is None  # 拼不出：搜索拿不到编成，开局会报错
+    for read, w in zip(reads, want):
+        st, mem = _state([_card(0, "p_card-a")], remaining=9, turn=1)
+        st.attr_permils = dict(read)
+        n_hif, n_search = len(hif.seen), len(search.seen)
+        d = adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+        if w is None:
+            assert len(hif.seen) == n_hif + 1 and len(search.seen) == n_search and "等画面读到倍率" in d.reason
+        else:
+            assert len(search.seen) == n_search + 1 and search.ctx.loadout["score_bonus_permils"] == [w["Vo"], w["Da"], w["Vi"]]
+            assert "兜底" not in d.reason
+    assert adv.round_algo is search  # 等倍率的步不算开局失败
 
 
 def test_exam_gnrpa_refuses_zero_permils():
