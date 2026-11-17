@@ -69,6 +69,18 @@ def test_hajime_evaluation_matches_live_result(hn):
     assert hn.hajime_evaluation({"Vo": 965, "Da": 966, "Vi": 448}, 14314, 1, 1000) == 9973
 
 
+def test_lesson_by_clear_matches_live(hn):
+    """平台 11-18 读的实机课程（篠澤広 plan2，初 REGULAR）：追い込み 9 / 90、11 / 165 落在 produce-002 的档；第一节 SP 是 7 / 70。"""
+    assert (lambda L: (L.turns, L.perfect))(hn.lesson_by_clear("hard", 90, plan=2)) == (9, 360)
+    assert (lambda L: (L.turns, L.perfect))(hn.lesson_by_clear("hard", 165, plan=2)) == (11, 600)
+    assert (lambda L: (L.turns, L.perfect))(hn.lesson_by_clear("sp", 70, plan=2)) == (7, 140)
+
+
+def test_nia_evaluation_matches_live_result(hn):
+    """2026-11-18 Mac 账号 2 N.I.A PRO（篠澤広）：培育履历 15,428pt，属性 1163 / 1475 / 1107，ファン投票数 86,919。"""
+    assert hn.nia_evaluation({"Vo": 1163, "Da": 1475, "Vi": 1107}, 86919, "produce-004", 2000) == 15428
+
+
 def test_nia_evaluation_tiers(hn):
     assert hn.nia_vote_eval(20000, "produce-004") == 2000
     assert hn.nia_vote_eval(36036, "produce-004") == 3363
@@ -107,8 +119,10 @@ def test_nia_sim_walk(hn):
 def test_hajime_sim_walk(hn):
     r = hn.rules("produce-001", HIRO)
     s = hn.Sim(r, params={"Vo": 155, "Da": 187, "Vi": 159}, growth_permil={"Vo": 1272, "Da": 1472, "Vi": 1135}, max_stamina=30)
-    assert s.lesson("Da", stamina_used=8) == 50 + 23  # 满分线 50，加成 +47.2%
-    assert s.lesson("Da", score=30, stamina_used=4) == 30 + 14
+    with pytest.raises(hn.Unsupported):
+        s.lesson("Da", stamina_used=8)  # 档位由日程定，不给 level / clear 不猜
+    assert s.lesson("Da", level=1, stamina_used=8) == 50 + 23  # 满分线 50，加成 +47.2%
+    assert s.lesson("Da", clear=25, score=30, stamina_used=4) == 30 + 14
     s.study({"Vo": 40, "Da": 40}, stamina_used=5)
     s.outing(pp_cost=0, recover_permil=300)
     assert s.stamina == 30 - 17 + 9

@@ -101,6 +101,7 @@ class Rules:
     business: dict = field(default_factory=dict)  # (phase, venue) -> (votes, excellent_votes, parameter, extras)
     auditions: dict = field(default_factory=dict)  # stage -> [Tier]
     grades: tuple = ()  # ((threshold, grade), ...) 从低到高
+    plan: int = 0  # 偶像卡的 planType 号（1 / 2 / 3）
 
     @property
     def drink_limit(self):
@@ -184,7 +185,8 @@ def rules(produce_id, idol_card_id, catalog=None) -> Rules:
     p = c.one("Produce", produce_id)
     idol = c.one("IdolCard", idol_card_id.replace("i_card-skin-", "i_card-"))  # 换装（skin）共用原卡的配置
     r = Rules(produce_id=produce_id, family=fam, name=p["name"], steps=int(p["steps"]), action_points=int(p["actionPointQuantity"]),
-              param_cap=int(p["idolCardParameterGrowthLimit"]), setting=dict(c.one("ProduceSetting", p["produceSettingId"])))
+              param_cap=int(p["idolCardParameterGrowthLimit"]), setting=dict(c.one("ProduceSetting", p["produceSettingId"])),
+              plan=int(str(idol.get("planType", "")).rsplit("Plan", 1)[-1] or 0) if "Plan" in str(idol.get("planType", "")) else 0)
     if fam == "hajime":
         r.lessons = _lesson_rows(c, produce_id, idol)
     else:
@@ -207,6 +209,25 @@ def rules(produce_id, idol_card_id, catalog=None) -> Rules:
     r.grades = tuple(sorted((int(g["threshold"]), g["grade"].replace("ResultGrade_", "")) for g in c.rows("ProduceGrade")
                             if g["produceGroupId"] == group))
     return r
+
+
+def lesson_by_clear(kind, clear, *, plan=0, catalog=None) -> Lesson:
+    """按画面过关线在初（produce-001/002/003）的全部课程档位里反查。plan 给了就先按 plan 过滤（plan3 的课程表和 plan2 共用时退回不过滤）。
+    唯一就返回，不唯一 / 没有就抛 Unsupported（不猜）。"""
+    c = catalog or Catalog()
+    pat = re.compile(rf"^p_step_lesson_level-00[123]-plan(\d)(?:-aggressive)?-{kind}-\d+$|^p_step_lesson_level-003-plan(\d)-{kind}-\d+$")
+    rows = []
+    for r in c.rows("ProduceStepLessonLevel"):
+        m = pat.match(r["id"])
+        if m and int(r["successThreshold"]) == clear:
+            rows.append((int(m[1] or m[2]), r))
+    if plan and any(p == plan for p, _ in rows):
+        rows = [x for x in rows if x[0] == plan]
+    shapes = {(int(r["limitTurn"]), int(r["resultTargetValueLimit"])) for _, r in rows}
+    if len(shapes) != 1:
+        raise Unsupported(f"{kind} 课过关线 {clear} 在主数据里对不上唯一一档（{sorted(shapes)}）")
+    r = rows[0][1]
+    return Lesson(r["id"], kind, int(r["limitTurn"]), int(r["successThreshold"]), int(r["resultTargetValueLimit"]))
 
 
 # ------------------------------------------------------------------ 评价
@@ -294,21 +315,30 @@ class Sim:
         return 1 + sum(1 for s in ("mid1", "mid2") if s in self.results)
 
     # ---- 初
-    def lesson(self, a, kind="normal", *, score=None, stamina_used, oikomi_extra=0):
+    def lesson(self, a, kind="normal", *, level=None, clear=None, score=None, stamina_used, oikomi_extra=0):
         """初的课程。kind = normal / sp / hard（追い込み）。score 默认按满分线；收益不超过满分线。
+        用哪一档（回合 / 过关线 / 满分线）由日程逐周决定（客户端逆向：等级 = baseStepLevel + 日程 AddStepLevel），
+        **不是**「同种同属性第几次」（实机：REGULAR 第一节 SP 就是 7 回合 / 过关 70）。所以必须给其一：
+          level：这一档在 rules.lessons[(kind, attr)] 里的序号（1 起）；
+          clear：画面上的过关线（CLEARまで 的初值），按它在初的全部课程档位里反查（REGULAR 的追い込み实机是 9 / 90、11 / 165，
+                 落在 produce-002 的档位上，所以不限本培育）。
         stamina_used：这节课实际扣掉的体力（出牌决定，必填）。oikomi_extra：追い込みボーナス里额外涨的量，下课时平分到三项。"""
         if self.r.family != "hajime":
             raise Unsupported("课程（打牌的レッスン）只在初里；N.I.A 用 self_lesson")
         a = attr(a)
-        seq = self.r.lessons.get((kind, a)) or []
-        n = self.lesson_count.get((kind, a), 0)
-        if n >= len(seq):
-            raise Unsupported(f"主数据里没有第 {n + 1} 次 {kind} {a} 课")
-        L = seq[n]
-        base = L.perfect if score is None else max(0, min(int(score), L.perfect))
+        if level is not None:
+            seq = self.r.lessons.get((kind, a)) or []
+            if not 1 <= level <= len(seq):
+                raise Unsupported(f"{kind} {a} 课没有第 {level} 档（主数据 {len(seq)} 档）")
+            L = seq[level - 1]
+        elif clear is not None:
+            L = lesson_by_clear(kind, int(clear), plan=self.r.plan)
+        else:
+            raise Unsupported("课程档位按日程定：要给 level 或画面过关线 clear")
         if stamina_used > self.stamina:
             raise Unsupported(f"体力 {self.stamina} 不够这节课用的 {stamina_used}")
-        self.lesson_count[(kind, a)] = n + 1
+        self.lesson_count[(kind, a)] = self.lesson_count.get((kind, a), 0) + 1
+        base = L.perfect if score is None else max(0, min(int(score), L.perfect))
         gain = grow(base, self.growth[a])
         self._stamina(-stamina_used)
         self._add(a, gain)
