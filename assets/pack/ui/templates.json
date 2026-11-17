@@ -1362,6 +1362,22 @@
     48
    ],
    "source": "hiro tests/fixtures/drinks/r7-00002.jpg（饮料栏空槽的半透明杯子，11-17；hiro.vision.items._empty_cup 按灰度在格子中心附近找）"
+  },
+  "Common.TextConnecting": {
+   "file": "Common.TextConnecting.png",
+   "slice_rect": [
+    579,
+    1251,
+    120,
+    25
+   ],
+   "source": "hiro tests/fixtures/pages/nia-connecting.jpg（右下「CONNECTING」通信中，N.I.A 试镜后 11-17）",
+   "region": [
+    480,
+    1220,
+    240,
+    60
+   ]
   }
  },
  "boxes": {

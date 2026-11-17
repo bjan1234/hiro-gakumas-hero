@@ -94,8 +94,18 @@ class Sampler:
         self.seq = sum(1 for _ in self.index.open(encoding="utf-8")) if self.index.exists() else 0
         self.last_thumb, self.last_page = None, None
 
+    NIA_RECHECK = ("unknown", "DIALOG", "commu", "IDLE", "INITIAL_CHOICE")  # 这些判法下再整帧 OCR 看是不是 N.I.A 特有页
+
     def __call__(self, img):
         hit = self.classify(img)
+        if hit.name in self.NIA_RECHECK and img is not None and img.shape[0] > img.shape[1]:
+            from hiro.vision.classify import PageHit
+            from hiro.vision.nia import read_nia_page
+            from hiro.vision.ocr import screen_texts
+
+            # 営業场所的黄色卡片被当成弹窗标题条（DIALOG）、试镜选档被当成剧情（commu）、営業话题认不出（N.I.A 采样 11-17）
+            if (nia := read_nia_page(screen_texts(img), img)) is not None:
+                hit = PageHit(nia[0], "nia_ocr", "produce", nia[1])
         if hit.name == "TOWER_EXAM":
             import dataclasses
 
@@ -139,6 +149,9 @@ def make_advance(sampler: Sampler, stop_s: float = UNKNOWN_STOP_S):
 
     def advance(rt, frame, hit) -> bool:
         landscape = frame.img is not None and frame.img.shape[1] > frame.img.shape[0]
+        if hit.name == "unknown" and not landscape and _connecting(frame.img):
+            state["since"] = None  # 右下「CONNECTING」：通信中，当加载等（N.I.A 试镜后 11-17：认不出，119 秒才停）
+            return False
         if hit.name == "unknown" and not play._produce_finished(frame) and not landscape:
             did = _nia_bubble(rt, frame)
         else:
@@ -159,7 +172,14 @@ def make_advance(sampler: Sampler, stop_s: float = UNKNOWN_STOP_S):
 
 
 BUBBLE_TAP = (12, 12)
-BUBBLE_WORDS = ("上昇した", "を強化しました", "をカスタマイズしまし", "を削除しまし", "獲得しました")
+BUBBLE_WORDS = ("上昇した", "を強化しました", "をカスタマイズしまし", "を削除しまし", "を除去しまし", "獲得しました")
+
+
+def _connecting(img) -> bool:
+    """右下角「CONNECTING」（游戏通信中）。普通页面加载时也会闪，所以只在认不出的画面上当加载用，不改通用判页。"""
+    from hiro.vision.ui_templates import tpl
+
+    return img is not None and img.shape[:2] == (1280, 720) and tpl("Common.TextConnecting").find(img, threshold=0.9) is not None
 
 
 def _nia_bubble(rt, frame) -> bool:
@@ -197,11 +217,17 @@ def nia_core(scenario_mode: str):
     from hiro.produce.hif import HifCore
 
     class NiaSampleCore(HifCore):
+        nia_audition_number = None  # 试镜选档页选的档（NiaPages 设）：标签带上「#audition-N」，8a3a1e7 的中转层按它查战斗配置
+
         def _battle_label(self, ctx) -> str:
             n = self.exam_count
             self.exam_count += 1
             type(self).exams_done = self.exam_count
-            return STAGES[min(n, len(STAGES) - 1)]
+            label = STAGES[min(n, len(STAGES) - 1)]
+            if self.nia_audition_number is not None:
+                label = f"{label}#audition-{self.nia_audition_number}"
+                self.nia_audition_number = None
+            return label
 
     NiaSampleCore.__name__ = NiaSampleCore.__qualname__ = "NiaSampleCore"
     return NiaSampleCore
@@ -239,9 +265,13 @@ def run(args) -> int:
     core = Core(scenario="qualify", idol=args.idol)
     set_mode(session, mode)
     sampler = Sampler(classify, Path(args.out))
+    from hiro.produce.nia import NiaPages
+
+    nia_pages = NiaPages(core)
     device = open_device()
     device.connect()
-    rt = Runtime(raw_device=device, classify=sampler, handlers=make_handlers(core), advance=make_advance(sampler), session=session,
+    rt = Runtime(raw_device=device, classify=sampler, handlers={**make_handlers(core), **nia_pages.handlers()}, advance=make_advance(sampler),
+                 session=session,
                  landscape=LandscapeGuard(active=getattr(device, "name", "") == "maatools"), idle_stop_s=play.IDLE_STOP_S)  # fmt: skip
     active.use(rt)
     logger.info("N.I.A 采样：%s（%s），帧存到 %s", args.difficulty, mode, sampler.out)

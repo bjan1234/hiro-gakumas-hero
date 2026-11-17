@@ -49,6 +49,7 @@ ACTIONS = [
     (re.compile(r"差し入れ"), "present"),
     (re.compile(r"特別指導"), "special_training"),
     (re.compile(r"おでかけ"), "outing"),
+    (re.compile(r"^営業$"), "sales"),  # N.I.A 営業（2次まで 6 週 等只有这一个按钮，11-17 原来读不出、决策 Wait 停）
     # N.I.A「Vo.自主レッスン」：属性前缀和「レッスン」之间夹着「自主」，要先于下面的 lesson（11-17 N.I.A 采样：attr 读成 None）
     (re.compile(r"(Vo|Da|Vi)\.?自主レッ[スズ]ン"), "self_lesson"),
     (re.compile(r"(Vo|Da|Vi)?\.?レッ[スズ]ン"), "lesson"),
