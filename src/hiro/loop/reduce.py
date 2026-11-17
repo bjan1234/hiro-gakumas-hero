@@ -103,6 +103,27 @@ def _easy_key(s: GameState, obs: Observation) -> None:
     _note(s, f"seq {obs.seq}: 看到 N.I.Aキー（黄緑）：这局是 N.I.A PRO 简单模式（对手分数 −80%）")
 
 
+def _declined(s: GameState) -> None:
+    """选行动页：中断层记下的「这一周别再选」（produce.declined_options，例如相談開始確認点了キャンセル）同一周放进 page_fields，换周丢掉。"""
+    prod = s.produce or {}
+    d = prod.get("declined_options")
+    if not d:
+        return
+    if d.get("step") is not None and prod.get("step") is not None and d["step"] != prod["step"]:
+        s.produce = {k: v for k, v in prod.items() if k != "declined_options"}
+        return
+    s.page_fields["declined_options"] = list(d.get("options") or [])
+
+
+def _consult_price(s: GameState, obs: Observation, origin: str) -> None:
+    """相談页的删卡价（services.delete.price）→ produce.consult_delete_price（3940a9：初 / N.I.A 按实际价判断选不选相談）。"""
+    price = ((obs.fields.get("services") or {}).get("delete") or {}).get("price")
+    if not isinstance(price, int) or price <= 0 or s.produce is None:
+        return
+    s.produce = {**s.produce, "consult_delete_price": price}
+    s.sources["produce.consult_delete_price"] = Source(origin, obs.seq)
+
+
 def _hajime_nia_step(s: GameState, obs: Observation, origin: str) -> None:
     """初 / N.I.A：选行动页头「中間 / 1次 / 2次 / 最終まで N週」按 produce.mode 换算成 produce.step（hiro.state.modes.step_from_header）。
     H.I.F 的 step 由识别层直接给（mode_and_step）；初 / N.I.A 的 mode 是运行时写进局面的，页头读不出来，所以在这里换算。
@@ -171,6 +192,9 @@ def _reduce_fields(s: GameState, obs: Observation) -> None:
         s.sources[full] = Source(origin, obs.seq)
     if obs.page.name == "ACTION_SELECT":
         _hajime_nia_step(s, obs, origin)
+        _declined(s)
+    if obs.page.name == "CONSULT":
+        _consult_price(s, obs, origin)
     if section == "exam":
         _observe_turn(s, obs)
         _attr_permil(s, obs)
