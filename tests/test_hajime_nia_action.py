@@ -381,6 +381,7 @@ def test_hajime_oikomi_takes_highest_exam_criteria():
     assert o["attr"] == "Vo" and "hajime.oikomi_bonus" in rules
 
 
+@pytest.mark.sim_master
 def test_exam_criteria_from_master():
     """审查基准 = 下一场考试战斗配置的三属性权重（主数据）。"""
     from hiro.brain.hajime_nia import exam_criteria

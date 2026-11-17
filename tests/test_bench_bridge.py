@@ -274,6 +274,7 @@ def test_setup_failure_prints_real_reason(monkeypatch, capsys):
     assert "缺 Python 模块 gakumas_exam_missing_for_test" in out and "网络" not in out
 
 
+@pytest.mark.sim_master
 @pytest.mark.bench_on
 def test_engine_path_takes_screen_truths(monkeypatch):
     """模拟器合成开局只按画面粗对齐：回合属性是占位顺序、手牌强化被模拟器自己的随机支援强化抬高、やる気有偏差。
@@ -972,6 +973,7 @@ def test_search_step_failure_falls_back_to_hif_algo(monkeypatch, fail_begin):
     assert search.begins == 1  # 开局失败不重试；开局成功的只 begin 一次
 
 
+@pytest.mark.sim_master
 @pytest.mark.bench_on
 def test_live_exam_loadout_built_on_first_decision(monkeypatch):
     """协调 11-17：实机初 / N.I.A 没有 HIRO_EXAM_LOADOUT 时，中转层在第一次决策时自己拼编成：牌组账本 + run_loadout（道具 / 支援卡）
