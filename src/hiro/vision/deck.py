@@ -688,6 +688,25 @@ def _near_name(text: str) -> str | None:
     return hits.pop() if len(hits) == 1 else None
 
 
+MEMORY_LABEL = (120, 400, 620, 500)  # 卡上方的橙色标签「メモリー効果」
+HUD_PANEL = (520, 25, 705, 160)  # 培育 HUD 右上「審査基準」白框：普通获得演出 0.53–0.54 白，选拔结束后的展示页 ≤ 0.02
+HUD_WHITE_MIN = 0.2
+
+
+def memory_effect_popup(img: MatLike) -> bool:
+    """回忆效果的卡展示：卡上方有「メモリー効果」标签，或者画面上没有培育 HUD（选拔试验结束后的展示：DMM q4 seq 522
+    私がスター+ 标签还没淡入、523 届いて！+ 有标签；回忆卡被强化，原来记成获得、账本多 2 张）。相談买卡的演出背景也压暗（白框 0），
+    但它和购买动作配对、不单独改牌组。是强化还是获得由状态层按牌组定（hiro.loop.events._memory_upgrade）。"""
+    from hiro.vision.ocr import ocr_boxes
+
+    x1, y1, x2, y2 = HUD_PANEL
+    hsv = cv2.cvtColor(img[y1:y2, x1:x2], cv2.COLOR_BGR2HSV)
+    if float(((hsv[..., 1] < 25) & (hsv[..., 2] > 235)).mean()) < HUD_WHITE_MIN:
+        return True
+    x1, y1, x2, y2 = MEMORY_LABEL
+    return any("メモリー" in t and "効果" in t for t, _, _ in ocr_boxes(img[y1:y2, x1:x2]))
+
+
 def read_acquire_popup(img: MatLike, art: bool = True) -> dict | None:
     """获得演出的名称栏：{kind: card|drink|pitem, card_id/drink_id/pitem_id, name, upgrade?, art_card_id?, agree?, text}。
 
@@ -709,6 +728,8 @@ def read_acquire_popup(img: MatLike, art: bool = True) -> dict | None:
     if item is None:
         return None
     item["text"] = text
+    if item["kind"] == "card":
+        item["memory_effect"] = memory_effect_popup(img)
     if item["kind"] == "card" and art:  # art=False：只判页（hiro.vision.quick），不用卡面核对（首次加载卡图库要 1–2 秒）
         from hiro import master
         from hiro.vision import card_db
