@@ -112,3 +112,43 @@ def read_event_choices(img: MatLike) -> dict:
     eff = unicodedata.normalize("NFKC", "\n".join(t for _, t in sorted(effect))) if selected is not None and effect else None
     # complete：三行选项文字都读到了（按钮滑入动画中的帧不完整，主循环会等下一帧）
     return {"choices": choices, "selected": selected, "effect": eff, "complete": all(c["text"] for c in choices)}
+
+
+DIALOGUE_DARK_MIN = 0.04  # 纯台词按钮：白底深色字，按钮里深色像素约 8%（初开场二选一）；授業 / 外出的选项字是彩色或灰色，≤ 2%
+DIALOGUE_COLOR_MAX = 0.02  # 彩色像素（属性图标、选中的彩色底）超过这个就不是纯台词
+BUTTON_MATCH_DY = 30
+
+
+def _plain_dialogue(hsv: np.ndarray, b) -> bool:
+    r = hsv[b.y1 + 10 : b.y2 - 10, b.x1 + 40 : b.x1 + 500]
+    if r.size == 0:
+        return False
+    dark = float((r[..., 2] < 90).mean())
+    color = float(((r[..., 1] > 100) & (r[..., 2] > 120)).mean())
+    return dark >= DIALOGUE_DARK_MIN and color <= DIALOGUE_COLOR_MAX
+
+
+def read_event_choice_page(img: MatLike) -> dict:
+    """事件选项页（判页 INITIAL_CHOICE）：read_event_choices 按授業的三行固定位置读，二选一时第 0 行是空的幻影（初开场
+    「お祝いをしないといけませんね / 次の試練が待っていますよ」，协调 11-17：EVENT_CHOICE 读成 3 项、其中 1 项没字）。
+    这里去掉既没有按钮（option_regions）也没读到字的行，按从上到下重新编号（二选一时和 HifCore._event_commit 的按钮序号一致）。
+    dialogue_only：每个按钮都是白底深色字、没有图标、没有代价角标 / トラブル（纯台词，选哪个都没有效果）。"""
+    from hiro.vision.classify import option_regions
+
+    raw = read_event_choices(img)
+    buttons = sorted(option_regions(img), key=lambda b: b.center.y)
+    keep = []
+    for c in raw["choices"]:
+        b = next((b for b in buttons if abs(c["center"][1] - b.center.y) <= BUTTON_MATCH_DY), None)
+        if b is not None or c["text"]:  # 没字也没按钮的行是幻影；选中态的按钮 option_regions 可能认不出，有字就留
+            keep.append((c, b))
+    choices, selected = [], None
+    for i, (c, b) in enumerate(keep):
+        if c.get("selected"):
+            selected = i
+        choices.append({**c, "index": i, "center": [int(b.center.x), int(b.center.y)] if b is not None else c["center"]})
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    dialogue = (len(choices) >= 2 and all(b is not None and _plain_dialogue(hsv, b) for _, b in keep)
+                and not any(c["cost_hp"] or c["cost_p"] or c["trouble"] for c in choices))  # fmt: skip
+    return {"choices": choices, "selected": selected, "effect": raw["effect"] if selected is not None else None,
+            "complete": bool(choices) and all(c["text"] for c in choices), "dialogue_only": dialogue}  # fmt: skip
