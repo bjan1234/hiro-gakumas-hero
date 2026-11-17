@@ -208,42 +208,82 @@ def test_pick_once_refreshes_list_when_nothing_fits(monkeypatch):
     assert tuple(ctrl["refresh"]) in state["clicked"] and state["clicked"][-1] == tuple(ctrl["decide"])
 
 
-def test_pick_once_falls_back_to_best_seen_on_return(monkeypatch):
-    """回去时原玩家那一行找不到（11-16 Mac 实机 p6：扫描时读到的行回去时读不出来）：改租往回找途中看到的最好一张，不停机。"""
+class FakeRentalList:
+    """租借列表：rows 一长串，一屏露 visible 行；往下拖（SWIPE）挪一行，往上拖挪一行；pager 是详情区的「1/2」（翻了列表不变）。
+    after_scan(rows)：第一次往上拖（扫完开始往回找）时改读数（模拟回去时某行读不出来）。"""
+
+    def __init__(self, rental, rows, visible=2, pages=1, after_scan=None):
+        self.rental, self.rows, self.visible, self.pages = rental, rows, visible, pages
+        self.pos, self.page, self.clicked, self.after_scan, self.back = 0, 1, [], after_scan, False
+
+    def click(self, *a):
+        self.clicked.append(a)
+        if list(a) == [485, 533]:
+            self.page = min(self.pages, self.page + 1)
+        elif list(a) == [233, 533]:
+            self.page = max(1, self.page - 1)
+
+    def swipe(self, x1, y1, x2, y2, *a, **k):
+        if y1 > y2:
+            self.pos = min(self.pos + 1, len(self.rows) - self.visible)
+        else:
+            if not self.back and self.after_scan is not None:
+                self.rows = self.after_scan(self.rows)
+            self.back = True
+            self.pos = max(self.pos - 1, 0)
+
+    def screenshot(self):
+        return None
+
+    def read(self):
+        return {"rows": self.rows[self.pos : self.pos + self.visible], "controls": {"decide": [497, 1157], "cancel": [220, 1157]},
+                "pager": {"page": self.page, "pages": self.pages, "prev": [233, 533], "next": [485, 533]}}
+
+    def install(self, monkeypatch):
+        r = self.rental
+        monkeypatch.setattr(r, "device", self)
+        monkeypatch.setattr(r, "_ensure_plan_fit", lambda: None)
+        monkeypatch.setattr(r, "progress", lambda why: None)
+        monkeypatch.setattr(r, "_sleep", lambda s: None)
+        monkeypatch.setattr(r, "_rows", self.read)
+
+
+def _named(player, name, center_y=600):
+    return {"player": player, "card": {"support_card_id": name, "level": 60, "name": name, "breaks": 4}, "center": [360, center_y]}
+
+
+def test_pick_once_long_list_best_at_top_with_detail_pager(monkeypatch):
+    """11-17 Mac p15：最好的 leaf 在列表顶部，「1/2」是详情区的翻页（翻过去列表一样，又扫一遍停在底部），
+    回去时固定滑 10 次回不到顶 → 没找到 → 退路也没找到 → 停机。现在从底部往上逐屏找，看到 leaf 就点。"""
     pytest.importorskip("kotonebot")
     from hiro.produce import rental
 
-    def row(player, name):
-        return {"player": player, "card": {"support_card_id": name, "level": 60, "name": name}, "center": [360, 600]}
+    rows = [_named(f"p{i}", f"c{i}") for i in range(20)]
+    rows[1] = _named("leaf", "もうすぐ本番ですね")
+    fake = FakeRentalList(rental, rows, pages=2)
+    fake.install(monkeypatch)
+    score = {"leaf": 1531.0}
+    assert rental._pick_once("Vi", set(), lambda r: score.get(r["player"], 1000.0)) == "もうすぐ本番ですね"
+    assert fake.clicked[-1] == (497, 1157)
+    assert fake.clicked.count((485, 533)) == 1  # 翻过一次「页」，发现列表没变就不再扫
 
-    state = {"pass": 0, "screen": 0, "clicked": []}
-    scan = [[row("A", "a")], [row("B", "b")], [row("B", "b")]]
-    back = [[row("A", "a")], [row("C", "c")], [row("C", "c")]]  # 回去时 B 那一行读不出来
 
-    class Dev:
-        def click(self, *a):
-            state["clicked"].append(a)
+def test_pick_once_falls_back_to_best_seen_on_return(monkeypatch):
+    """回去时原玩家那一行找不到（11-16 Mac 实机 p6：扫描时读到的行回去时读不出来）：改租往回找途中看到的最好一张，
+    按那一张自己的玩家 / 卡去找（p15：原来退路还按原玩家找，自相矛盾）。"""
+    pytest.importorskip("kotonebot")
+    from hiro.produce import rental
 
-        def swipe(self, *a):
-            state["screen"] = min(state["screen"] + 1, 2)
+    rows = [_named("A", "a"), _named("B", "b"), _named("X", "x"), _named("C", "c"), _named("Y", "y"), _named("Z", "z")]
 
-        def screenshot(self):
-            return None
+    def hide_b(rs):
+        return [dict(r, player=None, card=None) if r["player"] == "B" else r for r in rs]
 
-    def to_top():
-        state["screen"] = 0
-        state["pass"] += 1
-
-    monkeypatch.setattr(rental, "device", Dev())
-    monkeypatch.setattr(rental, "_ensure_plan_fit", lambda: None)
-    monkeypatch.setattr(rental, "progress", lambda why: None)
-    monkeypatch.setattr(rental, "_sleep", lambda s: None)
-    monkeypatch.setattr(rental, "_to_top", to_top)
-    monkeypatch.setattr(rental, "_rows", lambda: {"rows": (scan if state["pass"] == 0 else back)[state["screen"]],
-                                                    "controls": {"decide": [497, 1157], "cancel": [220, 1157]},
-                                                    "pager": {"page": 1, "pages": 1}})  # fmt: skip
+    fake = FakeRentalList(rental, rows, after_scan=hide_b)
+    fake.install(monkeypatch)
     score = {"A": 1.0, "B": 3.0, "C": 2.0}
-    assert rental._pick_once("Da", set(), lambda r: score[r["player"]]) == "c"
+    assert rental._pick_once("Da", set(), lambda r: score.get(r["player"], 0.5)) == "c"
+    assert fake.clicked[-1] == (497, 1157)
 
 
 def test_pick_once_finds_best_row_when_player_name_reads_differently(monkeypatch):
