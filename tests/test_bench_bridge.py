@@ -895,6 +895,7 @@ def test_nia_tag_number_fills_loadout_and_ctx_gets_full_loadout(monkeypatch, tmp
 def test_hajime_nia_search_switch_default_off(monkeypatch, spec, fail, uses):
     """初 / N.I.A：HIRO_EXAM_SEARCH_ALGO 设了才走搜索（缺省 uinet，行为变化开关默认关）；加载失败 uinet 兜底并写明。"""
     monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_NIA", raising=False)
     if spec:
         monkeypatch.setenv("HIRO_EXAM_SEARCH_ALGO", spec)
     else:
@@ -917,7 +918,7 @@ def test_hajime_nia_search_switch_default_off(monkeypatch, spec, fail, uses):
     assert ("兜底" in d.reason) == bool(fail)
 
 
-def test_exam_search_spec_hajime_default_on(monkeypatch):
+def test_exam_search_spec_family_switches(monkeypatch):
     """协调 11-17 / 11-18：初的中間 / 最終考试和课程缺省走 Rust GNRPA，HIRO_EXAM_SEARCH_HAJIME=0 退回 uinet；N.I.A、H.I.F 缺省不变。"""
     monkeypatch.delenv("HIRO_EXAM_SEARCH_ALGO", raising=False)
     monkeypatch.delenv("HIRO_EXAM_SEARCH_HAJIME", raising=False)
@@ -928,6 +929,11 @@ def test_exam_search_spec_hajime_default_on(monkeypatch):
         assert A.exam_search_algo_spec(label) == ""
     monkeypatch.setenv("HIRO_EXAM_SEARCH_HAJIME", "0")
     assert A.exam_search_algo_spec("hajime-mid1") == A.exam_search_algo_spec("hajime-lesson-vo") == ""
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_NIA", raising=False)
+    assert A.exam_search_algo_spec("nia-mid2#audition-3") == ""  # N.I.A 缺省关（协调 11-18）
+    monkeypatch.setenv("HIRO_EXAM_SEARCH_NIA", "1")
+    assert A.exam_search_algo_spec("nia-mid2#audition-3") == A.exam_search_algo_spec("nia-final") == A.EXAM_DEFAULT_ALGO
+    assert A.exam_search_algo_spec("hajime-mid1") == ""  # 两个开关各管各的
     monkeypatch.setenv("HIRO_EXAM_SEARCH_ALGO", "my.x:Y")  # 显式指定的两个家族都管
     assert A.exam_search_algo_spec("nia-mid1") == A.exam_search_algo_spec("hajime-lesson-vo") == "my.x:Y"
 
@@ -987,7 +993,9 @@ def test_live_exam_loadout_built_on_first_decision(monkeypatch):
     algo = _Algo(("play", 0))
     monkeypatch.setattr(A, "load_algo", lambda *a, **k: algo)
     adv = A.BenchAdvisor(CAMPUS_HIRO)
-    sess = SimpleNamespace(state=SimpleNamespace(produce={"items": ["pitem_k"]}))
+    sess = SimpleNamespace(state=SimpleNamespace(produce={"items": ["pitem_k"], "challenge_items": ["pitem_c"], "nia_easy_key": True}))
+    got_items = {}
+    monkeypatch.setattr("hiro.search.exam_env.npc_enhance_permil", lambda items: got_items.update(items=list(items)) or (-700, ["pitem_c"]))
     adv.on_round_start(1, {"exam": "nia-mid2#audition-3", "idol": "i_card-x", "deck": [("p_card-a", 1), ("p_card-b", 0)], "session": sess})
     st, mem = _state([_card(0, "p_card-a", 1)], remaining=12, turn=1)
     st.attr_permils = {"Vo": 20000, "Da": 30000, "Vi": 10000}  # 画面三项都读到（倍率不全时要等，见 test_hajime_audition_permil_screen_first）
@@ -997,6 +1005,8 @@ def test_live_exam_loadout_built_on_first_decision(monkeypatch):
     assert lo["produce_cards"] == ["p_card-a+1", "p_card-b"] and lo["exam"]["produce_exam_battle_config_id"] == "bc"
     assert lo["audition"]["rankThreshold"] == 1 and lo["produce_item_ids"] == ["pitem_k"] and lo["supports"] == [{"_supportCardId": "s"}]
     assert lo["skills"] == [] and lo["round"] == "mid2" and lo["idol_card_id"] == "i_card-x"
+    # 对手分增减：账本道具 + チャレンジP道具 + N.I.Aキー（平台记的 nia_easy_key，账本里没有）
+    assert got_items["items"] == ["pitem_k", "pitem_c", "pitem_00-3-330-0"] and lo["npc_enhance_permil"] == -700
     adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
     assert algo.ctx.loadout is not lo or algo.ctx.loadout == lo  # 只拼一次（第二步用同一份）
 

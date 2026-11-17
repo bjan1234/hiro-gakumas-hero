@@ -183,14 +183,22 @@ def exam_search_algo_spec(label: str = "") -> str:
     - 初的中間 / 最終考试（hajime-mid1 / hajime-final）和课程（hajime-lesson-*）缺省走 Rust GNRPA（EXAM_DEFAULT_ALGO，目标用按场次的
       stage_objective）——协调 11-17 / 11-18 定，依据 bench：初考试 30 题 × 2 种子（中期 uinet 63% → 94%）、课程 33 题 × 2 种子
       （69% → 93%，满分 34 → 51 局）；HIRO_EXAM_SEARCH_HAJIME=0 两样都退回 uinet；
-    - N.I.A：空 = 用 H.I.F 那个（uinet），等 bench 结果再定。"""
+    - N.I.A 试镜（nia-mid1 / mid2 / final）：HIRO_EXAM_SEARCH_NIA 打开才走 GNRPA（按场次目标 + 对手分缩放，护栏和倍率画面实读同初）；
+      缺省关（协调 11-18：bench MASTER 过线 78% → 90–97%，但初的 GNRPA 第一次上实机就因倍率 0 打成 227，N.I.A 要等实机验过再开）。"""
     spec = (os.environ.get("HIRO_EXAM_SEARCH_ALGO") or "").strip()
     if spec:
         return spec
     base = str(label or "").split("#", 1)[0].lower()
     if (base in ("hajime-mid1", "hajime-final") or base.startswith("hajime-lesson")) and hajime_search_on():
         return EXAM_DEFAULT_ALGO
+    if base.startswith("nia-") and nia_search_on():
+        return EXAM_DEFAULT_ALGO
     return ""
+
+
+def nia_search_on() -> bool:
+    """HIRO_EXAM_SEARCH_NIA：N.I.A 试镜走搜索，缺省关（协调定）；1 / on / true / yes 开。"""
+    return (os.environ.get("HIRO_EXAM_SEARCH_NIA") or "").strip().lower() in ("1", "on", "true", "yes")
 
 
 def hajime_search_on() -> bool:
@@ -559,7 +567,7 @@ class BenchAdvisor:
             return
         if label.startswith(("hajime", "nia")):
             # 初 / N.I.A：搜索（ExamGnrpa 自己按 UIObs 对齐引擎局面，不要 screen_source 跟踪）。初的考试和课程缺省开，
-            # N.I.A 缺省 uinet（exam_search_algo_spec）
+            # N.I.A 缺省关、HIRO_EXAM_SEARCH_NIA 打开（exam_search_algo_spec）
             spec = exam_search_algo_spec(label)
             if not spec:
                 return
@@ -649,11 +657,33 @@ class BenchAdvisor:
                 logger.info("[%s] 拼编成：%s", self.label, "；".join(notes))
         except Exception as e:  # noqa: BLE001  道具 / 支援卡拼不出：按没有搜
             logger.info("[%s] 拼编成时 run_loadout 失败（按没有道具 / 支援卡）：%s: %s", self.label, type(e).__name__, e)
+        if lo.get("audition"):
+            self._npc_permil(lo)
         if not lo["max_stamina"]:
             logger.info("[%s] 拼编成：最大体力没读到，照样交给算法", self.label)
         logger.info("[%s] 现拼编成：牌组 %d 张、P 道具 %d、支援卡 %d、档位 %s", self.label, len(lo["produce_cards"]),
                     len(lo.get("produce_item_ids") or ()), len(lo.get("supports") or ()), row.get("number"))  # fmt: skip
         return lo
+
+    def _npc_permil(self, lo: dict) -> None:
+        """对手分增减（AuditionNpcEnhancePermil）：P 道具账本 + チャレンジP道具（produce.challenge_items，MASTER / LEGEND 带进来的）
+        + N.I.Aキー（平台看到它就记 produce.nia_easy_key，账本里不一定有）→ lo["npc_enhance_permil"]（ExamGnrpa 按它缩放对手分）。
+        チャレンジP道具的发动次数账本里没有，按 1 次估（偏低，exam_env.npc_enhance_permil 会列出来）。"""
+        from hiro.search.exam_env import NIA_EASY_KEY, npc_enhance_permil
+
+        ps = (getattr(getattr(self._session, "state", None), "produce", None) or {}) if self._session is not None else {}
+        ps = ps if isinstance(ps, dict) else getattr(ps, "__dict__", {})
+        items = list(lo.get("produce_item_ids") or []) + [i for i in ps.get("challenge_items") or () if i not in (lo.get("produce_item_ids") or ())]
+        if ps.get("nia_easy_key") and NIA_EASY_KEY not in items:
+            items.append(NIA_EASY_KEY)
+        try:
+            permil, unsure = npc_enhance_permil(items)
+        except Exception as e:  # noqa: BLE001  没有主数据：不缩放
+            logger.info("[%s] 对手分增减算不了（按 0）：%s: %s", self.label, type(e).__name__, e)
+            return
+        if permil:
+            lo["npc_enhance_permil"] = permil
+            logger.info("[%s] 对手分增减 %+d‰%s", self.label, permil, f"（{len(unsure)} 件チャレンジP道具发动次数按 1 次估）" if unsure else "")
 
     def _exam_permils(self) -> tuple[dict | None, str]:
         """拼编成用的三属性倍率 → ({Vo, Da, Vi} 或 None, 说明)。编成给了 permil_fixed 就用；否则画面实读的那几项（0 = 画面没给，初的考试

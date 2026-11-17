@@ -339,6 +339,9 @@ def strong_drink(drink_id: str | None) -> bool:
 # 对过 GKMS 抓包里 7 组（100 / 1010 / 1250 / −800），全对。N.I.Aキー（黄緑，N.I.A PRO 简单模式开局给，开局就发动）= −800。
 
 
+NIA_EASY_KEY = "pitem_00-3-330-0"  # N.I.Aキー（黄緑）：N.I.A PRO 简单模式开局给，对手分 −800‰
+
+
 def _f32(x: float) -> float:
     import struct
 
