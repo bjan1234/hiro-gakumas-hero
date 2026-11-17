@@ -38,7 +38,7 @@ DIFFICULTY_BAND = (700, 1000)  # 剧本页难度按钮的 y 范围（N.I.A 剧�
 AP_COST = 20
 UNKNOWN_STOP_S = 15.0
 FRAME_DIFF = 4.0
-DEFAULT_OUT = Path.home() / "github" / "digital-hiro" / ".temp" / "nia-mac" / "frames"
+DEFAULT_OUT = Path(".temp") / "nia-mac" / "frames"  # 相对仓库根目录（已被 .gitignore 挡住）
 STAGES = ("nia-mid1", "nia-mid2", "nia-final")
 
 

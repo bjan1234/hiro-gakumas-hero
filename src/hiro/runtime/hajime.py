@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 MODES = {"regular": "produce-001", "pro": "produce-002", "master": "produce-003"}
 DIFFICULTY_WORDS = {"regular": ("レギュラー", "REGULAR"), "pro": ("プロ", "PRO"), "master": ("マスター", "MASTER")}
-DEFAULT_OUT = Path.home() / "github" / "digital-hiro" / ".temp" / "hajime-mac" / "frames"
+DEFAULT_OUT = Path(".temp") / "hajime-mac" / "frames"  # 相对仓库根目录（已被 .gitignore 挡住）
 LESSON_END_S = 2.0  # 练习课 HUD（CLEARまで / PERFECTまで）连续消失这么久算练习课结束（出牌动画不会盖住它）
 RESULT_WAIT_S = 12.0  # 考试打完后等结算名次页出来
 
