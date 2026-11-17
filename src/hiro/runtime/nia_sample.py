@@ -146,15 +146,17 @@ def make_advance(sampler: Sampler, stop_s: float = UNKNOWN_STOP_S):
     结算流程（回忆照片 / 突破证书）和其余已知页照旧交给 play.advance。"""
     from hiro.runtime import play
 
-    state = {"since": None, "page": None}
+    state = {"since": None, "page": None, "quiet": 0, "unknown_since": None}
 
     def advance(rt, frame, hit) -> bool:
         landscape = frame.img is not None and frame.img.shape[1] > frame.img.shape[0]
+        if hit.name != "unknown":
+            state["quiet"], state["unknown_since"] = 0, None
         if hit.name == "unknown" and not landscape and _connecting(frame.img):
             state["since"] = None  # 右下「CONNECTING」：通信中，当加载等（N.I.A 试镜后 11-17：认不出，119 秒才停）
             return False
         if hit.name == "unknown" and not play._produce_finished(frame) and not landscape:
-            did = _nia_bubble(rt, frame) or _event_art(rt, frame)
+            did = _nia_bubble(rt, frame) or _event_art(rt, frame) or _quiet_tap(rt, frame, state)
         else:
             did = play.advance(rt, frame, hit)
         if did or landscape:
@@ -170,6 +172,36 @@ def make_advance(sampler: Sampler, stop_s: float = UNKNOWN_STOP_S):
         return False
 
     return advance
+
+
+QUIET_WAIT_S = 3.0  # 同一段认不出持续这么久才点（转场自己会走完的不点）
+QUIET_TAP_MAX = 6  # 一段认不出最多点这么多下；还没变就照旧 stop_s 后停下交人
+QUIET_BUTTON_Y = (1050, 1180)  # 底部按钮区：这里有字就不点
+
+
+def _quiet_tap(rt, frame, state) -> bool:
+    """没有任何界面元素的过场 / 剧情（あさり先生白板讲解、休む后偶像站着、「最終オーディションまで」过场…，协调 11-18：N.I.A 第二局
+    这类判 unknown 停了 4 次，点空白就过去）：同一段认不出持续 QUIET_WAIT_S 秒、画面上没有按钮危险词（同主循环 advance.BLOCK_WORDS）、
+    没有弹窗标题条、底部按钮区没有字，点左上 (12,12)。一段最多 QUIET_TAP_MAX 下。初 / H.I.F 的主循环本来就这样点认不出的画面。"""
+    from hiro.loop import advance as adv
+    from hiro.vision.pages import dialog_header
+
+    now = rt.clock()
+    if state["unknown_since"] is None:
+        state["unknown_since"] = now
+        return False
+    if now - state["unknown_since"] < QUIET_WAIT_S or state["quiet"] >= QUIET_TAP_MAX or frame.img is None:
+        return False
+    texts = frame.texts
+    if adv.blocked([t.text for t in texts]) is not None or dialog_header(frame.img) is not None:
+        return False
+    if any(QUIET_BUTTON_Y[0] <= t.rect.center.y <= QUIET_BUTTON_Y[1] for t in texts):
+        return False
+    state["quiet"] += 1
+    state["unknown_since"] = now
+    logger.info("N.I.A 采样：认不出、没有按钮的过场（第 %d 下），点 %s", state["quiet"], BUBBLE_TAP)
+    rt.device.tap(*BUBBLE_TAP)
+    return True
 
 
 BUBBLE_TAP = (12, 12)
