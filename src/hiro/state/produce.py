@@ -50,7 +50,9 @@ class ProduceState:
     param_cap: int = 3000  # 3000 + *AdditionalLimit
     deck: list[DeckCard] = field(default_factory=list)
     drinks: list[str] = field(default_factory=list)  # produceDrinkIds
-    drink_capacity: int = 4  # H.I.F 实测 4 格（第六局 PDRINK_MAX 持有 4 瓶、考试饮料栏 4 格）
+    # 饮料栏容量：缺省按主数据 ProduceSetting.produceDrinkPossessLimit = 3（最大 4，第 4 格要解锁）。画面确实看到第 4 格（有饮料或空杯图标）
+    # 时识别给 4（平台 7a8eed4）。以前缺省 4：账号 2 只有 3 格，p15 相談第一次买饮料一定浪费（协调 11-17）
+    drink_capacity: int = 3
     items: list[str] = field(default_factory=list)  # produceItems
     wappen_left: int = 20  # H.I.F ワッペン剩余触发次数
     rerolls_left: int = 0  # produceCardRemainSelectRerollCount

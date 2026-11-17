@@ -634,7 +634,7 @@ class HifCore:
         held = pf.get("held")  # 识别 0f58dc4：底栏已有饮料 [{index, drink_id, name, center}]
         produce = self.s.state.produce or {}
         # 用户 2026-11-02：按「换进来之后的持有组合」挑候选（hiro.brain.drinks），不再用单瓶静态排名
-        best = dk.best_incoming(cands, held, dk.stage_of(produce.get("mode")), produce.get("drink_capacity") or max(4, len(held or [])))
+        best = dk.best_incoming(cands, held, dk.stage_of(produce.get("mode")), produce.get("drink_capacity") or max(3, len(held or [])))
         d = self.deciders.decide("PDRINK_MAX", dc_replace(self.s.state, page_fields={"incoming": best, "held": held}) if best else self.s.state)
         if d.source not in self.DRINK_FULL_SOURCES:
             # 规则 / 模拟偏离（> 2 SE，第二十一局 06:01 source=sim 被当成「认不出」停机）都是有效决策；兜底 / LLM 才说明认不出
