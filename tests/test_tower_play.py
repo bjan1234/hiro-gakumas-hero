@@ -87,6 +87,7 @@ def test_result_retry_until_three_stars_then_stop_after_one_layer(tmp_path):
     # 实机 r2：确认框正在弹出时同一张结果页又被认出来——不再算一次、不再点
     assert h["TOWER_RESULT"](rt, None, NS(fields=res)) is tp.STAY and p.run.tries[15] == 1 and taps == [(129, 1160)]
     h["TOWER_RETRY_CONFIRM"](rt, None, NS(fields={"cost": None, "same": [492, 1037], "ok": [509, 1160]}))  # 换页：开门
+    p.exam_no += 1  # 第二次挑战打完（on_exam）
     assert h["TOWER_RESULT"](rt, None, NS(fields={**res, "stars": 3})) is tp.END and p.finished  # 三星：这一层打完，停在结果页
     assert p.run.tries[15] == 2 and taps[-1] == (509, 1160)
 
@@ -99,8 +100,10 @@ def test_result_never_cleared_stops(tmp_path):
     confirm = NS(fields={"cost": None, "same": [492, 1037], "ok": [509, 1160]})
     h["TOWER_RESULT"](rt, None, NS(fields=res))
     h["TOWER_RETRY_CONFIRM"](rt, None, confirm)
+    p.exam_no += 1
     h["TOWER_RESULT"](rt, None, NS(fields=res))
     h["TOWER_RETRY_CONFIRM"](rt, None, confirm)
+    p.exam_no += 1
     with pytest.raises(ResumeBlocked, match="没过关"):
         h["TOWER_RESULT"](rt, None, NS(fields=res))
 
@@ -227,6 +230,7 @@ def test_failed_ranking_retries_on_the_same_page(tmp_path):
     assert h["TOWER_RANKING"](rt, None, page) is tp.STAY and taps == [(127, 1160)] and p.run.tries[15] == 1
     assert p.run.rankings[15] == [{"my_rank": 4, "rows": rows, "failed": True}] and 15 not in p.run.cleared
     h["TOWER_RETRY_CONFIRM"](rt, None, NS(fields={"cost": None, "same": [492, 1037], "ok": [509, 1160]}))
+    p.exam_no += 1
     assert h["TOWER_RANKING"](rt, None, page) is DONE and p.run.tries[15] == 2  # 第二次不合格：照样再挑戦
 
 
@@ -326,3 +330,27 @@ def test_retry_confirm_fading_frame_classified():
         pytest.skip("需要实机帧")
     hit = classify(cv2.resize(cv2.imread(str(path)), (720, 1280)))
     assert hit.name in ("TOWER_RETRY_CONFIRM", "TOWER_RANKING", "unknown", "DIALOG")
+
+
+def test_result_counted_once_per_exam_even_after_retry_confirm(tmp_path):
+    """g9 11-17：结果页点再挑戦 → 确认框点 OK → 框淡出时下面的结果页又被认出，原来又记一次（tries 1 → 2），
+    每层只打 2 次就当用满 3 次。现在按考试配对：没打新的一场就不再计数；RESULT_REDO_S 后结果页还在才照原结论再点一次。"""
+    p = _play(tmp_path)
+    p.layer = 20
+    h = p.handlers()
+    now = [0.0]
+    taps = []
+    rt = NS(device=NS(tap=lambda x, y: taps.append((x, y))), sleep=lambda s: None, clock=lambda: now[0])
+    res = NS(fields={"cleared": True, "layer": 20, "stars": 1, "retry": [129, 1160], "back": [350, 1160]})
+    assert h["TOWER_RESULT"](rt, None, res) is DONE and p.run.tries[20] == 1
+    now[0] = 3.0
+    h["TOWER_RETRY_CONFIRM"](rt, None, NS(fields={"cost": None, "same": [492, 1037], "ok": [509, 1160]}))
+    now[0] = 4.5
+    assert h["TOWER_RESULT"](rt, None, res) is tp.STAY and p.run.tries[20] == 1  # 淡出中的同一张结果页：不再记
+    now[0] = 15.0
+    n = len(taps)
+    assert h["TOWER_RESULT"](rt, None, res) is DONE and p.run.tries[20] == 1 and taps[n:] == [(129, 1160)]  # 过很久还在：重点，不计数
+    p.exam_no += 1  # 第二次挑战真的打了
+    h["TOWER_RETRY_CONFIRM"](rt, None, NS(fields={"cost": None, "same": [492, 1037], "ok": [509, 1160]}))  # 换页
+    now[0] = 30.0
+    assert h["TOWER_RESULT"](rt, None, res) is DONE and p.run.tries[20] == 2

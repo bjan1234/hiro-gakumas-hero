@@ -43,6 +43,7 @@ NAV_SWIPE_MAX = 520
 NAV_SWIPE_S, NAV_HOLD_S = 0.5, 0.3  # 慢滑 + 终点停住，不带惯性
 NAV_SETTLE_S = 1.5  # 滑完等吸附
 NAV_MAX_MOVES = 30
+RESULT_REDO_S = 10.0  # 同一场考试的结果页过了这么久还在（点击没生效）：照上次的结论再点一次，不再计数
 ACT_WAIT_S = 5.0  # 层选择页 / 过关名次页点过一次后，页面没换就等这么久再点（实机：挑戦する 2 秒点了 4 次、同一张名次页记了两次，协调 11-15）
 
 
@@ -162,6 +163,8 @@ class TowerPlay:
         self._acted: tuple[str, float] | None = None  # (页面, 时刻)：这一页刚点过，页面换了之前不再点（ACT_WAIT_S 后还没换才再点）
         self._partial_since: float | None = None  # 再挑戦确认框按钮没读全从什么时候开始
         self._nav_reset()
+        self.exam_no = 0  # 本段打过几场考试：结果页按场次只记一次
+        self._counted: tuple | None = None  # (场次, 结论, 时刻)：这一场的结果已经记过（g9 11-17：再挑戦确认框淡出时结果页又被认出、又记一次）
         self.result_handled = False  # 这一次的结果页已经处理过（点了再挑戦 / 一覧に戻る）：等页面换了再处理下一次（实机 r2：同一张结果页处理了两次）
         if run.tower_id is None and (code := idol_code(idol_name)):
             run.tower_id = f"{TOWER_NO}-{code}"  # 没经过编成页（从名次页 / 结果页续跑）也有路线
@@ -402,6 +405,7 @@ class TowerPlay:
         from hiro.devices.active import device
 
         core = self.core
+        self.exam_no += 1
         self.ensure_loadout()
         label = f"tower-{self.layer or 'x'}"
         core.rec.log("exam_enter", image=device.screenshot(), exam=label)
@@ -419,14 +423,33 @@ class TowerPlay:
             logger.exception("偶像之路：抽牌记录失败")
         return DONE
 
+    def _redo_result(self, rt, fields):
+        """同一场考试的结果页又出现了（确认框淡出、下面的结果页又被认出来；或者点击没生效）：不再计数。
+        刚处理过 / 刚点过再挑戦确认框就等；RESULT_REDO_S 后还在，照上次的结论再点一次（再挑戦 / 一覧に戻る）。"""
+        _, verdict, at = self._counted
+        now = _now(rt)
+        if self.result_handled or self._just_acted(rt, "TOWER_RETRY_CONFIRM") or now - at < RESULT_REDO_S:
+            return STAY
+        pos = fields.get("retry") if verdict == "retry" else fields.get("back")
+        if pos is None:
+            return STAY
+        logger.info("偶像之路：第 %s 层这一场的结果页 %.0fs 后还在，照上次的结论（%s）再点一次，不再计数", self.layer, now - at, verdict)
+        rt.device.tap(*pos)
+        self.result_handled = True
+        self._counted = (self._counted[0], verdict, now)
+        return DONE
+
     def on_result(self, rt, f, hit):
         if self.result_handled:
             return STAY  # 刚点过再挑戦 / 一覧に戻る，确认框 / 下一页还没出来：不再算一次
         fields = hit.fields
+        if self._counted is not None and self._counted[0] == self.exam_no:
+            return self._redo_result(rt, fields)  # 这一场已经记过：按考试配对，不再计数
         layer = fields.get("layer") or self.layer
         self.layer = layer
         self.ensure_loadout(layer)  # 同编成再挑戦不经过编成页：下一场用这一层缓存的编成
         verdict = self.run.after_result(layer, bool(fields.get("cleared")), int(fields.get("stars") or 0))
+        self._counted = (self.exam_no, verdict, _now(rt))
         tower_cache.save_progress(self.run)  # 跨进程记次数：重启后「每层最多 3 次」照样管
         logger.info("偶像之路第 %s 层结果：过关=%s 星=%s → %s（%s）", layer, fields.get("cleared"), fields.get("stars"), verdict, self.run.summary())
         if verdict == "stop":
@@ -470,6 +493,8 @@ class TowerPlay:
     def _on_failed_ranking(self, rt, fields):
         if self.result_handled:
             return STAY  # 刚点过再挑戦 / 一覧に戻る：确认框 / 下一页还没出来，不再算一次
+        if self._counted is not None and self._counted[0] == self.exam_no:
+            return self._redo_result(rt, fields)  # 这一场已经记过（名次也记过）：不再记
         mine = next((r for r in fields.get("rows") or [] if r.get("name") == (self.idol_name or "").replace(" ", "")), None)
         my_rank = mine["rank"] if mine else None
         self.run.rankings.setdefault(self.layer, []).append({"my_rank": my_rank, "rows": fields.get("rows"), "failed": True})
