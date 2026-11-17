@@ -375,3 +375,29 @@ def test_action_select_skips_options_without_name():
     assert d.action.args["option"] == "sales" and d.source == "rule"
     d = pd.decide("ACTION_SELECT", GameState(produce=prod, page_fields={"options": [{"kind": "??"}]}))
     assert d.action.kind.value == "Wait"
+
+
+def test_nia_pitem_rules():
+    """N.I.A 试镜后的 P 道具：PRO 选ワッペン [ww-NIA]、MASTER 选パスケース [ww-NIAM]；攻略没写的交回原有规则（None）。"""
+    from hiro.brain.hajime_nia import choose_nia_pitem
+
+    pro = [{"index": 0, "name": "N.I.Aトートバッグ"}, {"index": 1, "name": "N.I.Aワッペン"}, {"index": 2, "name": "N.I.Aスマホリング"}]
+    i, _, rules = choose_nia_pitem(_nia(), pro, "ProducePlanType_Plan2")
+    assert i == 1 and "nia.pitem_wappen" in rules
+    assert choose_nia_pitem(_nia(), pro, "ProducePlanType_Plan3")[0] is None  # アノマリー除外
+    master = [{"index": 0, "name": "N.I.Aトートバッグ"}, {"index": 1, "name": "N.I.Aスマホリング"}, {"index": 2, "name": "N.I.Aパスケース"}]
+    i, _, rules = choose_nia_pitem(_nia(mode="produce-005"), master)
+    assert i == 2 and "nia.pitem_passcase" in rules
+    assert choose_nia_pitem(_nia(mode="produce-005"), [{"index": 0, "name": "はつぼしブレスレット"}])[0] is None
+
+
+def test_select_pitem_routes_nia():
+    from hiro.brain.deciders import ProduceDeciders
+    from hiro.brain.state import CAMPUS_HIRO
+    from hiro.contracts import GameState
+
+    prod = {"mode": "produce-005", "step": 10, "stamina": 20, "max_stamina": 30, "produce_point": 0, "params": {"Vo": 1, "Da": 1, "Vi": 1},
+            "idol_card_id": "i_card-shro-3-007"}
+    items = [{"index": 0, "name": "N.I.Aトートバッグ"}, {"index": 1, "name": "N.I.Aスマホリング"}, {"index": 2, "name": "N.I.Aパスケース"}]
+    d = ProduceDeciders(CAMPUS_HIRO, None).decide("SELECT_PITEM", GameState(produce=prod, page_fields={"pitems": items}))
+    assert d.action.args["pick_indexes"] == [2] and "[ww-NIAM]" in d.reason

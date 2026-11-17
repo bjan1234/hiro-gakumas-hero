@@ -423,6 +423,30 @@
    "quote": "どれが1強ということもなく、好みとなる。"
   },
   {
+   "id": "nia.pitem_wappen",
+   "families": [
+    "nia"
+   ],
+   "difficulties": [
+    "pro"
+   ],
+   "rule": "试镜后的 P 道具选择：アノマリー以外选 N.I.Aワッペン 稳定（wikiwiki 2025-05 版，MASTER 实装前）",
+   "source": "ww-NIA",
+   "quote": "オーディション後のアイテム選択はアノマリー以外はN.I.Aワッペンを選択すると安定する。"
+  },
+  {
+   "id": "nia.pitem_passcase",
+   "families": [
+    "nia"
+   ],
+   "difficulties": [
+    "master"
+   ],
+   "rule": "1 次试镜后三选一没有最强的；パスケース 补总是不够用的 P 点（配自治体营业）",
+   "source": "ww-NIAM",
+   "quote": "枯渇しがちなPポイントを獲得できるパスケース"
+  },
+  {
    "id": "nia.challenge_bonus",
    "families": [
     "nia"

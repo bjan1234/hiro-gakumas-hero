@@ -2145,8 +2145,22 @@ class ProduceDeciders:
         """P 道具背包三选一（カスタムPアイテム：取得背包 / 第一段 / 第二段定制）。page_fields.pitems = [{index?, item_id?, name?}]。
         社区规则见 hiro.brain.pitem：背包黄 > 緑 > 赤；ロボ > もじゃ；花 > リボン > メダル > 羽。"""
         from hiro.brain import pitem
+        from hiro.state.modes import NIA, family
 
         items = state.page_fields.get("pitems") or []
+        if family((state.produce or {}).get("mode")) == NIA and items:
+            from hiro.brain.hajime_nia import choose_nia_pitem
+
+            plan = None
+            try:
+                from hiro.state import modes
+
+                plan = modes.master().one("IdolCard", (state.produce or {}).get("idol_card_id") or (self.profile.idol_id if self.profile else ""))["planType"]
+            except Exception:  # noqa: BLE001
+                pass
+            k, reason, _ = choose_nia_pitem(self._hajime_nia_status(state), items, plan)
+            if k is not None:
+                return Decision(Action.activate_effect(items[k].get("index", k)), reason, "rule", 0.7, decider="select_pitem")
         parsed = [None if it.get("custom") and not (it.get("name") or it.get("item_id") or it.get("id")) else pitem.parse(it) for it in items]
         if any(q and q["stage"] != "pouch" for q in parsed):
             # 同一页别的候选已是玩偶 / 装饰段：只有颜色（名字没认出）的格子不是背包，按没认出算（原来当「背包 黄」3 分，压过 インコ / うさぎ）
