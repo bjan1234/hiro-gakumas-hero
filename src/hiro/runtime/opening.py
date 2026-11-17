@@ -424,17 +424,39 @@ def _press_finals_start(rt) -> bool:
     return True
 
 
+STEP1_RETAP_S = 5.0  # 点过第 1 步「次へ」后这么久内不再点（等页面换掉，同 KAA prepare_hif_main 点完等 5 秒）
+
+
 def _tap_step1_next(rt, f) -> bool:
     """第 1 步的「次へ」：只有认出第 1 步页（步骤指示器 TextStepIndicator1）才点 Step1.ButtonNext。
     这个模板是底部大橙按钮，本战開始確認页的「H.I.F本戦へ」也能命中（Windows 9580c0c 11-17：開始確認页没认出，
-    把「H.I.F本戦へ」当次へ点了，选拔回忆核对没跑）；同 KAA prepare_hif_main 只在 TextStepIndicator1 时点。"""
+    把「H.I.F本戦へ」当次へ点了，选拔回忆核对没跑）；同 KAA prepare_hif_main 只在 TextStepIndicator1 时点。
+    点过以后 STEP1_RETAP_S 秒内不再点：页面切换慢时下一拍还是第 1 步，再点一下落到「2.開始確認」同一位置的
+    「プロデュース開始」上，本战直接开始、选拔回忆没核对（Mac p15-main 11-17，开局点击帧 3 / 4）。"""
     if nav.find(f, "Produce.TextStepIndicator1") is None:
         return False
     if (m := nav.find(f, "Produce.Step1.ButtonNext")) is None:
         return False
+    now = rt.clock()
+    last = getattr(rt, "_step1_tap_at", None)
+    if last is not None and now - last < STEP1_RETAP_S:
+        return False
     logger.info("第 1 步：点 Step1.ButtonNext %s", tuple(m.rect.center))
     nav.tap_match(rt, m)
+    rt._step1_tap_at = now
     return True
+
+
+def on_start_confirm(f) -> bool:
+    """画面是本战的开始确认页：「H.I.F本戦へ」那种（选拔后保留的本战，_finals_start），或者从首页进本战的「2.開始確認」
+    （步骤指示器 + 页头读到「2.開始確認」；选拔的「4.開始確認」不算）。"""
+    import re
+
+    if _finals_start(f):
+        return True
+    if nav.find(f, "Produce.TextStepIndicator4Or2") is None:
+        return False
+    return any(re.match(r"^2\.?開始確認", t.text.replace(" ", "")) and t.rect.center.y < 90 for t in f.texts)
 
 
 def _snap_taps(rt):
@@ -468,6 +490,13 @@ def new_produce(rt, mode: str, **prep) -> None:
 
 
 def _new_produce(rt, mode: str, **prep) -> None:
+    if mode == "main" and on_start_confirm(rt.screen.shot()):
+        # 已经停在本战开始确认页（选拔结束后 / 上一段停在这里）：直接核对选拔回忆再开始，不回首页重走一遍
+        logger.info("本战开局：已经在开始确认页，直接核对选拔回忆")
+        if prepare(rt, mode, **prep):
+            return
+        start(rt)
+        return
     if enter_produce(rt, new=True) != "new":
         raise ResumeBlocked("没进到剧本选择页")
     select_hif(rt)

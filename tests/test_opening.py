@@ -414,3 +414,48 @@ def test_new_produce_snaps_a_frame_per_tap(monkeypatch):
     assert saved == [1, 2] and notes == ["开局点击 (10, 20)（帧 frames/00001.jpg）", "开局点击 (30, 40)（帧 frames/00002.jpg）"]
     rt.device.tap(50, 60)
     assert len(saved) == 2  # 开局之后不再存
+
+
+def test_step1_next_is_not_tapped_twice_while_page_changes(monkeypatch):
+    """Mac p15-main 11-17：第 1 步点了「次へ」，页面切换慢、下一拍还是第 1 步，又点一下，落到「2.開始確認」同一位置的
+    「プロデュース開始」，本战直接开始、选拔回忆没核对。点过以后 STEP1_RETAP_S 秒内不再点。"""
+    called = []
+    monkeypatch.setattr(opening, "check_main_memory", lambda rt, expect: called.append("memory"))
+    monkeypatch.setattr(opening, "step4", lambda rt, **kw: called.append("step4"))
+    s1 = frame({"Produce.TextStepIndicator1": (93, 49), "Produce.Step1.ButtonNext": (353, 1093)})
+    confirm = frame({"Produce.TextStepIndicator4Or2": (123, 49), "Produce.Step4.ButtonProduceStart": (361, 1078)},
+                    _texts(("2.開始確認", 111, 49)))  # fmt: skip
+    rt, _ = rig(monkeypatch, [s1, s1, s1, s1, confirm])
+    assert opening.prepare(rt, "main", idol="i", expect_memory=("1",)) is False
+    assert rt.raw_device.taps == [(353, 1093)] and called == ["memory", "step4"]
+
+
+@pytest.mark.parametrize("name, want", [("finals-start-confirm-2-p15main.jpg", True), ("finals-step1-p15main.jpg", False),
+                                        ("dmm/start-confirm-dmm1.png", True)])
+def test_on_start_confirm_real_frames(name, want):
+    import cv2
+
+    path = os.path.join(os.environ.get("HIRO_FIXTURES", os.path.join(os.path.dirname(__file__), "fixtures")),
+                        name if "/" in name else os.path.join("pages", name))  # fmt: skip
+    if not os.path.exists(path):
+        pytest.skip(f"需要实机截图 {name}")
+    assert opening.on_start_confirm(Frame(cv2.imread(path), 0.0)) is want
+
+
+def test_on_start_confirm_not_qualify_step4(monkeypatch):
+    rt, _ = rig(monkeypatch, [frame({})])
+    q = frame({"Produce.TextStepIndicator4Or2": (123, 49)}, _texts(("4.開始確認", 111, 49)))
+    assert opening.on_start_confirm(q) is False
+
+
+def test_new_produce_main_from_start_confirm_page_skips_entry(monkeypatch):
+    """已经停在本战「2.開始確認」：不回首页、不重走剧本选择，直接核对选拔回忆 → 加成 → プロデュース開始。"""
+    called = []
+    monkeypatch.setattr(opening, "enter_produce", lambda rt, new: pytest.fail("不该回去进培育入口"))
+    monkeypatch.setattr(opening, "check_main_memory", lambda rt, expect: called.append("memory"))
+    monkeypatch.setattr(opening, "step4", lambda rt, **kw: called.append("step4"))
+    monkeypatch.setattr(opening, "start", lambda rt: called.append("start"))
+    confirm = frame({"Produce.TextStepIndicator4Or2": (123, 49)}, _texts(("2.開始確認", 111, 49)))
+    rt, _ = rig(monkeypatch, [confirm])
+    opening.new_produce(rt, "main", idol="i", expect_memory=("1",))
+    assert called == ["memory", "step4", "start"] and rt.raw_device.taps == []
