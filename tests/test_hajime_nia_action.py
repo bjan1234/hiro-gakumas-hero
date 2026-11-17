@@ -412,3 +412,37 @@ def test_nia_action_without_step_is_rule():
     prod = {"mode": "produce-004", "stamina": 20, "max_stamina": 30, "produce_point": 0, "params": {"Vo": 1, "Da": 1, "Vi": 1}}
     d = ProduceDeciders(CAMPUS_HIRO, None).decide("ACTION_SELECT", GameState(produce=prod, page_fields={"options": [_opt("sales")]}))
     assert d.source == "rule" and not d.warnings
+
+
+def test_hajime_tired_lesson_week_rests():
+    """初 REGULAR 实机（协调 11-17）：中間まで 3 週、体力 9/30，可选 Vo / Da SP / Vi SP 课、授業、休む——累了（少了一半 / 15 以上）
+    课程、授業让位给外出或休息，没有外出就休息 [g8-外出]（原来选了 Da SP 课，游戏弹「体力が低下しています」停 180 秒）。"""
+    opts = [_opt("training", "Vo", False), _opt("training", "Da", True), _opt("training", "Vi", True), _opt("class"), _opt("rest")]
+    o, _, rules = _pick(_st(stamina=9, max_stamina=30, produce_point=40), opts)
+    assert o["option"] == "rest" and "hajime.outing_when" in rules
+
+
+def test_hajime_tired_lesson_week_outing_with_points():
+    opts = [_opt("training", "Da", True), _opt("outing"), _opt("rest")]
+    o, _, _ = _pick(_st(stamina=12, max_stamina=30, produce_point=150), opts)
+    assert o["option"] == "outing"
+
+
+def test_hajime_not_tired_still_lessons():
+    opts = [_opt("training", "Da", True), _opt("rest")]
+    o, _, _ = _pick(_st(stamina=20, max_stamina=30), opts)
+    assert o["option"] == "training"
+
+
+def test_event_choice_pure_dialogue_picks_first():
+    """开场纯台词二选一（协调 11-17）：识别读过、确认没有效果（effect 为空字符串或 no_effect）时直接选第一个，不停。"""
+    from hiro.brain.deciders import ProduceDeciders
+    from hiro.brain.state import CAMPUS_HIRO
+    from hiro.contracts import GameState
+
+    pd = ProduceDeciders(CAMPUS_HIRO, None)
+    prod = {"mode": "produce-001", "stamina": 30, "max_stamina": 30, "params": {"Vo": 1, "Da": 1, "Vi": 1}}
+    for chs in ([{"index": 0, "text": "よろしく", "effect": ""}, {"index": 1, "text": "がんばろう", "effect": ""}],
+                [{"index": 0, "text": "A", "no_effect": True}, {"index": 1, "text": "B", "no_effect": True}]):
+        d = pd.decide("EVENT_CHOICE", GameState(produce=prod, page_fields={"choices": chs}))
+        assert d.action.args == {"select": 0} and d.source == "rule" and "没有效果" in d.reason

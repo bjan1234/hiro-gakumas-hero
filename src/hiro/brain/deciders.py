@@ -2276,6 +2276,10 @@ class ProduceDeciders:
         stop = lambda why, w: Decision(Action.ui(ActionKind.WAIT, why=why), why, "fallback", 0.1, warnings=w, decider="event_choice")  # noqa: E731
         if len(choices) < 2:
             return stop("事件选项没读出来（少于 2 个）：停下等人", ["EVENT_CHOICE choices 缺失"])
+        if all(c.get("no_effect") or (c.get("effect") == "" and not any(c.get(k) for k in ("cost_hp", "cost_p", "trouble"))) for c in choices):
+            # 识别读过、每一项都没有效果（开场纯台词二选一等，协调 11-17）：直接选第一个，不停机。effect 缺失（None）仍当没读到
+            return Decision(Action.event_select(choices[0]["index"]), f"事件「{title or '未识别'}」：每个选项都没有效果（纯台词），选第一个",
+                            "rule", 0.9, decider="event_choice")  # fmt: skip
         ps = self.produce_state(state)
         parsed = [ev.parse(c) for c in choices]
         vecs = [v for v, _ in parsed]

@@ -149,6 +149,18 @@ def _hajime(p: _Pick) -> tuple[int, str, list[str]]:
         i = max(oikomi, key=lambda k: st.criteria.get(p.opts[k].get("attr"), 0))
         a = p.opts[i].get("attr")
         return p.done(i, f"追い込みレッスン选审查基准最高的 {a}（{st.criteria.get(a, 0):.0%}）")
+    lost = st.max_stamina - st.stamina
+    tired = lost >= TIRED_LOST or st.stamina * 2 <= st.max_stamina
+    if (lessons or p.idx("class")) and tired:
+        # 累了：课程、授業让位给外出或休息，没有外出就休息（协调 11-17 初 REGULAR 实机：体力 9/30 选 SP 课，游戏弹「体力が低下しています」）
+        p.use("hajime.outing_when")
+        p.use("hajime.outing_vs_rest")
+        outing = p.idx("outing") if not (st.difficulty == "master") else []
+        rest_ok = bool(p.idx("rest")) and _rest_ok(p)
+        if outing and (st.produce_point >= OUTING_POINTS or not rest_ok):
+            return p.done(outing[0], f"体力少了 {lost}（{st.stamina}/{st.max_stamina}），课程让位，去外出")
+        if rest_ok:
+            return p.done(p.idx("rest")[0], f"体力少了 {lost}（{st.stamina}/{st.max_stamina}），课程让位，休息")
     if lessons:
         if st.stamina < LOW_STAMINA and p.idx("rest") and _rest_ok(p):
             return p.done(p.idx("rest")[0], f"课程周体力只剩 {st.stamina}（< {LOW_STAMINA}），先休息")
