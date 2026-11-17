@@ -335,15 +335,19 @@ class Sim:
         self._step("outing", pp_cost=pp_cost, recover_permil=recover_permil, extras=extras or {})
 
     # ---- N.I.A
-    def self_lesson(self, a, *, sp=False):
-        """N.I.A 自主课：不打牌，扣 6 / 8 体力，涨 80–150（按段）。体力 ≤ 消耗时上不了（g8-NIA 原文「以下」，按严格读）。"""
+    def self_lesson(self, a, *, sp=False, stamina_permil=0):
+        """N.I.A 自主课：不打牌，扣 6 / 8 体力，涨 80–150（按段）。
+        体力门槛按客户端逆向（ScheduleScreenPresenter.IsSelfLessonStaminaSufficient）：体力 < 消耗时不能上，等于可以上。
+        实际消耗 = 基础 ×（1000 + stamina_permil）/ 1000（UserProduceProgress.SelfLessonTypeStaminaPermils，支援卡 / 道具的
+        SelfLessonStaminaUp / Down 给的；取整方式未逆向，这里向下取整）。"""
         if self.r.family != "nia":
             raise Unsupported("自主レッスン只在 N.I.A")
         a = attr(a)
         ph = self.phase()
         cost, base = self.r.self_lessons[(ph, bool(sp))]
-        if self.stamina <= cost:
-            raise Unsupported(f"体力 {self.stamina} 不高于消耗 {cost}，自主课上不了")
+        cost = math.floor(cost * (1000 + stamina_permil) / 1000 + 1e-9)
+        if self.stamina < cost:
+            raise Unsupported(f"体力 {self.stamina} 低于消耗 {cost}，自主课上不了")
         gain = grow(base, self.growth[a])
         self._stamina(-cost)
         self._add(a, gain)
@@ -351,9 +355,11 @@ class Sim:
         self._step("self_lesson", attr=a, sp=bool(sp), gain=gain)
         return gain
 
-    def business(self, venue, a, *, excellent=False, vote_permil=0, stamina_cost=BUSINESS_STAMINA):
+    def business(self, venue, a, *, excellent=False, vote_permil=0, stamina_cost=BUSINESS_STAMINA, pp_cost=0):
         """营业：去哪个场所（venue = produce_card 紫 / produce_drink 青 / produce_point 黄 / stamina 绿）、选项涨哪项属性。
-        投票 = 主数据票数（大成功取 -ex 行，等于 1.3 倍）×（1000 + 支援卡营业票数加成‰）/ 1000；属性不吃加成。"""
+        投票 = 主数据票数（大成功取 -ex 行，等于 1.3 倍）×（1000 + 支援卡营业票数加成‰）/ 1000；属性不吃加成。
+        每个营业的体力消耗和 P 点消耗是服务器逐个下发的（UserProduceProgressBusiness.Stamina / ProducePoint）；
+        客户端（ScheduleBusinessScreenView.CheckIfGoBusiness）要求 P 点 ≥ P 点消耗且体力 ≥ 体力消耗才能去。"""
         if self.r.family != "nia":
             raise Unsupported("営業只在 N.I.A")
         if venue not in VENUES:
@@ -361,9 +367,10 @@ class Sim:
         key = (PHASE_OF_STAGE[STAGES[self.phase() - 1]], venue)
         plain, ex, param, extras = self.r.business[key]
         votes = math.floor((ex if excellent else plain) * (1000 + vote_permil) / 1000 + 1e-9)
-        if stamina_cost > self.stamina:
-            raise Unsupported(f"体力 {self.stamina} 不够营业的 {stamina_cost}")
+        if self.stamina < stamina_cost or self.pp < pp_cost:
+            raise Unsupported(f"体力 {self.stamina} / P 点 {self.pp} 不够营业的 {stamina_cost} / {pp_cost}")
         self._stamina(-stamina_cost)
+        self.pp -= pp_cost
         self.votes += votes
         self._add(attr(a), param)
         self.pp += extras.get("ProducePointAddition", 0)
