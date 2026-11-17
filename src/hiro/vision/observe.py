@@ -16,6 +16,7 @@ OPTION_NAME = {
     "open_lesson": "training",
     "lesson": "training",
     "self_lesson": "training",  # N.I.A 自主レッスン
+    "sales": "sales",  # N.I.A 営業
     "class": "class",
     "outing": "outing",
     "present": "gift",

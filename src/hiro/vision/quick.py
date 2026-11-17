@@ -472,7 +472,7 @@ def read_bubble(img: MatLike, y1: int, y2: int) -> tuple[str, dict]:
         from hiro.vision.customize import read_customize_result
 
         return "CUSTOMIZE_RESULT", read_customize_result(text)
-    if m := re.search(r"を削.しまし", text):  # OCR 偶尔把「除」读成「味」
+    if m := re.search(r"を(削.|除去)しまし", text):  # OCR 偶尔把「除」读成「味」；N.I.A 営業奖励「ふれあい+を除去しました」
         return "DELETE_RESULT", {"cards": split_card_names(text[: m.start()]), "text": text}
     return "TRANSITION", {"kind": "message", "text": text}
 

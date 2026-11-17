@@ -1,0 +1,165 @@
+"""N.I.A 特有页面（hiro.vision.nia 识别 + hiro.produce.nia 执行）：営業场所 / 営業话题 / 试镜选档，实机帧在私有 fixtures pages/nia-*。"""
+
+from pathlib import Path
+from types import SimpleNamespace as NS
+
+import cv2
+import numpy as np
+import pytest
+
+from hiro.contracts import Action, ActionKind, Decision
+from hiro.runtime.loop import DONE, STAY
+
+FIX = Path(__file__).with_name("fixtures") / "pages"
+
+
+def _img(name):
+    p = FIX / name
+    if not p.exists():
+        pytest.skip(f"需要实机截图 pages/{name}")
+    return cv2.imread(str(p))
+
+
+def _read(name):
+    from hiro.vision.nia import read_nia_page
+    from hiro.vision.ocr import screen_texts
+
+    img = _img(name)
+    return read_nia_page(screen_texts(img), img)
+
+
+def test_sales_place_reading():
+    name, f = _read("nia-sales-place.png")
+    assert name == "NIA_SALES_PLACE" and not f["expanded"]
+    assert [(p["kind"], p["gain"], p["hp_cost"]) for p in f["places"]] == [("local", 2400, 5), ("corporate", 2400, 0), ("commercial", 2400, 5)]
+    name, f = _read("nia-sales-place-expanded.png")
+    assert name == "NIA_SALES_PLACE" and f["expanded"] and f["selected"] == 2 and f["start"][1] > 980
+
+
+def test_sales_event_reading():
+    name, f = _read("nia-sales-event.png")
+    assert name == "NIA_SALES_EVENT"
+    assert [(c["text"], c["attr"]) for c in f["choices"]] == [("学生時代の話", "Vo"), ("現役アイドルの仕事の話", "Da"), ("アドバイスをもらう", "Vi")]
+
+
+def test_audition_select_reading():
+    name, f = _read("nia-audition-select-1.png")
+    assert name == "NIA_AUDITION_SELECT" and f["votes"] == 4680 and not f["expanded"]
+    assert [(t["vote_need"], t["number"]) for t in f["tiers"]] == [(9000, 3), (4000, 2), (0, 1)]
+    name, f = _read("nia-audition-select-1-chosen.png")
+    assert f["expanded"] and f["chosen_need"] == 4000 and abs(f["start"][1] - 889) < 15
+
+
+def test_other_pages_not_nia():
+    from hiro.vision.nia import read_nia_page
+    from hiro.vision.ocr import screen_texts
+
+    for n in ("nia-action-sales.png", "nia-consult-banner.jpg", "nia-live-setting.png"):
+        img = _img(n)
+        assert read_nia_page(screen_texts(img), img) is None, n
+
+
+def _core(select, number=None):
+    rec = []
+    args = {"select": select} | ({"audition_number": number} if number else {})
+    d = Decision(Action(ActionKind.EVENT_SELECT, args), "测试", "rule", 0.7)
+    s = NS(state=NS(), observe=lambda **kw: rec.append(kw["scene"]) or kw, record=lambda *a, **k: None)
+    return NS(s=s, deciders=NS(decide=lambda page, st: d), nia_audition_number=None), rec
+
+
+def _rt():
+    now, taps = [0.0], []
+    return NS(device=NS(tap=lambda x, y: taps.append((x, y))), clock=lambda: now[0]), now, taps
+
+
+PLACES = [{"index": i, "kind": k, "name": k, "gain": 2400, "hp_cost": c, "center": [360, 740 + 138 * i]}
+          for i, (k, c) in enumerate((("local", 5), ("corporate", 0), ("commercial", 5)))]  # fmt: skip
+
+
+def test_sales_place_two_steps():
+    """决策选企業（index 1）：先点卡展开；展开的是它就点「営業開始」；展开的不是它就重点。"""
+    from hiro.produce.nia import ACT_WAIT_S, NiaPages
+
+    core, rec = _core(1)
+    p = NiaPages(core)
+    rt, now, taps = _rt()
+    assert p.on_sales_place(rt, None, NS(fields={"places": PLACES, "expanded": False})) is DONE and taps == [(360, 878)]
+    assert p.on_sales_place(rt, None, NS(fields={"places": PLACES, "expanded": False})) is STAY  # 动画中不连点
+    now[0] += ACT_WAIT_S
+    wrong = {"places": PLACES, "expanded": True, "selected": 2, "start": [507, 1013]}
+    assert p.on_sales_place(rt, None, NS(fields=wrong)) is DONE and taps[-1] == (360, 878)  # 展开的不是它：重点
+    now[0] += ACT_WAIT_S
+    ok = {"places": PLACES, "expanded": True, "selected": 1, "start": [507, 1013]}
+    assert p.on_sales_place(rt, None, NS(fields=ok)) is DONE and taps[-1] == (507, 1013)
+    assert rec == ["NIA_SALES_PLACE"]  # 只决策一次
+
+
+def test_audition_two_steps_sets_audition_number():
+    from hiro.produce.nia import ACT_WAIT_S, NiaPages
+
+    tiers = [{"index": i, "number": n, "vote_need": v, "locked": False, "center": [360, 774 + 117 * i]}
+             for i, (n, v) in enumerate(((3, 9000), (2, 4000), (1, 0)))]  # fmt: skip
+    core, _ = _core(1, number=2)
+    p = NiaPages(core)
+    rt, now, taps = _rt()
+    assert p.on_audition_select(rt, None, NS(fields={"tiers": tiers, "expanded": False})) is DONE and taps == [(360, 891)]
+    assert core.nia_audition_number == 2
+    now[0] += ACT_WAIT_S
+    chosen = {"tiers": tiers[1:], "expanded": True, "chosen_need": 4000, "start": [360, 889]}
+    assert p.on_audition_select(rt, None, NS(fields=chosen)) is DONE and taps[-1] == (360, 889)
+
+
+def test_sales_event_taps_choice():
+    from hiro.produce.nia import NiaPages
+
+    core, _ = _core(2)
+    rt, _, taps = _rt()
+    choices = [{"index": i, "text": t, "attr": a, "center": [360, y]} for i, (t, a, y) in enumerate((("a", "Vo", 699), ("b", "Da", 800), ("c", "Vi", 901)))]
+    assert NiaPages(core).on_sales_event(rt, None, NS(fields={"choices": choices})) is DONE and taps == [(360, 901)]
+
+
+def test_sales_option_and_removal_bubble():
+    from hiro.vision.extract import extract
+    from hiro.vision.observe import observation
+    from hiro.vision.quick import bottom_bubble
+
+    raw, _ = extract("ACTION_SELECT", _img("nia-action-sales.png"))
+    assert [o["option"] for o in observation(1, 0.0, "ACTION_SELECT", raw).fields["options"]] == ["sales"]
+    page, f = bottom_bubble(_img("nia-sales-remove-result.png"))
+    assert page == "DELETE_RESULT" and f["cards"][0]["name"] == "ふれあい"
+
+
+def test_connecting_waits_instead_of_stopping(tmp_path):
+    from hiro.runtime import nia_sample as ns
+    from hiro.runtime.frame import Frame
+    from hiro.vision.classify import UNKNOWN
+
+    now = [0.0]
+    rt = NS(clock=lambda: now[0], device=NS(tap=lambda x, y: pytest.fail("通信中不点")), session=None)
+    adv = ns.make_advance(ns.Sampler(lambda img: UNKNOWN, tmp_path / "frames"), stop_s=15)
+    f = Frame(_img("nia-connecting.jpg"), 0.0)
+    for t in (0, 10, 20, 40):
+        now[0] = t
+        assert adv(rt, f, UNKNOWN) is False  # 一直不停
+
+
+def test_exam_label_carries_audition_number():
+    from hiro.runtime import nia_sample as ns
+
+    Core = ns.nia_core("produce-004")
+    c = Core.__new__(Core)
+    c.exam_count, c.nia_audition_number = 0, 2
+    assert c._battle_label(None) == "nia-mid1#audition-2" and c.nia_audition_number is None
+    assert c._battle_label(None) == "nia-mid2"
+
+
+def test_sampler_rechecks_dialog_as_sales_place(tmp_path):
+    """営业场所的黄色卡片被当成弹窗标题条（DIALOG）：采样的判页包装整帧 OCR 改认 NIA_SALES_PLACE。"""
+    from hiro.runtime import nia_sample as ns
+    from hiro.vision.classify import PageHit
+
+    img = _img("nia-sales-place.png")
+    s = ns.Sampler(lambda im: PageHit("DIALOG", "page_ocr"), tmp_path / "frames")
+    hit = s(img)
+    assert hit.name == "NIA_SALES_PLACE" and len(hit.fields["places"]) == 3
+    assert s(np.zeros((1280, 720, 3), np.uint8)).name == "DIALOG"  # 认不出 N.I.A 页：照旧
