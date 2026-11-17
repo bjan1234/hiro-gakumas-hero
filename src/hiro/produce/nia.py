@@ -21,8 +21,9 @@ UNDECIDED_STOP_S = 15.0  # 同一页一直决策不出（字段读不全 → Wai
 
 
 class NiaPages:
-    def __init__(self, core):
+    def __init__(self, core, persist=None):
         self.core = core
+        self.persist = persist  # Path：选档时把场次 / 档位写进这个文件（resume 是新进程，内存里的会丢；NiaSampleCore 取标签时读）
         self._acted: tuple[str, float] | None = None
         self.place_choice: str | None = None  # 场所种类（kind）
         self.audition_choice: int | None = None  # 门槛票数（vote_need）
@@ -113,6 +114,7 @@ class NiaPages:
             self.core.nia_audition_number = args.get("audition_number") or tiers[int(i)].get("number")
             if fields.get("stage"):
                 self.core.nia_stage = fields["stage"]  # 考试标签按这一场（mid1 / mid2 / final），不按进了几场数（中间夹着営業、自主课）
+            self._save_next_exam()
         target = next((t for t in tiers if t["vote_need"] == self.audition_choice), None)
         if fields.get("expanded") and fields.get("chosen_need") == self.audition_choice and fields.get("start"):
             logger.info("N.I.A 试镜：门槛 %s（档 %s），点「オーディション開始」", self.audition_choice, self.core.nia_audition_number)
@@ -133,6 +135,28 @@ class NiaPages:
         self._tap(rt, page, (hit.fields or {}).get("tap") or (360, 1222))
         return DONE
 
+    def _save_next_exam(self) -> None:
+        """选档后到考试之间常停下、resume（新进程）：场次和档位写文件，NiaSampleCore 取标签时内存里没有就读它
+        （N.I.A PRO 实机 11-17：三场考试的标签都是 nia-mid1）。"""
+        if self.persist is None:
+            return
+        import json
+
+        try:
+            self.persist.parent.mkdir(parents=True, exist_ok=True)
+            self.persist.write_text(json.dumps({"stage": getattr(self.core, "nia_stage", None),
+                                                "audition_number": getattr(self.core, "nia_audition_number", None)}), encoding="utf-8")  # fmt: skip
+        except OSError as e:
+            logger.warning("N.I.A：下一场考试的场次没写进 %s：%s", self.persist, e)
+
+    def on_audition_result(self, rt, f, hit):
+        """试镜结果页（「最終オーディション」+ 名次 +「TAPで次へ」）：展示页，点 TAP 过。"""
+        page = "NIA_AUDITION_RESULT"
+        if self._wait(rt, page):
+            return STAY
+        self._tap(rt, page, (hit.fields or {}).get("tap") or (360, 1147))
+        return DONE
+
     def handlers(self) -> dict:
         return {"NIA_SALES_PLACE": self.on_sales_place, "NIA_SALES_EVENT": self.on_sales_event, "NIA_AUDITION_SELECT": self.on_audition_select,
-                "NIA_AUDITION_BONUS": self.on_audition_bonus}
+                "NIA_AUDITION_BONUS": self.on_audition_bonus, "NIA_AUDITION_RESULT": self.on_audition_result}

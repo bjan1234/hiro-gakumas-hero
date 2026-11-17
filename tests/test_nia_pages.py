@@ -238,3 +238,52 @@ def test_fields_reach_real_decider_through_session(tmp_path):
         if p.on_sales_place(rt, None, NS(fields=fields)) is DONE:
             break
     assert taps and taps[0][1] in (740, 878, 1016)
+
+
+def test_briefing_tapped_through_quick_path(tmp_path):
+    """试镜考前说明页（实机帧，原来 unknown 停）：采样的判页包装认成 HIF_EXAM_BRIEFING（读出三属性和倍率），advance 按快速判页的格式点「タップして次へ」。"""
+    from hiro.runtime import nia_sample as ns
+    from hiro.runtime import play
+    from hiro.runtime.frame import Frame
+    from hiro.vision.classify import UNKNOWN
+
+    img = _img("nia-exam-briefing.png")
+    hit = ns.Sampler(lambda im: UNKNOWN, tmp_path / "frames")(img)
+    assert hit.name == "HIF_EXAM_BRIEFING" and hit.fields["multiplier_pct"] == {"Vo": 1116, "Da": 1054, "Vi": 958}
+    rt, _, taps = _rt()
+    rt.sleep = lambda s: None
+    rt._quick_wait = None
+    assert play.advance(rt, Frame(img, 0.0), hit) is True
+    (x, y), = taps
+    assert abs(x - 363) < 30 and abs(y - 1199) < 20
+
+
+def test_final_result_is_show_page(tmp_path):
+    from hiro.produce.nia import NiaPages
+    from hiro.runtime import nia_sample as ns
+    from hiro.vision.classify import UNKNOWN
+
+    hit = ns.Sampler(lambda im: UNKNOWN, tmp_path / "frames")(_img("nia-final-result-1st.png"))
+    assert hit.name == "NIA_AUDITION_RESULT" and hit.fields["stage"] == "final"
+    core, _ = _core(0)
+    rt, _, taps = _rt()
+    assert NiaPages(core).on_audition_result(rt, None, hit) is DONE and taps == [(361, 1147)]
+
+
+def test_exam_stage_survives_resume(tmp_path):
+    """N.I.A PRO 实机 11-17：三场考试标签都是 nia-mid1——选完档停下、resume 是新进程，内存里的场次丢了。
+    选档时写文件，新进程取标签时读它。"""
+    from hiro.produce.nia import NiaPages
+    from hiro.runtime import nia_sample as ns
+
+    path = tmp_path / "next-exam.json"
+    tiers = [{"index": 0, "number": 2, "vote_need": 28000, "locked": False, "center": [360, 891]}]
+    core, _ = _core(0, number=2)
+    rt, _, _ = _rt()
+    NiaPages(core, persist=path).on_audition_select(rt, None, NS(fields={"tiers": tiers, "expanded": False, "stage": "final"}))
+    assert path.exists()
+    Core = ns.nia_core("produce-004")  # resume 后的新进程
+    c = Core.__new__(Core)
+    c.exam_count, c.nia_stage, c.nia_audition_number = 0, None, None
+    Core.next_exam_file = path
+    assert c._battle_label(None) == "nia-final#audition-2" and not path.exists()
