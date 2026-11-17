@@ -707,6 +707,15 @@ def memory_effect_popup(img: MatLike) -> bool:
     return any("メモリー" in t and "効果" in t for t, _, _ in ocr_boxes(img[y1:y2, x1:x2]))
 
 
+_JA = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
+
+
+def _stray_fragment(text: str) -> bool:
+    """名称栏里不当文字的碎片：不超过 3 个字、没有假名 / 汉字（被遮挡的 logo 角、图标边）。"""
+    t = text.strip()
+    return len(t) <= 3 and not _JA.search(t)
+
+
 def read_acquire_popup(img: MatLike, art: bool = True) -> dict | None:
     """获得演出的名称栏：{kind: card|drink|pitem, card_id/drink_id/pitem_id, name, upgrade?, art_card_id?, agree?, text}。
 
@@ -720,7 +729,9 @@ def read_acquire_popup(img: MatLike, art: bool = True) -> dict | None:
     # 名称栏只有一段居中的文字（中心 x 实测 360–380，名称前带图标）。同一高度上的其他页面：选饮料页瓶身标签「初星水」
     # 偏在两侧；考试「Pドリンク詳細」的饮料名中心 321、右侧还有「捨てる」——有偏离中心的文字就不算
     # 名称前的图标有时被单独切成一个单字框（「と」），不参与判断
-    boxes = [(t, (b[0] + b[2]) / 2 + x1) for t, _, b in ocr_boxes(img[y1:y2, x1:x2]) if len(t.strip()) >= 2]
+    # 很短、不含假名 / 汉字的碎片也不算（DMM qualifyz1 17:35：支援能力横幅盖住获得演出，名称栏右端露出后面横幅的「H.I.F」一角，
+    # 读成「ıF」，整页没认成获得页，180 秒停机）。选饮料页、Pドリンク詳細 旁边的字都是日文，照旧排除
+    boxes = [(t, (b[0] + b[2]) / 2 + x1) for t, _, b in ocr_boxes(img[y1:y2, x1:x2]) if len(t.strip()) >= 2 and not _stray_fragment(t)]
     if not boxes or any(abs(cx - ACQUIRE_CENTER_X) > ACQUIRE_CENTER_TOL for _, cx in boxes):
         return None
     text = "".join(t for t, _ in boxes)
