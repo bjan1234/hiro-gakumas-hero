@@ -19,7 +19,7 @@ DEBOUNCE = 3  # 不合法跳变需要连续多少帧才接受
 STABLE = 2  # 连续多少帧算稳定
 
 # 页面局部字段：换页清空，不进 produce / exam
-PAGE_LOCAL = {"options", "complete", "advice", "candidates", "recommended", "cards", "problems", "exam_next"}
+PAGE_LOCAL = {"options", "complete", "advice", "candidates", "recommended", "cards", "problems", "exam_next", "weeks_left"}
 # 哪个页面的字段写进哪个分区
 SECTION = {"ACTION_SELECT": "produce", "DECK_LIST": "produce", "HIF_EXAM": "exam", "SELECT_CARD": None, "SELECT_DRINK": None, "HIF_EXAM_RESULT": None}
 # 考试页面里整段替换（不逐项合并）的列表 / 字典字段
@@ -84,6 +84,23 @@ def _enter(s: GameState, page: str, area: str, seq: int, *, frames: int = 1) -> 
         s.produce = {}
 
 
+def _hajime_nia_step(s: GameState, obs: Observation, origin: str) -> None:
+    """初 / N.I.A：选行动页头「中間 / 1次 / 2次 / 最終まで N週」按 produce.mode 换算成 produce.step（hiro.state.modes.step_from_header）。
+    H.I.F 的 step 由识别层直接给（mode_and_step）；初 / N.I.A 的 mode 是运行时写进局面的，页头读不出来，所以在这里换算。
+    换算不了（不是初 / N.I.A、页头没读到、模式的考试位置不知道）就不写，沿用之前的 step。"""
+    prod = s.produce or {}
+    try:
+        from hiro.state.modes import step_from_header
+
+        step = step_from_header(prod.get("mode"), obs.fields.get("exam_next"), obs.fields.get("weeks_left"))
+    except Exception:  # noqa: BLE001  主数据不可用：不写
+        return
+    if step is None:
+        return
+    s.produce = {**prod, "step": step}
+    s.sources["produce.step"] = Source(origin, obs.seq)
+
+
 def _sync_exam_drinks(s: GameState, seq: int) -> None:
     """离开考试（R1 结束进轮间、R2 结束）：用考试里最后读到的饮料栏（exam.drinks）覆盖 produce.drinks。
     考试里喝饮料只改 exam.drinks（考试页字段进 exam 分区），produce.drinks 一直停在开局的值（第二十九局 seq 115 起是开局 4 瓶的
@@ -133,6 +150,8 @@ def _reduce_fields(s: GameState, obs: Observation) -> None:
             _note(s, f"seq {obs.seq}: {full} {old_src.origin}={old!r} vs {origin}={value!r}，采用 {origin}")
         target[key] = copy.deepcopy(value)
         s.sources[full] = Source(origin, obs.seq)
+    if obs.page.name == "ACTION_SELECT":
+        _hajime_nia_step(s, obs, origin)
     if section == "exam":
         _observe_turn(s, obs)
         _attr_permil(s, obs)

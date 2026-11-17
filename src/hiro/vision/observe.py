@@ -94,6 +94,8 @@ def produce_observation(action: dict) -> dict:
     ]
     if action.get("exam_next"):
         obs["exam_next"] = action["exam_next"]
+        if action.get("weeks_left") is not None:
+            obs["weeks_left"] = action["weeks_left"]  # reduce 按 produce.mode 换算成 step（hiro.state.modes.step_from_header）
     obs["complete"] = bool(action.get("complete"))
     return obs
 
