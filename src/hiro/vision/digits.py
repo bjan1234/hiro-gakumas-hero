@@ -279,6 +279,32 @@ def read_int(img: MatLike, box: tuple[int, int, int, int], *, align: bool = Fals
     return int(m.group()) if m and not uncertain else None
 
 
+WHITE_DIGIT_H = 0.7  # read_white_digits：连通块高度至少为最高字的这么多倍
+WHITE_DIGIT_TOP = 0.3  # 顶边与最高字相差不超过字高的这么多倍
+
+
+def read_white_digits(img: MatLike, box: tuple[int, int, int, int]) -> int | None:
+    """白色填充 + 深色描边的数字（考试 HUD 元気角标）：只留白色像素，再只留和最高那块等高、顶边对齐的连通块，交 ddddocr。
+    框里的其他东西（体力条没满时的深灰圆头、角标左下的浅色高光、背景亮线）不是白色或比数字矮，读之前就抹掉
+    （DMM mainverify2 11-17：整框交 ddddocr 时元気 0 → 10、100 → 2100、700 → 5700）。框里没有白色块返回 None。"""
+    x1, y1, x2, y2 = box
+    crop = img[y1:y2, x1:x2]
+    if crop.size == 0:
+        return None
+    mask = cv2.inRange(cv2.cvtColor(crop, cv2.COLOR_BGR2HSV), *WHITE)
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(mask)
+    if n <= 1:
+        return None
+    tallest = max(range(1, n), key=lambda i: stats[i][cv2.CC_STAT_HEIGHT])
+    th, ty = stats[tallest][cv2.CC_STAT_HEIGHT], stats[tallest][cv2.CC_STAT_TOP]
+    keep = [i for i in range(1, n) if stats[i][cv2.CC_STAT_HEIGHT] >= th * WHITE_DIGIT_H and abs(stats[i][cv2.CC_STAT_TOP] - ty) <= th * WHITE_DIGIT_TOP]
+    out = np.zeros_like(crop)
+    out[np.isin(labels, keep)] = 255
+    text = (_dddd().classification(cv2.imencode(".png", cv2.resize(out, None, fx=2, fy=2))[1].tobytes()) or "").translate(DDDD_FIX)
+    m = re.search(r"\d+", text)
+    return int(m.group()) if m else None
+
+
 DDDD_FIX = str.maketrans({"o": "0", "O": "0", "l": "1", "I": "1"})
 
 
