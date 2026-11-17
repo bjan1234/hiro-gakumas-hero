@@ -257,6 +257,15 @@ def test_pitem_customize_confirm_taps_decide():
         interrupts.customize_confirm(rt.screen.shot(), rt)
 
 
+def test_pitem_customize_confirm_lowercase_p():
+    """DMM qualifyz3（11-18 02:51，559x993 窗口）：RapidOCR 把正文读成「以下のpアイテムに…」（小写 p），没认成 P 道具定制框，
+    DIALOG 183 秒停机。「Pアイテム」不分大小写。"""
+    custom = {"kind": "customize_confirm", "title": "カスタマイズ確認", "danger": False, "y": 493}
+    texts = [T("以下のpアイテムにカスタマイズを実行します", 326, 576), T("キャンセル", 240, 1160), T("決定", 524, 1160)]
+    rt, _ = runtime([frame(texts, custom)])
+    assert "決定" in interrupts.check(rt.screen.shot(), rt) and rt.raw_device.taps == [(524, 1160)]
+
+
 def test_no_dialog_skips_ocr():
     f = frame()
     f.__dict__.pop("texts")  # 碰 texts 就会真去 OCR：没弹窗时中断层不该碰

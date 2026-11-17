@@ -134,7 +134,7 @@ def customize_confirm(frame, rt) -> str | None:
     只认 P 道具定制（正文带「Pアイテム」），特別指導的「カスタマイズ実行確認」由它自己的执行器处理。读不到「決定」停机。"""
     if not frame.has_dialog or (d := frame.dialog) is None or d["kind"] != "customize_confirm":
         return None
-    if not any("Pアイテム" in t.text for t in frame.texts):
+    if not any("pアイテム" in t.text.lower() for t in frame.texts):  # RapidOCR 小窗口会读成小写「pアイテム」（qualifyz3 11-18）
         return None
     if _recently(rt, "customize_confirm"):
         return f"P 道具定制确认「{d['title']}」：刚点过「決定」，等框关"
