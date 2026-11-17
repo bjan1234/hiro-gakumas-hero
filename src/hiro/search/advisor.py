@@ -58,6 +58,7 @@ def check(rx, state, legal: list[Action]) -> str | None:
     # 引擎比画面严（画面判可打、引擎判不可打）不算对不上：好印象 / やる気等消耗不够时游戏不让打、卡面却不变灰，引擎是对的
     # （DMM mainverify2 R2：ゆめみごこち 好印象不够，退回 UINet 后选了它、连点 3 次停在选中态）；搜索只在引擎可打的牌里选，画面上都能打。
     # 引擎比画面松（引擎判可打、画面灰着）才退回：搜索可能选到打不出的牌（mainverify2 R1：元気 0 读成 10，「届いて！」）
+    # 代价（3940a9）：引擎状态本身偏了（引擎里好印象比实际少等）时会漏掉一张其实能打的牌，只影响打得好不好，不会卡住。
     if eng_play - scr_play:
         return f"能打出的牌对不上：引擎 {sorted(eng_play)} / 画面 {sorted(scr_play)}"
     scr_drinks = [d for d in state.drinks or [] if getattr(d, "drink_id", None)]
