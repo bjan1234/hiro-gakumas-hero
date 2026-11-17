@@ -198,7 +198,10 @@ def run(args, session) -> int:
         for attempt in range(MAX_DATE_CHANGES + 1):
             try:
                 if not started:
-                    finish.finish_produce_end(rt, go_home=True)  # 上一局停在结算 / 开始确认页时先回首页（开始确认页不点）
+                    if not (args.mode == "main" and opening.on_start_confirm(rt.screen.shot())):
+                        # 上一局停在结算页时先回首页；本战开局时已经在本战开始确认页就留着（new_produce 从这里接着核对，
+                        # 原来点回首页，再从首页进本战走完整编成，Mac p15-main 11-17）
+                        finish.finish_produce_end(rt, go_home=True)
                     opening.new_produce(rt, args.mode, idol=args.idol, support_set=kaa_env.SUPPORT_SET, memory_set=kaa_env.MEMORY_SET,
                                         plan=kaa_env.ACTIVE_PLAN, rental_attr=args.main_attr, main_attr=args.main_attr,
                                         expect_memory=tuple(v.strip() for v in args.expect_memory.split(",") if v.strip()))  # fmt: skip
