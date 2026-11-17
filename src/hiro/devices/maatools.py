@@ -190,6 +190,13 @@ def port_open(port: int = MAATOOLS_PORT, timeout: float = 1.0) -> bool:
         return False
 
 
+# 空帧（0 字节）：进横屏 LIVE、切全屏时窗口重新布局，MaaTools 会短暂返回空帧（11-17 Mac p15c：LandscapeGuard 刚进全屏就碰上，
+# 原来直接抛 DeviceUnavailable，整局崩掉）。先重试 EMPTY_RETRY_S；还是空就给一张和上一帧同尺寸的黑帧（这一拍当没截到：横屏时
+# LandscapeGuard 当黑屏处理、主循环不点）；连续 EMPTY_MAX_S 秒都是空帧才报 DeviceGone。
+EMPTY_RETRY_S, EMPTY_RETRY_GAP_S = 3.0, 0.3
+EMPTY_MAX_S = 30.0
+
+
 class MaaToolsDevice:
     """设备统一接口：Mac + PlayCover（MaaTools）。"""
 
@@ -208,6 +215,9 @@ class MaaToolsDevice:
             None, port, reconnect_timeout=reconnect_timeout, reconnect_interval=reconnect_interval
         )
         self.screen = LogicalScreen()
+        self._empty_since: float | None = None
+        self._last_shape: tuple[int, ...] | None = None
+        self._sleep, self._clock = time.sleep, time.monotonic
 
     @property
     def orientation(self) -> str:
@@ -222,13 +232,36 @@ class MaaToolsDevice:
     def close(self) -> None:
         self.client.stop()
 
-    def _grab(self) -> np.ndarray:
+    def _grab_once(self) -> np.ndarray | None:
+        """截一张；空帧返回 None。"""
         try:
             return self.client.screenshot()
         except OSError as e:  # ConnectionError 也是 OSError：重连等到超时还连不上
             raise DeviceGone(f"MaaTools 断开：{e}") from e
-        except RuntimeError as e:  # 空帧
-            raise DeviceUnavailable(str(e)) from e
+        except RuntimeError:  # 空帧
+            return None
+
+    def _grab(self) -> np.ndarray:
+        deadline = self._clock() + EMPTY_RETRY_S
+        while True:
+            image = self._grab_once()
+            if image is not None:
+                if self._empty_since is not None:
+                    logger.info("MaaTools 空帧恢复（%.1fs）", self._clock() - self._empty_since)
+                self._empty_since, self._last_shape = None, image.shape
+                return image
+            now = self._clock()
+            if self._empty_since is None:
+                self._empty_since = now
+                logger.warning("MaaTools 返回空帧（窗口在重新布局？），重试")
+            if now - self._empty_since >= EMPTY_MAX_S:
+                raise DeviceGone(f"MaaTools 连续 {now - self._empty_since:.0f}s 返回空帧")
+            if now >= deadline:
+                break
+            self._sleep(EMPTY_RETRY_GAP_S)
+        if self._last_shape is None:
+            raise DeviceUnavailable("MaaTools 返回空帧（还没截到过画面）")
+        return np.zeros(self._last_shape, np.uint8)  # 这一拍当没截到：黑帧
 
     def screenshot(self) -> np.ndarray:
         """截图 → 逻辑分辨率；进 LIVE 横竖屏切换时重截（base.settled_frame）。"""
