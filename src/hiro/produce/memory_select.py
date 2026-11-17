@@ -130,10 +130,28 @@ def memory_missing_on_page(expect: tuple[str, ...], *, shoot, texts=None, sleep=
     texts = texts or (lambda img: [t.text for t in screen_texts(img)])
     missing = list(expect)
     for i in range(MEMORY_PAGE_READS):
-        got = "".join(texts(shoot())).replace(",", "")
+        tokens = texts(shoot())
+        got = "".join(tokens).replace(",", "")
         missing = [v for v in expect if not memory_value_seen(v, got)]
+        if len(expect) >= 3 and len(missing) == 1 and _one_digit_off(missing[0], tokens):
+            # 另外几项都完全对上，只差这一项：同一段文字里有只差 1 位的数（DMM RapidOCR 11-17：Vi「1191」读成「391121」——
+            # 图标读成数字、9 读成 2）。几项要同时对上，别的回忆刚好每项都只差 1 位的可能很小
+            logger.info("选拔回忆核对：%s 读成了只差 1 位的数，其余 %s 都对上，算通过", missing[0], [v for v in expect if v != missing[0]])
+            return []
         if not missing:
             return []
         if i + 1 < MEMORY_PAGE_READS:
             sleep(1.0)
     return missing
+
+
+def _one_digit_off(value: str, tokens) -> bool:
+    """某一段 OCR 文字（去掉非数字）里有和 value 等长、只差 1 位（任意数字）的连续数字。按段比，不跨段拼。"""
+    import re
+
+    for t in tokens:
+        d = re.sub(r"\D", "", str(t))
+        for j in range(len(d) - len(value) + 1):
+            if sum(a != b for a, b in zip(value, d[j : j + len(value)])) == 1:
+                return True
+    return False
