@@ -94,17 +94,26 @@ class Option:
     extra: dict = field(default_factory=dict)
 
 
-def choose(options: list[Option], stage: str, capacity: int, *, sim_context: dict | None = None, seeds=range(100), where: str = "") -> dict:
+def choose(options: list[Option], stage: str, capacity: int, *, sim_context: dict | None = None, seeds=range(100), where: str = "",
+           take_on_tie: bool = False) -> dict:
     """规则默认 + 模拟。返回 {pick: Option, rule: Option, rows: [...], why: str, sim: bool, deviation: dict | None, unsure: str | None}。
     sim_context：{deck, hp, max_hp, permil, exam}（hiro.sim.resource.setup_for 的参数）；None 或 SIM=False 时只按规则。
     unsure：规则 / 模拟拿不准的原因（决策点补全：交 LLM 在候选里选）——没有模拟时同档打平、模拟失败、模拟偏向别的候选但在噪声内
     或输入是参考值不许跨档；社区默认明显最好（别的候选都不如它 / 不同档且没有模拟）时为 None。"""
     keyed = [(holding_key(o.drinks, stage, capacity), i, o) for i, o in enumerate(options)]
-    keyed.sort(key=lambda x: (x[0], x[2].key not in NOOP, x[1]))  # 组合打平时不动（不收 / 不拿 / 不买）
+    if take_on_tie:
+        # 档位打平时收新饮料（用户 11-17：有的卡 / P 道具拿到饮料就得分）：先比档位，同档位时「不动」排后面，再按同档内的社区顺序
+        keyed.sort(key=lambda x: (tiers_of(x[0]), x[2].key in NOOP, x[0], x[1]))
+    else:
+        keyed.sort(key=lambda x: (x[0], x[2].key not in NOOP, x[1]))  # 组合打平时不动（不收 / 不拿 / 不买）
     best_key, _, rule = keyed[0]
     tiers_txt = lambda k: "/".join(f"{t:g}" for t in tiers_of(k))  # noqa: E731
     rows = [{"key": o.key, "label": o.label, "tiers": tiers_txt(k), "rule_rank": n + 1, "cost": o.cost} for n, (k, _, o) in enumerate(keyed)]
     out = {"pick": rule, "rule": rule, "rows": rows, "sim": False, "deviation": None, "unsure": None, "why": f"社区默认：{rule.label}（档位 {tiers_txt(best_key)}）"}
+    if take_on_tie and rule.key not in NOOP and any(o.key in NOOP and tiers_of(k) == tiers_of(best_key) for k, _, o in keyed):
+        # 和「不动」档位打平：直接收，不交模拟 / LLM 改回不收（模拟算不到「拿到饮料就得分」）
+        out["why"] += "；档位和不收打平，默认收新饮料（拿到饮料就得分的卡 / P 道具）"
+        return out
     seen, others = {tuple(sorted(d for d in rule.drinks if d))}, []
     for k, _, o in keyed[1:]:
         sig = tuple(sorted(d for d in o.drinks if d))
