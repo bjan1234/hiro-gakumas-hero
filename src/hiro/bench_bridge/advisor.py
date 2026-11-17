@@ -174,9 +174,26 @@ def tower_algo_spec() -> str:
     return (os.environ.get("HIRO_TOWER_ALGO") or TOWER_DEFAULT_ALGO).strip()
 
 
-def exam_search_algo_spec() -> str:
-    """初 / N.I.A 场次的出牌算法（HIRO_EXAM_SEARCH_ALGO）；缺省空 = 用 H.I.F 那个（uinet）。"""
-    return (os.environ.get("HIRO_EXAM_SEARCH_ALGO") or "").strip()
+EXAM_DEFAULT_ALGO = "hiro.search.exam_algo:ExamGnrpa"
+
+
+def exam_search_algo_spec(label: str = "") -> str:
+    """初 / N.I.A 场次的出牌算法。HIRO_EXAM_SEARCH_ALGO 设了就用它（两个家族都管）；没设时：
+    - 初的中間 / 最終考试（hajime-mid1 / hajime-final）缺省走 Rust GNRPA（EXAM_DEFAULT_ALGO，目标用按场次的 stage_objective）——
+      协调 11-17 定，依据 bench 54 题 × 2 种子（初中期 uinet 63% → 94%）；HIRO_EXAM_SEARCH_HAJIME=0 退回 uinet；
+    - 初的课程、N.I.A：空 = 用 H.I.F 那个（uinet），等 bench 结果再定。"""
+    spec = (os.environ.get("HIRO_EXAM_SEARCH_ALGO") or "").strip()
+    if spec:
+        return spec
+    base = str(label or "").split("#", 1)[0].lower()
+    if base in ("hajime-mid1", "hajime-final") and hajime_search_on():
+        return EXAM_DEFAULT_ALGO
+    return ""
+
+
+def hajime_search_on() -> bool:
+    """HIRO_EXAM_SEARCH_HAJIME：初的考试走搜索，缺省开（协调定）；0 / off / false 关。"""
+    return (os.environ.get("HIRO_EXAM_SEARCH_HAJIME") or "1").strip().lower() not in ("0", "off", "false", "no")
 
 
 def load_algo(spec: str | None = None, *, download: bool = True):
@@ -410,6 +427,7 @@ class BenchAdvisor:
         self.label: str | None = None
         self.tracker = None
         self.began = False
+        self._hif_began = False
         self.rng = random.Random(0)
         self.stats = {"bench": 0, "rules": 0}
         self.deck: list = []
@@ -510,6 +528,7 @@ class BenchAdvisor:
         self.tracker = ScreenTracker(self.deck, trend, enchants=ench, items=items)
         self._pick_algo()
         self.began = False
+        self._hif_began = False  # 搜索算法某步搜不了时临时用 H.I.F 的算法：它这一场 begin 过没有
         self.rng = random.Random(hash((self.label, round_no)) & 0xFFFFFFFF)
         self.stats = {"bench": 0, "rules": 0}
         if self.algo is None:
@@ -522,9 +541,9 @@ class BenchAdvisor:
         if not enabled():
             return
         if label.startswith(("hajime", "nia")):
-            # 初 / N.I.A：HIRO_EXAM_SEARCH_ALGO 设了才走搜索（如 hiro.search.exam_algo:ExamGnrpa，自己按 UIObs 对齐引擎局面，
-            # 不要 screen_source 跟踪）；缺省不设 = uinet（行为变化开关默认关：bench 上 GNRPA 还只比 uinet 略好，目标没按场次填）
-            spec = exam_search_algo_spec()
+            # 初 / N.I.A：搜索（ExamGnrpa 自己按 UIObs 对齐引擎局面，不要 screen_source 跟踪）。初的考试缺省开，
+            # 课程和 N.I.A 缺省 uinet（exam_search_algo_spec）
+            spec = exam_search_algo_spec(label)
             if not spec:
                 return
             what = "初 / N.I.A"
@@ -667,10 +686,28 @@ class BenchAdvisor:
                 self._live_built = True
                 self.exam_loadout = self._live_exam_loadout(obs)
             ctx = self._ctx(obs)
-            if not self.began:
-                algo.begin(ctx)
-                self.began = True
-            d = algo.decide(ctx)
+            step_note = ""
+            try:
+                if not self.began:
+                    algo.begin(ctx)
+                    self.began = True
+                d = algo.decide(ctx)
+            except Exception as e:
+                if algo is self.algo or self.algo is None:
+                    raise
+                # 指定的搜索算法（偶像之路 / 初 / N.I.A）这一步搜不了：这一步用 H.I.F 的算法（uinet），理由里写明原因。
+                # 开局就失败（拼不出编成等）的，这一场剩下的步都用 uinet，不每步重试。
+                why = f"{type(e).__name__}: {e}"
+                logger.warning("[%s] %s 这一步搜不了，用 %s：%s", self.label, self.round_name, algo_spec().split(":")[0], why)
+                if not self.began:
+                    self.round_algo, self.round_note = self.algo, f"{self.round_name} 开局失败（{why}）"
+                    self.round_name = algo_spec().split(":")[0]
+                else:
+                    step_note = f"{self.round_name} 这一步搜不了（{why}）"
+                if not self._hif_began:
+                    self.algo.begin(ctx)
+                    self._hif_began = True
+                d = self.algo.decide(ctx)
             act = tuple(d.action)
         except Exception as e:  # noqa: BLE001
             logger.warning("bench 算法出错，这一步用规则：%s: %s", type(e).__name__, e)
@@ -709,8 +746,11 @@ class BenchAdvisor:
         q = meta.get("score_quantiles")
         name = self.round_name or algo_spec().split(":")[0]
         reason = f"{name}（{'引擎局面' if origin == 'engine' else '画面读数'}）：{what}"
-        if self.round_note:
-            reason = f"{name}（兜底：{self.round_note}；{'引擎局面' if origin == 'engine' else '画面读数'}）：{what}"
+        if self.round_note or step_note:
+            note = step_note or self.round_note
+            if step_note:
+                name = algo_spec().split(":")[0]
+            reason = f"{name}（兜底：{note}；{'引擎局面' if origin == 'engine' else '画面读数'}）：{what}"
         if q:
             reason += f"；终局分预测中位 {q.get('50%')}"
         return Decision(action=action, reason=reason, source="bench", confidence=None, candidates=cands,

@@ -11,8 +11,11 @@ lo 的字段（缺的按缺省）：
   score_bonus_permils 三属性倍率，列表 [Vo, Da, Vi] 或字典 {"1": …}
   exam                {produce_exam_battle_config_id, produce_exam_gimmick_effect_group_id}；回合数和审查基准取 battle config，
                       每回合属性按审查基准随机（同 GKMS：试镜的回合属性按审查基准抽，不按偶像自己的属性）
-bench 题（gkms.hif_loadout.v1，初 / N.I.A 的试镜）先用 from_hif_loadout 换成上面这种写法。课程（初的レッスン）还不支持：
-引擎没有「打到满分线就结束」，见 .temp/plans-20261112/初与NIA-bench-对照.md。
+  lesson              （初的课程）{parameter_type, kind, limit_turn, clear_score, perfect_score, step_id}：有它就按课程开局
+                      （考试类型 Lesson：不乘回合倍率；回合数 = limitTurn + exam_extra_turn，每回合都是这节课的属性），不看 exam
+bench 题（gkms.hif_loadout.v1，初 / N.I.A 的试镜、初的课程）先用 from_hif_loadout 换成上面这种写法。
+课程：引擎没有「打到满分线就结束」，搜索目标里分数按满分线封顶（stage_objective 的 score_cap），效果相同（多出的分没用）。
+没做：追い込み（HARD）课程到成功线后「课程类型」触发全部生效（GKMS oikomi_threshold），引擎按不满足处理。
 """
 
 from __future__ import annotations
@@ -25,6 +28,13 @@ STEP_TYPES = {
     "final": "ProduceStepType_AuditionFinal",
 }
 PLAN_TYPES = {"ProducePlanType_Plan1": 1, "ProducePlanType_Plan2": 2, "ProducePlanType_Plan3": 3}
+
+
+# ProduceStepType（课程那几种）→ (这节课的属性 1 Vo / 2 Da / 3 Vi, 种类)。1–9 = LESSON_<属性>_<NORMAL|SP|HARD>，
+# 29–34 = LEGEND_LESSON_<属性>_<NORMAL|SP>（同 GKMS scenario/hajime.py LESSON_STEP_TYPES）
+LESSON_STEP_TYPES = {1: (1, "NORMAL"), 2: (1, "SP"), 3: (1, "HARD"), 4: (2, "NORMAL"), 5: (2, "SP"), 6: (2, "HARD"),
+                     7: (3, "NORMAL"), 8: (3, "SP"), 9: (3, "HARD"), 29: (1, "NORMAL"), 30: (1, "SP"), 31: (2, "NORMAL"),
+                     32: (2, "SP"), 33: (3, "NORMAL"), 34: (3, "SP")}  # fmt: skip
 
 
 class ExamUnsupported(ValueError):
@@ -66,19 +76,25 @@ def exam_env(lo: dict, seed: int, *, guid_prefix: str = "card-exam"):
         ids = cz(cid, up)
         counts = [int(custom.get(k) or 0) for k in ids] if custom else None
         deck.append(ExamCard(m, cid, up, counts, guid=f"{guid_prefix}-{i:03d}"))
-    ex_ = lo["exam"]
-    cfg = next((r for r in m.table("ProduceExamBattleConfig") if r["id"] == ex_["produce_exam_battle_config_id"]), None)
-    if cfg is None:
-        raise ExamUnsupported(f"主数据里没有 battle config {ex_['produce_exam_battle_config_id']}")
     plan = _idol_card(lo["idol_card_id"])["planType"]
-    weights = {1: cfg["vocal"], 2: cfg["dance"], 3: cfg["visual"], "turns": int(cfg["turn"])}
     supports = [_support(m, s) for s in lo.get("supports") or ()]
     hp = int(lo.get("starting_stamina") or lo["max_stamina"])
-    gimmick = ex_.get("produce_exam_gimmick_effect_group_id")
+    lesson = lo.get("lesson")
+    if lesson:  # 课程：考试类型 Lesson（0），每回合都是这节课的属性，不乘倍率
+        turns = {"turn_types": [int(lesson["parameter_type"])] * int(lesson["limit_turn"]), "exam_type": 0}
+        gimmick = lo.get("gimmick_group_id")
+    else:
+        ex_ = lo["exam"]
+        cfg = next((r for r in m.table("ProduceExamBattleConfig") if r["id"] == ex_["produce_exam_battle_config_id"]), None)
+        if cfg is None:
+            raise ExamUnsupported(f"主数据里没有 battle config {ex_['produce_exam_battle_config_id']}")
+        weights = {1: cfg["vocal"], 2: cfg["dance"], 3: cfg["visual"], "turns": int(cfg["turn"])}
+        turns = {"randomize_turns": True, "config_weights": weights, "bonus_permil": bonus_permils(lo["score_bonus_permils"])}
+        gimmick = ex_.get("produce_exam_gimmick_effect_group_id")
     ex = new_exam(None, m, seed, deck=deck, items=list(lo.get("produce_item_ids") or []), stamina=hp, max_stamina=int(lo["max_stamina"]),
-                  randomize_turns=True, config_weights=weights, bonus_permil=bonus_permils(lo["score_bonus_permils"]),
                   drinks=list(lo.get("drink_ids") or []), plan_type=PLAN_TYPES.get(plan, 0), gimmicks=[gimmick] if gimmick else None,
-                  start_enchants=list(lo.get("start_enchant_ids") or []), supports=supports, skills=list(lo.get("skills") or []) or None)  # fmt: skip
+                  start_enchants=list(lo.get("start_enchant_ids") or []), supports=supports, skills=list(lo.get("skills") or []) or None,
+                  **turns)  # fmt: skip
     attrs = [{1: "Vo", 2: "Da", 3: "Vi"}[t] for t in ex.turn_types]
     env = FidelityBattle(ex, FidelityBattle._turn_table(ex, attrs, 3), attrs, turn_offset=0, draw=3)
     env.seed = seed
@@ -140,7 +156,7 @@ def audition_row(idol_card_id: str, produce_id: str, round_key: str, number: int
     idol = _idol_card(idol_card_id)
     step = STEP_TYPES.get(str(round_key).lower())
     if step is None:
-        raise ExamUnsupported(f"场次 {round_key} 不是试镜（课程还不支持）")
+        raise ExamUnsupported(f"场次 {round_key} 不是试镜（课程走 from_hif_loadout 的课程写法）")
     rows = _difficulty_rows().get((idol["produceStepAuditionDifficultyId"], produce_id, step), [])
     if number:
         rows = [r for r in rows if int(r.get("number") or 0) == int(number)]
@@ -171,7 +187,7 @@ def from_hif_loadout(doc: dict) -> dict:
     from hiro.bench_bridge import tower as tw
 
     if str(doc.get("round") or "") == "lesson":
-        raise ExamUnsupported("课程（レッスン）还不支持：引擎没有打到满分线就结束")
+        return _lesson_loadout(doc)
     number = doc.get("audition_number") or doc.get("step_select_number")
     row = audition_row(doc["idol_card_id"], doc["produce_id"], doc.get("round") or "final", number)
     permils = doc.get("score_bonus_permils")
@@ -195,6 +211,49 @@ def from_hif_loadout(doc: dict) -> dict:
                  "produce_exam_gimmick_effect_group_id": row.get("produceExamGimmickEffectGroupId") or None,
                  "produce_exam_battle_npc_group_id": row["produceExamBattleNpcGroupId"]},
         "audition": {k: row.get(k) for k in ("rankThreshold", "baseScore", "forceEndScore", "voteCount", "isStaticNpcScore", "number")},
+    }  # fmt: skip
+
+
+def lesson_level(step_id: str) -> tuple[dict, str | None]:
+    """课程步骤 id → (ProduceStepLessonLevel 行, 课程名)：limitTurn 回合数、successThreshold 合格线、resultTargetValueLimit 满分线。"""
+    from hiro.bench_bridge import tower as tw
+
+    m = tw.master()
+    step = next((r for r in m.rows("ProduceStepLesson") if r.get("id") == step_id), None)
+    if step is None:
+        raise ExamUnsupported(f"主数据里没有这节课程：{step_id}")
+    level = next((r for r in m.rows("ProduceStepLessonLevel") if r.get("id") == step["produceStepLessonLevelId"]), None)
+    if level is None:
+        raise ExamUnsupported(f"主数据里没有课程等级 {step['produceStepLessonLevelId']}")
+    return level, step.get("name")
+
+
+def _lesson_loadout(doc: dict) -> dict:
+    """bench 的初课程题 → exam_env 写法（同 GKMS scenario/hajime.build_lesson_session，30 节实录课程逐回合分数对过）：
+    回合 = limitTurn + exam_extra_turn；满分线 = resultTargetValueLimit + lesson_limit_up_score（打到就结束）；合格线 = successThreshold。"""
+    st = int(doc.get("step_type") or 0)
+    if st not in LESSON_STEP_TYPES:
+        raise ExamUnsupported(f"不是课程步骤：step_type {st}")
+    if not doc.get("step_id"):
+        raise ExamUnsupported("课程题缺 step_id")
+    pt, kind = LESSON_STEP_TYPES[st]
+    level, name = lesson_level(doc["step_id"])
+    return {
+        "produce_id": doc["produce_id"],
+        "round": "lesson",
+        "idol_card_id": doc["idol_card_id"],
+        "produce_cards": list(doc["deck_cards"]),
+        "produce_item_ids": list(doc.get("produce_item_ids") or []),
+        "start_enchant_ids": list(doc.get("main_item_enchant_ids") or []) + list(doc.get("lesson_start_enchant_ids") or []),
+        "supports": list(doc.get("support_cards") or []),
+        "drink_ids": list(doc.get("drink_ids") or []),
+        "starting_stamina": int(doc.get("starting_stamina") or doc["max_stamina"]),
+        "max_stamina": int(doc["max_stamina"]),
+        "gimmick_group_id": doc.get("gimmick_group_id") or None,
+        "lesson": {"parameter_type": pt, "kind": kind, "name": name, "step_id": doc["step_id"],
+                   "limit_turn": int(level["limitTurn"]) + int(doc.get("exam_extra_turn") or 0),
+                   "clear_score": int(level.get("successThreshold") or 0),
+                   "perfect_score": int(level["resultTargetValueLimit"]) + int(doc.get("lesson_limit_up_score") or 0)},
     }  # fmt: skip
 
 

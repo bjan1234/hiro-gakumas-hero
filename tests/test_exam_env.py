@@ -36,9 +36,21 @@ def test_support_number_is_permil(monkeypatch):
         assert e["_supportCardId"] == "s_card-3-0010" and e["_produceCardUpgradePermil"] == 64
 
 
-def test_lesson_and_unknown_round_are_unsupported():
-    with pytest.raises(E.ExamUnsupported, match="课程"):
-        E.from_hif_loadout({"round": "lesson", "produce_id": "produce-001", "idol_card_id": "x"})
+def test_lesson_loadout_from_master(monkeypatch):
+    """初的课程题 → 课程写法（同 GKMS build_lesson_session）：回合 = limitTurn + exam_extra_turn，满分线 = resultTargetValueLimit +
+    lesson_limit_up_score，合格线 = successThreshold；属性按 step_type（32 = レジェンド Da SP）。stage_objective 给 clear_score / score_cap。"""
+    level = {"limitTurn": 8, "successThreshold": 85, "resultTargetValueLimit": 160}
+    monkeypatch.setattr(E, "lesson_level", lambda sid: (level, "レジェンドレッスン"))
+    doc = {"round": "lesson", "produce_id": "produce-006", "idol_card_id": "i", "deck_cards": ["p_card-a"], "max_stamina": 30,
+           "step_type": 32, "step_id": "p_step_lesson-x", "exam_extra_turn": -1, "lesson_limit_up_score": 90,
+           "lesson_start_enchant_ids": ["enc"], "drink_ids": ["d"]}  # fmt: skip
+    lo = E.from_hif_loadout(doc)
+    assert lo["lesson"] == {"parameter_type": 2, "kind": "SP", "name": "レジェンドレッスン", "step_id": "p_step_lesson-x",
+                            "limit_turn": 7, "clear_score": 85, "perfect_score": 250}  # fmt: skip
+    assert lo["start_enchant_ids"] == ["enc"] and lo["starting_stamina"] == 30 and "exam" not in lo
+    assert E.stage_objective(lo) == {"clear_score": 85, "score_cap": 250}
+    with pytest.raises(E.ExamUnsupported, match="step_type"):
+        E.from_hif_loadout({**doc, "step_type": 16})
 
 
 def test_audition_row_picks_by_number(monkeypatch):
