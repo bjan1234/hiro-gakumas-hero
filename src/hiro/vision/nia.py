@@ -129,8 +129,23 @@ def read_audition_select(texts, img=None) -> dict | None:
     return out
 
 
+BONUS_TAP = (360, 1222)  # 「TAP」
+
+
+def read_audition_bonus(texts) -> dict | None:
+    """试镜结束后的「オーディションボーナス」（第 2 页再加「パラメータボーナス」、属性 +N、獲得スコア、底部「TAP」）：展示页，点 TAP 过。
+    带金色标题条，原来判成 DIALOG、第 1 页判 unknown，16 秒后停（N.I.A 采样 11-17）。"""
+    tx = _t(texts)
+    if not any("オーディションボーナス" in s and y < 320 for s, _, y in tx):
+        return None
+    tap = next(((x, y) for s, x, y in tx if s == "TAP" and y > 1150), BONUS_TAP)
+    return {"tap": list(tap), "param": any("パラメータボーナス" in s for s, _, _ in tx)}
+
+
 def read_nia_page(texts, img=None) -> tuple[str, dict] | None:
     """N.I.A 特有页面 → (页面名, 字段)；都不是 None。"""
+    if (bonus := read_audition_bonus(texts)) is not None:
+        return "NIA_AUDITION_BONUS", bonus
     for name, fn in (("NIA_AUDITION_SELECT", lambda: read_audition_select(texts, img)), ("NIA_SALES_PLACE", lambda: read_sales_place(texts)),
                      ("NIA_SALES_EVENT", lambda: read_sales_event(texts, img))):  # fmt: skip
         if (f := fn()) is not None:

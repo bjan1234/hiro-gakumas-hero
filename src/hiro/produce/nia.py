@@ -106,5 +106,15 @@ class NiaPages:
         self._tap(rt, page, target["center"])
         return DONE
 
+    # ---------------------------------------------------------------- 试镜结束的加分展示
+    def on_audition_bonus(self, rt, f, hit):
+        """「オーディションボーナス / パラメータボーナス」：只是展示，点底部「TAP」过。"""
+        page = "NIA_AUDITION_BONUS"
+        if self._wait(rt, page):
+            return STAY
+        self._tap(rt, page, (hit.fields or {}).get("tap") or (360, 1222))
+        return DONE
+
     def handlers(self) -> dict:
-        return {"NIA_SALES_PLACE": self.on_sales_place, "NIA_SALES_EVENT": self.on_sales_event, "NIA_AUDITION_SELECT": self.on_audition_select}
+        return {"NIA_SALES_PLACE": self.on_sales_place, "NIA_SALES_EVENT": self.on_sales_event, "NIA_AUDITION_SELECT": self.on_audition_select,
+                "NIA_AUDITION_BONUS": self.on_audition_bonus}
