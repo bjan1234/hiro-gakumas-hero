@@ -343,6 +343,7 @@ def deck_diff(expected: list[dict], observed: list[dict]) -> dict:
 CURSOR_EXPAND, CURSOR_CORNER = 16, 30  # 选中格的橙色角框在卡格外侧约 16 像素、每角约 30 像素
 CURSOR_MIN_PX_118 = 600  # 118 像素卡格：选中 1103–1251，未选 ≤190（含橙色插图）
 DETAIL_BOX = (170, 95, 720, 160)  # 顶部详情栏第一行（卡名）
+CHANGE2_DETAIL_BOX = (190, 262, 690, 310)  # 换卡阶段 2 详情栏卡名行（mainz3 11-18 点卡后帧：「ひなたぼっこ」在 y≈285）
 
 
 @cache
@@ -536,14 +537,17 @@ def merge_deck_list(screens: list) -> dict:
     return out
 
 
-def read_card_dialog(img: MatLike, region: tuple[int, int, int, int] = REMOVAL_GRID) -> dict:
+def read_card_dialog(img: MatLike, region: tuple[int, int, int, int] = REMOVAL_GRID, expect: str | None = None,
+                     detail_box: tuple[int, int, int, int] = DETAIL_BOX) -> dict:  # fmt: skip
     """相談削除 / 强化、换卡第 2 步等「从牌组里选一张」的弹窗。
 
     返回 {cards, selected, selected_card, detail, agree}：
     - cards：卡格（read_card_grid）；selected：带橙色角框的格子 index（没有选中 None）；
     - detail：顶部详情栏卡名命中主数据的结果 {card_id, name, upgrade}（没选中时栏里是「スキルカードが選択されていません」→ None）；
     - selected_card：选中的卡。卡格和详情栏都读到时要一致（agree=True），以详情栏为准（带强化次数）；
-      只有一边读到时用那一边；两边不一致时 agree=False、selected_card=None（不猜）。
+      只有一边读到时用那一边（选中格认不出不算冲突）；两边不一致时 agree=False、selected_card=None（不猜）。
+    detail_box：详情栏卡名那一行（相談删除 / 强化在顶部 DETAIL_BOX；换卡阶段 2 详情栏在换入 / 换出缩略图下面，用 CHANGE2_DETAIL_BOX）。
+    expect：调用方知道要选哪张卡（换卡阶段 2 点了按目标卡核对出的、认不出的格子）时给 card_id，详情栏卡名也在它里面找。
     """
     from hiro.vision.ocr import ocr_boxes
 
@@ -553,12 +557,12 @@ def read_card_dialog(img: MatLike, region: tuple[int, int, int, int] = REMOVAL_G
     need = CURSOR_MIN_PX_118 * ((cards[0]["rect"][2] / 118) ** 2 if cards else 1)
     hot = [i for i, v in enumerate(px) if v >= need]
     selected = hot[0] if len(hot) == 1 else None
-    x1, y1, x2, y2 = DETAIL_BOX
-    ids = {c["card_id"] for c in cards if c["card_id"]}
+    x1, y1, x2, y2 = detail_box
+    ids = {c["card_id"] for c in cards if c["card_id"]} | ({expect} if expect else set())
     detail = next((hit for t, _, _ in ocr_boxes(img[y1:y2, x1:x2]) if (hit := card_from_name(t, ids))), None)
     cell = cards[selected] if selected is not None else None
     agree = None
-    if cell is not None and detail is not None:
+    if cell is not None and cell["card_id"] and detail is not None:
         agree = cell["card_id"] == detail["card_id"] and cell["upgrade"] in (detail["upgrade"], None)
     if agree is False:
         chosen = None

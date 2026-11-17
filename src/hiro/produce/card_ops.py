@@ -388,7 +388,10 @@ def change_stage2(self, index: int = 0, card_id: str | None = None, cancel: bool
         return False
     device.click(*target["center"])
     _sleep(CHANGE_POLL)
-    picked = read_card_dialog(device.screenshot(), CHANGE2_CARD_AREA)
+    from hiro.vision.deck import CHANGE2_DETAIL_BOX
+
+    picked = read_card_dialog(device.screenshot(), CHANGE2_CARD_AREA, expect=target["card_id"] if target.get("guessed") else None,
+                              detail_box=CHANGE2_DETAIL_BOX)  # fmt: skip
     run.snap(device.screenshot(), "stage2-picked")
     sel = picked.get("selected_card") or {}
     chosen, chosen_up = sel.get("card_id"), sel.get("upgrade")

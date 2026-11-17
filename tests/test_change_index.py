@@ -191,7 +191,7 @@ def _stage2_stub(monkeypatch, img, detail):
     monkeypatch.setattr(ui, "tap", lambda *a, **k: False)
     monkeypatch.setattr(card_ops, "confirm_change_dialog", lambda im, run=None: False)
     real = vd.read_card_dialog
-    monkeypatch.setattr(vd, "read_card_dialog", lambda im, region: {**real(im, region), **({"selected_card": detail} if dev.clicks else {})})
+    monkeypatch.setattr(vd, "read_card_dialog", lambda im, region, **kw: {**real(im, region, **kw), **({"selected_card": detail} if dev.clicks else {})})
     return dev
 
 
@@ -207,3 +207,38 @@ def test_stage2_guessed_cell_needs_detail_confirmation(monkeypatch):
     dev = _stage2_stub(monkeypatch, img, None)  # 详情栏卡名没读到：猜出来的格子不点「チェンジ」
     assert card_ops.change_stage2(None, 0, card_id=HINATA) is False
     assert dev.clicks[-1] == card_ops.CHANGE_CANCEL_TAP
+
+
+def test_detail_reads_expected_card_on_unread_cell():
+    """mainz3 r2（04:02）：点了猜的第 9 格，详情栏写着 ひなたぼっこ，却读成 None 取消：换卡页详情栏在缩略图下面，旧框框的是顶部；
+    选中格认不出时又被当成和详情栏冲突。换卡用 CHANGE2_DETAIL_BOX，选中格认不出不算冲突；expect 把目标卡加进同名消歧候选。"""
+    import pytest
+
+    p = FIX / "mainz3-hinata-picked.jpg"
+    if not p.exists():
+        pytest.skip("没有 mainz3 点卡后截图")
+    img = cv2.imread(str(p))
+    from hiro.vision.deck import CHANGE2_DETAIL_BOX
+
+    d = read_card_dialog(img, card_ops.CHANGE2_CARD_AREA, expect=HINATA, detail_box=CHANGE2_DETAIL_BOX)
+    assert d["selected"] == 8 and d["selected_card"]["card_id"] == HINATA and d["agree"] is None
+    assert read_card_dialog(img, card_ops.CHANGE2_CARD_AREA)["detail"] is None  # 旧框（顶部 DETAIL_BOX）读不到换卡页的详情栏
+
+
+def test_stage2_guessed_cell_end_to_end_with_real_frames(monkeypatch):
+    """点卡前用 mainz3 卡格帧、点卡后用详情栏帧，读卡全走真实识别（不塞 selected_card）：应点第 9 格并完成换卡。"""
+    import pytest
+
+    import hiro.vision.deck as vd
+
+    img, _ = _mz3()
+    p = FIX / "mainz3-hinata-picked.jpg"
+    if not p.exists():
+        pytest.skip("没有 mainz3 点卡后截图")
+    picked = cv2.imread(str(p))
+    real = vd.read_card_dialog
+    dev = _stage2_stub(monkeypatch, img, None)
+    monkeypatch.setattr(vd, "read_card_dialog", real)
+    dev.screenshot = lambda: picked if dev.clicks else img
+    assert card_ops.change_stage2(None, 0, card_id=HINATA) is True
+    assert dev.clicks[0] == (82 + 59, 933 + 59) and card_ops.CHANGE_CANCEL_TAP not in dev.clicks
