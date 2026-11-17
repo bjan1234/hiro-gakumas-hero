@@ -313,10 +313,43 @@ def read_audition_bonus(texts) -> dict | None:
     return {"tap": list(tap), "param": any("パラメータボーナス" in s for s, _, _ in tx)}
 
 
+def read_audition_result(texts) -> dict | None:
+    """试镜结果（「最終オーディション」/「1次オーディション」大标题 + 名次 + 偶像名 + 底部「TAPで次へ」）：展示页，点 TAP 过。
+    最终试镜第 1 名那一页原来判 unknown，16 秒后停（N.I.A 采样 11-17）。"""
+    tx = _t(texts)
+    title = next((s for s, _, y in tx if "オーディション" in s and "ボーナス" not in s and y < 420), None)
+    tap = next(((x, y) for s, x, y in tx if s.startswith("TAP") and y > 1050), None)
+    if title is None or tap is None:
+        return None
+    stage = next((st for w, st in STAGE_WORDS if w in title), None)
+    return {"tap": list(tap), "stage": stage}
+
+
+def read_briefing(texts, img=None) -> dict | None:
+    """试镜考前说明页（審査基準 + 合格条件「1位」+ 三属性 >> 倍率 +「タップして次へ」）：版面和 H.I.F 的不一样（没有「突破ライン」，
+    「合格条件」位置不同），H.I.F 的两条判据都没命中，判 unknown 停了（N.I.A 采样 11-17 最终试镜）。读数用 H.I.F 的
+    read_exam_briefing（三属性和倍率），按快速判页的格式带上要点的位置，交主循环的 advance 点（同 H.I.F）。"""
+    tx = _t(texts)
+    if not (any("審査基準" in s for s, _, _ in tx) and any("合格条件" in s for s, _, _ in tx)):
+        return None
+    tap = next(((x, y) for s, x, y in tx if "タップして次へ" in s and y > 1100), None)
+    if tap is None or img is None:
+        return None  # 倍率还在跳（ボーナス演出）：没有「タップして次へ」先不认
+    from hiro.vision.pages import read_exam_briefing
+
+    boxes = [(t.text, tuple(int(v) for v in t.rect)) if hasattr(t, "rect") else (t[0], tuple(t[-1])) for t in texts]
+    brief = read_exam_briefing(img, boxes)
+    return {**brief, "_quick": {"page": "HIF_EXAM_BRIEFING", "tap": tap, "dispatch": None, "fields": brief}}
+
+
 def read_nia_page(texts, img=None) -> tuple[str, dict] | None:
-    """N.I.A 特有页面 → (页面名, 字段)；都不是 None。"""
+    """N.I.A 特有页面 → (页面名, 字段)；都不是 None。考前说明页借用 H.I.F 的页面名（HIF_EXAM_BRIEFING，同一种页）。"""
     if (bonus := read_audition_bonus(texts)) is not None:
         return "NIA_AUDITION_BONUS", bonus
+    if (brief := read_briefing(texts, img)) is not None:
+        return "HIF_EXAM_BRIEFING", brief
+    if (res := read_audition_result(texts)) is not None:
+        return "NIA_AUDITION_RESULT", res
     for name, fn in (("NIA_AUDITION_SELECT", lambda: read_audition_select(texts, img)), ("NIA_SALES_PLACE", lambda: read_sales_place(texts, img)),
                      ("NIA_SALES_EVENT", lambda: read_sales_event(texts, img))):  # fmt: skip
         if (f := fn()) is not None:

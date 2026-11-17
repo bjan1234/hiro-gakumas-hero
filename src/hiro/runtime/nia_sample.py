@@ -243,11 +243,21 @@ def nia_core(scenario_mode: str):
     class NiaSampleCore(HifCore):
         nia_audition_number = None  # 试镜选档页选的档（NiaPages 设）：标签带上「#audition-N」，8a3a1e7 的中转层按它查战斗配置
         nia_stage = None  # 试镜选档页左上读到的场次（mid1 / mid2 / final）；读不到才按进了几场数
+        next_exam_file = None  # NiaPages 选档时写的文件（resume 后内存里的场次丢了，从这里读）
 
         def _battle_label(self, ctx) -> str:
             n = self.exam_count
             self.exam_count += 1
             type(self).exams_done = self.exam_count
+            if self.nia_stage is None and self.next_exam_file is not None and self.next_exam_file.exists():
+                import json
+
+                try:
+                    saved = json.loads(self.next_exam_file.read_text(encoding="utf-8"))
+                    self.nia_stage, self.nia_audition_number = saved.get("stage"), self.nia_audition_number or saved.get("audition_number")
+                    self.next_exam_file.unlink()
+                except (OSError, ValueError) as e:
+                    logger.warning("N.I.A：读下一场考试的场次失败：%s", e)
             label = f"nia-{self.nia_stage}" if self.nia_stage else STAGES[min(n, len(STAGES) - 1)]
             self.nia_stage = None
             if self.nia_audition_number is not None:
@@ -293,7 +303,8 @@ def run(args) -> int:
     sampler = Sampler(classify, Path(args.out))
     from hiro.produce.nia import NiaPages
 
-    nia_pages = NiaPages(core)
+    Core.next_exam_file = Path(args.out) / "next-exam.json"
+    nia_pages = NiaPages(core, persist=Core.next_exam_file)
     device = open_device()
     device.connect()
     rt = Runtime(raw_device=device, classify=sampler, handlers={**make_handlers(core), **nia_pages.handlers()}, advance=make_advance(sampler),
