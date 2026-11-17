@@ -133,7 +133,13 @@ def read_consult(img: MatLike) -> dict:
     rerolls = int(m.group(1)) if m else None
     if rerolls is None and complete and not _refresh_button(img):
         rerolls = 0  # 次数用完时「あと N回」和「リフレッシュ」按钮整块消失（DMM 第 12 天相談实拍），不是没读到
-    return {"shelf": shelf, "services": services, "rerolls_left": rerolls, "complete": complete}
+    # 选中货架上的饮料、饮料栏已满时「交換する」上方出红标「Pドリンク所持上限」（Mac p15-main3 11-17：账号 2 只有 3 格，
+    # 选中饮料后 x 272–450、y 1036–1060；没选中饮料时不出）。page_fields.drinks_full（3940a9 8fa7fd5 按它把容量设成持有数）
+    drinks_full = any("所持上限" in t for t in texts_in(DRINKS_FULL_X, DRINKS_FULL_BAND))
+    return {"shelf": shelf, "services": services, "rerolls_left": rerolls, "complete": complete, "drinks_full": drinks_full}
+
+
+DRINKS_FULL_X, DRINKS_FULL_BAND = (200, 520), (1020, 1066)
 
 
 SHELF_UNREAD_MAX = 2

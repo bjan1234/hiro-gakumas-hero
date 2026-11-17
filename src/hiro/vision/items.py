@@ -195,13 +195,47 @@ def drink_full_badge(img: MatLike) -> bool:
     return red >= FULL_BADGE_MIN_PX and any("上限" in t for t, _, _ in ocr_boxes(img[y1:y2, x1:x2]))
 
 
+CUP_MIN = 0.55  # 空槽杯子图标的边缘匹配分：真空槽暗背景 ≥ 0.9、亮背景（白墙）0.67–0.84；账号 2 只有 3 格，第 4 个位置是背景，最高 0.40
+
+
+def _grad(gray: np.ndarray) -> np.ndarray:
+    g = cv2.GaussianBlur(gray, (3, 3), 0).astype(np.float32)
+    return cv2.magnitude(cv2.Sobel(g, cv2.CV_32F, 1, 0), cv2.Sobel(g, cv2.CV_32F, 0, 1))
+
+
+def _empty_cup(img: MatLike, center) -> float:
+    """空槽半透明杯子图标的匹配分：比边缘（梯度幅值，TM_CCOEFF_NORMED，在格子中心 ±34 像素里找），亮背景上杯子对比度低也认得出
+    （灰度直接比在白墙背景上只有 0.36–0.42，和「没有这一格」分不开）。没有模板时 0。"""
+    tpl = _cup_template()
+    if tpl is None:
+        return 0.0
+    x, y = center
+    g = cv2.cvtColor(img[max(0, y - 34) : y + 34, max(0, x - 34) : x + 34], cv2.COLOR_BGR2GRAY)
+    if g.shape[0] < tpl.shape[0] or g.shape[1] < tpl.shape[1]:
+        return 0.0
+    return float(cv2.matchTemplate(_grad(g), tpl, cv2.TM_CCOEFF_NORMED).max())
+
+
+@cache
+def _cup_template():
+    from hiro.vision.ui_templates import PACK
+
+    img = cv2.imread(str(PACK / "InProduce.DrinkSlotEmptyCup.png"), cv2.IMREAD_GRAYSCALE)
+    return None if img is None else _grad(img)[4:-4, 4:-4]  # 去掉切图边上的假边缘
+
+
 def read_bar_drinks(img: MatLike) -> dict:
     """培育页底栏饮料 → ProduceState 格式 {drinks: [drink_id…]（从左到右）, drink_capacity}。
-    有一格没把握（unknown）或认出的饮料没有 id 时 drinks 为 None；4 格都是饮料或空槽时 drink_capacity = 4（H.I.F 全部培育页实测都是 4 格）。"""
+    有一格没把握（unknown）或认出的饮料没有 id 时 drinks 为 None。
+    drink_capacity 只在第 4 格确定存在时给 4（有饮料，或空槽的杯子图标 ≥ CUP_MIN），其余不给（None，状态保留原值）：
+    账号 2 饮料栏只有 3 格（Mac p15-main3 11-17），原来第 4 个位置读成「空槽」、容量写成 4，相談连买饮料都没成。
+    不从底栏读「3」：获得演出 / cut-in 盖住底栏时 4 格账号也会像 3 格（fixtures 9 张）。3 格靠相談页的「Pドリンク所持上限」定。"""
     slots = read_drink_slots(img)
     sure = all(d["state"] in ("drink", "empty") for d in slots) and all(d["drink_id"] for d in slots if d["state"] == "drink")
+    last = slots[-1] if slots else None
+    four = last is not None and (last["state"] == "drink" or (last["state"] == "empty" and _empty_cup(img, last["center"]) >= CUP_MIN))
     return {"drinks": [d["drink_id"] for d in slots if d["state"] == "drink"] if sure else None,
-            "drink_capacity": len(slots) if sure else None}  # fmt: skip
+            "drink_capacity": len(slots) if sure and four else None}  # fmt: skip
 
 
 def read_drinks(img: MatLike, *, cache: RegionCache | None = None) -> list[dict | None]:
