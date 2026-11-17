@@ -63,6 +63,67 @@ def lesson_label(attr: str | None, choice, options: list[dict]) -> str:
     return f"hajime-lesson-{a.lower()}{kind}"
 
 
+def lesson_kind(label: str) -> tuple[str | None, str]:
+    """hajime-lesson-vo-sp → ("Vo", "sp")；没有属性 → (None, normal)。"""
+    parts = label.split("-")[2:]
+    attr = {"vo": "Vo", "da": "Da", "vi": "Vi"}.get(parts[0]) if parts else None
+    kind = parts[1] if len(parts) > 1 and parts[1] in ("sp", "hard") else "normal"
+    return attr, kind
+
+
+class LessonInfo:
+    """一节初课程的画面读数 + 主数据对照（协调 11-18，配合 8a3a1e7 把课程接到 GNRPA；写进 exam_session.lesson）：
+    - turns_total：开课时「残りターン数」（= limitTurn + 追加回合）；clear_target：开课时「CLEARまで」的数（还没得分）；
+    - perfect_target：第一次出现「PERFECTまで N」时 = (当前属性值 − 开课时属性值) + N（课程分实时加在右上属性值上）；
+    - 主数据：按 plan + 种类 + CLEAR 线找档位（modes.lesson_levels），数值唯一时 exam_extra_turn = turns_total − limitTurn、
+      lesson_limit_up_score = perfect_target − resultTargetValueLimit；对不上 / 不唯一就留 None。
+    - nth：这一局第几次上同种同属性的课（hajime-lesson-<attr>-<normal|sp|hard> 计数）。"""
+
+    def __init__(self, label: str, nth: int, produce_id: str | None, idol_card_id: str | None):
+        attr, kind = lesson_kind(label)
+        self.produce_id, self.idol_card_id = produce_id, idol_card_id
+        self.d = {"kind": kind, "attr": attr, "nth": nth, "turns_total": None, "clear_target": None, "perfect_target": None,
+                  "param_start": None, "level_ids": None, "exam_extra_turn": None, "lesson_limit_up_score": None}  # fmt: skip
+        self._limits = None
+        self._pending_perfect = None
+
+    @property
+    def done(self) -> bool:
+        return self.d["perfect_target"] is not None
+
+    def feed(self, goal: str | None, hud: dict | None, turns: int | None) -> bool:
+        """喂一帧的读数（goal 来自模板，hud / turns 只在需要时读）。返回有没有新内容。"""
+        from hiro.state import modes
+
+        d, changed = self.d, False
+        if d["turns_total"] is None and turns is not None:
+            d["turns_total"], changed = turns, True
+        if hud is None:
+            return changed
+        if goal == "clear" and d["clear_target"] is None and hud.get("left") is not None and hud.get("param") is not None:
+            d["clear_target"], d["param_start"], changed = hud["left"], hud["param"], True
+            levels = modes.lesson_levels(self.produce_id, self.idol_card_id, d["kind"], d["clear_target"])
+            d["level_ids"] = [r["id"] for r in levels] or None
+            self._limits = modes.lesson_limits(levels)
+        if goal == "perfect" and d["perfect_target"] is None and None not in (hud.get("left"), hud.get("param"), d["param_start"]):
+            v = hud["param"] - d["param_start"] + hud["left"]
+            if v == self._pending_perfect:  # 加分动画中属性值还在跳：连续两次一样才采用
+                d["perfect_target"], changed = v, True
+            self._pending_perfect = v
+        if self._limits is not None:
+            limit_turn, perfect_limit = self._limits
+            if d["turns_total"] is not None:
+                d["exam_extra_turn"] = max(0, d["turns_total"] - limit_turn)
+            if d["perfect_target"] is not None:
+                d["lesson_limit_up_score"] = max(0, d["perfect_target"] - perfect_limit)
+        return changed
+
+    def needs(self, goal: str | None) -> bool:
+        """这一帧要不要 OCR：开课读数还缺，或者刚到 PERFECT 段、满分线还没算。"""
+        d = self.d
+        return (goal == "clear" and d["clear_target"] is None) or (goal == "perfect" and d["perfect_target"] is None) or d["turns_total"] is None
+
+
 def hajime_core(scenario_mode: str):
     """HifCore 的初版：练习课按考试打、考试标签 hajime-mid1 / hajime-final、按名次判过线和再挑戦。"""
     from hiro.devices import active  # 用时再取 active.device / active.sleep（测试可替换）
@@ -91,13 +152,25 @@ def hajime_core(scenario_mode: str):
             label = lesson_label(hv.lesson_attr(img), self.last_action_choice, self.last_action_options)
             self.lesson_count += 1
             type(self).lessons_done = self.lesson_count
-            logger.info("初练习课：%s（第 %d 节）", label, self.lesson_count)
+            key = "-".join(str(x) for x in lesson_kind(label))
+            counts = self.__dict__.setdefault("_lesson_counts", {})
+            counts[key] = counts.get(key, 0) + 1
+            prod = self.s.state.produce or {}
+            info = LessonInfo(label, counts[key], prod.get("mode") or scenario_mode, prod.get("idol_card_id") or getattr(self.profile, "idol_id", None))
+            logger.info("初练习课：%s（第 %d 节，同种同属性第 %d 次）", label, self.lesson_count, counts[key])
             self.rec.log("exam_enter", image=img, exam=label)
             self.s.state.exam_session.label = label
+            self.s.state.exam_session.lesson = dict(info.d)
             gone = {"since": None}
 
             def ended(shot) -> bool:
-                if hv.in_lesson(shot):
+                goal = hv.lesson_goal(shot)
+                if goal is not None and info.needs(goal):
+                    turns = hv.lesson_turns(shot) if info.d["turns_total"] is None else None
+                    if info.feed(goal, hv.read_lesson_hud(shot), turns):
+                        self.s.state.exam_session.lesson = dict(info.d)
+                        logger.info("初练习课读数：%s", info.d)
+                if goal is not None:
                     gone["since"] = None
                     return False
                 now = time.monotonic()
@@ -106,7 +179,8 @@ def hajime_core(scenario_mode: str):
                 return now - gone["since"] >= LESSON_END_S
 
             run_exam(self.brain, label, self.rec, ended, session=self.s, advisor=self.advisor)
-            self.rec.log("exam_end", image=active.device.screenshot(), exam=label)
+            self.rec.log("exam_end", image=active.device.screenshot(), exam=label, lesson=info.d)
+            self.s.note(f"初练习课 {label}：{info.d}")
             self._lesson_done = True
 
         def on_practice_exited(self):
@@ -114,6 +188,8 @@ def hajime_core(scenario_mode: str):
 
         # ---------------------------------------------------------------- 考试
         def _battle_label(self, ctx) -> str:
+            if getattr(self, "s", None) is not None:
+                self.s.state.exam_session.lesson = None  # 考试不是课程
             n = self.exam_count
             self.exam_count += 1
             type(self).exams_done = self.exam_count

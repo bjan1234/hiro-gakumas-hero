@@ -66,6 +66,31 @@ def steps(produce_id: str) -> int:
 NIA_EASY_KEY = "pitem_00-3-330-0"
 
 
+# ---------------------------------------------------------------- 初的课程档位
+LESSON_KINDS = ("normal", "sp", "hard")
+
+
+def lesson_levels(produce_id: str | None, idol_card_id: str | None, kind: str, clear: int | None) -> list[dict]:
+    """初课程画面上的 CLEAR 线 → 主数据 ProduceStepLessonLevel 的候选档位（这个偶像的 plan、这一种课、successThreshold 等于 clear）。
+    档位 id 是 p_step_lesson_level-<produce 号>-plan<N>-<kind>-<序号>，只看 plan + 种类 + 序号（课程 id 里的 exam_* 前缀不影响档位）。
+    对不上返回空列表（实机：初 REGULAR 追い込み 画面 CLEAR 90 / 165，主数据 hard-1 / hard-2 是 75 / 100，对不上）。"""
+    if not produce_id or not idol_card_id or kind not in LESSON_KINDS or clear is None:
+        return []
+    try:
+        c = master()
+        plan = str(c.one("IdolCard", idol_card_id).get("planType") or "").replace("ProducePlanType_Plan", "")
+        prefix = f"p_step_lesson_level-{produce_id.split('-')[-1]}-plan{plan}-{kind}-"
+        return [r for r in c.rows("ProduceStepLessonLevel") if str(r.get("id", "")).startswith(prefix) and int(r.get("successThreshold") or -1) == int(clear)]
+    except Exception:  # noqa: BLE001  没有主数据 / 偶像卡查不到
+        return []
+
+
+def lesson_limits(levels: list[dict]) -> tuple[int, int] | None:
+    """候选档位的 (limitTurn, resultTargetValueLimit)：全部一样才给（normal-1 / normal-2 数值相同算一样），否则 None。"""
+    vals = {(int(r["limitTurn"]), int(r["resultTargetValueLimit"])) for r in levels}
+    return vals.pop() if len(vals) == 1 else None
+
+
 # ---------------------------------------------------------------- 页头周数 → step
 # 各场考试在日程里的位置（第几步）。主数据没有这张表（Produce 只有总步数），按实机页头序列定：
 # 初 REGULAR（13 步）：中間まで 5→1 週 = 第 1–5 步，第 6 步中間；最終まで 6→1 週 = 第 7–12 步，第 13 步最終（初 Mac 11-17 两局）。
