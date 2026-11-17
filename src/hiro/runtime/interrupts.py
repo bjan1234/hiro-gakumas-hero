@@ -22,12 +22,13 @@ STOP_WORDS = ("メンテナンス中", "メンテナンスを実施", "他の端
 
 
 TAP_GAP_S = 1.5  # 同一个中断点了同一个框之后，这么久之内框还在就不再点（框淡出要时间：カスタマイズ確認 0.5 秒点了两次「決定」，h10 11-15）
+CONFIRM_FADE_S = 8.0  # 点过「決定」之后这么久内框还在、按钮读不到，当成框在淡出（DMM 有时 3–4 秒才响应，qualifyz3 11-18）
 
 
-def _recently(rt, key: str) -> bool:
+def _recently(rt, key: str, gap: float = TAP_GAP_S) -> bool:
     last = getattr(rt, "_interrupt_tap", None)
     now = rt.clock() if callable(getattr(rt, "clock", None)) else 0.0
-    return last is not None and last[0] == key and now - last[1] < TAP_GAP_S
+    return last is not None and last[0] == key and now - last[1] < gap
 
 
 def _tapped(rt, key: str) -> None:
@@ -134,12 +135,14 @@ def customize_confirm(frame, rt) -> str | None:
     只认 P 道具定制（正文带「Pアイテム」），特別指導的「カスタマイズ実行確認」由它自己的执行器处理。读不到「決定」停机。"""
     if not frame.has_dialog or (d := frame.dialog) is None or d["kind"] != "customize_confirm":
         return None
-    if not any("Pアイテム" in t.text for t in frame.texts):
+    if not any("pアイテム" in t.text.lower() for t in frame.texts):  # RapidOCR 小窗口会读成小写「pアイテム」（qualifyz3 11-18）
         return None
     if _recently(rt, "customize_confirm"):
         return f"P 道具定制确认「{d['title']}」：刚点过「決定」，等框关"
     btn = next((t for t in frame.texts if t.text.strip() == "決定" and t.rect.center.x > 360 and t.rect.center.y > 1000), None)
     if btn is None:
+        if _recently(rt, "customize_confirm", CONFIRM_FADE_S):
+            return f"P 道具定制确认「{d['title']}」：点过「決定」，按钮已读不到，等框关"
         raise ResumeBlocked(f"P 道具定制确认框「{d['title']}」：没读到「決定」，不点，停机")
     rt.device.tap(*btn.rect.center)
     _tapped(rt, "customize_confirm")
