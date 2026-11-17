@@ -36,6 +36,7 @@ def reduce(state: GameState, obs: Observation) -> GameState:
     if is_transient(page):
         return s  # 转场 / 没认出：什么都不改
     _reduce_page(s, obs)
+    _easy_key(s, obs)  # 获得演出常只停一两帧、页面还在防抖：看到就记，不等页面确认
     if s.page.name != page:
         return s  # 还在防抖，不采用这帧的字段
     _reduce_fields(s, obs)
@@ -82,6 +83,24 @@ def _enter(s: GameState, page: str, area: str, seq: int, *, frames: int = 1) -> 
         _sync_exam_drinks(s, seq)
     if s.mode == "produce" and s.produce is None:
         s.produce = {}
+
+
+def _easy_key(s: GameState, obs: Observation) -> None:
+    """N.I.A PRO 简单模式的 P 道具「N.I.Aキー（黄緑）」（对手分数 −80%）：获得演出（ACQUIRE 的 pitem_id / pitem_ids）、考试 P 道具栏
+    （pitems）、P 道具三选一里看到它，就记 produce.nia_easy_key = True。没看到不写（开局给道具时演出可能被快速点过，不能断言没有）。"""
+    from hiro.state.modes import NIA_EASY_KEY
+
+    f = obs.fields or {}
+    ids = {f.get("pitem_id"), *(f.get("pitem_ids") or [])}
+    for key in ("pitems", "options"):
+        for p in f.get(key) or []:
+            if isinstance(p, dict):
+                ids.add(p.get("pitem_id"))
+    if NIA_EASY_KEY not in ids or (s.produce or {}).get("nia_easy_key"):
+        return
+    s.produce = {**(s.produce or {}), "nia_easy_key": True}
+    s.sources["produce.nia_easy_key"] = Source({"save": "save"}.get(obs.source, "screen"), obs.seq)
+    _note(s, f"seq {obs.seq}: 看到 N.I.Aキー（黄緑）：这局是 N.I.A PRO 简单模式（对手分数 −80%）")
 
 
 def _hajime_nia_step(s: GameState, obs: Observation, origin: str) -> None:
