@@ -26,13 +26,22 @@ from types import SimpleNamespace
 from hiro.loop.errors import ResumeBlocked
 from hiro.runtime import tower_cache
 from hiro.runtime.loop import DONE, STAY, Outcome
-from hiro.runtime.tower import DIALOG_WORDS, TowerRun
+from hiro.runtime.tower import DIALOG_WORDS, MAX_TRIES, TowerRun
 
 logger = logging.getLogger(__name__)
 
 TOWER_NO = "tower_001"  # 目前只有一座塔（主数据 Tower 表）；tower_id = tower_001-<偶像代号>
 END = Outcome("end", "偶像之路打完设定的层数")  # 处理器返回它：Runtime.run 正常结束
 PARTIAL_WAIT_S = 10.0  # 再挑戦确认框按钮没读全（弹出 / 淡出中）时最多等这么久再停
+# 层选择页换层（g7 11-17：打完 17 层回到层选择页，居中的还是 17 层、已三星，原来直接停）。页面是竖排的，高层在上，
+# 居中那层放大，滑完会吸附到某一层。每次滑一下、读居中层号，按实际挪了几层校准每层的滑动距离（闭环，不靠固定像素）。
+NAV_X = 470  # 层节点那一列（左边 x<220 是信息栏）
+NAV_UP_Y, NAV_DOWN_Y = 380, 900  # 看更高的层：手指从上往下拖；看更低的层：从下往上拖（起点都避开「挑戦する」y≈985）
+NAV_PX0, NAV_PX_MIN, NAV_PX_MAX = 170.0, 80.0, 420.0  # 每层的滑动距离：初值和上下限（实机帧上层节点间距约 200 px）
+NAV_SWIPE_MAX = 520
+NAV_SWIPE_S, NAV_HOLD_S = 0.5, 0.3  # 慢滑 + 终点停住，不带惯性
+NAV_SETTLE_S = 1.5  # 滑完等吸附
+NAV_MAX_MOVES = 30
 ACT_WAIT_S = 5.0  # 层选择页 / 过关名次页点过一次后，页面没换就等这么久再点（实机：挑戦する 2 秒点了 4 次、同一张名次页记了两次，协调 11-15）
 
 
@@ -151,6 +160,7 @@ class TowerPlay:
         self.exam_draws: dict | None = None  # 刚考完那场的抽牌（tower_cache.infer_draws），名次页补上对手分数后存盘
         self._acted: tuple[str, float] | None = None  # (页面, 时刻)：这一页刚点过，页面换了之前不再点（ACT_WAIT_S 后还没换才再点）
         self._partial_since: float | None = None  # 再挑戦确认框按钮没读全从什么时候开始
+        self._nav_reset()
         self.result_handled = False  # 这一次的结果页已经处理过（点了再挑戦 / 一覧に戻る）：等页面换了再处理下一次（实机 r2：同一张结果页处理了两次）
         if run.tower_id is None and (code := idol_code(idol_name)):
             run.tower_id = f"{TOWER_NO}-{code}"  # 没经过编成页（从名次页 / 结果页续跑）也有路线
@@ -193,25 +203,76 @@ class TowerPlay:
     def _mark_acted(self, rt, page: str) -> None:
         self._acted = (page, _now(rt))
 
+    def _nav_reset(self) -> None:
+        self.nav = {"seen": {}, "start": None, "px": getattr(self, "nav", {}).get("px", NAV_PX0), "pending": None, "at": None, "moves": 0,
+                    "nobtn": None}
+
+    def _playable(self, stage: int, stars: int, locked: bool) -> bool:
+        run = self.run
+        return (not locked and stars < 3 and stage not in run.gave_up_three and run.tries.get(stage, 0) < MAX_TRIES
+                and (run.max_layer is None or stage <= run.max_layer))  # fmt: skip
+
+    def _nav_target(self) -> int | None:
+        """下一个要看的层：先往上找最前沿（起点以上、第一个锁着的层以下、还没看过的最低一层），上面没有了再往下找（还没看过的最高一层）。
+        层是按顺序解锁的：看到锁着的层，再往上都是锁着的；超过 max_layer 也当锁着。"""
+        nv = self.nav
+        seen, start = nv["seen"], nv["start"]
+        cap = min([n for n, (_, locked) in seen.items() if locked] + ([self.run.max_layer + 1] if self.run.max_layer is not None else []),
+                  default=None)  # fmt: skip
+        top = cap if cap is not None else max(seen) + 2
+        up = next((n for n in range(start + 1, top) if n not in seen), None)
+        if up is not None:
+            return up
+        return next((n for n in range(start - 1, 0, -1) if n not in seen), None)
+
     def on_layers(self, rt, f, hit):
+        """层选择页：居中那层能打（没锁、没三星、今天还有次数、没放弃）就点挑戦する；不能打就滑到下一个要看的层（_nav_target），
+        优先往上找最前沿，最前沿锁着 / 都三星了再往下找没三星的层；哪儿都没有就停下报告。"""
         if self.finished:
             return END
         if self._just_acted(rt, "TOWER_LAYERS"):
             return STAY  # 刚点过挑戦する，下一页还没出来
+        nv = self.nav
+        if nv["at"] is not None and _now(rt) - nv["at"] < NAV_SETTLE_S:
+            return STAY  # 刚滑过：等吸附
         fields = hit.fields
         if fields.get("idol") and fields["idol"] != self.idol_name:
             raise ResumeBlocked(f"层选择页是「{fields['idol']}」，不是要打的「{self.idol_name}」")
-        if fields.get("stage") is None or fields.get("challenge") is None:
+        if fields.get("stage") is None:
             return STAY  # 还没读全：等下一帧
-        if fields.get("locked"):
-            # 最前沿那层锁着（要先攒星，如手毬 16 层要 45 星）：按 TowerRun 要回头为三星重打已通关的层，层选择页滑动还没接，先停
-            raise ResumeBlocked(f"层选择页居中的第 {fields['stage']} 层锁着（挑戦する是灰的），不点；回头重打已通关的层还没接，停下报告")
-        if (fields.get("stars") or 0) >= 3:
-            raise ResumeBlocked(f"层选择页居中的第 {fields['stage']} 层已经三星，没有要打的；换层（滑动）还没接，停下报告")
-        self.layer = fields["stage"]  # 第一次实机：只打层选择页居中那一层（「挑戦する」对着的那层）
-        logger.info("偶像之路：第 %s 层，点挑戦する", self.layer)
-        rt.device.tap(*fields["challenge"])
-        self._mark_acted(rt, "TOWER_LAYERS")
+        if fields.get("challenge") is None and nv.get("nobtn") != fields["stage"]:
+            nv["nobtn"] = fields["stage"]  # 没有「挑戦する」（最前沿以上的层，或者按钮还没出来）：再看一帧，还没有才当锁着
+            return STAY
+        stage, stars, locked = int(fields["stage"]), int(fields.get("stars") or 0), bool(fields.get("locked"))
+        if nv["pending"] is not None:  # 上一次滑动挪了几层：校准每层的距离
+            old, dist = nv["pending"]
+            moved = abs(stage - old)
+            nv["px"] = min(NAV_PX_MAX, nv["px"] * 1.6) if moved == 0 else min(NAV_PX_MAX, max(NAV_PX_MIN, (nv["px"] + dist / moved) / 2))
+            nv["pending"] = None
+        if nv["start"] is None:
+            nv["start"] = stage
+        nv["seen"][stage] = (stars, locked)
+        if self._playable(stage, stars, locked):
+            self.layer = stage
+            logger.info("偶像之路：第 %s 层（%s 星），点挑戦する", stage, stars)
+            rt.device.tap(*fields["challenge"])
+            self._mark_acted(rt, "TOWER_LAYERS")
+            self._nav_reset()
+            return DONE
+        target = self._nav_target()
+        seen = {n: f"{st}星{'锁' if lk else ''}" for n, (st, lk) in sorted(nv["seen"].items())}
+        if target is None:
+            raise ResumeBlocked(f"层选择页上没有能打的层（看过 {seen}；三星 / 锁着 / 今天次数用完 / 放弃三星 / 超过上限），停下报告")
+        if nv["moves"] >= NAV_MAX_MOVES:
+            raise ResumeBlocked(f"层选择页滑了 {nv['moves']} 次还没到第 {target} 层（看过 {seen}），停下报告")
+        diff = target - stage
+        dist = int(min(NAV_SWIPE_MAX, max(NAV_PX_MIN, nv["px"] * abs(diff))))
+        y1 = NAV_UP_Y if diff > 0 else NAV_DOWN_Y
+        y2 = y1 + dist if diff > 0 else y1 - dist
+        why = "锁着" if locked else "三星" if stars >= 3 else "今天次数用完 / 放弃三星 / 超过上限"
+        logger.info("偶像之路：居中第 %s 层%s，滑到第 %s 层（%+d 层，拖 %d px）", stage, why, target, diff, dist)
+        rt.device.swipe(NAV_X, y1, NAV_X, y2, duration=NAV_SWIPE_S, hold=NAV_HOLD_S)
+        nv.update(pending=(stage, dist), at=_now(rt), moves=nv["moves"] + 1)
         return DONE
 
     def on_layer_info(self, rt, f, hit):

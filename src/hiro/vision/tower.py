@@ -251,7 +251,8 @@ LOCK_ORANGE_MIN = 0.55  # 「挑戦する」按钮橙色比例：能打 0.74，�
 
 def _layers_fields(img: np.ndarray, boxes) -> dict:
     """层选择页：偶像名（左上）、居中放大那一层的层号（大数字）、它的星数、「挑戦する」位置和是不是锁着的。
-    左栏的「STAGE n 報酬」是最前沿的报酬，滑动后不跟着变，不能当层号。"""
+    左栏的「STAGE n 報酬」是最前沿的报酬，滑动后不跟着变，不能当层号。
+    居中的是最前沿以上的层时没有「挑戦する」（实机帧 25：19 层）：challenge=None、locked=True。"""
     b = _find(boxes, "挑戦する", (900, 1100))
     name = next((t for t, bb in boxes if _center(bb)[1] < 200 and _center(bb)[0] < 220 and len(t) >= 3), None)
     layer = next((int(t) for t, bb in boxes if t.isdigit() and 690 <= _center(bb)[1] <= 745 and 380 <= _center(bb)[0] <= 560), None)
@@ -261,6 +262,8 @@ def _layers_fields(img: np.ndarray, boxes) -> dict:
     for x in NODE_STAR_X:
         cell = hsv[y1:y2, x - 30 : x + 30]
         stars += int((((cell[..., 0] >= 150) | (cell[..., 0] <= 8)) & (cell[..., 1] >= 90) & (cell[..., 2] >= 150)).mean() >= STAR_PINK_MIN)
+    if b is None:
+        return {"idol": name, "stage": layer, "stars": stars, "locked": True, "challenge": None}
     cx, cy = _center(b)
     btn = hsv[cy - 20 : cy + 20, max(0, cx - 120) : cx + 80]
     orange = float(((btn[..., 0] >= 5) & (btn[..., 0] <= 22) & (btn[..., 1] >= 150)).mean())
@@ -318,7 +321,8 @@ def tower_page(img: np.ndarray, boxes) -> tuple[str, dict] | None:
     """偶像之路的非弹窗页面（考试页由 is_tower_exam 判）。"""
     if _find(boxes, "アイドルへの道", (0, 120)) and _find(boxes, "STAGE", (600, 1100)):
         return "TOWER_LIST", _list_fields(boxes)
-    if _find(boxes, "挑戦する", (900, 1100)) and _find(boxes, "ステージ別ランキング"):
+    if _find(boxes, "ステージ別ランキング") and (_find(boxes, "挑戦する", (900, 1100)) or _find(boxes, "STAGE", (660, 720))):
+        # 「STAGE」小字在居中大节点的层号上面（y≈690）；左栏「STAGE15 報酬」在 y≈745，不算
         return "TOWER_LAYERS", _layers_fields(img, boxes)
     if _find(boxes, "応援/トラブル", (0, 60)) and _find(boxes, "審査基準") and _find(boxes, "ターン", (60, 130)):
         f = _formation_fields(boxes, img)
