@@ -121,11 +121,10 @@ def settled_step3(shoot, plan: dict, sleep=None):
     """第 3 步翻完编成号后等四格回忆图标停稳，返回那一帧：连续两次读到的卡一样（含认不认得出），或者四格都认出、
     都是方案的卡就直接用。读不到稳定结果时用最后一帧（11-17 Mac p15c：翻 1 → 20 的动画还没完就读了，四格都认不出；
     0.6 秒后的帧四格全对）。"""
-    import time
-
+    from hiro.devices.active import sleep as _sleep
     from hiro.vision.memory_icons import card_key, read_step3_icons
 
-    sleep = sleep or time.sleep
+    sleep = sleep or _sleep  # 过 Runtime 检查点（录屏暂停能拦住），不用 time.sleep（test_exec_checkpoint）
     want = {card_key(c) for c in (plan.get("memory") or {}).get("cards") or [] if card_key(c)}
     prev, img = None, None
     for i in range(STEP3_SETTLE_READS):
