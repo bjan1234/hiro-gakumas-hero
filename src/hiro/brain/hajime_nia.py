@@ -8,6 +8,7 @@ gift（差し入れ）、shop（相談）、special_guidance、rest；新增 all
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 from hiro.brain import hajime_nia_rules as hr
 from hiro.state import modes
@@ -33,6 +34,16 @@ class Status:
     rest_left: int | None = None
     main_attr: str | None = None
     criteria: dict | None = None  # 下一场考试的审查基准（三属性权重，和为 1）：追い込みレッスン按它选
+    stage: str | None = None  # 下一场考试 mid1 / mid2 / final（页头 exam_next，平台 73b70b1）：营业票数按它查主数据
+    idol: str | None = None
+    business_vote_permil: int = 0  # 营业票数加成 EventBusinessVoteCountPermil（局面里没有就 0）
+    consult_price: int | None = None  # 相談最便宜的删卡 / 强化价（局面给了就用；没给按 SHOP_POINTS）
+
+    @property
+    def shop_ok(self) -> bool:
+        """相談能做成一件事：P 点 ≥ 最便宜的删卡 / 强化价（协调 11-17 初第二局：30P 进相談，游戏弹「P ポイントが少ない」，白费一周）。
+        相談现在只删卡、不买饮料（deciders._hajime_nia_consult），所以不按饮料价算。"""
+        return self.produce_point >= (self.consult_price or SHOP_POINTS)
 
     @property
     def family(self) -> str | None:
@@ -190,15 +201,18 @@ def _hajime(p: _Pick) -> tuple[int, str, list[str]]:
         if outing_ok:
             return p.done(p.idx("outing")[0], f"体力少了 {lost}，休息不了，去外出")
     order = ["allowance", "gift"]
-    if st.produce_point >= SHOP_POINTS:
+    if st.shop_ok:
         order.append("shop")
     near_full = lost < NEAR_FULL_LOST
     if outing_ok and not near_full:
         order.append("outing")
     elif outing_ok:
         p.use("hajime.outing_when")  # 外出是体力少了一半 / 15 以上时用的；满体力去外出主要收益（回体力）用不上（协调 11-17 初实机）
-    order += ["shop", "rest", "outing"]  # 最后的 outing：MASTER / 满体力不推荐，但实在没别的可选
-    return _fallback_order(p, tuple(dict.fromkeys(order)), "没有课程 / 授業" + ("，体力几乎是满的，外出排最后" if outing_ok and near_full else ""))
+    # 相談做不成事（P 点不够删卡 / 强化）时排最后：0P 档的外出也有体力和技能卡，比白进相談强，体力几乎满也一样（协调 11-17 初第二局）。
+    # MASTER 外出随机性大 [ww-初M]，休息在外出前
+    order += (["rest", "outing"] if st.difficulty == "master" else ["outing", "rest"]) + ["shop"]
+    tail = "，相談 P 点不够（{0}P < {1}P）不去".format(st.produce_point, st.consult_price or SHOP_POINTS) if p.idx("shop") and not st.shop_ok else ""
+    return _fallback_order(p, tuple(dict.fromkeys(order)), "没有课程 / 授業" + ("，体力几乎是满的" if outing_ok and near_full else "") + tail)
 
 
 def _nia(p: _Pick) -> tuple[int, str, list[str]]:
@@ -230,9 +244,9 @@ def _nia(p: _Pick) -> tuple[int, str, list[str]]:
     elif st.stamina * 2 <= st.max_stamina:
         order.append("outing")
     order += ["gift"]
-    if st.produce_point >= SHOP_POINTS:
+    if st.shop_ok:
         order.append("shop")
-    order += ["outing", "special_guidance", "shop", "rest"]
+    order += ["outing", "special_guidance", "rest", "shop"]  # 相談做不成事时排最后（同初）
     return _fallback_order(p, tuple(dict.fromkeys(order)), "没有课程 / 营业")
 
 
@@ -317,11 +331,10 @@ def choose_sales_place(st: Status, places: list[dict], drinks: list | None = Non
         return st.stamina - int(pl.get("hp_cost") or 0)
 
     def ev(pl) -> str:
-        e = _expected_votes(pl)
-        if e is not None:
-            return f"，期望票数 {e:.0f}"
-        rate, bonus = _great_rate(pl), pl.get("great_success_votes")
-        return f"，大成功 {rate:.0%}、多 {bonus} 票（期望多 {rate * bonus:.0f}）" if rate is not None and bonus is not None else ""
+        e = _expected_votes(st, pl)
+        rate = _great_rate(pl)
+        great = f"，大成功 {rate:.0%}" if rate is not None else ""
+        return f"，期望票数 {e:.0f}{great}" if e is not None else great
 
     if st.difficulty == "master" and drinks is not None and len(drinks) < 2 and "corporate" in by:
         p.use("nia.sales_corporate_drinks")
@@ -330,7 +343,7 @@ def choose_sales_place(st: Status, places: list[dict], drinks: list | None = Non
     p.use("nia.sales_yellow_purple")
     if good:
         want = "commercial" if st.produce_point >= SHOP_POINTS else "local"
-        pl = next((x for x in good if x.get("kind") == want), good[0])
+        pl = next((x for x in good if x.get("kind") == want), None) or max(good, key=lambda x: _expected_votes(st, x) or 0)
         p.use("nia.sales_purple" if pl.get("kind") == "commercial" else "nia.sales_yellow")
         why = f"体力 {st.stamina} 去完还剩 {after(pl)}，P 点 {st.produce_point}{ev(pl)}"
         return p.done(pl["index"], f"营业去{KIND_NAME[pl['kind']]}（{why}）")
@@ -338,8 +351,8 @@ def choose_sales_place(st: Status, places: list[dict], drinks: list | None = Non
     for k in ("resort", "corporate"):
         if k in by:
             return p.done(by[k]["index"], f"体力 {st.stamina} 去黄 / 紫会掉到 {SALES_KEEP_STAMINA} 以下，去{KIND_NAME[k]}{ev(by[k])}")
-    if any(_expected_votes(x) is not None for x in places):
-        pl = max(places, key=lambda x: (_expected_votes(x) or -1, -int(x.get("hp_cost") or 0)))
+    if any(_expected_votes(st, x) is not None for x in places):
+        pl = max(places, key=lambda x: (_expected_votes(st, x) or -1, -int(x.get("hp_cost") or 0)))
         return p.done(pl["index"], f"没认出场所种类，选期望票数最高的一个{ev(pl)}")
     pl = min(places, key=lambda x: int(x.get("hp_cost") or 0))
     return p.done(pl["index"], "没认出场所种类，选耗体力最少的一个")
@@ -360,15 +373,44 @@ def _great_rate(pl: dict) -> float | None:
     return None
 
 
-def _expected_votes(pl: dict) -> float | None:
-    """期望票数：基础票数 votes 读到时 = votes + 概率 × 大成功多拿的票（读到的话），否则 votes ×（1 + 0.3 × 概率）（协调 11-17）。
-    基础票数没读到返回 None（现在实机都读不到）。"""
-    if pl.get("votes") is None:
+VENUE_OF_KIND = {"commercial": "produce_card", "corporate": "produce_drink", "local": "produce_point", "resort": "stamina"}
+
+
+def _master_votes(st: Status, kind: str | None) -> tuple[int, int] | None:
+    """主数据的营业票数（普通, 大成功）：按段（下一场试镜之前）× 场所，gakumas_produce.hajime_nia.rules().business（协调 11-17）。
+    下一场是哪场、场所种类、偶像不知道时 None。"""
+    venue = VENUE_OF_KIND.get(kind or "")
+    if not venue or not st.stage or not st.idol or st.family != modes.NIA:
         return None
+    try:
+        from gakumas_produce.hajime_nia import PHASE_OF_STAGE
+
+        row = _business_rows(st.mode, st.idol).get((PHASE_OF_STAGE[st.stage], venue))
+    except Exception:  # noqa: BLE001  主数据不可用
+        return None
+    return (row[0], row[1]) if row else None
+
+
+@lru_cache(maxsize=None)
+def _business_rows(mode: str, idol: str) -> dict:
+    from gakumas_produce.hajime_nia import rules
+
+    return dict(rules(mode, idol).business)
+
+
+def _expected_votes(st: Status, pl: dict) -> float | None:
+    """期望票数 = 普通票 ×（1 − p）+ 大成功票 × p，再 ×（1000 + 营业票数加成‰）/ 1000（协调 11-17）。
+    票数按主数据（段 × 场所）；p = 画面读到的大成功概率（只有展开那张卡有），没读到按 0（只算普通票，不猜）。
+    画面直接给了基础票数 votes 时用它当普通票（大成功票 = votes + great_success_votes，或按 1.3 倍）。查不到返回 None。"""
     rate = _great_rate(pl) or 0.0
-    if pl.get("great_success_votes") is not None:
-        return float(pl["votes"]) + rate * float(pl["great_success_votes"])
-    return float(pl["votes"]) * (1 + GREAT_BONUS * rate)
+    if pl.get("votes") is not None:
+        plain = float(pl["votes"])
+        ex = plain + float(pl["great_success_votes"]) if pl.get("great_success_votes") is not None else plain * (1 + GREAT_BONUS)
+    elif (mv := _master_votes(st, pl.get("kind"))) is not None:
+        plain, ex = mv
+    else:
+        return None
+    return (plain * (1 - rate) + ex * rate) * (1000 + st.business_vote_permil) / 1000
 
 
 def choose_sales_event(st: Status, choices: list[dict]) -> tuple[int, str, list[str]]:

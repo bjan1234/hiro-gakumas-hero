@@ -326,7 +326,9 @@ class ProduceDeciders:
         return Status(mode=prod["mode"], step=int(prod.get("step") or 0), stamina=int(prod.get("stamina") or 0),
                       max_stamina=int(prod.get("max_stamina") or prod.get("stamina") or 1), produce_point=int(prod.get("produce_point") or 0),
                       params=dict(prod.get("params") or {}), rest_left=prod.get("rest_left"), main_attr=prod.get("main_attr") or self.main_attr,
-                      criteria=criteria)  # fmt: skip
+                      criteria=criteria, stage=pf.get("exam_next"), idol=prod.get("idol_card_id") or (self.profile.idol_id if self.profile else None),
+                      business_vote_permil=int(prod.get("business_vote_permil") or 0),
+                      consult_price=prod.get("consult_delete_price"))  # fmt: skip
 
     def _hajime_nia_choice(self, state: GameState, decider: str) -> Decision | None:
         """初 / N.I.A 的外出 / 授業（hiro.brain.hajime_nia）；别的模式返回 None，照 H.I.F 原逻辑。没有结构化 choices 时选中间那项兜底。"""
