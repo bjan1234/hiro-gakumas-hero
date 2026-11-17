@@ -1451,6 +1451,10 @@ class ProduceDeciders:
         from hiro.brain import drinks as dk
         from hiro.state.context import drink_name
 
+        if not any(k in (state.page_fields or {}) for k in ("held", "incoming", "incomings")):
+            # page_fields 是别的页面的（溢出页还没在状态里稳定）：兜底「不换」会点「残す」放弃新饮料，等重读（DMM qualifyverify4 11-17）
+            return Decision(Action.ui(ActionKind.WAIT, why="溢出页字段还没进状态"), "饮料溢出页的持有 / 新饮料还没读进状态：等重读，不兜底「不换」",
+                            "rule", 0.3, decider="drink_overflow")  # fmt: skip
         ps = self.produce_state(state)
         held, capacity, _, warn = self._drink_holding(state, ps)
         incomings = [x for x in state.page_fields.get("incomings") or [] if x.get("drink_id")]

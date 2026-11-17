@@ -52,6 +52,20 @@ logger = logging.getLogger(__name__)
 ACTION_REQUIRED = ("stamina", "produce_point", "params", "options")
 TAP_RETRIES = 2
 EXAM_END_LOOP_TIMEOUT = 90.0  # 考试结束后点「次へ」/ 结果页的总时长上限
+def _page_name(page) -> str | None:
+    return page.get("name") if isinstance(page, dict) else getattr(page, "name", None)
+
+
+def _pending_only(state, name: str) -> bool:
+    """name 页已经认出（pending_page）、还没在状态里稳定（state.page 仍是上一页）。"""
+    return _page_name(getattr(state, "page", None)) != name and _page_name(getattr(state, "pending_page", None)) == name
+
+
+def _confirm_on_top(img) -> bool:
+    """「報酬スキップ」确认框盖在饮料溢出页上（标题模板）。"""
+    return img is not None and tpl("InProduce.TextPDrinkMaxConfirmTitle").exists(img)
+
+
 EXAM_END_SETTLE = 2.0  # 考试结束后点「次へ」等按钮区变化的上限（原来固定睡 2s）
 
 
@@ -440,6 +454,8 @@ class HifCore:
 
     SELECT_RETRIES = 4  # 三选一候选为空时重读几次（每次等 SELECT_RETRY_WAIT 秒，约 2–3 秒）
     SELECT_RETRY_WAIT = 0.5
+    PDRINK_SETTLE_TRIES = 5  # 饮料溢出页还没在状态里稳定时重新观测几次再决策
+    PDRINK_CONFIRM_WAIT_TRIES = 6  # 点过「残す」后重入：等「報酬スキップ」确认几拍
     PDRINK_DECIDE_RETRIES = 2  # 饮料溢出页决策没给出 DiscardDrink（异常兜底成 Wait）时重新观测再决策几次
 
     def on_select_card(self, ctx=None):
@@ -797,7 +813,28 @@ class HifCore:
         from hiro.produce.drink_swap import resolve_overflow
 
         t0 = time.monotonic()
+        # 「報酬スキップ」确认框已经盖在上面（上一拍点过「残す」/「離れる」，过渡帧又被判成 PDRINK_MAX）：交给确认处理，不重新决策
+        # （DMM qualifyverify4 11-17：重入后观测写死 scene=PDRINK_MAX，重新决策成「换」，点被确认框挡住的勾选框，2 次没生效停机）
+        if _confirm_on_top(device.screenshot()):
+            logger.info("饮料溢出：「報酬スキップ」确认已经盖在上面，交给确认处理")
+            return self.on_pdrink_max_confirm(ctx)
+        if getattr(self, "_skip_incoming_drink", False):
+            # 刚决定不要新饮料、点过「残す」：等确认框，不重新决策（决策已经执行了）
+            for _ in range(self.PDRINK_CONFIRM_WAIT_TRIES):
+                sleep(self.SELECT_RETRY_WAIT)
+                if _confirm_on_top(device.screenshot()):
+                    logger.info("饮料溢出：刚点过「残す」，「報酬スキップ」确认弹出，交给确认处理")
+                    return self.on_pdrink_max_confirm(ctx)
+            self._skip_incoming_drink = False  # 确认框一直没出来：「残す」多半没点到，按画面重新决策
         obs = self.s.observe(scene="PDRINK_MAX")
+        # 溢出页刚出现、还没在状态里稳定时（state.page 仍是上一页，page_fields 是上一页的），决策器读不到持有 / 新饮料，
+        # 会兜底「不换」点「残す」放弃新饮料（qualifyverify4：上一页是主动查看牌组的 DECK_LIST）。先等它稳定
+        for _ in range(self.PDRINK_SETTLE_TRIES):
+            if not _pending_only(self.s.state, "PDRINK_MAX"):
+                break
+            sleep(self.SELECT_RETRY_WAIT)
+            device.screenshot()
+            obs = self.s.observe(scene="PDRINK_MAX")
         d = self.deciders.decide("PDRINK_MAX", self.s.state)
         for _ in range(self.PDRINK_DECIDE_RETRIES):
             # 只有明确的 DiscardDrink（换 / 不换）才往下走。决策器异常会兜底成 Wait（第十八局 20:23:29：None 崩溃 → Wait → 落到 KAA 默认
