@@ -729,10 +729,10 @@ def test_nia_consult_deletes_basic_card():
     assert d.action.kind.name == "SHOP_BUY" and d.action.args == {"service": "delete", "card_index": 2}, d.reason
     assert "アピールの基本" in d.reason and "g8-NIAM" in d.reason
     keep = [c for c in LIVE_NIA_DECK if c != "p_card-00-act-0_001"]
-    assert pd.decide("CONSULT", _live_state(deck=keep, shelf=[], services=svc)).action.kind.name == "SHOP_END"
+    assert _pd().decide("CONSULT", _live_state(deck=keep, shelf=[], services=svc)).action.kind.name == "SHOP_END"
     poor = {"delete": {"price": 200, "available": True}}
-    assert pd.decide("CONSULT", _live_state(shelf=[], services=poor)).action.kind.name == "SHOP_END"
-    d = pd.decide("CONSULT", _live_state("produce-001", shelf=[], services=svc))
+    assert _pd().decide("CONSULT", _live_state(shelf=[], services=poor)).action.kind.name == "SHOP_END"
+    d = _pd().decide("CONSULT", _live_state("produce-001", shelf=[], services=svc))
     assert d.action.args.get("card_index") == 2 and "g8-PRO" in d.reason
 
 
@@ -768,3 +768,23 @@ def test_impression_main_not_taken_even_if_once():
     assert d.action.kind.name == "EXCLUDE_CARD" and d.action.args["pick_index"] == 0 and "主打好印象" in d.reason
     d = _card_pick("produce-004", [OTOME, TEBYOSHI, KISEKI], rerolls=0, excludes=0)
     assert _picked(d) == 0  # 都冲突：不拿主打好印象的 手拍子 / キセキの魔法
+
+
+@pytest.mark.master
+def test_consult_one_delete_per_visit():
+    """一次相談只能删一张（协调 11-18 初 PRO：删完按钮变「交換済」，价格显示 125P，又按它删了 3 次停机）：
+    删过一次就结束；回到选行动页后下一次相談可以再删；画面给了 used 时也照它。"""
+    pd = _pd()
+    svc = {"delete": {"price": 100, "available": True}}
+    d = pd.decide("CONSULT", _live_state("produce-002", shelf=[], services=svc))
+    assert d.action.kind.name == "SHOP_BUY"
+    after = {"delete": {"price": 125, "available": True}}
+    d = pd.decide("CONSULT", _live_state("produce-002", shelf=[], services=after))
+    assert d.action.kind.name == "SHOP_END" and "已经删过" in d.reason
+    from hiro.contracts import GameState
+
+    pd.decide("ACTION_SELECT", GameState(produce={"mode": "produce-002", "stamina": 20, "max_stamina": 30, "produce_point": 300},
+                                         page_fields={"options": [{"option": "shop"}, {"option": "rest"}]}))  # fmt: skip
+    assert pd.decide("CONSULT", _live_state("produce-002", shelf=[], services=after)).action.kind.name == "SHOP_BUY"
+    used = {"delete": {"price": 125, "available": True, "used": True}}
+    assert _pd().decide("CONSULT", _live_state("produce-004", shelf=[], services=used)).action.kind.name == "SHOP_END"

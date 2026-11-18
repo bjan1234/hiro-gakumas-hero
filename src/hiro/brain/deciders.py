@@ -110,6 +110,7 @@ class ProduceDeciders:
         # 授業 遇到换卡档时改选眠気档；lead 接好两步后传 True。
         self.change_controlled = change_controlled
         self.change_target: str | None = None  # 阶段 1 选中的换入卡 card_id（阶段 2 比较价值用）
+        self.consult_used: set[str] = set()  # 初 / N.I.A：这一次相談里已经用过的服务（删除 / 强化各一次，回到选行动页清空）
         self.picked_musts: set[str] = set()  # 本局决策器自己拿到的必拿卡（牌组没识别时用来判断还缺什么）
         self.consult_delete_lean = False  # 选拔相談打开「削除」对话框时：只删 qualify_consult_deletable 的牌（用户 2026-11-03 顺序），没有就取消
         self._page_spend: dict = {}  # 选卡页（page.since_seq）→ 本页已用的刷新 / 禁用次数
@@ -282,6 +283,8 @@ class ProduceDeciders:
     def _action_select_hajime_nia(self, state: GameState) -> Decision:
         """初 / N.I.A：按社区规则的策略表选（hiro.brain.hajime_nia，设计稿第四节），不走 H.I.F 的日程预演和もりし模板。"""
         from hiro.brain.hajime_nia import choose_action
+
+        self.consult_used = set()  # 回到选行动页：上一次相談结束了
 
         prod = dict(state.produce or {})
         # 没有 option 名的项（识别没认出是什么按钮）跳过，不让整个决策器抛异常。
@@ -1714,6 +1717,11 @@ class ProduceDeciders:
         rid = "nia.delete_order" if family(ps.mode) == NIA else "hajime.consult_price"
         if "deck" in unknown or not ps.deck:
             return Decision(Action(ActionKind.SHOP_END), "相談：牌组没识别，不删卡", "rule", 0.5, warnings=["牌组未识别：没有做删卡"], decider="consult")
+        if "delete" in self.consult_used or delete.get("used") or delete.get("exchanged"):
+            # 一次相談每种服务只能用一次（协调 11-18 初 PRO：删完一张按钮变「交換済」，又按 125P 重复删了 3 次停机）。
+            # 画面上的 125P 是下一次相談的删卡价（平台写进 produce.consult_delete_price，选行动时用）
+            return Decision(Action(ActionKind.SHOP_END), f"相談：这次已经删过一张（每种服务一次相談只能用一次；{delete.get('price')}P 是下一次的价），结束",
+                            "rule", 0.8, decider="consult")  # fmt: skip
         if not delete.get("available", True) or not _affordable(delete, p):
             return Decision(Action(ActionKind.SHOP_END), f"相談：删卡用不了或 P 点不够（{p}P），不买", "rule", 0.6, decider="consult")
         cards = [{"index": i, "card_id": c.card_id, "upgrade": c.upgrade, "customized": c.customized} for i, c in enumerate(ps.deck)]
@@ -1723,6 +1731,7 @@ class ProduceDeciders:
             return Decision(Action(ActionKind.SHOP_END), "相談：牌组里没有该删的卡（トラブル / 可复用的非核心卡 / 冲突卡 / 基本卡都没有了），不买", "rule", 0.7,
                             decider="consult")  # fmt: skip
         c = pool[0]
+        self.consult_used.add("delete")
         return Decision(Action(ActionKind.SHOP_BUY, {"service": "delete", "card_index": c["index"]}),
                         f"相談删{CULL_TIERS.get(cull_tier(c['card_id']), '')} {_card_label(c)}（{delete.get('price')}P；{hr.cite(rid)}）", "rule", 0.8,
                         decider="consult")  # fmt: skip
