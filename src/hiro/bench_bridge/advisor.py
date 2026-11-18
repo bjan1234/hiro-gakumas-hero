@@ -13,12 +13,14 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import logging
 import math
 import os
 import random
+import re
 import time
 import urllib.request
 from pathlib import Path
@@ -326,6 +328,20 @@ def _round_defaults(label: str | None, deck: list) -> tuple[dict, dict | None]:
     return permil, alloc
 
 
+def items_from_enchants(ench) -> list[str]:
+    """UIObs 的附魔列表 → 持有的 P 道具 id：P 道具的考试附魔是 enchant-p_item_effect_<道具号>-encNN（道具 pitem_<道具号>）。
+    这份列表是 ScreenTracker 记的：偶像固有道具开场按主数据放进去（Enchants.idol_items = IdolCard.beforeProduceItemId），
+    其余道具画面认出来才有。初 PRO 第一局 / H.I.F mainz4（11-18）：P 道具账本是空的，拼的编成里连固有道具 選びとった熱 都没有，
+    T7 打えいえいおー 画面上道具发动（追加行动、やる気+N），引擎里没有，后面整段对不上。"""
+    out: list[str] = []
+    for e in ench or ():
+        eid = str(e[0] if isinstance(e, (list, tuple)) else e)
+        m = re.match(r"^enchant-p_item_effect_(\d{2}-\d-\d{3}-\d)-enc\d+$", eid)
+        if m and (iid := f"pitem_{m.group(1)}") not in out:
+            out.append(iid)
+    return out
+
+
 class _Waiting(Exception):
     """实机拼编成还在等（倍率没读到）：这一步用 H.I.F 的算法，不算搜索开局失败。"""
 
@@ -439,6 +455,7 @@ class BenchAdvisor:
         self._session = None
         self._number: int | None = None
         self._live_built = False
+        self._history: list = []
         self._calc_pm: dict = {}  # 按三属性粗算的倍率（只当比例用）
         self._seen_pm: dict = {}  # 这一场画面实读到的倍率（每属性最后一次非 0 的读数）
         self._live_wait: str | None = None  # 实机拼编成在等什么（倍率没读到）：这一步用 uinet、下一步再拼
@@ -485,8 +502,10 @@ class BenchAdvisor:
             trend = tuple(idol_trend(idol)[1]) if idol else None
         except Exception:  # noqa: BLE001
             trend = None
-        self.exam = exam_fields(self.label, idol=idol, plan=_plan_number(idol))
+        self._session = ctx.get("session")
+        self.exam = exam_fields(self.label, idol=idol, plan=_plan_number(idol), produce=self._live_mode())
         self.exam["permil_default"], self.exam["allocation"] = _round_defaults(self.label, self.deck)
+        self._history: list = []  # 这一场执行过的 (UIObs, 动作)：编成晚拼时交给搜索补放（ExamGnrpa._replay）
         self.tower_loadout = None
         self.known_draws = None
         if str(self.label or "").lower().startswith("tower") and (lo := _tower_loadout(ctx)) is not None:
@@ -652,7 +671,12 @@ class BenchAdvisor:
             run, notes = run_loadout(produce_state, plan)
             # 回忆附魔（run["skills"]）只认 H.I.F 回忆技能（触发 p_trigger-start_audition-for_hif_memory，只在 H.I.F 考试生效），
             # 初 / N.I.A 不给；N.I.A 回忆能力（「1次オーディション開始時、30%の確率で…」）还没解析，先按没有（3940a9 11-17）
-            lo.update(produce_item_ids=list(run["items"]), supports=list(run["supports"]), skills=[])
+            items = list(run["items"])
+            seen = [i for i in items_from_enchants(obs.get("ench")) if i not in items]
+            if seen:  # 账本没记的 P 道具：UIObs 附魔列表里有它的附魔（p_item_effect_<id>-encNN）就补上
+                logger.info("[%s] 拼编成：P 道具按 UIObs 附魔补 %s（账本没有）", self.label, seen)
+                items += seen
+            lo.update(produce_item_ids=items, supports=list(run["supports"]), skills=[])
             if notes:
                 logger.info("[%s] 拼编成：%s", self.label, "；".join(notes))
         except Exception as e:  # noqa: BLE001  道具 / 支援卡拼不出：按没有搜
@@ -664,6 +688,43 @@ class BenchAdvisor:
         logger.info("[%s] 现拼编成：牌组 %d 张、P 道具 %d、支援卡 %d、档位 %s", self.label, len(lo["produce_cards"]),
                     len(lo.get("produce_item_ids") or ()), len(lo.get("supports") or ()), row.get("number"))  # fmt: skip
         return lo
+
+    def _live_mode(self) -> str | None:
+        """实机这一局的培育 id（state.produce.mode）：和标签同一家族（初 / N.I.A）才用。初 PRO 第一局（协调 11-18）：exam_fields 按标签
+        缺省 hajime → produce-001，局面其实是 produce-002，battle config / 封顶（REGULAR 900、PRO 1700）全按 REGULAR 取。"""
+        ps = (getattr(getattr(self._session, "state", None), "produce", None) or {}) if self._session is not None else {}
+        ps = ps if isinstance(ps, dict) else getattr(ps, "__dict__", {})
+        mode = ps.get("mode")
+        fam = str(self.label or "").split("#", 1)[0].split("-", 1)[0].lower()
+        if not mode or fam not in ("hajime", "nia"):
+            return None
+        try:
+            from hiro.state.modes import family
+
+            return mode if family(mode) == fam else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _turn_types(self) -> list | None:
+        """平台读到的审查日程（考试局面 exam.turn_types：["Vo","Da",…]，下标 0 = 第 1 回合）→ [1 / 2 / 3 / None]；没有 None。"""
+        ex = getattr(getattr(self._session, "state", None), "exam", None) if self._session is not None else None
+        tt = ex.get("turn_types") if isinstance(ex, dict) else getattr(ex, "turn_types", None)
+        if not tt:
+            return None
+        m = {"Vo": 1, "Da": 2, "Vi": 3, 1: 1, 2: 2, 3: 3}
+        return [m.get(t) for t in tt]
+
+    def _fix_obs(self, obs: dict) -> None:
+        """初 / N.I.A 的 UIObs：回合属性按审查日程（读到的回合）；倍率按 _exam_permils（画面真值那几项 + 按比例推，不再把当前回合那一项
+        填给其余两项，初 PRO 第一局 T2 起读成 [6440, 6440, 6440]、真值 Vo 644% / Da 680% / Vi 428%）。uinet 和搜索看到的都是它。"""
+        ex = obs.get("exam") or {}
+        known = self._turn_types()
+        if known and ex.get("types"):
+            ex["types"] = [known[i] if i < len(known) and known[i] else t for i, t in enumerate(ex["types"])]
+        if ex.get("types") and not self.exam.get("lesson"):
+            pm, _ = self._exam_permils(quiet=True)
+            if pm:
+                ex["permil"] = [int(pm[a]) for a in ("Vo", "Da", "Vi")]
 
     def _npc_permil(self, lo: dict) -> None:
         """对手分增减（AuditionNpcEnhancePermil）：P 道具账本 + チャレンジP道具（produce.challenge_items，MASTER / LEGEND 带进来的）
@@ -685,7 +746,7 @@ class BenchAdvisor:
             lo["npc_enhance_permil"] = permil
             logger.info("[%s] 对手分增减 %+d‰%s", self.label, permil, f"（{len(unsure)} 件チャレンジP道具发动次数按 1 次估）" if unsure else "")
 
-    def _exam_permils(self) -> tuple[dict | None, str]:
+    def _exam_permils(self, *, quiet: bool = False) -> tuple[dict | None, str]:
         """拼编成用的三属性倍率 → ({Vo, Da, Vi} 或 None, 说明)。编成给了 permil_fixed 就用；否则画面实读的那几项（0 = 画面没给，初的考试
         常见）为准，没读到的按 实读 / 粗算 的比例（几项取中位数）从粗算推；没有粗算时要三项都读到。一项都没读到 → None（等下一步）。"""
         if self.exam.get("permil_fixed"):
@@ -701,7 +762,8 @@ class BenchAdvisor:
         rs = sorted(seen[a] / calc[a] for a in seen)
         f = rs[len(rs) // 2]
         pm = {a: seen.get(a) or int(math.ceil(calc[a] * f / 10.0) * 10) for a in ("Vo", "Da", "Vi")}
-        logger.info("[%s] 倍率：画面读到 %s，其余按比例 %.3f 从粗算 %s 推 → %s", self.label, seen, f, calc, pm)
+        if not quiet:
+            logger.info("[%s] 倍率：画面读到 %s，其余按比例 %.3f 从粗算 %s 推 → %s", self.label, seen, f, calc, pm)
         return pm, f"画面 {sorted(seen)} + 按比例 {f:.3f} 推"
 
     def _audition_defaults(self, idol: str | None, number: int | None) -> None:
@@ -816,8 +878,11 @@ class BenchAdvisor:
                 "idol_card_id": self.exam.get("idol")}
         full = self.tower_loadout or self.exam_loadout  # 搜索类算法要整份编成（偶像之路 / 初 / N.I.A）
         loadout = dict(full) if full else {"idol_card_id": self.exam.get("idol")}
+        if self.exam_loadout is not None and (known := self._turn_types()):
+            loadout["turn_types"] = known  # 审查日程（ExamGnrpa 按它排回合属性）
         return SimpleNamespace(obs=obs, budget=DECIDE_BUDGET_S, loadout=loadout, meta=meta, known_draws=self.known_draws,
-                               rng=self.rng, worlds=worlds, true_session=None, seed=None)  # fmt: skip
+                               rng=self.rng, worlds=worlds, true_session=None, seed=None,
+                               history=list(getattr(self, "_history", ())))  # fmt: skip
 
     def _fallback(self, state, memory, previews, legal, why: str) -> Decision:
         self.stats["rules"] += 1
@@ -833,10 +898,12 @@ class BenchAdvisor:
         t0 = time.monotonic()
         try:
             obs, slot_of, origin = self._obs(state, memory, legal)
+            self._seen_pm.update({k: v for k, v in (getattr(state, "attr_permils", None) or {}).items() if v})
+            if str(self.label or "").lower().startswith(("hajime", "nia")):
+                self._fix_obs(obs)
             # 每步给算法的 UIObs 记进运行日志（复盘用：实机局能直接看出 UINet 看到的局面和画面差在哪）
             uiobs_log.info("[%s T%s %s] %s", self.label, getattr(memory, "turn", None), origin,
                            json.dumps(obs, ensure_ascii=False, separators=(",", ":")))
-            self._seen_pm.update({k: v for k, v in (getattr(state, "attr_permils", None) or {}).items() if v})
             if self.exam_loadout is None and not self._live_built and str(self.label or "").lower().startswith(("hajime", "nia")):
                 self._live_wait = None
                 self.exam_loadout = self._live_exam_loadout(obs)
@@ -898,6 +965,8 @@ class BenchAdvisor:
         if action.legal_key() not in keys:
             return self._fallback(state, memory, previews, legal, f"{action.legal_key()} 不在 hiro 的合法动作里")
         self.stats["bench"] += 1
+        if str(self.label or "").lower().startswith(("hajime", "nia")):
+            self._history.append((copy.deepcopy(obs), list(act)))
         meta = dict(getattr(d, "meta", None) or {})
         cands = []
         for a, p in (meta.get("top") or [])[:3]:

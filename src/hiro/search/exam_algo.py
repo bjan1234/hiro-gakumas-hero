@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import collections
 import json
+import logging
 import random
 
 from hiro.search.tower_algo import TowerGnrpa
+
+logger = logging.getLogger(__name__)
 
 # 对账护栏的门槛（11-18 按 bench 标定：初 48 题 + N.I.A 39 题、护栏关掉打一遍，试镜正常局累计比值最低 0.36、最高 1.55；
 # 倍率为 0 时引擎每步 +0，比值接近 0）。课程不查：课程不乘倍率，没有这种故障；已知的引擎缺口（追い込み过合格线后的加成、
@@ -85,24 +88,58 @@ class ExamGnrpa(TowerGnrpa):
         self.hold_strong = bool(self.lo.get("lesson"))  # 课程：强饮料留到考试（协调 11-18）
         self.calib = {"pred": 0, "act": 0, "n": 0}  # 引擎算的每步加分 vs 画面实际加分（护栏）
         self._expect = None
+        self._known_types = None
+        self._replay(getattr(ctx, "history", None) or ())
+
+    def _replay(self, history) -> None:
+        """编成晚于开考才拼好（倍率要等画面读到，初的考试 T1 常见）：这一场已经执行过的动作（中转层记的 (UIObs, 动作)）按当时的画面
+        在引擎里补放一遍，打出过的牌留下的附魔 / 状态才在（初 PRO 第一局中間：T1 uinet 打的 エウレカ！+ 引擎里没有，它的
+        「体力 50% 以下时回合开始按元気 40% 得分」整场缺席，T7 画面 +798、引擎 +39，对账护栏判不可信，协调 11-18）。"""
+        done = 0
+        for o, a in history:
+            try:
+                self._align(o)
+                self.rx.step(tuple(a))
+                self.rx.advance()
+                done += 1
+            except Exception as e:  # noqa: BLE001  补放不了的那一步：之后照常按画面对齐
+                self.stats["replay_failed"] += 1
+                logger.info("补放开局前的动作 %s 失败：%s: %s", a, type(e).__name__, e)
+        if history:
+            self.stats["replayed"] += done
+            self.prev = None
+
+    def _align(self, obs: dict) -> None:
+        """同 TowerGnrpa._align；审查日程已知（中转层放进 ctx.loadout["turn_types"]，平台读面板）时回合属性整表按日程，不再随机。"""
+        super()._align(obs)
+        known = getattr(self, "_known_types", None)
+        if known:
+            tt = [int(t) for t in self.rx.turn_types]
+            for i, t in enumerate(known[: len(tt)]):
+                if t:
+                    tt[i] = int(t)
+            self.rx.turn_types = tt
+            self.free = [i for i in (self.free or ()) if i >= len(known) or not known[i]]
 
     def decide(self, ctx):
         """护栏（协调 11-18，初第二局中間倍率为 0 打了 227 分）：
-        1. 引擎和画面对账：每一步我们选的动作执行后，引擎算的加分和下一帧画面实际的加分累计比较；至少 CALIB_MIN_STEPS 步有实际加分、
+        1. 引擎和画面对账：每一步我们选的动作执行后，引擎算的加分和下一帧画面实际的加分都累计（每步都记），比累计值；至少 CALIB_MIN_STEPS 步有实际加分、
            累计实际加分 ≥ CALIB_MIN_SCORE 后，比值在 [CALIB_LOW, CALIB_HIGH] 之外 → 这一场的模型不可信，整场退回 uinet（whole_round）。只查试镜；
         2. 终局分预测中位 ≤ 0 → 这一步不信它，退回 uinet。
         没做「比 uinet 的终局分预测」：uinet 在初 / N.I.A 上的预测量级不可信（初中間预测 1.5–3 万、实际 900；课程预测 7.9 万、满分 80）。"""
         obs = ctx.obs
         self._update_lesson(getattr(ctx, "loadout", None))
+        self._known_types = (getattr(ctx, "loadout", None) or {}).get("turn_types") if isinstance(getattr(ctx, "loadout", None), dict) else None
         score = int((obs.get("num") or {}).get("score") or 0)
         if getattr(self, "_expect", None) is not None and not (getattr(self, "lo", None) or {}).get("lesson"):
             before, pred = self._expect
             act = score - before
             c = self.calib
-            if act > 0:  # 只看画面上确实加了分的步（动作没生效 / 画面没变时不算，免得把引擎多算的记进去）
-                c["pred"] += max(0, pred - before)
-                c["act"] += act
-                c["n"] += 1
+            # 累计比（每一步都记）：画面分数读数常比实际晚一步（初 PRO 第一局：引擎在出牌那步 +406 / +279，画面下一步才读到 +406 / +278），
+            # 以前只记「画面这一步涨了分」的步，引擎在画面没涨那一步算的加分全丢了，3 步累计引擎 13、画面 428 误判不可信（协调 11-18）
+            c["pred"] += max(0, pred - before)
+            c["act"] += max(0, act)
+            c["n"] += int(act > 0)
             if c["n"] >= CALIB_MIN_STEPS and c["act"] >= CALIB_MIN_SCORE:
                 r = c["pred"] / c["act"]
                 if not CALIB_LOW <= r <= CALIB_HIGH:
