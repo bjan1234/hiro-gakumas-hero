@@ -56,7 +56,7 @@ def _row_offset(text: str) -> int | None:
 
 
 def read_schedule_panel(img: np.ndarray, texts=None) -> dict | None:
-    """→ {current_turn, rows: {偏移: Vo/Da/Vi/None}, permil: {Vo, Da, Vi}（千分比，644% → 6440）, pass_rank, pass_score, close}；
+    """→ {current_turn, rows: {偏移: Vo/Da/Vi/None}, permil: {Vo, Da, Vi}（千分比，644% → 6440）, pass_rank, pass_score, pass_text（过线条件原文）, close}；
     不是这个面板 None。texts：hiro.vision.ocr.screen_texts 的结果（不给就自己读）。"""
     if img is None or img.shape[:2] != (1280, 720):
         return None
@@ -96,8 +96,10 @@ def read_schedule_panel(img: np.ndarray, texts=None) -> dict | None:
                     and (m := re.search(r"(\d{2,5})\s*[%％]", s))), None)  # fmt: skip
         if num is not None:
             permil[a] = num * 10
-    cond = next((s for s, _, _ in tx if "以上" in s and ("突破" in s or "位" in s)), "")
-    rank = re.search(r"(\d{1,2})位以上", cond)
+    # 过线条件一行（「3位以上で中間試験突破」「3位以上またはスコア1700以上で中間試験突破」；N.I.A「…オーディション突破」）：
+    # 先认带「突破」的那行，没有再退回「以上 + 位」。原文写进 pass_text（8a3a1e7 11-18：场次按原文关键词认中間 / 最終 / 1次 / 2次）
+    cond = next((s for s, _, _ in tx if "突破" in s), "") or next((s for s, _, _ in tx if "以上" in s and "位" in s), "")
+    rank = re.search(r"(\d{1,2})位(?:以上|以内|で)", cond)
     score = re.search(r"スコア(\d[\d,]*)以上", cond)
     return {
         "current_turn": cur,
@@ -106,6 +108,7 @@ def read_schedule_panel(img: np.ndarray, texts=None) -> dict | None:
         "permil": permil if len(permil) == 3 else None,
         "pass_rank": int(rank.group(1)) if rank else None,
         "pass_score": int(score.group(1).replace(",", "")) if score else None,
+        "pass_text": cond or None,
         "close": list(CLOSE),
     }
 

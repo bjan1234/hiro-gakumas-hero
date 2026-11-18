@@ -125,6 +125,7 @@ def test_read_schedule_panel_real_frame():
 
     p = read_schedule_panel(_panel_img())
     assert p["current_turn"] == 1 and p["pass_rank"] == 3 and p["pass_score"] == 1700
+    assert "中間" in p["pass_text"] and "突破" in p["pass_text"]  # 过线条件原文 → exam.pass_line.stage（8a3a1e7 按关键词认场次）
     assert p["permil"] == {"Vo": 6440, "Da": 6800, "Vi": 4280}
     assert turn_types([p], 9) == ["Vo", "Vi", "Da", "Da", "Vo", "Vo", "Vi", "Da", "Vo"]  # 协调核对的真值
 
@@ -181,7 +182,7 @@ def test_apply_panel_writes_exam_state():
                    NS(state=st), mem)  # fmt: skip
     assert st.exam["turn_types"] == ["Vo", "Da"] and st.sources["exam.turn_types"].origin == "screen"
     assert st.exam["attr_permil"] == {"Vo": 6440, "Da": 6800, "Vi": 4280} and mem.attr_permil["Da"] == 6800
-    assert st.exam["pass_line"] == {"rank": 3, "score": 1700}
+    assert st.exam["pass_line"] == {"rank": 3, "score": 1700, "stage": None}
 
 
 
@@ -203,6 +204,7 @@ def test_final_scrolled_panel_rows_and_effects():
     assert p["rows"] == {1: "Vo", 2: "Vi", 3: "Da", 4: "Vi", 5: "Vo", 6: "Vo", 7: "Da"}
     assert p["effects"] == {1: "やる気+5", 5: "元気が18以上の場合、やる気+8"}
     assert p["permil"] == {"Vo": 12860, "Da": 13320, "Vi": 7580} and p["pass_rank"] == 3 and p["pass_score"] is None
+    assert "最終" in (p["pass_text"] or "")
 
 
 def test_turn_effects_aligned_with_turns():
@@ -256,3 +258,27 @@ def test_apply_panel_writes_turn_effects():
     st = GameState(exam={})
     sp.apply_panel({"turn_types": ["Vo"], "turn_effects": [None, "やる気+5"]}, NS(state=st), NS(attr_permil={}))
     assert st.exam["turn_effects"] == [None, "やる気+5"] and st.sources["exam.turn_effects"].origin == "screen"
+
+
+def test_pass_line_stage_keeps_condition_text():
+    """8a3a1e7 11-18：MASTER 那局 pass_line 没有原文，场次只能按回合数猜。面板过线条件原文写进 exam.pass_line.stage；
+    只有原文、没读出名次 / 分数也写（N.I.A「…オーディション突破」）。"""
+    from types import SimpleNamespace as NS
+
+    import numpy as np
+
+    from hiro.contracts import GameState
+    from hiro.vision.schedule import read_schedule_panel
+
+    def box(text, x, y):
+        return NS(text=text, rect=NS(center=NS(x=x, y=y)))
+
+    img = np.zeros((1280, 720, 3), np.uint8)
+    p = read_schedule_panel(img, texts=[box("現在1ターン目", 360, 120), box("3位以上で最終試験突破", 360, 170)])
+    assert p["pass_text"] == "3位以上で最終試験突破" and p["pass_rank"] == 3
+    n = read_schedule_panel(img, texts=[box("現在1ターン目", 360, 120), box("1位で2次オーディション突破", 360, 170)])
+    assert n["pass_text"] == "1位で2次オーディション突破" and n["pass_rank"] == 1
+    st = GameState(exam={})
+    sp.apply_panel({"pass_text": "最終オーディション突破"}, NS(state=st), None)
+    assert st.exam["pass_line"] == {"rank": None, "score": None, "stage": "最終オーディション突破"}
+    assert st.sources["exam.pass_line"].origin == "screen"
