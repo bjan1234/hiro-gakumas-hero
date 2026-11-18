@@ -103,8 +103,7 @@ def probe(
     click(*BONUS_TAP)
     opened, img = _wait(lambda im: screen_diff(before, im) >= CHANGED_MIN, OPEN_WAIT, shoot, clock, sleep)
     t_open = clock()
-    sleep(0.5)  # 面板入场动画
-    img = shoot()
+    img = _settle(shoot, sleep, clock)  # 面板入场动画：等停稳再读（原来固定 0.5 秒，最終那次第一屏「現在のターン」没读到）
     boxes = ocr_boxes(img)
     texts = [t for t, _, _ in boxes]
     if log:
@@ -112,19 +111,22 @@ def probe(
     out = {"opened": opened, "closed": None, "close_by": None, "open_ms": round((t_open - t0) * 1000), "texts": texts, "panel": None}
     panels = []
     if opened and read_panel is not None:
-        panels = _read_panels(img, read_panel, swipe, total_turns, shoot, sleep, log, exam)
+        panels = _read_panels(img, read_panel, swipe, total_turns, shoot, sleep, log, exam, clock)
         if panels:
-            from hiro.vision.schedule import turn_types
+            from hiro.vision.schedule import turn_effects, turn_types
 
             first = panels[0]
-            out["panel"] = {"turn_types": turn_types(panels, total_turns), "permil": first.get("permil"), "pass_rank": first.get("pass_rank"),
-                            "pass_score": first.get("pass_score"), "current_turn": first.get("current_turn")}  # fmt: skip
+            out["panel"] = {"turn_types": turn_types(panels, total_turns), "turn_effects": turn_effects(panels, total_turns),
+                            "permil": first.get("permil"), "pass_rank": first.get("pass_rank"), "pass_score": first.get("pass_score"),
+                            "current_turn": first.get("current_turn")}  # fmt: skip
     if not opened:
         # 画面没变：点了没反应（或者不是可点的区域）。没有面板要关，照常继续
         out.update(closed=True, close_by="not_opened", close_ms=0, total_ms=round((clock() - t0) * 1000))
         _report(out, exam, note)
         return out
-    attempts = [("close_x", CLOSE_X)]  # 面板底部中间的圆形 ✕（实拍 (360,1160)；OCR 读成「X」，原来的关法没点到，协调 11-18 停机）
+    _settle(shoot, sleep, clock)  # 滑过以后面板还在惯性滚动：这时点 ✕ 只会让滚动停下（初 PRO 最終 11-18：2 种关法都没关上）
+    # 面板底部中间的圆形 ✕（实拍 (360,1160)；OCR 读成「X」）。点两次：第一下万一只是停住了滚动
+    attempts = [("close_x", CLOSE_X), ("close_x", CLOSE_X)]
     hit = find_text(boxes, CLOSE_TEXTS)
     if hit is not None:
         attempts.append(("close_text", hit))
@@ -133,7 +135,7 @@ def probe(
     back = False
     for how, xy in attempts:
         click(*xy)
-        back, img = _wait(lambda im: is_exam(im) and screen_diff(before, im) < CHANGED_MIN, CLOSE_WAIT, shoot, clock, sleep)
+        back, img = _wait(lambda im: _closed(im, before, is_exam), CLOSE_WAIT, shoot, clock, sleep)
         if back:
             out["close_by"] = how
             break
@@ -149,11 +151,34 @@ def probe(
     return out
 
 
+SETTLE_DIFF = 1.5  # 相邻两帧灰度缩略图平均差小于这个算停稳
+SETTLE_MAX = 3.0
+
+
+def _settle(shoot, sleep, clock, timeout: float = SETTLE_MAX):
+    """等画面停稳（相邻两帧几乎不变），最多 timeout 秒；返回最后一帧。"""
+    end = clock() + timeout
+    prev = shoot()
+    while True:
+        sleep(0.3)
+        img = shoot()
+        if screen_diff(prev, img) < SETTLE_DIFF or clock() >= end:
+            return img
+        prev = img
+
+
+def _closed(img, before, is_exam) -> bool:
+    """面板关上了：白色大面板不在了，并且认得出考试 / 课程 HUD 或画面和打开前差不多。"""
+    from hiro.vision.schedule import panel_open
+
+    return not panel_open(img) and (is_exam(img) or screen_diff(before, img) < CHANGED_MIN)
+
+
 SCROLLS = 3
 SCROLL_FROM, SCROLL_TO = (360, 950), (360, 450)  # 在面板的行区里往上滑
 
 
-def _read_panels(img, read_panel, swipe, total_turns, shoot, sleep, log, exam) -> list[dict]:
+def _read_panels(img, read_panel, swipe, total_turns, shoot, sleep, log, exam, clock=time.monotonic) -> list[dict]:
     """读一屏；行没覆盖到最后一回合时往下滑再读（12 回合的 H.I.F R2 一屏放不下）。"""
     panels = []
     p = read_panel(img)
@@ -165,8 +190,7 @@ def _read_panels(img, read_panel, swipe, total_turns, shoot, sleep, log, exam) -
         if swipe is None or not total_turns or cur is None or not rows or cur + max(rows) >= total_turns:
             break
         swipe(*SCROLL_FROM, *SCROLL_TO)
-        sleep(0.6)
-        img = shoot()
+        img = _settle(shoot, sleep, clock)  # 滑动有惯性：停稳再读
         p = read_panel(img)
         if p is None or not p.get("rows"):
             break
@@ -196,6 +220,9 @@ def apply_panel(panel: dict | None, session, memory) -> None:
     if panel.get("permil"):
         ex["attr_permil"] = {**(ex.get("attr_permil") or {}), **panel["permil"]}
         st.sources["exam.attr_permil"] = Source("screen", seq)
+    if panel.get("turn_effects"):
+        ex["turn_effects"] = list(panel["turn_effects"])  # 每回合的回合效果文字（gimmick），下标同 turn_types
+        st.sources["exam.turn_effects"] = Source("screen", seq)
     if panel.get("pass_rank") is not None or panel.get("pass_score") is not None:
         ex["pass_line"] = {"rank": panel.get("pass_rank"), "score": panel.get("pass_score")}
     st.exam = ex

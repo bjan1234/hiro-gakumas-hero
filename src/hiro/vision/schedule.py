@@ -21,6 +21,17 @@ ICON_HALF_H = 20
 ICON_MIN = 250  # 图标彩色像素（实测 1,000+）
 ATTR_WORDS = (("ボーカル", "Vo"), ("ダンス", "Da"), ("ビジュアル", "Vi"))
 PERMIL_Y = (225, 280)  # 三属性倍率那一行
+EFFECT_MAX_H = 160  # 最后一行标签下面最多往下看这么远找回合效果
+EFFECT_Y_MAX = 1130  # 面板底边（✕ 上方）
+PANEL_WHITE_MIN = 0.6  # 面板开着：中间区域白色占比（实拍 0.88–0.89；考试 / 课程 / 结算画面 ≤ 0.24）
+
+
+def panel_open(img: np.ndarray) -> bool:
+    """审查日程面板还开着（大块白色弹窗盖在考试画面上）。"""
+    if img is None or img.shape[:2] != (1280, 720):
+        return False
+    hsv = cv2.cvtColor(img[300:1100, 40:680], cv2.COLOR_BGR2HSV)
+    return float(((hsv[..., 2] > 230) & (hsv[..., 1] < 25)).mean()) >= PANEL_WHITE_MIN
 PERMIL_X = ((60, 260), (260, 460), (460, 660))  # Vo / Da / Vi 三格（图标 + 数字，从左到右固定顺序）
 
 
@@ -40,8 +51,8 @@ def _row_offset(text: str) -> int | None:
     t = text.replace(" ", "")
     if "現在のターン" in t:
         return 0
-    m = re.search(r"(\d{1,2})ターン後", t)
-    return int(m.group(1)) if m else None
+    m = re.search(r"([\dろ]{1,2})ターン後", t)  # OCR 常把「3」读成「ろ」（初 PRO 最終：「ろターン後」漏了第 3 回合）
+    return int(m.group(1).replace("ろ", "3")) if m else None
 
 
 def read_schedule_panel(img: np.ndarray, texts=None) -> dict | None:
@@ -55,7 +66,7 @@ def read_schedule_panel(img: np.ndarray, texts=None) -> dict | None:
         texts = screen_texts(img)
     tx = [(t.text.replace(" ", ""), int(t.rect.center.x), int(t.rect.center.y)) for t in texts]
     cur = next((int(m.group(1)) for s, _, _ in tx if (m := re.search(r"現在(\d{1,2})ターン目", s))), None)
-    labels = [(off, y) for s, x, y in tx if x < 200 and (off := _row_offset(s)) is not None]
+    labels = sorted(((off, y) for s, x, y in tx if x < 200 and (off := _row_offset(s)) is not None), key=lambda r: r[1])
     if cur is None and not labels:
         return None
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
@@ -66,6 +77,19 @@ def read_schedule_panel(img: np.ndarray, texts=None) -> dict | None:
             word = next((s for s, x, yy in tx if x > 240 and abs(yy - y) <= 20), "")
             attr = next((a for w, a in ATTR_WORDS if w in word), None)
         rows[off] = attr
+    effects: dict[int, str] = {}
+    for k, (off, y) in enumerate(labels):  # 回合效果（gimmick）：行标签下面、下一行标签上面的文字（最終「1ターン後」下面的「やる気+5」）
+        y_end = labels[k + 1][1] - 15 if k + 1 < len(labels) else min(y + EFFECT_MAX_H, EFFECT_Y_MAX)
+        boxes = sorted((yy, x, s) for s, x, yy in tx if x > 150 and y + 30 <= yy <= y_end and not any(w in s for w, _ in ATTR_WORDS))
+        lines: list[list[tuple[int, str]]] = []  # 同一行（y 差 ≤ 12）的字按 x 排：「元気が18以上の場合、」「やる気+8」只差 2 像素
+        last_y = None
+        for yy, x, txt in boxes:
+            if last_y is None or yy - last_y > 12:
+                lines.append([])
+            lines[-1].append((x, txt))
+            last_y = yy
+        if lines:
+            effects[off] = "".join(t for line in lines for _, t in sorted(line))
     permil = {}
     for (x1, x2), a in zip(PERMIL_X, ("Vo", "Da", "Vi")):
         num = next((int(m.group(1)) for s, x, y in tx if x1 <= x < x2 and PERMIL_Y[0] <= y <= PERMIL_Y[1]
@@ -78,11 +102,24 @@ def read_schedule_panel(img: np.ndarray, texts=None) -> dict | None:
     return {
         "current_turn": cur,
         "rows": rows,
+        "effects": effects,
         "permil": permil if len(permil) == 3 else None,
         "pass_rank": int(rank.group(1)) if rank else None,
         "pass_score": int(score.group(1).replace(",", "")) if score else None,
         "close": list(CLOSE),
     }
+
+
+def turn_effects(panels: list[dict], total_turns: int | None) -> list[str | None] | None:
+    """几屏面板的回合效果 → 全场每回合一项（下标 0 = 第 1 回合，没有效果 / 没看到的回合 None）；一条都没有给 None。"""
+    cur = next((p["current_turn"] for p in panels if p.get("current_turn")), None)
+    if cur is None:
+        return None
+    by_turn = {cur + off: e for p in panels for off, e in (p.get("effects") or {}).items() if e}
+    if not by_turn:
+        return None
+    n = total_turns if total_turns else max(by_turn)
+    return [by_turn.get(t) for t in range(1, n + 1)]
 
 
 def turn_types(panels: list[dict], total_turns: int | None) -> list[str | None] | None:
