@@ -57,7 +57,7 @@ def test_closes_with_close_text(exam_img):
     s = Screen(exam_img, "text")
     out = s.run()
     assert out["opened"] and out["closed"] and out["close_by"] == "close_text" and s.state == "exam"
-    assert s.taps == [sp.BONUS_TAP, sp.CLOSE_X, (360, 1180)]  # 先点底部 ✕（这个假面板不认），再点「閉じる」
+    assert s.taps == [sp.BONUS_TAP, sp.CLOSE_X, sp.CLOSE_X, (360, 1180)]  # 先点底部 ✕ 两次（这个假面板不认），再点「閉じる」
     assert s.logged == ["exam_schedule_probe_open", "exam_schedule_probe_closed"]
     assert out["total_ms"] >= out["open_ms"]
 
@@ -65,7 +65,7 @@ def test_closes_with_close_text(exam_img):
 def test_retap_when_no_close_text(exam_img):
     s = Screen(exam_img, "retap")
     out = s.run()
-    assert out["closed"] and out["close_by"] == "retap" and s.taps == [sp.BONUS_TAP, sp.CLOSE_X, sp.BONUS_TAP]
+    assert out["closed"] and out["close_by"] == "retap" and s.taps == [sp.BONUS_TAP, sp.CLOSE_X, sp.CLOSE_X, sp.BONUS_TAP]
 
 
 def test_not_opened_taps_once(exam_img):
@@ -78,7 +78,7 @@ def test_stuck_panel_stops(exam_img):
     s = Screen(exam_img, "stuck")
     with pytest.raises(ResumeBlocked):
         s.run()
-    assert s.state == "panel" and s.taps == [sp.BONUS_TAP, sp.CLOSE_X, sp.BONUS_TAP]  # 只试了 ✕ 和点同一块，没在考试里乱点
+    assert s.state == "panel" and s.taps == [sp.BONUS_TAP, sp.CLOSE_X, sp.CLOSE_X, sp.BONUS_TAP]  # 只试了 ✕ 和点同一块，没在考试里乱点
 
 
 def test_tap_far_from_hand():
@@ -182,3 +182,77 @@ def test_apply_panel_writes_exam_state():
     assert st.exam["turn_types"] == ["Vo", "Da"] and st.sources["exam.turn_types"].origin == "screen"
     assert st.exam["attr_permil"] == {"Vo": 6440, "Da": 6800, "Vi": 4280} and mem.attr_permil["Da"] == 6800
     assert st.exam["pass_line"] == {"rank": 3, "score": 1700}
+
+
+
+# ---------------------------------------------------------------- 最終面板（滑过、有回合效果行，协调 11-18 初 PRO 最終）
+FINAL = Path(__file__).parent / "fixtures" / "pages" / "exam-schedule-panel-hajime-final-scrolled.png"
+
+
+def _final_img():
+    if not FINAL.exists():
+        pytest.skip("需要实机截图 pages/exam-schedule-panel-hajime-final-scrolled.png")
+    return cv2.imread(str(FINAL))
+
+
+def test_final_scrolled_panel_rows_and_effects():
+    """行高不一致（回合效果行）也按每行「Nターン後」文字定位；「ろターン後」= 3；回合效果按行读出。"""
+    from hiro.vision.schedule import read_schedule_panel
+
+    p = read_schedule_panel(_final_img())
+    assert p["rows"] == {1: "Vo", 2: "Vi", 3: "Da", 4: "Vi", 5: "Vo", 6: "Vo", 7: "Da"}
+    assert p["effects"] == {1: "やる気+5", 5: "元気が18以上の場合、やる気+8"}
+    assert p["permil"] == {"Vo": 12860, "Da": 13320, "Vi": 7580} and p["pass_rank"] == 3 and p["pass_score"] is None
+
+
+def test_turn_effects_aligned_with_turns():
+    from hiro.vision.schedule import turn_effects
+
+    assert turn_effects([{"current_turn": 1, "effects": {1: "やる気+5", 5: "x"}}], 11) == [None, "やる気+5", None, None, None, "x"] + [None] * 5
+
+
+@pytest.mark.parametrize(("name", "open_"), [("exam-schedule-panel-hajime-final-scrolled.png", True), ("exam-schedule-panel-hajime-mid1.png", True),
+                                             ("hajime-exam.jpg", False), ("hajime-lesson-probe-stuck.png", False), ("hajime-exam-result.jpg", False)])
+def test_panel_open(name, open_):
+    from hiro.vision.offline import load
+    from hiro.vision.schedule import panel_open
+
+    p = Path(__file__).parent / "fixtures" / "pages" / name
+    if not p.exists():
+        pytest.skip(f"需要实机截图 pages/{name}")
+    assert panel_open(load(cv2.imread(str(p)))) is open_
+
+
+def test_close_after_scroll_first_tap_only_stops_inertia():
+    """滑过以后：第一下点 ✕ 只停住了惯性滚动（实机 11-18），第二下才关上；之前要等停稳。"""
+    import numpy as np
+
+    panel = _final_img()
+    exam_img = np.full((1280, 720, 3), 60, np.uint8)
+    state = {"s": "exam", "x_taps": 0}
+    taps = []
+
+    def click(x, y):
+        taps.append((x, y))
+        if state["s"] == "exam" and (x, y) == sp.BONUS_TAP:
+            state["s"] = "panel"
+        elif state["s"] == "panel" and (x, y) == sp.CLOSE_X:
+            state["x_taps"] += 1
+            if state["x_taps"] >= 2:
+                state["s"] = "exam"
+
+    t = [0.0]
+    out = sp.probe(exam_img, exam="hajime-final", shoot=lambda: exam_img if state["s"] == "exam" else panel, click=click,
+                   ocr_boxes=lambda img: [], is_exam=lambda im: im is exam_img, clock=lambda: t[0],
+                   sleep=lambda s: t.__setitem__(0, t[0] + s))  # fmt: skip
+    assert out["closed"] and out["close_by"] == "close_x" and taps == [sp.BONUS_TAP, sp.CLOSE_X, sp.CLOSE_X]
+
+
+def test_apply_panel_writes_turn_effects():
+    from types import SimpleNamespace as NS
+
+    from hiro.contracts import GameState
+
+    st = GameState(exam={})
+    sp.apply_panel({"turn_types": ["Vo"], "turn_effects": [None, "やる気+5"]}, NS(state=st), NS(attr_permil={}))
+    assert st.exam["turn_effects"] == [None, "やる気+5"] and st.sources["exam.turn_effects"].origin == "screen"
