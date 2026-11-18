@@ -316,16 +316,21 @@ class HifCore:
     _schedule_probed = False  # 日程列表探针每个进程只跑一次
 
     def _maybe_probe_schedule(self) -> None:
-        """开关 HIRO_SCHEDULE_PROBE=1（默认关）：初 / N.I.A 第一次到选行动页时点开日程列表采样（hiro.produce.schedule_probe）。"""
+        """开关 HIRO_SCHEDULE_PROBE=1（默认关）：初 / N.I.A 第一次到选行动页时点开日程列表读整局日程（hiro.produce.schedule_probe），
+        写进 produce.schedule；局面里已经有了（续跑打底）就不再读。"""
         from hiro.produce import schedule_probe
         from hiro.state.modes import HAJIME, NIA, family
 
-        if type(self)._schedule_probed or not schedule_probe.enabled() or family((self.s.state.produce or {}).get("mode")) not in (HAJIME, NIA):
+        prod = self.s.state.produce or {}
+        if type(self)._schedule_probed or not schedule_probe.enabled() or family(prod.get("mode")) not in (HAJIME, NIA):
             return
         type(self)._schedule_probed = True
+        if prod.get("schedule"):
+            return  # 续跑：上一段 trace 读过（produce 打底带过来了），沿用
         try:
-            schedule_probe.probe(Path(self.s.trace.dir) / "schedule-probe", shoot=device.screenshot, click=device.click, swipe=device.swipe,
-                                 sleep=sleep, note=self.s.note)  # fmt: skip
+            got = schedule_probe.probe(Path(self.s.trace.dir) / "schedule-probe", shoot=device.screenshot, click=device.click, swipe=device.swipe,
+                                       sleep=sleep, note=self.s.note)  # fmt: skip
+            schedule_probe.apply(got.get("schedule"), self.s)
         except ResumeBlocked:
             raise
         except Exception as e:  # noqa: BLE001  采样失败不影响这一局
