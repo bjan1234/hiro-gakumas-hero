@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 
 ENTRY = (112, 92)  # 选行动页左上页头框（初「中間まで 4週」框中心约 (112, 95)；N.I.A 同位置）
 OPEN_MIN_S = 1.0  # 点了以后至少等这么久再判有没有打开
+# 停稳后还没认出：再盯这么久，每 LATE_EVERY 秒读一次（协调 11-18 N.I.A MASTER：开局后第一次选行动，点了 8 秒后列表才弹出，
+# 原来 4 秒就判「没打开」走了，列表盖住选行动页，后面点行动点在列表上）
+LATE_OPEN_S = 12.0
+LATE_EVERY = 1.0
 SETTLE_DIFF = 1.5
 SETTLE_MAX = 3.0
 SCROLL_MAX = 8  # 每个方向最多滑几次
@@ -92,6 +96,14 @@ def probe(out_dir: Path, *, shoot, click, swipe, sleep=None, clock=time.monotoni
     click(*ENTRY)
     img = _settle(shoot, sleep, clock, OPEN_MIN_S)
     first = read(img)
+    t_late = clock()
+    while first is None and clock() - t_late < LATE_OPEN_S:
+        sleep(LATE_EVERY)
+        img = shoot()
+        if (first := read(img)) is not None:
+            logger.info("日程列表：点了 %.1f 秒后才弹出", clock() - t_late + OPEN_MIN_S)
+            img = _settle(shoot, sleep, clock)  # 入场动画：停稳再读
+            first = read(img) or first
     result = {"opened": first is not None, "schedule": None, "closed": None, "frames": frames}
     if first is None:
         save(img, "not-opened")

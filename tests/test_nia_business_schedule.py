@@ -181,3 +181,35 @@ def test_probe_off_by_default(monkeypatch):
     Core.s = NS(state=NS(produce={"mode": "produce-007"}))  # H.I.F 不探
     HifCore._maybe_probe_schedule(Core())
     assert called == []
+
+
+def test_probe_waits_for_late_list(tmp_path, monkeypatch):
+    """协调 11-18 N.I.A MASTER：开局后第一次选行动，点了 8 秒后列表才弹出；原来 4 秒就判没打开，列表盖住选行动页。
+    停稳后认不出再盯 LATE_OPEN_S 秒，弹出来照常读、滑、关。"""
+    from hiro.produce import schedule_probe as sp
+    from hiro.vision.schedule_list import CLOSE
+
+    t, clicks = [0.0], []
+    img = np.full((1280, 720, 3), 100, np.uint8)
+
+    def read(im):
+        return _screen([1, 2, 3], 1) if t[0] >= 8.0 else None
+
+    monkeypatch.setattr(sp, "_at_action_select", lambda im: bool(clicks) and clicks[-1] == CLOSE)
+    got = sp.probe(tmp_path / "late", shoot=lambda: img, click=lambda x, y: clicks.append((x, y)), swipe=lambda *a: None,
+                   sleep=lambda s: t.__setitem__(0, t[0] + s), clock=lambda: t[0], read=read)  # fmt: skip
+    assert got["opened"] and got["closed"] and clicks == [sp.ENTRY, CLOSE] and got["schedule"]["current_week"] == 1
+
+
+def test_nia_schedule_list_icons():
+    """N.I.A 实拍（MASTER 第 1 周，列表晚弹出那一帧）：営業 紫、差し入れ 橙、おでかけ、自主レッスン 三色。"""
+    from hiro.vision.schedule_list import read_schedule_list
+
+    p = Path(__file__).parent / "fixtures" / "schedule_list" / "nia-schedule-list-late.jpg"
+    if not p.exists():
+        pytest.skip("需要实机截图 schedule_list/nia-schedule-list-late.jpg")
+    r = read_schedule_list(cv2.imread(str(p)))
+    got = {w: [(o["option"], o["attr"]) for o in e["options"]] for w, e in r["weeks"].items()}
+    lessons = [("training", "Vo"), ("training", "Da"), ("training", "Vi")]
+    assert got == {1: lessons, 2: [("sales", None)], 3: [("outing", None), ("present", None)], 4: lessons, 5: [("sales", None)]}
+    assert r["current_week"] == 1

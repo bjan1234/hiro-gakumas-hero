@@ -28,7 +28,7 @@ ENABLED_ENV = "HIRO_EXAM_SCHEDULE_PROBE"
 BONUS_TAP = (115, 95)  # BonusButtonArea 中部（720x1280）
 CLOSE_X = (360, 1160)  # 面板底部圆形 ✕
 CLOSE_TEXTS = ("閉じる", "とじる", "✕", "×")
-OPEN_WAIT = 3.0  # 点了以后等面板出来
+OPEN_WAIT = 5.0  # 点了以后等面板出来（白色大面板盖上来才算打开）
 CLOSE_WAIT = 3.0  # 每次关闭后等回到考试画面
 CHANGED_MIN = 8.0  # 整屏灰度平均差：面板盖上来远大于这个；同一考试画面两帧（角色在动）实测 < 4
 
@@ -101,7 +101,11 @@ def probe(
 
     t0 = clock()
     click(*BONUS_TAP)
-    opened, img = _wait(lambda im: screen_diff(before, im) >= CHANGED_MIN, OPEN_WAIT, shoot, clock, sleep)
+    from hiro.vision.schedule import panel_open
+
+    # 按白色大面板认打开，不按整屏差（协调 11-18 N.I.A MASTER：试镜里偶像在跳舞，整屏差过阈值判成「打开了」，面板其实没出来，
+    # 读数全 None，还在出牌区下面点了 ✕ 的位置）
+    opened, img = _wait(panel_open, OPEN_WAIT, shoot, clock, sleep)
     t_open = clock()
     img = _settle(shoot, sleep, clock)  # 面板入场动画：等停稳再读（原来固定 0.5 秒，最終那次第一屏「現在のターン」没读到）
     boxes = ocr_boxes(img)
