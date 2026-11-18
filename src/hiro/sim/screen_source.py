@@ -45,13 +45,14 @@ OUENBOU_POOL_ENV = "HIRO_SIM_OUENBOU_POOL"
 
 # P 道具账本为空时（mainz4 整局 produce 没有 items、考试画面 pitems 也是空的），run_loadout 给空道具，合成开局把模板的道具全清掉：
 # 引擎里连固有道具（広：えいえいおー HP≥50% 追加行动 / 失血 15%）都没有，搜索推演的主循环是错的。打开后只放偶像卡的固有道具。
-# 1 = 主数据 IdolCard.beforeProduceItemId（未凸；模板 campus-20261019 里也是它）；也可以直接写道具 id（凸后 …-1）。缺省关。
+# 1 = 主数据 IdolCard.beforeProduceItemId（未凸；模板 campus-20261019 里也是它）；也可以直接写道具 id（凸后 …-1）。
+# 缺省开（建模错，协调 11-18 批准）；0 / off 关。
 UNIQUE_ITEM_ENV = "HIRO_SIM_UNIQUE_ITEM"
 
 
 def unique_item(idol_card_id: str | None) -> str | None:
-    v = os.environ.get(UNIQUE_ITEM_ENV, "").strip()
-    if not v or v.lower() in ("0", "off", "false", "no"):
+    v = (os.environ.get(UNIQUE_ITEM_ENV) or "1").strip()
+    if v.lower() in ("0", "off", "false", "no"):
         return None
     if v.startswith("pitem_"):
         return v
