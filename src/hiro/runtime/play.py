@@ -113,6 +113,8 @@ def _commu_tap_ok(rt) -> bool:
     if last is not None and _clock(rt) - last < COMMU_RETAP_S:
         logger.info("快速判页 commu：%.1f 秒前刚点过 SKIP，不再点（等剧情收尾）", _clock(rt) - last)
         return False
+    if getattr(rt, "screen", None) is None:
+        return True  # 没有截图通道（离线替身）：只按间隔
     try:
         fresh = rt.screen.shot().img
     except Exception:  # noqa: BLE001  截不到图：不点，下一拍再看
@@ -129,10 +131,11 @@ def _quick_tap(rt, q: dict, now: float) -> bool:
 
     if q.get("tap") is not None:
         rt._quick_wait = None
-        if q["page"] == "commu" and not _commu_tap_ok(rt):
+        skip = q["page"] == "commu" and not (q.get("fields") or {}).get("kind")  # 剧情底栏 SKIP（事件台词框 event_dialogue 点的是台词框，不管）
+        if skip and not _commu_tap_ok(rt):
             return False
         rt.device.tap(*q["tap"])
-        if q["page"] == "commu":
+        if skip:
             rt._commu_tap_at = _clock(rt)
         if q["page"] == "commu":
             _flag_deck_after_commu(rt)
