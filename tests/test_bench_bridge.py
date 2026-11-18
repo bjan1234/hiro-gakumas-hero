@@ -1356,9 +1356,11 @@ def test_items_from_screen_enchants():
 # ---------------------------------------------------------------- 初 PRO 最終被标成中間（协调 11-18）
 @pytest.mark.bench_on
 @pytest.mark.parametrize("label, pass_line, limit, want", [
-    ("hajime-mid1", {"rank": 3, "score": None}, 11, "hajime-final"),  # 面板「3位以上で最終試験突破」→ 最終
+    ("hajime-mid1", {"rank": 3, "score": None, "stage": "3位以上で最終試験突破"}, 11, "hajime-final"),  # 面板原文 → 最終
+    ("hajime-mid1", {"rank": 3, "score": None, "stage": "3位以上で中間試験突破"}, 11, "hajime-mid1"),  # MASTER 中間只看名次：原文为准
+    ("hajime-mid1", {"rank": 3, "score": None}, 9, "hajime-mid1"),  # 没有原文：不按分数线有无判，按回合数（9 = 中間）
     ("hajime-mid1", None, 11, "hajime-final"),  # 没面板：回合数 11 = 最終
-    ("hajime-final", {"rank": 3, "score": 1700}, 9, "hajime-mid1"),  # 面板带分数线 → 中間
+    ("hajime-final", {"rank": 3, "score": 1700, "stage": "3位以上または1700点以上で中間試験突破"}, 9, "hajime-mid1"),
     ("hajime-mid1", None, 9, "hajime-mid1"),  # 对得上：不动
 ])  # fmt: skip
 def test_hajime_round_follows_panel_and_turns(monkeypatch, label, pass_line, limit, want):
@@ -1391,3 +1393,30 @@ def test_hajime_final_objective_prefers_first_place():
 
     assert stage_objective({"audition": {"rankThreshold": 3, "forceEndScore": 0}}) == {"pass_rank": 3}
     assert stage_objective({"audition": {"rankThreshold": 3, "forceEndScore": 1700}}) == {"pass_rank": 3, "score_cap": 1700}
+
+
+@pytest.mark.parametrize("fam, stage, want", [
+    ("hajime", "3位以上で中間試験突破", "mid1"), ("hajime", "3位以上またはスコア1700以上で中間試験突破", "mid1"),
+    ("hajime", "3位以上で最終試験突破", "final"), ("hajime", "", None), ("hajime", "3位以上", None),
+    ("nia", "1位で1次オーディション突破", "mid1"), ("nia", "１位で２次オーディション突破", "mid2"), ("nia", "最終オーディション", "final"),
+    ("nia", "1位", None),
+])  # fmt: skip
+def test_stage_round_from_panel_text(fam, stage, want):
+    assert A.stage_round(fam, stage) == want
+
+
+@pytest.mark.bench_on
+def test_nia_round_follows_panel_text_only(monkeypatch):
+    """N.I.A：标签和面板原文对不上时按原文改（nia-mid1 → nia-mid2），档位 tag 保留；没有原文不按回合数猜。"""
+    monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_NIA", raising=False)
+    monkeypatch.setattr(A.BenchAdvisor, "_audition_defaults", lambda self, idol, number: None)
+    algo = _Algo(("play", 0))
+    monkeypatch.setattr(A, "load_algo", lambda *a, **k: algo)
+    for pl, want in (({"rank": 1, "stage": "1位で2次オーディション突破"}, "nia-mid2#audition-2"), (None, "nia-mid1#audition-2")):
+        sess = SimpleNamespace(state=SimpleNamespace(produce={"mode": "produce-005"}, exam={"pass_line": pl} if pl else {}))
+        adv = A.BenchAdvisor(CAMPUS_HIRO)
+        adv.on_round_start(1, {"exam": "nia-mid1#audition-2", "idol": None, "deck": [("p_card-a", 0)], "session": sess})
+        st, mem = _state([_card(0, "p_card-a")], remaining=12, turn=1)
+        adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+        assert adv.label == want
