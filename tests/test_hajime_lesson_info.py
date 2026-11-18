@@ -41,6 +41,7 @@ def test_hud_hard_lesson():
     assert hv.lesson_turns(_img("hajime-lesson-hard-bonus.jpg")) == 3  # 「2+1」：剩 2 + 追加 1
 
 
+@pytest.mark.sim_master  # 查模拟器主数据（vendor/gakumas-player 的 catalog.sqlite）
 def test_lesson_info_normal_matches_master():
     from hiro.runtime.hajime import LessonInfo
 
@@ -55,6 +56,7 @@ def test_lesson_info_normal_matches_master():
     assert info.d["perfect_target"] == 50 and info.d["lesson_limit_up_score"] == 0 and info.done
 
 
+@pytest.mark.sim_master  # 查模拟器主数据（vendor/gakumas-player 的 catalog.sqlite）
 def test_lesson_info_extra_turn_and_limit_up():
     from hiro.runtime.hajime import LessonInfo
 
@@ -65,6 +67,7 @@ def test_lesson_info_extra_turn_and_limit_up():
     assert (info.d["exam_extra_turn"], info.d["perfect_target"], info.d["lesson_limit_up_score"]) == (2, 70, 20)
 
 
+@pytest.mark.sim_master  # 查模拟器主数据（vendor/gakumas-player 的 catalog.sqlite）
 def test_lesson_info_hard_uses_pro_levels():
     """追い込み：画面 CLEAR 90 / 165，初 REGULAR 主数据 hard 档是 75 / 100 对不上；按 produce-002 的 hard 档（8a3a1e7：实录都是）对上。
     满分线读不到（右上换成追い込みボーナス）留空。"""
@@ -79,6 +82,7 @@ def test_lesson_info_hard_uses_pro_levels():
     assert info.d["perfect_target"] is None and info.d["lesson_limit_up_score"] is None
 
 
+@pytest.mark.sim_master  # 查模拟器主数据（vendor/gakumas-player 的 catalog.sqlite）
 def test_lesson_levels_unmatched_left_empty():
     from hiro.state import modes
 
