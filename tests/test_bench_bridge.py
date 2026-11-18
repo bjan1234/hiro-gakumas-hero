@@ -1180,7 +1180,7 @@ def _guarded(monkeypatch, steps, lo=None):
     from hiro.search import tower_algo as ta
 
     algo = X.ExamGnrpa.__new__(X.ExamGnrpa)
-    algo.calib, algo._expect, algo.hold_strong, algo.lo = {"pred": 0, "act": 0, "n": 0}, None, False, lo or {}
+    algo.calib, algo.hold_strong, algo.lo = {"pred": 0, "act": 0, "n": 0, "base": None, "last": 0}, False, lo or {}
     it = iter(steps)
     out = []
 
@@ -1208,7 +1208,7 @@ def test_guard_engine_vs_screen_calibration(monkeypatch):
     noisy = _guarded(monkeypatch, [(0, 20, 900), (40, 60, 900), (100, 120, 900), (160, 170, 900), (200, 230, 900)])  # 0.4 倍：bench 正常局有
     assert not any(isinstance(x, SearchDistrust) for x in noisy)
     # 画面分数读数晚一步（初 PRO 第一局：引擎出牌那步就 +406，画面下一步才读到）：累计比不误报
-    lag = _guarded(monkeypatch, [(22, 428, 900), (22, 707, 900), (428, 519, 900), (706, 740, 900), (706, 740, 900), (1504, 1600, 900)])
+    lag = _guarded(monkeypatch, [(22, 428, 900), (22, 301, 900), (428, 519, 900), (706, 740, 900), (706, 740, 900), (1504, 1600, 900)])
     assert not any(isinstance(x, SearchDistrust) for x in lag)
     lesson = _guarded(monkeypatch, [(0, 0, 50), (40, 40, 50), (80, 80, 50), (120, 120, 50), (160, 160, 50)], lo={"lesson": {"clear_score": 40}})
     assert not any(isinstance(x, SearchDistrust) for x in lesson)  # 课程不查（追い込み加成等已知缺口会让比值很低）
@@ -1420,3 +1420,44 @@ def test_nia_round_follows_panel_text_only(monkeypatch):
         st, mem = _state([_card(0, "p_card-a")], remaining=12, turn=1)
         adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
         assert adv.label == want
+
+
+def test_guard_undo_removes_not_executed_gain(monkeypatch):
+    """N.I.A MASTER 第一局（协调 11-18）：帧过时没点的动作引擎已执行，加分被算进对账（899 对 197）。undo_last 把引擎退回、加分减掉，
+    下一步画面照常累计，不误报。"""
+    from hiro.search import exam_algo as X
+    from hiro.search import tower_algo as ta
+
+    algo = X.ExamGnrpa.__new__(X.ExamGnrpa)
+    algo.calib, algo.hold_strong, algo.lo = {"pred": 0, "act": 0, "n": 0, "base": None, "last": 0}, False, {}
+    algo.stats = __import__("collections").Counter()
+
+    def fake(self, ctx):
+        self.prev = SimpleNamespace(score=ctx.obs["num"]["score"], ended=False)
+        self.rx = SimpleNamespace(score=ctx.obs["_engine"], ended=False)
+        return ta.Decision(("play", 0), {"score_quantiles": {"50%": 900}})
+
+    monkeypatch.setattr(ta.TowerGnrpa, "decide", fake)
+    seq = [(0, 300, True), (0, 300, True), (0, 300, False), (300, 600, True), (300, 600, False), (600, 900, False), (900, 1200, False), (1200, 1500, False)]
+    for screen, engine, stale in seq:
+        algo.decide(SimpleNamespace(obs={"num": {"score": screen}, "_engine": engine, "drinks": [], "legal": []}))
+        if stale:
+            algo.undo_last()
+    assert algo.stats["undone"] == 3 and algo.calib["pred"] == 1500 and algo.calib["act"] == 1200
+
+
+def test_not_executed_hook_pops_history_and_undoes(monkeypatch):
+    """执行层说上一个决策没生效（帧过时没点 / 牌没打出去 / 画面没变）：中转层把这一步的历史记录作废、调搜索的 undo_last；
+    上一步不是这一层记的（规则兜底）就不动历史。执行层的钩子是可选的，插件没有就跳过。"""
+    from hiro.exec.exam import _not_executed
+
+    undone = []
+    adv = A.BenchAdvisor.__new__(A.BenchAdvisor)
+    adv.label, adv.algo = "nia-mid1", None
+    adv.round_algo = SimpleNamespace(undo_last=lambda: undone.append(1))
+    adv._history, adv._appended = [("o1", ["play", 0]), ("o2", ["drink", 0])], True
+    _not_executed(adv, "drink:0", "决策帧已过时")
+    assert adv._history == [("o1", ["play", 0])] and undone == [1]
+    _not_executed(adv, "play:0", "执行后画面未变化")  # 这一步没记历史（_appended 已清）：历史不动
+    assert adv._history == [("o1", ["play", 0])] and undone == [1, 1]
+    _not_executed(object(), "skip", "x")  # 没有钩子的插件：什么也不做

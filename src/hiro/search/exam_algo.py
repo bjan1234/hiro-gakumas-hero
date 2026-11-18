@@ -86,7 +86,7 @@ class ExamGnrpa(TowerGnrpa):
         self.drawn = 0
         self.stats = collections.Counter()
         self.hold_strong = bool(self.lo.get("lesson"))  # 课程：强饮料留到考试（协调 11-18）
-        self.calib = {"pred": 0, "act": 0, "n": 0}  # 引擎算的每步加分 vs 画面实际加分（护栏）
+        self.calib = {"pred": 0, "act": 0, "n": 0, "base": None, "last": 0}  # 引擎算的累计加分 vs 画面累计加分（护栏）
         self._expect = None
         self._known_types = None
         self._replay(getattr(ctx, "history", None) or ())
@@ -123,36 +123,50 @@ class ExamGnrpa(TowerGnrpa):
 
     def decide(self, ctx):
         """护栏（协调 11-18，初第二局中間倍率为 0 打了 227 分）：
-        1. 引擎和画面对账：每一步我们选的动作执行后，引擎算的加分和下一帧画面实际的加分都累计（每步都记），比累计值；至少 CALIB_MIN_STEPS 步有实际加分、
-           累计实际加分 ≥ CALIB_MIN_SCORE 后，比值在 [CALIB_LOW, CALIB_HIGH] 之外 → 这一场的模型不可信，整场退回 uinet（whole_round）。只查试镜；
+        1. 引擎和画面对账：引擎累计加分（生效的动作）对画面累计加分；画面至少 CALIB_MIN_STEPS 次涨分、累计 ≥ CALIB_MIN_SCORE 后，
+           比值（含 / 不含最后一步）都在 [CALIB_LOW, CALIB_HIGH] 之外 → 这一场的模型不可信，整场退回 uinet（whole_round）。只查试镜；
         2. 终局分预测中位 ≤ 0 → 这一步不信它，退回 uinet。
         没做「比 uinet 的终局分预测」：uinet 在初 / N.I.A 上的预测量级不可信（初中間预测 1.5–3 万、实际 900；课程预测 7.9 万、满分 80）。"""
         obs = ctx.obs
         self._update_lesson(getattr(ctx, "loadout", None))
         self._known_types = (getattr(ctx, "loadout", None) or {}).get("turn_types") if isinstance(getattr(ctx, "loadout", None), dict) else None
         score = int((obs.get("num") or {}).get("score") or 0)
-        if getattr(self, "_expect", None) is not None and not (getattr(self, "lo", None) or {}).get("lesson"):
-            before, pred = self._expect
-            act = score - before
-            c = self.calib
-            # 累计比（每一步都记）：画面分数读数常比实际晚一步（初 PRO 第一局：引擎在出牌那步 +406 / +279，画面下一步才读到 +406 / +278），
-            # 以前只记「画面这一步涨了分」的步，引擎在画面没涨那一步算的加分全丢了，3 步累计引擎 13、画面 428 误判不可信（协调 11-18）
-            c["pred"] += max(0, pred - before)
-            c["act"] += max(0, act)
-            c["n"] += int(act > 0)
-            if c["n"] >= CALIB_MIN_STEPS and c["act"] >= CALIB_MIN_SCORE:
-                r = c["pred"] / c["act"]
-                if not CALIB_LOW <= r <= CALIB_HIGH:
-                    self._expect = None
-                    raise SearchDistrust(f"引擎算的加分和画面差太多：{c['n']} 步累计引擎 {c['pred']}、画面 {c['act']}（比值 {r:.2f}）")
-        self._expect = None
+        c = getattr(self, "calib", None)
+        if c is not None and not (getattr(self, "lo", None) or {}).get("lesson"):
+            # 累计口径（和每步配对无关）：画面累计 = 现在的画面分 − 开局时的画面分；引擎累计 = 每个生效动作在引擎里的加分之和
+            # （没生效的由 undo_last 减掉）。画面分数读数常晚一步：最后一步的引擎加分画面可能还没显示，含 / 不含它两个比值都出界才判不可信。
+            # 历次误报：只记「画面涨了分」的步（初 PRO 13 对 428）；没生效的动作留在引擎里（N.I.A MASTER 899 对 197）（协调 11-18）
+            if c.get("base") is None:
+                c["base"] = score
+            act = score - c["base"]
+            if score > c.get("last_score", score):
+                c["n"] += 1
+            c["last_score"] = score
+            c["act"] = act
+            if c["n"] >= CALIB_MIN_STEPS and act >= CALIB_MIN_SCORE:
+                hi = c["pred"] / act
+                lo = (c["pred"] - c.get("last", 0)) / act
+                if hi < CALIB_LOW or lo > CALIB_HIGH:
+                    raise SearchDistrust(f"引擎算的加分和画面差太多：{c['n']} 步累计引擎 {c['pred']}、画面 {act}（比值 {lo:.2f}–{hi:.2f}）")
         d = self._decide_held(ctx)
         q = (d.meta or {}).get("score_quantiles") or {}
         if q.get("50%") is not None and int(q["50%"]) <= 0:
             raise SearchDistrust(f"终局分预测 {q['50%']}，不信它", whole_round=False)
-        if getattr(self, "calib", None) is not None:
-            self._expect = (score, int(self.rx.score))  # 我们的动作执行后引擎的分（下一帧画面对账）
+        if c is not None:
+            c["last"] = max(0, int(self.rx.score) - score)  # 这个动作在引擎里的加分（引擎已执行；没生效时 undo_last 减掉）
+            c["pred"] += c["last"]
         return d
+
+    def undo_last(self) -> None:
+        """上一个决策没在游戏里生效：引擎退回出那一步之前（TowerGnrpa.decide 对齐后存的 prev），它的引擎加分从对账里减掉。"""
+        if getattr(self, "prev", None) is not None:
+            self.rx = self.prev
+            self.prev = None
+        c = getattr(self, "calib", None)
+        if c is not None and c.get("last"):
+            c["pred"] -= c["last"]
+            c["last"] = 0
+        self.stats["undone"] += 1
 
     def _update_lesson(self, loadout) -> None:
         """课程中途画面读到了满分线（中转层更新 ctx.loadout.lesson）：目标的封顶跟着改。"""
