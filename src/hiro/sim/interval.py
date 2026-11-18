@@ -57,12 +57,16 @@ class R2Setup:
     items: tuple | None = None  # P 道具 master ID
     supports: tuple | None = None  # 支援卡 supportCardList 项（dict：_supportCardId / _filterParameterType / _cardSearchId / _produceCardUpgradePermil）
     skills: tuple | None = None  # 开考附魔的回忆技能 p_memory_skill-…
+    # 応援棒补卡用的卡池 ((card_id, 权重), …)：None = 按 OUENBOU_BASICS 固定轮换（旧做法）；给了就按这个偶像流派的真实卡池按权重补
+    # （ouenbou_pool，HIRO_SIM_OUENBOU_POOL=1 时 screen_source 给）
+    ouenbou_pool: tuple | None = None
 
     def key(self) -> tuple:
         deck = tuple(sorted(tuple(tuple(x) if isinstance(x, list) else x for x in c) for c in self.deck))
         sup = None if self.supports is None else tuple(tuple(sorted(x.items())) for x in self.supports)
         return (deck, tuple(sorted(self.drinks)), self.hp, self.max_hp, tuple(sorted(self.permil.items())), self.template, self.fill,
-                None if self.items is None else tuple(sorted(self.items)), sup, None if self.skills is None else tuple(sorted(self.skills)))
+                None if self.items is None else tuple(sorted(self.items)), sup, None if self.skills is None else tuple(sorted(self.skills)),
+                self.ouenbou_pool)
 
 
 # H.I.F応援棒（R1 结束后获得）：R2 开考时山札不满 22 张，用名字含「基本」的随机卡补到 22 张 [wiki][もなみ][いおん ep07]。
@@ -72,14 +76,50 @@ OUENBOU_BASICS = ("p_card-00-act-0_001", "p_card-02-men-0_039", "p_card-00-men-0
                   "p_card-00-act-0_002", "p_card-02-men-0_011", "p_card-02-act-0_037", "p_card-02-men-0_012", "p_card-02-act-0_038")  # fmt: skip
 
 
-def ouenbou_fill(deck: list) -> list:
-    """R2 开考前的牌组 → 応援棒补完后的牌组（不足 22 张时按 OUENBOU_BASICS 轮换补基础卡）。"""
+def ouenbou_fill(deck: list, pool: tuple | None = None) -> list:
+    """R2 开考前的牌组 → 応援棒补完后的牌组（不足 22 张时补基础卡）。pool 没给：按 OUENBOU_BASICS 轮换（旧做法）；
+    给了 ((card_id, 权重), …)：缺几张就按权重最大余数法分配（实机是按权重随机，这里取期望的整数近似，同一牌组总是同一组卡）。"""
     out = list(deck)
-    i = 0
-    while len(out) < OUENBOU_SIZE:
-        out.append((OUENBOU_BASICS[i % len(OUENBOU_BASICS)], 0))
-        i += 1
+    n = OUENBOU_SIZE - len(out)
+    if n <= 0:
+        return out
+    if not pool:
+        out += [(OUENBOU_BASICS[i % len(OUENBOU_BASICS)], 0) for i in range(n)]
+        return out
+    total = sum(w for _, w in pool)
+    quota = [(cid, n * w / total) for cid, w in pool]
+    got = {cid: int(q) for cid, q in quota}
+    left = n - sum(got.values())
+    for cid, q in sorted(quota, key=lambda x: (-(x[1] - int(x[1])), -x[1], x[0]))[:left]:
+        got[cid] += 1
+    for cid, _ in sorted(pool, key=lambda x: (-x[1], x[0])):
+        out += [(cid, 0)] * got[cid]
     return out
+
+
+def ouenbou_pool(idol_card_id: str | None) -> tuple | None:
+    """这个偶像的 H.I.F応援棒 卡池 ((card_id, 权重), …)：応援棒按流派分（p_random_pool-produce_007-create_set-<流派> /
+    -produce_007-full_power），流派 = 偶像卡 examEffectType。mainz4 R2（広、やる気流派）四次打出的 距離感 / セルフケア / 仕草 /
+    アイコンタクト の基本 正好是 create_set-card_play_aggressive 那一池。查不到 None。"""
+    import re
+
+    if not idol_card_id:
+        return None
+    try:
+        from hiro.bench_bridge.tower import master  # 带字符串枚举的 catalog（引擎 master 里 examEffectType 是数字）
+
+        m = master()
+        idol = next((r for r in m.rows("IdolCard") if r.get("id") == str(idol_card_id).replace("i_card-skin-", "i_card-")), None)
+        style = re.sub(r"(?<!^)(?=[A-Z])", "_", str((idol or {}).get("examEffectType", "")).replace("ProduceExamEffectType_Exam", "")).lower()
+        if not style:
+            return None
+        ids = (f"p_random_pool-produce_007-create_set-{style}", f"p_random_pool-produce_007-{style}")
+        row = next((r for r in m.rows("ProduceCardPool") if r.get("id") in ids), None)
+    except Exception:  # noqa: BLE001  没有主数据
+        return None
+    if not row:
+        return None
+    return tuple((e["id"], int(e["ratio"])) for e in row["produceCardRatios"] if int(e.get("upgradeCount") or 0) == 0)
 
 
 @lru_cache(maxsize=None)
@@ -116,7 +156,7 @@ def r2_opening(setup: R2Setup) -> dict:
     o = copy.deepcopy(_template(setup.template))
     tmpl = next(iter(o["cards"].values()))
     o["cards"], o["zones"] = {}, {k: [] for k in o["zones"]}
-    deck = ouenbou_fill(setup.deck) if setup.template == TEMPLATE and setup.fill else setup.deck  # 只有 R2 有応援棒
+    deck = ouenbou_fill(setup.deck, setup.ouenbou_pool) if setup.template == TEMPLATE and setup.fill else setup.deck  # 只有 R2 有応援棒
     for entry in deck:
         cid, up = entry[0], entry[1]
         counts = list(entry[2]) if len(entry) > 2 else [0, 0, 0]  # 定制：按卡的 produceCardCustomizeIds 顺序的次数
@@ -461,7 +501,7 @@ def options(shelf: dict, setup: R2Setup, p: int, *, wappen_left: int = 2, junk: 
 
 def _with(s: R2Setup, **kw) -> R2Setup:
     d = dict(deck=list(s.deck), drinks=list(s.drinks), hp=s.hp, max_hp=s.max_hp, permil=dict(s.permil), star=s.star, template=s.template, fill=s.fill,
-             items=s.items, supports=s.supports, skills=s.skills)
+             items=s.items, supports=s.supports, skills=s.skills, ouenbou_pool=s.ouenbou_pool)
     d.update(kw)
     return R2Setup(**d)
 
