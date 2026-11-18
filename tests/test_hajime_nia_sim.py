@@ -81,6 +81,11 @@ def test_nia_evaluation_matches_live_result(hn):
     assert hn.nia_evaluation({"Vo": 1163, "Da": 1475, "Vi": 1107}, 86919, "produce-004", 2000) == 15428
 
 
+def test_hajime_evaluation_second_place_live(hn):
+    """2026-11-18 初 PRO（篠澤広）：培育履历 8,790pt，属性 860 / 1250 / 657（第 2 名不加 +30），最終 5,175 第 2 → 名次分 900。"""
+    assert hn.hajime_evaluation({"Vo": 860, "Da": 1250, "Vi": 657}, 5175, 2, 1500) == 8790
+
+
 def test_nia_evaluation_tiers(hn):
     assert hn.nia_vote_eval(20000, "produce-004") == 2000
     assert hn.nia_vote_eval(36036, "produce-004") == 3363
