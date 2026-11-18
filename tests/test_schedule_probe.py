@@ -4,6 +4,7 @@
 from pathlib import Path
 
 import cv2
+import numpy as np
 import pytest
 
 from hiro.exec import schedule_probe as sp
@@ -300,3 +301,48 @@ def test_nia_dancing_idol_is_not_opened():
                    sleep=lambda s: t.__setitem__(0, t[0] + s))  # fmt: skip
     assert sp.screen_diff(before, dancing) >= sp.CHANGED_MIN
     assert out["opened"] is False and out["close_by"] == "not_opened" and taps == [sp.BONUS_TAP]
+
+
+# ---------------------------------------------------------------- 倍率合理性 / 当前回合那一行（协调 11-19 N.I.A MASTER 最終）
+def test_permil_outlier_dropped():
+    """Da 1467% 读成 31467%（图标认成「3」）：和另外两项比差 5 倍以上，丢掉，不修补；另外两项照用。"""
+    from hiro.vision.schedule import sane_permil
+
+    assert sane_permil({"Vo": 14090, "Da": 314670, "Vi": 10930}) == {"Vo": 14090, "Vi": 10930}
+    assert sane_permil({"Vo": 6440, "Da": 6800, "Vi": 4280}) == {"Vo": 6440, "Da": 6800, "Vi": 4280}
+    assert sane_permil({"Vo": 6440, "Da": 64400}) is None  # 两项互相差 10 倍：分不出哪个错
+    assert sane_permil({}) is None
+
+
+def test_merge_permil_takes_first_sane_per_attr():
+    assert sp._merge_permil([{"permil": {"Vo": 14090, "Vi": 10930}}, {"permil": {"Vo": 14090, "Da": 14670, "Vi": 10930}}]) == \
+        {"Vo": 14090, "Vi": 10930, "Da": 14670}  # fmt: skip
+    assert sp._merge_permil([{"permil": None}]) is None
+
+
+def test_reads_current_row_from_top_first():
+    """面板打开时第一行已是「1ターン後」：先往下拖回顶读「現在のターン」，再往后滑；当前回合那一项有值。"""
+    reads = iter([{"current_turn": 1, "rows": {1: "Vi", 2: "Vo", 3: "Vo", 4: "Vo", 5: "Vo", 6: "Da", 7: "Vi"}},
+                  {"current_turn": 1, "rows": {0: "Da", 1: "Vi", 2: "Vo", 3: "Vo", 4: "Vo", 5: "Vo", 6: "Da"}},
+                  {"current_turn": 1, "rows": {5: "Vo", 6: "Da", 7: "Vi", 8: "Da", 9: "Vi", 10: "Da", 11: "Vo"}}])  # fmt: skip
+    swipes, t = [], [0.0]
+    img = np.zeros((1280, 720, 3), np.uint8)
+    panels = sp._read_panels(img, lambda im: next(reads, None), lambda *a: swipes.append(a[:4]), 12, lambda: img,
+                             lambda s: t.__setitem__(0, t[0] + s), None, "nia-final", clock=lambda: t[0])  # fmt: skip
+    from hiro.vision.schedule import turn_types
+
+    assert swipes[0] == (*sp.TOP_FROM, *sp.TOP_TO) and swipes[1] == (*sp.SCROLL_FROM, *sp.SCROLL_TO)
+    assert turn_types(panels, 12) == ["Da", "Vi", "Vo", "Vo", "Vo", "Vo", "Da", "Vi", "Da", "Vi", "Da", "Vo"]
+
+
+def test_nia_final_panel_real_frames():
+    """N.I.A 最終实拍：过线条件原文、三项倍率、行。"""
+    from hiro.vision.schedule import read_schedule_panel
+
+    p1 = Path(__file__).parent / "fixtures" / "pages" / "exam-schedule-panel-nia-final.jpg"
+    if not p1.exists():
+        pytest.skip("需要实机截图 pages/exam-schedule-panel-nia-final.jpg")
+    p = read_schedule_panel(cv2.imread(str(p1)))
+    assert p["pass_text"] == "1位で最終オーディション突破" and p["pass_rank"] == 1 and p["current_turn"] == 1
+    assert p["permil"] == {"Vo": 14090, "Da": 14670, "Vi": 10930}
+    assert p["rows"] == {1: "Vi", 2: "Vo", 3: "Vo", 4: "Vo", 5: "Vo", 6: "Da", 7: "Vi"}

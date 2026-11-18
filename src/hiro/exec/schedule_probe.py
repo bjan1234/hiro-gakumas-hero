@@ -121,7 +121,7 @@ def probe(
 
             first = panels[0]
             out["panel"] = {"turn_types": turn_types(panels, total_turns), "turn_effects": turn_effects(panels, total_turns),
-                            "permil": first.get("permil"), "pass_rank": first.get("pass_rank"), "pass_score": first.get("pass_score"),
+                            "permil": _merge_permil(panels), "pass_rank": first.get("pass_rank"), "pass_score": first.get("pass_score"),
                             "pass_text": next((q["pass_text"] for q in panels if q.get("pass_text")), None), "current_turn": first.get("current_turn")}  # fmt: skip
     if not opened:
         # 画面没变：点了没反应（或者不是可点的区域）。没有面板要关，照常继续
@@ -178,8 +178,20 @@ def _closed(img, before, is_exam) -> bool:
     return not panel_open(img) and (is_exam(img) or screen_diff(before, img) < CHANGED_MIN)
 
 
-SCROLLS = 3
+SCROLLS = 4
 SCROLL_FROM, SCROLL_TO = (360, 950), (360, 450)  # 在面板的行区里往上滑
+# 面板打开时行区往往已经滚过「現在のターン」那一行（N.I.A 最終 12 回合、初 最終：第一行是「1ターン後」，当前回合读不到）：
+# 先往下拖一下回到顶，读当前回合那一行，再往后滑（协调 11-19）
+TOP_FROM, TOP_TO = (360, 500), (360, 900)
+
+
+def _merge_permil(panels: list[dict]) -> dict | None:
+    """几屏的倍率读数合在一起：每项取第一个过了合理性校验的值。"""
+    out: dict = {}
+    for p in panels:
+        for a, v in (p.get("permil") or {}).items():
+            out.setdefault(a, v)
+    return out or None
 
 
 def _read_panels(img, read_panel, swipe, total_turns, shoot, sleep, log, exam, clock=time.monotonic) -> list[dict]:
@@ -189,6 +201,15 @@ def _read_panels(img, read_panel, swipe, total_turns, shoot, sleep, log, exam, c
     if p is None:
         return panels
     panels.append(p)
+    if swipe is not None and p.get("current_turn") is not None and 0 not in (p.get("rows") or {}):
+        swipe(*TOP_FROM, *TOP_TO)  # 当前回合那一行在上面滚出去了：拖回顶读一次
+        top_img = _settle(shoot, sleep, clock)
+        top = read_panel(top_img)
+        if top is not None and top.get("rows"):
+            if log:
+                log("exam_schedule_probe_top", image=top_img, exam=exam, rows=top.get("rows"))
+            panels.append(top)
+            p = top  # 之后从顶往下滑
     for _ in range(SCROLLS):
         cur, rows = p.get("current_turn"), p.get("rows") or {}
         if swipe is None or not total_turns or cur is None or not rows or cur + max(rows) >= total_turns:
