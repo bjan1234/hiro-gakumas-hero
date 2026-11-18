@@ -191,3 +191,40 @@ def test_forced_change_gives_up_after_repeated_failures():
     st._change_cancels = 1 + st.CHANGE_FORCED_MAX
     with pytest.raises(UnhandledPage, match="强制换出"):
         st.on_skill_card_change(StubCtx(stage=2))
+
+
+def test_forced_change_is_recorded_as_change_for_ledger(monkeypatch):
+    """mainz3 r3（11-18 04:16）：强制换出 ひなたぼっこ → イメトレ 在游戏里换成了，账本却没记：记录的决策还是「取消」，
+    events_from_step 不出 CARD_CHANGE。强制换出做成后，记录的动作改成实际执行的换卡（换出卡的强化次数取执行侧实际点到的那张）。"""
+    from hiro.produce import card_ops
+
+    st = _strategy({})
+    st.s = StubSession({"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": BASIC, "upgrade": 0}], "deck_complete": True}})
+    st.CHANGE_OBSERVE_TRIES = 1
+    st.s.recover = lambda *a: None
+    st.deciders.decide = lambda page, state, **kw: __import__("hiro.contracts", fromlist=["Decision"]).Decision(
+        Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7)
+    st._change_cancels = 1
+    ctx = StubCtx(stage=2)
+    real = ctx.commit_stage2
+
+    def commit(index, **kw):
+        card_ops.LAST_CHANGED = {"card_id": kw.get("card_id"), "upgrade": 1}
+        return real(index, **kw)
+
+    ctx.commit_stage2 = commit
+    st.on_skill_card_change(ctx)
+    d = st.s.records[-1][1]["decision"]
+    assert d.action.kind is ActionKind.CHANGE_CARD and not d.action.args.get("cancel")
+    assert d.action.args["remove_card_id"] == BASIC and d.action.args["remove_upgrade"] == 1
+
+
+def test_cancel_stays_cancel_in_record():
+    st = _strategy({})
+    st.s = StubSession({"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": BASIC, "upgrade": 0}], "deck_complete": True}})
+    st.CHANGE_OBSERVE_TRIES = 1
+    st.s.recover = lambda *a: None
+    st.deciders.decide = lambda page, state, **kw: __import__("hiro.contracts", fromlist=["Decision"]).Decision(
+        Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7)
+    st.on_skill_card_change(StubCtx(stage=2))
+    assert st.s.records[-1][1]["decision"].action.args.get("cancel") is True  # 第一次取消：照记取消，不出 CARD_CHANGE

@@ -284,6 +284,7 @@ STAGE2_MAX_CANCELS = 2
 _STAGE2_CANCELS: dict = {}  # (card_id, remove_upgrade) → 本进程里阶段 2 因找不到那张而取消的次数
 
 
+LAST_CHANGED: dict | None = None  # 最近一次阶段 2 实际换出的卡 {card_id, upgrade}（成功时写，开始时清空）：给记账取实际强化次数
 CHANGE_GUESS_ART_MIN = 0.40  # 同 deck.GRID_AGREE_MIN：已知要找哪张卡时，卡图相关第一是它、分数够就当候选（还要详情栏卡名核对）
 
 
@@ -326,6 +327,8 @@ def change_stage2(self, index: int = 0, card_id: str | None = None, cancel: bool
     from hiro.vision.deck import read_card_dialog
     from hiro.vision.ui_templates import tap, tpl
 
+    global LAST_CHANGED
+    LAST_CHANGED = None
     if not _poll(lambda img: tpl("InProduce.DialogCardChange2.Title").exists(img), CHANGE_STAGE_TIMEOUT):
         logger.warning("换卡阶段 2：画面不在阶段 2（阶段 1 未完成？），交回主循环")
         return False
@@ -421,6 +424,7 @@ def change_stage2(self, index: int = 0, card_id: str | None = None, cancel: bool
             gone += 1
             if gone >= 2:  # 连续两帧阶段 2 标题和确认框都不在：换完了
                 run.snap(img, "stage2-done")
+                LAST_CHANGED = {"card_id": target["card_id"], "upgrade": target.get("upgrade")}
                 return True
     logger.warning("换卡阶段 2：%.0fs 内确认框没有关闭", CHANGE_STAGE_TIMEOUT)
     return False

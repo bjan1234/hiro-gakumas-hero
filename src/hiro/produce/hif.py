@@ -1495,6 +1495,18 @@ class HifCore:
         # 整副扫描过（多屏）时 remove_index 是牌组序号、不是这一屏的格子号：只按 card_id + 强化次数找（翻屏）
         changed = change_stage2(None, 0, card_id=card_id, cancel=cancel, remove_index=None if cancel or scanned else args.get("remove_index"),
                                     remove_upgrade=None if cancel else args.get("remove_upgrade"))  # 自带确认框处理；取消 / 不符时点キャンセル 返回 False  # fmt: skip
+        if changed and not cancel:
+            # 记账按记录的动作出 CARD_CHANGE：强制换出时决策还是「取消」（mainz3 r3 04:16 换成了、账本没记），改成实际执行的换卡；
+            # 换出卡的强化次数取执行侧实际点到的那张（决策 / 账本给不出时）
+            from hiro.produce import card_ops
+
+            done = card_ops.LAST_CHANGED or {}
+            up = args.get("remove_upgrade")
+            if up is None and done.get("card_id") == card_id:
+                up = done.get("upgrade")
+            act_args = {k: v for k, v in args.items() if k != "cancel"} | {"stage": 2, "remove_card_id": card_id, "remove_upgrade": up}
+            if d.action.kind is not ActionKind.CHANGE_CARD or d.action.args != act_args:
+                d = replace(d, action=Action(ActionKind.CHANGE_CARD, act_args))
         result = self.s.verify(d.action, page_before="SKILL_CARD_CHANGE_2", taps=[], retries=0)
         result = replace(result, ok=bool(changed) or cancel, error=None if changed or cancel else "换卡未完成（见 card_ops 日志与 stage2 帧）")
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
