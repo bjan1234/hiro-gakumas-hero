@@ -1,10 +1,9 @@
-# 来源：digital-hiro tools/check_settings.py（c3fc27f）
 """开局前检查游戏设置（用户 2026-11-02：重新登录后这些设置会被重置；先只报警，不自动改）。
 
 检查「メニュー → 設定 → プロデュース」里的 5 项是否 ON：
   未読コミュでも早送りする、サポートイベントのコミュスキップ、各プロデュース開始時の説明コミュスキップ、
   定期公演『初』の「気になる様子」コミュスキップ、親愛度コミュ内の映像スキップ。
-只读：从首页打开菜单 → 設定 → プロデュース 页签，读开关，存截图，回首页。不点任何开关。
+只读：从首页打开菜单 → 設定 → プロデュース 页签，读开关，存截图，回首页。不点任何开关；不在首页就跳过（什么都不点）。
 
     python tools/check_settings.py    # 打印每项状态；有 OFF / 读不到时退出码 1
 """
@@ -54,6 +53,17 @@ def _find(boxes, text: str, *, y_min: int = 0, y_max: int = 1280):
     return None
 
 
+NAV_LABELS = ("ホーム", "コミ", "アイドル", "コンテスト", "シャ")  # 首页底栏；RapidOCR「コミユ」、Vision「カシャ」也算
+
+
+def is_home(boxes) -> bool:
+    """首页：底栏页签（ホーム / コミュ / アイドル / コンテスト / ガシャ）认出 ≥3 个，加上中间的「プロデュース」大按钮。
+    本战开始确认页、菜单、设置页都不算（开始确认页左下角 (63,1213) 是「ホーム」按钮，盲点会弹「ホーム移動確認」）。"""
+    nav = {n for t, _, b in boxes if (b[1] + b[3]) // 2 >= 1080 for n in NAV_LABELS if n in t.replace(" ", "")}
+    produce = _find(boxes, "プロデュース", y_min=940, y_max=1060) is not None
+    return len(nav) >= 3 and produce
+
+
 def is_menu(boxes) -> tuple[int, int] | None:
     """菜单页：下半部宫格里的「設定」（另有「データ連携」等）。返回「設定」的位置。"""
     if not any("データ連携" in t or "キャッシュ" in t for t, _, _ in boxes):
@@ -80,8 +90,10 @@ def _wait(d, ocr, pred, timeout: float, poll: float = 1.0):
 
 def verdict(found: dict[str, str | None]) -> str:
     """一句话结论：全 ON / 被重置（有 OFF，开局会弹首次设置框）/ 没打开设置页（全读不到）/ 部分读不到。"""
-    off = [k for k, v in found.items() if v == "OFF"]
-    missing = [k for k, v in found.items() if v is None]
+    off = [k for k, v in found.items() if k in WANT and v == "OFF"]
+    missing = [k for k, v in found.items() if k in WANT and v is None]
+    if found.get("_skipped"):
+        return f"跳过：{found['_skipped']}，没点任何东西"
     if not off and not missing:
         return "ok：5 项都 ON"
     if off:
@@ -95,13 +107,15 @@ def check(save_dir: Path | None = None) -> dict[str, str | None]:
     """只读：菜单 → 設定 → プロデュース 页签，每一步按 OCR 找到再点、确认到了再走下一步（第三十三局：
     按固定坐标点「設定」没进去，两张截图都还是菜单，读成全 None，被当成「设置被重置」）。"""
     sys.path.insert(0, str(ROOT / "src"))
-    import hiro  # noqa: F401
     import cv2
 
-    from hiro.device import connect
-    from hiro.produce.ops import ocr_boxes
+    from hiro.tool_device import open_tool_device
+    from hiro.vision.ocr import ocr_boxes as _ocr
 
-    d = connect()
+    def ocr_boxes(img):
+        return _ocr(img, scale=1.5)  # 和 hiro.produce.ops.ocr_boxes 一样（那个模块要 import kotonebot）
+
+    d = open_tool_device()
     found: dict[str, str | None] = {k: None for k in WANT}
 
     def save(img, name):
@@ -109,33 +123,37 @@ def check(save_dir: Path | None = None) -> dict[str, str | None]:
             save_dir.mkdir(parents=True, exist_ok=True)
             cv2.imwrite(str(save_dir / f"{name}.png"), img)
 
-    d.click(*MENU)
+    img = d.screenshot()
+    if img is None or not is_home(ocr_boxes(img)):
+        # 不在首页（本战开始确认页、培育中、弹窗……）：不点。-MainOnly 从本战开始确认页起时，以前在这里点 MENU 没反应后
+        # 又盲点 HOME (63,1213)，正好是开始确认页的「ホーム」，弹出 ホーム移動確認，接着读回忆数值被挡住、本战停下（DMM 实机）
+        save(img, "check-not-home")
+        return {**found, "_skipped": "不在首页"}
+    d.tap(*MENU)
     pos = _wait(d, ocr_boxes, is_menu, 8.0)
     if pos is None:
-        save(d.screenshot(), "check-menu-missing")
-        d.click(*HOME)
-        time.sleep(3.0)
+        save(d.screenshot(), "check-menu-missing")  # 菜单没打开：画面多半没变，不盲点 HOME
         return found
     for _ in range(3):  # 菜单展开动画里点可能不生效：没进设置页就再点一次
-        d.click(*pos)
+        d.tap(*pos)
         tab = _wait(d, ocr_boxes, is_settings, 6.0)
         if tab is not None:
             break
     else:
         save(d.screenshot(), "check-settings-missing")
-        d.click(*HOME)
+        d.tap(*HOME)
         time.sleep(3.0)
         return found
-    d.click(*tab)
+    d.tap(*tab)
     _wait(d, ocr_boxes, lambda b: True if any("【プロデュース】" in t for t, _, _ in b) else None, 6.0)
     for i in range(2):
         img = d.screenshot()
         save(img, f"check-{i}")
         for k, v in read_toggles(ocr_boxes(img)).items():
             found[k] = found[k] or v
-        d.swipe(360, 900, 360, 450, 0.8)
+        d.swipe(360, 900, 360, 450, duration=0.8)
         time.sleep(1.5)
-    d.click(*HOME)
+    d.tap(*HOME)
     time.sleep(3.0)
     return found
 

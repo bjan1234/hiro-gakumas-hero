@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_genki_read.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """考试 HUD 元気读数（hiro.vision.hif.BOX_GENKI）：四位数首位「1」不再掉位。
 
 数据确认 d412748（和存档对比）：第二十～二十五局 80 处元気 ≥1000 读成去掉首位的数（存档 1,388 → 388、1,010 → 10）。
@@ -43,3 +42,31 @@ def test_genki_lost_head_invariant():
     assert [(c.field, c.verdict, c.rule) for c in check_invariants(s, obs)] == [("exam.genki", "read_error", "digit_count")]
     ok = Observation(seq=2, t=0.0, page=PageObs("HIF_EXAM", "produce"), fields={"genki": 1100, "remaining_turns": 2})
     assert check_invariants(s, ok) == []
+
+
+DMM = Path(__file__).with_name("fixtures") / "genki_dmm"  # 截图样例不进仓库（AGENTS.md），没有时跳过
+
+
+def _dmm_cases():
+    for p in sorted(DMM.glob("*.png")):
+        stem, x, y = p.stem.rsplit("_", 2)
+        yield pytest.param(p, int(x), int(y), int(stem.rsplit("-", 1)[1]), id=stem)
+
+
+def _canvas(p, x, y):
+    import numpy as np
+
+    img = np.zeros((1280, 720, 3), np.uint8)
+    crop = cv2.imread(str(p))
+    img[y : y + crop.shape[0], x : x + crop.shape[1]] = crop
+    return img
+
+
+@pytest.mark.parametrize(("p", "x", "y", "genki"), list(_dmm_cases()) or [pytest.param(None, 0, 0, 0, marks=pytest.mark.skip("没有 DMM 元気样例"))])
+def test_genki_dmm_ignores_hp_bar_cap(p, x, y, genki):
+    """DMM mainverify2（11-17，1080x1920 窗口缩到 720 宽）：字体比对认不出元気角标，退回 ddddocr 读整个放宽框，
+    左边体力条没满时的深灰圆头读成「1」：元気 0 → 10（9 帧）、100 → 2100、20 → 120、700 → 5700。引擎按 10 重建，
+    以为「届いて！」（元気 ≥7 才能用）能打，搜索判「能打出的牌对不上」退回 UINet。只认白色填充、与最高字等高对齐的字。"""
+    from hiro.vision.hif import read_genki
+
+    assert read_genki(_canvas(p, x, y)) == genki

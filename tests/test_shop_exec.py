@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_shop_exec.py（c3fc27f）
 """相談商店执行器（hiro.produce.shop）离线测试：选拔赛数据集里手动走过一遍相談的实机帧，按点击推进画面。"""
 
 from pathlib import Path

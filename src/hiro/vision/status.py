@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/status.py（develop c3fc27f）；开源版改：游戏素材经插件 AssetSource（hiro.vision.assets），拿不到时退路见各处注释
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """考试画面左侧状态栏：逐个槽位识别状态效果与卡牌持续效果。
 
@@ -17,7 +16,7 @@ from functools import lru_cache
 import cv2
 import numpy as np
 from cv2.typing import MatLike
-from kaa.db.skill_card import SkillCard
+from hiro import master
 
 from hiro.vision import assets
 from hiro.vision.region_cache import RegionCache, cached
@@ -33,6 +32,13 @@ _x, _y, _w, _h = layout.node(layout.EXAM, _FIRST_SLOT)[1]["rect"]
 SLOT_PITCH, SLOT_HALF = _h, 28
 MAX_SLOTS = 10
 BLUE = ((95, 120, 150), (110, 255, 255))
+RED_MIN_RATIO = 0.15  # 槽内红底像素占比：低下状态（デバフ，如 消費体力増加）实测 0.26–0.29，蓝底状态 / 卡牌效果为 0
+# 红底（低下状态）图标的字形和蓝底的「减少」那一个几乎一样，图库里也没有单独的「増加」图标：按底色翻过来（偶像之路 g5c 11-17：
+# 红心「消費体力増加」被认成「消費体力減少」0 或「ダークヒーローの誕生」N ターン，引擎因此少算一倍体力消耗）
+DEBUFF_FLIP = {"examstaminaconsumptiondown": ("examstaminaconsumptionadd", "ProduceExamEffectType_ExamStaminaConsumptionAdd", "消費体力増加")}
+# 字形只差一个小角标的图标对：整体相关分差只有 0.04（g5c #19 背景发亮时还会排反），按两张模板「不一样的像素」再比一次
+# （消費体力減少 / 増加 的「%」和 体力回復無効 的「×」）
+CONFUSABLE = (("examstaminaconsumptiondown", "examstaminarecoverrestriction"),)
 BLUE_MIN_RATIO = 0.08  # 槽内蓝底像素占比：状态效果实测 0.19–0.32，卡牌效果为 0
 GLYPH_SIZES = (30, 34, 38, 42)
 PRERANK_SIZE = 2  # 粗排用的尺寸（38）
@@ -42,6 +48,7 @@ STATUS_MIN_SCORE = 0.6
 # 「最像的那个」顶上（パラメータ上昇量増加 的上箭头配到 好印象 0.68）。实测同一图标 ≥ 0.725、领先 ≥ 0.15；不同图标 ≤ 0.70、领先 ≤ 0.09
 CAPTURED_MIN_SCORE, CAPTURED_MIN_MARGIN = 0.72, 0.12
 ENCHANT_MIN_SCORE = 0.6
+ENCHANT_MIN_FAINT = 0.7
 CARD_INNER = 24  # 卡面比对的缩放边长
 
 
@@ -65,7 +72,7 @@ def _icon_index() -> tuple[dict, dict[str, list[np.ndarray]]]:
     if icons is None:
         return {}, {}  # 没有考试效果图标：状态名给 None，只读数值
     index = icons / "index.json"
-    meta = json.loads(index.read_text()) if index.exists() else {}
+    meta = json.loads(index.read_text(encoding="utf-8")) if index.exists() else {}
     templates, seen = {}, {}
     for png in sorted(icons.glob("*.png")):
         alpha = cv2.imread(str(png), cv2.IMREAD_UNCHANGED)[:, :, 3]
@@ -100,6 +107,32 @@ def match_status_icon(patch: MatLike) -> list[tuple[float, str]]:
     pre = sorted(((score(sizes[PRERANK_SIZE]), key) for key, sizes in templates.items()), reverse=True)[:PRERANK_KEEP]
     scored = sorted(((max(score(t) for t in templates[key]), key) for _, key in pre), reverse=True)
     return scored[:3]
+
+
+def _red_mask(hsv: np.ndarray) -> np.ndarray:
+    return ((hsv[..., 0] <= 10) | (hsv[..., 0] >= 170)) & (hsv[..., 1] >= 120) & (hsv[..., 2] >= 150)
+
+
+def _split_pair(patch: MatLike, top: list[tuple[float, str]]) -> list[tuple[float, str]]:
+    """前两名是 CONFUSABLE 里的一对时重比一次：字形只留菱形底色（红 / 蓝）凸包里面的白色像素——菱形外面背景发亮时
+    （g5c #19）白色会混进字形，把「%」排到「×」后面。按重比的分数排这两个，分数用重比的。"""
+    if len(top) < 2 or not any({top[0][1], top[1][1]} == set(p) for p in CONFUSABLE):
+        return top
+    _, templates = _icon_index()
+    hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
+    pts = cv2.findNonZero((_red_mask(hsv) | (cv2.inRange(hsv, *BLUE) > 0)).astype(np.uint8))
+    if pts is None:
+        return top
+    inside = np.zeros(hsv.shape[:2], np.uint8)
+    cv2.fillConvexPoly(inside, cv2.convexHull(pts), 1)
+    g = _glyph(patch) * inside
+
+    def score(key: str) -> float:
+        return max(float(cv2.minMaxLoc(cv2.matchTemplate(g, t, cv2.TM_CCOEFF_NORMED))[1]) for t in templates[key]
+                   if t.shape[0] <= g.shape[0])  # fmt: skip
+
+    pair = sorted(((score(k), k) for _, k in top[:2]), reverse=True)
+    return [*pair, *top[2:]]
 
 
 def _norm(gray: np.ndarray) -> np.ndarray:
@@ -144,9 +177,9 @@ def match_enchant_card(img: MatLike, k: int) -> tuple[float, str]:
     return float(scores[i, j]), keys[i]
 
 
-def _card_from_asset(key: str) -> SkillCard | None:
+def _card_from_asset(key: str) -> master.Card | None:
     base = "-".join(key.removeprefix("img_general_skillcard_").split("-")[:2])
-    return SkillCard.from_asset_id("img_general_skillcard_" + base) or SkillCard.from_asset_id(key)
+    return master.card_by_asset("img_general_skillcard_" + base) or master.card_by_asset(key)
 
 
 # 槽位存在性：菱形四条斜边上都有清晰边缘。只看左上/右上/左下三条（右下角有数值文字），取覆盖率最低的一条。
@@ -194,10 +227,17 @@ def _masked_region(img: MatLike, k: int) -> tuple[MatLike, int, int]:
     return region, x0, y0
 
 
-def _unit_label(img: MatLike, k: int) -> str | None:
+def _label_text(img: MatLike, k: int) -> str:
     cy = _slot_y(k)
-    label = "".join(t for t, _ in ocr(img[cy - 2 : cy + 34, SLOT_X + 14 : SLOT_X + 130])).replace(" ", "")
+    return "".join(t for t, _ in ocr(img[cy - 2 : cy + 34, SLOT_X + 14 : SLOT_X + 130])).replace(" ", "")
+
+
+def _unit_label(img: MatLike, k: int) -> str | None:
+    label = _label_text(img, k)
     return next((u for u in UNITS if u in label), None)
+
+
+VALUE_UNIT = re.compile(r"(\d+)(ターン|回|%)")
 
 
 def _value(img: MatLike, k: int, kind: str, card_id: str | None = None) -> tuple[int | None, str | None]:
@@ -219,7 +259,10 @@ def _value(img: MatLike, k: int, kind: str, card_id: str | None = None) -> tuple
                 return value, None  # 这次没读到（被特效遮住等）：不缓存，下次再读
             _ENCHANT_UNIT[card_id] = unit
         return value, _ENCHANT_UNIT[card_id]
-    # 慢路径：与原实现相同
+    # 慢路径：先用整行 OCR 认「数字 + 单位」（「12ターン」）。ddddocr 读这一框会把单位的「タ」当成 5，
+    # 好調「12ターン」读成 125、「10ターン」读成 105（偶像之路 Mac 15 层 11-14）
+    if m := VALUE_UNIT.match(_label_text(img, k)):
+        return int(m.group(1)), m.group(2)
     value = read_dddd(img, (SLOT_X + 12, cy + 2, SLOT_X + 60, cy + 32))
     if value is None:
         return None, None
@@ -230,11 +273,14 @@ def read_status_column(img: MatLike, *, cache: RegionCache | None = None) -> lis
     """从上往下读出全部槽位，遇到空槽停止。cache：某槽（图标 + 数值）与上次相同则复用该槽结果。"""
     out = []
     for k in range(MAX_SLOTS):
-        if diamond_score(img, k) < DIAMOND_MIN:
-            break  # 空槽：状态栏到此为止
+        if diamond_score(img, k) < DIAMOND_MIN and not (k + 1 < MAX_SLOTS and diamond_score(img, k + 1) >= DIAMOND_MIN):
+            break  # 这一格和下一格都不像菱形：状态栏到此为止
+        # 这一格不像菱形、下一格像：是底色很淡（饮料效果的茶杯）或快到期半透明的真槽，不是到底了。
+        # 以前在这里就停，下面的好印象等全漏（DMM qualifydmmw1-r1 #133–135：好印象 11 / 13 读成没有）
+        faint = diamond_score(img, k) < DIAMOND_MIN
         cy = _slot_y(k)
         region = img[cy - SLOT_HALF - 4 : cy + 36, SLOT_X - SLOT_HALF - 4 : SLOT_X + 130]
-        out.append(cached(cache, f"status{k}", region, lambda k=k: _read_slot(img, k)))
+        out.append(cached(cache, f"status{k}", region, lambda k=k, faint=faint: _read_slot(img, k, faint=faint)))
     return out
 
 
@@ -248,12 +294,26 @@ def _accepted(meta: dict, top: list[tuple[float, str]]) -> bool:
     return True
 
 
-def _read_slot(img: MatLike, k: int) -> dict:
+def _read_slot(img: MatLike, k: int, *, faint: bool = False) -> dict:
     meta, _ = _icon_index()
     patch = _slot(img, k)
-    blue = cv2.inRange(cv2.cvtColor(patch, cv2.COLOR_BGR2HSV), *BLUE)
-    if np.count_nonzero(blue) / blue.size >= BLUE_MIN_RATIO:
-        top = match_status_icon(patch)
+    hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
+    blue = cv2.inRange(hsv, *BLUE)
+    red = float(_red_mask(hsv).mean())
+    blue_ratio = np.count_nonzero(blue) / blue.size
+    red_top = _split_pair(patch, match_status_icon(patch)) if blue_ratio < BLUE_MIN_RATIO and red >= RED_MIN_RATIO else None
+    if red_top and _accepted(meta, red_top):
+        # 红底：低下状态（デバフ）。字形和蓝底那一个一样的按 DEBUFF_FLIP 翻成「増加」那一种
+        score, key = red_top[0]
+        info = meta.get(key, {})
+        key, typ, name = DEBUFF_FLIP.get(key, (key, info.get("type"), info.get("name")))
+        entry = {"slot": k, "kind": "status", "key": key, "type": typ, "name": name, "debuff": True,
+                 "score": round(score, 3), "margin": round(score - red_top[1][0], 3)}  # fmt: skip
+        alternatives = info.get("aliases", []) + [c for s2, c in red_top[1:] if score - s2 < AMBIGUOUS_MARGIN]
+        if alternatives:
+            entry["alternatives"] = alternatives
+    elif blue_ratio >= BLUE_MIN_RATIO:
+        top = _split_pair(patch, match_status_icon(patch))
         score, key = top[0]
         if not _accepted(meta, top):
             entry = {"slot": k, "kind": "status", "key": None, "score": round(score, 3), "candidates": [c for _, c in top]}
@@ -267,7 +327,8 @@ def _read_slot(img: MatLike, k: int) -> dict:
                 entry["alternatives"] = alternatives
     else:
         score, asset = match_enchant_card(img, k)
-        card = _card_from_asset(asset) if score >= ENCHANT_MIN_SCORE else None
+        # 淡色槽（饮料效果的茶杯）和卡面不像也能凑到 0.61（配成「第一印象」）：真卡牌效果 0.75 以上，淡色槽要过 ENCHANT_MIN_FAINT 才认
+        card = _card_from_asset(asset) if score >= (ENCHANT_MIN_FAINT if faint else ENCHANT_MIN_SCORE) else None
         grey = None if card is not None else match_status_icon(patch)
         if grey and _accepted(meta, grey):
             # 培育计划的核心状态（やる気 等）为 0 时以灰底常驻、不显示数值；卡面认不出而字形能认出即是这种槽
@@ -278,6 +339,8 @@ def _read_slot(img: MatLike, k: int) -> dict:
         entry = {"slot": k, "kind": "enchant", "card_id": card._id if card else None,
                  "name": card.name if card else None, "asset": asset, "score": round(score, 3)}  # fmt: skip
     entry["value"], entry["unit"] = _value(img, k, entry["kind"], entry.get("card_id"))
+    if faint:
+        entry["faint"] = True
     return entry
 
 

@@ -70,6 +70,11 @@ class PublicAssetSource:
     def card_art_dir(self) -> Path | None:
         return self._fullest_dir(*(r / "cards" for r in self._roots()), self.kaa / "skill_cards")
 
+    def game_data(self, category: str) -> Path | None:
+        """KAA 公开数据里的原图目录：idol_cards（选偶像，hiro.vision.idols）/ skill_cards（卡面图库 hiro.vision.card_db、卡格缩略图）
+        / drinks（饮料图标）。随仓库素材包里同类的图合成过底色，特征和原图不同，这几处要原图。"""
+        return self._first_dir(self.kaa / category)
+
     def icon_dir(self, kind: str) -> Path | None:
         extra = (self.kaa / "drinks",) if kind == "drink" else ()
         return self._fullest_dir(*(r / "icons" / kind for r in self._roots()), *extra)
@@ -93,7 +98,7 @@ class PublicAssetSource:
         for root in self._roots():
             p = root / "layout.json"
             if p.is_file():
-                return json.loads(p.read_text())
+                return json.loads(p.read_text(encoding="utf-8"))
         return None
 
     def sprites_dir(self) -> Path | None:

@@ -1,6 +1,6 @@
 """H.I.F 社区规则：服务端决定、客户端代码里没有公式的部分，以社区 wiki 为准。
 
-来源快照：strategy/evidence/hif-community-20261030.json
+来源快照：data/community/hif-community-20261030.json
 （seesaawiki「H.I.F」2026-10-25 版、wikiwiki「HIF/基本情報」）。
 每个规则标注来源等级：
 - COMMUNITY：社区明文或表格，直接采用；
@@ -14,7 +14,7 @@
 from __future__ import annotations
 import math
 
-SOURCE='strategy/evidence/hif-community-20261030.json'
+SOURCE='data/community/hif-community-20261030.json'
 
 # ---------------------------------------------------------------- 相談（普通商店）
 # COMMUNITY：seesaawiki 相談价格表。R 未强化不出售。表中 R+ 100 高于 SR 50，原样采用，待实机核对。

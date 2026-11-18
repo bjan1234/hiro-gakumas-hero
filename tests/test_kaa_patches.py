@@ -1,4 +1,4 @@
-# 来源：digital-hiro tests/test_kaa_patches.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """kaa_patches 授業换卡补丁的离线测试：用 KAA 自带的 H.I.F 换卡参考截图（阶段 1 / 阶段 2）喂离线设备。"""
 
 from pathlib import Path
@@ -10,8 +10,9 @@ import pytest
 import hiro  # noqa: F401
 import kaa.tasks
 from hiro.loop import kaa_patches
+from hiro.produce import card_ops
+from hiro.produce import memory_select as ms
 from hiro.vision.offline import load
-from kaa.tasks import R
 
 REFS = Path(kaa.tasks.__file__).parents[2] / "kotonebot-resource" / "sprites" / "jp" / "in_produce"  # 已安装的 KAA（vendor/kaa）
 STAGE1 = REFS / "dialog_card_change_1.png"
@@ -46,10 +47,10 @@ class RecordingDevice:
 @pytest.fixture
 def dev(monkeypatch):
     rec = RecordingDevice()
-    monkeypatch.setattr(kaa_patches, "device", rec)
-    monkeypatch.setattr(kaa_patches, "CHANGE_STAGE_TIMEOUT", 0.6)
-    monkeypatch.setattr(kaa_patches, "CHANGE_POLL", 0.1)
-    monkeypatch.setattr(kaa_patches._change_run, "run", None, raising=False)
+    monkeypatch.setattr(card_ops, "device", rec)
+    monkeypatch.setattr(card_ops, "CHANGE_STAGE_TIMEOUT", 0.6)
+    monkeypatch.setattr(card_ops, "CHANGE_POLL", 0.1)
+    monkeypatch.setattr(card_ops._change_run, "run", None, raising=False)
     from hiro.produce import ops
 
     monkeypatch.setattr(ops, "CALIB_DIR", Path(__file__).parent / ".calib-test")  # 不往 reports/ 写
@@ -58,26 +59,23 @@ def dev(monkeypatch):
 
 @pytest.mark.parametrize("dy", [-30, -15, -8, 0, 8, 15, 30])
 def test_stage1_marks_found_despite_offset(dy):
-    load(_shift(cv2.imread(str(STAGE1)), dy))
-    marks = kaa_patches.find_card_marks(kaa_patches.CHANGE_LETTERS_BOX, kaa_patches.CHANGE_LETTER_THRESHOLD)
+    marks = card_ops.find_card_marks(_shift(cv2.imread(str(STAGE1)), dy), card_ops.CHANGE_LETTERS_BOX, card_ops.CHANGE_LETTER_THRESHOLD)
     assert len(marks) == 3
     assert [m.rect.x1 for m in marks] == sorted(m.rect.x1 for m in marks)
-    if dy:  # KAA 原来的 20px 窄带在偏移后找不到——实机 r5 崩溃的同类情形
-        box = R.InProduce.DialogCardChange1.BoxCardLetters
-        assert not R.InProduce.A.q(threshold=0.65, region=box).find_all() + R.InProduce.M.q(threshold=0.65, region=box).find_all()
 
 
 def test_stage1_clicks_leftmost_candidate(dev):
-    load(_shift(cv2.imread(str(STAGE1)), 12))
-    leftmost = kaa_patches.find_card_marks(kaa_patches.CHANGE_LETTERS_BOX, kaa_patches.CHANGE_LETTER_THRESHOLD)[0].rect.x1
-    assert kaa_patches.change_stage1(None, 0) is False  # 离线画面不会前进到阶段 2，超时返回而不是抛异常
+    img = _shift(cv2.imread(str(STAGE1)), 12)
+    load(img)
+    leftmost = card_ops.find_card_marks(img, card_ops.CHANGE_LETTERS_BOX, card_ops.CHANGE_LETTER_THRESHOLD)[0]
+    assert card_ops.change_stage1(None, 0) is False  # 离线画面不会前进到阶段 2，超时返回而不是抛异常
     assert dev.clicks, "应当点了候选卡"
-    assert {c.rect.x1 for c in dev.clicks} == {leftmost}
+    assert set(dev.clicks) == {tuple(leftmost.center)}
 
 
 def test_stage2_on_stage1_screen_returns_false_without_raising(dev):
     load(cv2.imread(str(STAGE1)))
-    assert kaa_patches.change_stage2(None, 0) is False
+    assert card_ops.change_stage2(None, 0) is False
     assert dev.clicks == []
 
 
@@ -85,51 +83,60 @@ def test_stage2_on_stage1_screen_returns_false_without_raising(dev):
 def no_confirm(monkeypatch, dev):
     """离线画面不会自己变：点了卡就当作阶段 2 已结束（标题消失），没有确认框。
     以前靠「什么都没认出 = 完成」放行，第二十局实机正是这样把晚弹出的确认框漏掉的。"""
-    monkeypatch.setattr(R.InProduce.DialogCardChange2.ButtonConfirm, "try_click", classmethod(lambda cls, *a, **k: False))
-    monkeypatch.setattr(kaa_patches, "confirm_change_dialog", lambda img, run=None: False)
-    real = R.InProduce.DialogCardChange2.Title.exists
-    monkeypatch.setattr(R.InProduce.DialogCardChange2.Title, "exists", classmethod(lambda cls, *a, **k: not dev.clicks and real()))
+    import hiro.vision.ui_templates as ui
+
+    real_tap, real_tpl = ui.tap, ui.tpl
+    monkeypatch.setattr(ui, "tap", lambda name, img, click: False if name == "InProduce.DialogCardChange2.ButtonConfirm" else real_tap(name, img, click))
+    monkeypatch.setattr(card_ops, "confirm_change_dialog", lambda img, run=None: False)
+
+    def tpl(name):
+        t = real_tpl(name)
+        if name != "InProduce.DialogCardChange2.Title":
+            return t
+        return type("T", (), {"exists": staticmethod(lambda img: not dev.clicks and t.exists(img))})()
+
+    monkeypatch.setattr(ui, "tpl", tpl)
 
 
 def test_stage2_clicks_first_unprotected_deck_card(dev, no_confirm):
     """参考图牌组左上第一张是 手拍子（不在保护名单）：点它。"""
     load(cv2.imread(str(STAGE2)))
-    assert kaa_patches.change_stage2(None, 0) is True  # 点卡后阶段 2 标题连续两帧不在、也没有确认框 → 完成
+    assert card_ops.change_stage2(None, 0) is True  # 点卡后阶段 2 标题连续两帧不在、也没有确认框 → 完成
     assert dev.clicks[0] == (140, 697)
 
 
 def test_stage2_skips_protected_card(dev, no_confirm, monkeypatch):
     """第四局本战：牌组按 id 排序，第 0 张是核心卡时不能换——跳到下一张非保护卡。"""
     load(cv2.imread(str(STAGE2)))
-    monkeypatch.setattr(kaa_patches, "protected_card_ids", lambda: {"p_card-02-act-1_003", "p_card-02-act-2_049"})  # 手拍子、みんな大好き
-    assert kaa_patches.change_stage2(None, 0) is True
+    monkeypatch.setattr(card_ops, "protected_card_ids", lambda: {"p_card-02-act-1_003", "p_card-02-act-2_049"})  # 手拍子、みんな大好き
+    assert card_ops.change_stage2(None, 0) is True
     assert dev.clicks[0] == (286 + 147, 697)  # 第 3 张 輝くキミへ
 
 
 def test_stage2_uses_decision_card_id(dev, no_confirm):
     load(cv2.imread(str(STAGE2)))
-    assert kaa_patches.change_stage2(None, 0, card_id="p_card-02-men-2_051") is True  # やる気は満点
+    assert card_ops.change_stage2(None, 0, card_id="p_card-02-men-2_051") is True  # やる気は満点
     assert dev.clicks[0] == (580, 845)
 
 
 def test_stage2_cancels_when_decision_card_missing(dev, no_confirm):
     load(cv2.imread(str(STAGE2)))
-    assert kaa_patches.change_stage2(None, 0, card_id="p_card-02-act-1_037") is False  # 牌组里没有 デイドリーミング
-    assert dev.clicks == [kaa_patches.CHANGE_CANCEL_TAP]  # 翻屏也没找到才取消（画面不变：往下 / 往上各滑一次就判到底 / 到顶）
+    assert card_ops.change_stage2(None, 0, card_id="p_card-02-act-1_037") is False  # 牌组里没有 デイドリーミング
+    assert dev.clicks == [card_ops.CHANGE_CANCEL_TAP]  # 翻屏也没找到才取消（画面不变：往下 / 往上各滑一次就判到底 / 到顶）
 
 
 def test_pick_change_target_rules():
     cards = [{"card_id": None, "name": None}, {"card_id": "a", "name": "A"}, {"card_id": "b", "name": "B"}]
-    assert kaa_patches.pick_change_target(cards, 0, protected={"a"})[0]["card_id"] == "b"
-    assert kaa_patches.pick_change_target(cards, 0, protected={"a", "b"})[0] is None
-    assert kaa_patches.pick_change_target([{"card_id": None}], 0, protected=set())[0] is None  # 认不出：不换
-    assert kaa_patches.pick_change_target(cards, 0, card_id="zz", protected=set())[0] is None
+    assert card_ops.pick_change_target(cards, 0, protected={"a"})[0]["card_id"] == "b"
+    assert card_ops.pick_change_target(cards, 0, protected={"a", "b"})[0] is None
+    assert card_ops.pick_change_target([{"card_id": None}], 0, protected=set())[0] is None  # 认不出：不换
+    assert card_ops.pick_change_target(cards, 0, card_id="zz", protected=set())[0] is None
 
 
 def test_protected_cards_come_from_knowledge():
     from hiro.state.knowledge import YARUKI_CARDS
 
-    ids = kaa_patches.protected_card_ids()
+    ids = card_ops.protected_card_ids()
     for name in ("届いて！", "せのびの魔法", "デイドリーミング", "きらきら紙吹雪"):
         assert any(YARUKI_CARDS[c]["name"] == name for c in ids if c in YARUKI_CARDS)
 
@@ -143,7 +150,7 @@ def _pitem_frames():
     """(灰按钮帧, 亮按钮帧, 拿完后的帧)。亮按钮取标题页同款橙色按钮贴到按钮区。"""
     disabled = cv2.imread(str(PITEM / "hif_select_pitem_r2.jpg"))
     lit = disabled.copy()
-    x, y, w, h = kaa_patches.PITEM_ACQUIRE_BTN
+    x, y, w, h = card_ops.PITEM_ACQUIRE_BTN
     lit[y : y + h, x : x + w] = cv2.resize(cv2.imread(str(PITEM / "lit_button_title_renkei.png")), (w, h))
     after = disabled.copy()
     after[y - 20 : y + h + 20, x - 20 : x + w + 20] = (120, 40, 20)  # 背包页关闭，按钮区换成别的画面
@@ -164,7 +171,7 @@ class FakeScreen:
 
     def click(self, x, y):
         self.clicks.append((x, y))
-        bx, by, bw, bh = kaa_patches.PITEM_ACQUIRE_BTN
+        bx, by, bw, bh = card_ops.PITEM_ACQUIRE_BTN
         on_button = bx <= x <= bx + bw and by <= y <= by + bh
         if on_button and self.state == "lit" and self.acquires:
             self.state = "after"
@@ -179,15 +186,15 @@ class FakeScreen:
 
 
 def _commit(screen, index):
-    return kaa_patches.pitem_commit(None, index, shoot=screen.shoot, click=screen.click, clock=screen.clock, sleep=screen.sleep)
+    return card_ops.pitem_commit(None, index, shoot=screen.shoot, click=screen.click, clock=screen.clock, sleep=screen.sleep)
 
 
 def test_pitem_lit_detection_on_real_frame():
     disabled, lit, _ = _pitem_frames()
-    base = kaa_patches._button_sv(disabled)[1]
-    assert not kaa_patches.acquire_lit(disabled, base)
-    assert kaa_patches.acquire_lit(lit, base)
-    assert kaa_patches.acquire_lit(lit)  # 没有基准时靠绝对阈值
+    base = card_ops._button_sv(disabled)[1]
+    assert not card_ops.acquire_lit(disabled, base)
+    assert card_ops.acquire_lit(lit, base)
+    assert card_ops.acquire_lit(lit)  # 没有基准时靠绝对阈值
 
 
 def test_pitem_centers_inside_bag_frames():
@@ -196,7 +203,7 @@ def test_pitem_centers_inside_bag_frames():
     band = cv2.cvtColor(img[740:1000], cv2.COLOR_BGR2HSV)
     masks = [cv2.inRange(band, (0, 90, 120), (10, 255, 255)) | cv2.inRange(band, (165, 90, 120), (180, 255, 255)),
              cv2.inRange(band, (22, 90, 120), (35, 255, 255)), cv2.inRange(band, (40, 90, 120), (75, 255, 255))]  # fmt: skip
-    for (cx, cy), m in zip(kaa_patches.PITEM_CENTERS, masks):
+    for (cx, cy), m in zip(card_ops.PITEM_CENTERS, masks):
         ys, xs = np.nonzero(m)
         x1, x2, y1, y2 = np.percentile(xs, 0.5), np.percentile(xs, 99.5), np.percentile(ys, 0.5) + 740, np.percentile(ys, 99.5) + 740
         assert x1 + 20 < cx < x2 - 20 and y1 + 20 < cy < y2 - 20
@@ -209,8 +216,8 @@ def test_pitem_centers_inside_bag_frames():
 def test_pitem_commit_clicks_bag_then_acquire(index):
     screen = FakeScreen()
     assert _commit(screen, index) is True
-    bx, by, bw, bh = kaa_patches.PITEM_ACQUIRE_BTN
-    assert screen.clicks == [kaa_patches.PITEM_CENTERS[index], (bx + bw // 2, by + bh // 2)]
+    bx, by, bw, bh = card_ops.PITEM_ACQUIRE_BTN
+    assert screen.clicks == [card_ops.PITEM_CENTERS[index], (bx + bw // 2, by + bh // 2)]
 
 
 @pytest.mark.fixtures
@@ -224,16 +231,16 @@ def test_pitem_commit_already_lit_skips_bag():
 def test_pitem_commit_gives_up_when_button_never_lights():
     screen = FakeScreen(lights=False)
     assert _commit(screen, 2) is False
-    assert screen.clicks == [kaa_patches.PITEM_CENTERS[2]] * kaa_patches.PITEM_TRIES
-    assert screen.t <= kaa_patches.PITEM_TRIES * (kaa_patches.PITEM_LIT_TIMEOUT + 1)
+    assert screen.clicks == [card_ops.PITEM_CENTERS[2]] * card_ops.PITEM_TRIES
+    assert screen.t <= card_ops.PITEM_TRIES * (card_ops.PITEM_LIT_TIMEOUT + 1)
 
 
 @pytest.mark.fixtures
 def test_pitem_commit_gives_up_when_acquire_has_no_effect():
     screen = FakeScreen(acquires=False)
     assert _commit(screen, 0) is False
-    bx, by, bw, bh = kaa_patches.PITEM_ACQUIRE_BTN
-    assert screen.clicks == [kaa_patches.PITEM_CENTERS[0]] + [(bx + bw // 2, by + bh // 2)] * kaa_patches.PITEM_TRIES
+    bx, by, bw, bh = card_ops.PITEM_ACQUIRE_BTN
+    assert screen.clicks == [card_ops.PITEM_CENTERS[0]] + [(bx + bw // 2, by + bh // 2)] * card_ops.PITEM_TRIES
 
 
 @pytest.mark.fixtures
@@ -246,7 +253,7 @@ def test_pitem_patch_installed():
     from kaa.tasks.produce.new.page import PItemSelectContext
 
     kaa_patches.apply()
-    assert PItemSelectContext.commit is kaa_patches.pitem_commit
+    assert PItemSelectContext.commit is card_ops.pitem_commit
 
 
 def test_discard_dialog_never_confirmed(monkeypatch):
@@ -338,7 +345,7 @@ def consult_delete_frames():
 
     f = {n: cv2.imread(str(EVENTS / p)) for n, p in (("none", "removal-none-00141.jpg"), ("sel6", "removal-sel6-00146.jpg"),
                                                       ("confirm", "delete-confirm-00148.jpg"), ("done", "delete-done-00149.jpg"))}  # fmt: skip
-    cards = read_card_dialog(f["none"], kaa_patches.CARD_OP_REGION["remove"])["cards"]
+    cards = read_card_dialog(f["none"], card_ops.CARD_OP_REGION["remove"])["cards"]
     target = next(c for c in cards if c["card_id"] == KYORIKAN)
     return f, tuple(target["center"])
 
@@ -346,21 +353,21 @@ def consult_delete_frames():
 def test_remove_card_consult_page_full_flow():
     f, center = consult_delete_frames()
     page = CardPage(f, {("none", center): "sel6", ("sel6", (520, 1161)): "confirm", ("confirm", (518, 1161)): "done"}, "none")
-    assert kaa_patches.remove_card(None, KYORIKAN, **page.kw()) is True
+    assert card_ops.remove_card(None, KYORIKAN, **page.kw()) is True
     assert page.clicks[0] == center and page.state == "done"
 
 
 def test_remove_card_without_id_cancels_on_consult_page():
     f, _ = consult_delete_frames()
     page = CardPage(f, {}, "none")
-    assert kaa_patches.remove_card(None, None, **page.kw()) is False
+    assert card_ops.remove_card(None, None, **page.kw()) is False
     assert len(page.clicks) == 1 and page.clicks[0][0] < 360  # 只点了左下「キャンセル」，没点任何卡
 
 
 def test_remove_card_missing_id_cancels():
     f, _ = consult_delete_frames()
     page = CardPage(f, {}, "none")
-    assert kaa_patches.remove_card(None, "p_card-02-act-3_039", **page.kw()) is False  # 牌组里没有 届いて！
+    assert card_ops.remove_card(None, "p_card-02-act-3_039", **page.kw()) is False  # 牌组里没有 届いて！
     assert len(page.clicks) == 1 and page.clicks[0][0] < 360
 
 
@@ -369,14 +376,14 @@ def test_remove_card_wrong_selection_cancels():
     f, center = consult_delete_frames()
     f["sel0"] = cv2.imread(str(EVENTS / "removal-sel0-00142.jpg"))
     page = CardPage(f, {("none", center): "sel0"}, "none")
-    assert kaa_patches.remove_card(None, KYORIKAN, **page.kw()) is False
+    assert card_ops.remove_card(None, KYORIKAN, **page.kw()) is False
     assert page.clicks[0] == center and page.clicks[-1][0] < 360 and (520, 1161) not in page.clicks
 
 
 @pytest.mark.skipif(not REMOVE_REF.exists(), reason="找不到 KAA 删卡参考图")
 def test_remove_card_event_page_has_no_cancel_and_taps_nothing():
     page = CardPage({"deck": cv2.imread(str(REMOVE_REF))}, {}, "deck")
-    assert kaa_patches.remove_card(None, None, **page.kw()) is False
+    assert card_ops.remove_card(None, None, **page.kw()) is False
     assert page.clicks == []
 
 
@@ -387,18 +394,18 @@ def test_enhance_card_flow_on_reference():
     cid = "p_card-02-act-0_009"  # 可愛い仕草（参考图选中的那张）
     f = {"deck": cv2.imread(str(ENHANCE_REF)), "sel": cv2.imread(str(ENHANCE_SEL_REF)),
          "after": cv2.imread(str(Path(__file__).parent / "fixtures" / "interval" / "round2-transition-q5.jpg"))}  # fmt: skip
-    cards = read_card_dialog(f["sel"], kaa_patches.CARD_OP_REGION["enhance"])["cards"]
+    cards = read_card_dialog(f["sel"], card_ops.CARD_OP_REGION["enhance"])["cards"]
     center = tuple(next(c for c in cards if c["card_id"] == cid)["center"])
     # 两张参考图是不同牌组：从「已选中」那张开始（点卡后画面不变、选中项核对通过）
     page = CardPage(f, {("sel", (380, 1161)): "after"}, "sel")
-    assert kaa_patches.enhance_card(None, cid, **page.kw()) is True
+    assert card_ops.enhance_card(None, cid, **page.kw()) is True
     assert page.clicks[0] == center and page.state == "after"
 
 
 @pytest.mark.skipif(not ENHANCE_REF.exists(), reason="找不到 KAA 强化参考图")
 def test_enhance_card_without_id_taps_nothing():
     page = CardPage({"deck": cv2.imread(str(ENHANCE_REF))}, {}, "deck")
-    assert kaa_patches.enhance_card(None, None, **page.kw()) is False and page.clicks == []
+    assert card_ops.enhance_card(None, None, **page.kw()) is False and page.clicks == []
 
 
 def test_stage1_mark_by_column():
@@ -409,15 +416,15 @@ def test_stage1_mark_by_column():
             self.rect = Rect(x, 946, 20, 20)
 
     full = [M(491), M(213), M(352)]
-    assert kaa_patches._stage1_mark(full, 0).rect.x1 == 213 and kaa_patches._stage1_mark(full, 2).rect.x1 == 491
+    assert card_ops._stage1_mark(full, 0).rect.x1 == 213 and card_ops._stage1_mark(full, 2).rect.x1 == 491
     missing_left = [M(352), M(491)]  # 第 0 张角标漏检：第 1 张仍是中间那列，不能错位成第 0 张
-    assert kaa_patches._stage1_mark(missing_left, 1).rect.x1 == 352 and kaa_patches._stage1_mark(missing_left, 0) is None
+    assert card_ops._stage1_mark(missing_left, 1).rect.x1 == 352 and card_ops._stage1_mark(missing_left, 0) is None
 
 
 def test_select_memory_finds_by_params():
     import hiro.loop.kaa_patches as kp
 
-    headers = {kp.MEMORY_CELLS[4]: ["1498", "2066", "944"]}
+    headers = {ms.MEMORY_CELLS[4]: ["1498", "2066", "944"]}
     state = {"cur": None}
     clicks = []
 
@@ -427,7 +434,7 @@ def test_select_memory_finds_by_params():
 
     ok = kp.select_memory(("1498", "2066", "944"), shoot=lambda: None, click=click, swipe=lambda *a: None,
                           texts_of=lambda img: headers.get(state["cur"], ["1697", "1936", "815"]), sleep=lambda s: None)  # fmt: skip
-    assert ok and clicks[0] == kp.MEMORY_CHANGE_BTN and clicks[1] == kp.MEMORY_SORT_BTN and clicks[-1] == kp.MEMORY_OK_BTN and kp.MEMORY_CELLS[4] in clicks
+    assert ok and clicks[0] == ms.MEMORY_CHANGE_BTN and clicks[1] == ms.MEMORY_SORT_BTN and clicks[-1] == ms.MEMORY_OK_BTN and ms.MEMORY_CELLS[4] in clicks
 
 
 def test_card_op_scrolls_to_collect_deck_and_back_to_target(monkeypatch):
@@ -464,7 +471,7 @@ def test_card_op_scrolls_to_collect_deck_and_back_to_target(monkeypatch):
         return "c121"
 
     page_done = {"t": 0.0}
-    ok = kaa_patches._card_op("enhance", None, shoot=lambda: img, click=click, clock=lambda: page_done["t"],
+    ok = card_ops._card_op("enhance", None, shoot=lambda: img, click=click, clock=lambda: page_done["t"],
                               sleep=lambda s: page_done.__setitem__("t", page_done["t"] + s), ocr=lambda im: [], calib=False,
                               choose=choose, swipe=swipe)  # fmt: skip
     assert seen["n"] == 3 * 4 + 2 * 4 * 2  # 第 1 屏 3 行 + 后两屏各 2 行新行（每屏首行与上一屏末行重叠）
@@ -498,7 +505,7 @@ def test_card_op_scrolls_back_when_target_is_above(monkeypatch):
 
     t = {"t": 0.0}
     state["screen"] = 2  # 打开时停在最后一屏（续跑等情况）：往下没有新行，再往回滑
-    kaa_patches._card_op("enhance", "c011", shoot=lambda: np.zeros((1280, 720, 3), np.uint8), click=click, clock=lambda: t["t"],
+    card_ops._card_op("enhance", "c011", shoot=lambda: np.zeros((1280, 720, 3), np.uint8), click=click, clock=lambda: t["t"],
                          sleep=lambda s: t.__setitem__("t", t["t"] + s), ocr=lambda im: [], calib=False, swipe=swipe)  # fmt: skip
     assert state["chosen"] is not None and state["back"] == 2  # 第 1 屏才有：从第 3 屏往回滑两次
 
@@ -525,7 +532,7 @@ def test_card_op_given_id_on_first_screen_taps_without_scanning(monkeypatch):
     screens = [[{"row": i // 4, "col": i % 4, "card_id": f"c{s_}{i}", "upgrade": 0, "name": "", "center": [140 + 147 * (i % 4), 760 + 147 * (i // 4)]} for i in range(12)]
                for s_ in range(3)]  # fmt: skip
     state, kw = _given_id_env(monkeypatch, screens)
-    kaa_patches._card_op("enhance", "c05", **kw)
+    card_ops._card_op("enhance", "c05", **kw)
     assert state["swipes"] == [] and state["taps"][0] == (287, 907)
 
 
@@ -534,7 +541,7 @@ def test_card_op_given_id_scrolls_down_until_found(monkeypatch):
     screens = [[{"row": i // 4, "col": i % 4, "card_id": f"c{s_}{i}", "upgrade": 0, "name": "", "center": [140 + 147 * (i % 4), 760 + 147 * (i // 4)]} for i in range(12)]
                for s_ in range(3)]  # fmt: skip
     state, kw = _given_id_env(monkeypatch, screens)
-    kaa_patches._card_op("enhance", "c21", **kw)
+    card_ops._card_op("enhance", "c21", **kw)
     assert state["swipes"] == ["down", "down"] and state["taps"][0] == (287, 760)
 
 
@@ -550,7 +557,7 @@ def test_card_op_given_id_on_real_interval_frames():
         state["swipes"] += 1
         state["img"] = bottom
 
-    kaa_patches._card_op("enhance", "p_card-02-act-2_062", shoot=lambda: state["img"], click=lambda x, y: state["taps"].append((x, y)),
+    card_ops._card_op("enhance", "p_card-02-act-2_062", shoot=lambda: state["img"], click=lambda x, y: state["taps"].append((x, y)),
                          clock=lambda: t["t"], sleep=lambda s: t.__setitem__("t", t["t"] + s), ocr=lambda im: [], calib=False, swipe=swipe)  # fmt: skip
     assert state["swipes"] == 0 and state["taps"] and abs(state["taps"][0][0] - 287) <= 10 and abs(state["taps"][0][1] - 757) <= 10
 
@@ -559,8 +566,8 @@ def test_select_memory_matches_prefixed_and_confused_ocr():
     """第十八局本战：列表上方属性读成「+1434」，按块精确相等找不到；拼接后按值找（允许 1 位常见混淆），且不跨块拼出假数。"""
     import hiro.loop.kaa_patches as kp
 
-    headers = {kp.MEMORY_CELLS[0]: ["スター性", "ボーカル", "+1434", "ダンス", "2296", "1179"],
-               kp.MEMORY_CELLS[1]: ["ボーカル", "1510", "ダンス", "2360", "1029"]}  # fmt: skip
+    headers = {ms.MEMORY_CELLS[0]: ["スター性", "ボーカル", "+1434", "ダンス", "2296", "1179"],
+               ms.MEMORY_CELLS[1]: ["ボーカル", "1510", "ダンス", "2360", "1029"]}  # fmt: skip
     state = {"cur": None}
 
     def click(x, y):
@@ -569,7 +576,7 @@ def test_select_memory_matches_prefixed_and_confused_ocr():
     picked = []
     ok = kp.select_memory(("1434", "2296", "1179"), shoot=lambda: None, click=lambda x, y: (click(x, y), picked.append((x, y))),
                           swipe=lambda *a: None, texts_of=lambda img: headers.get(state["cur"], ["1"]), sleep=lambda s: None)  # fmt: skip
-    assert ok and kp.MEMORY_CELLS[0] in picked
+    assert ok and ms.MEMORY_CELLS[0] in picked
     assert not kp.memory_value_seen("1936", "1697|1936x".replace("1936x", "19|36"))  # 不跨块拼数
 
 
@@ -581,7 +588,7 @@ def test_late_change_confirm_dialog_is_confirmed(dev):
     """「スキルカードチェンジ確認」（calib 20261103-032052/05）：认出来点「決定」，不点キャンセル。"""
     img = cv2.imread(str(CHANGE_CONFIRM / "m20-late-confirm.jpg"))
     load(img)
-    assert kaa_patches.confirm_change_dialog(img)
+    assert card_ops.confirm_change_dialog(img)
     pts = [(c.center.x, c.center.y) if hasattr(c, "center") else (c.rect.center.x, c.rect.center.y) if hasattr(c, "rect") else c for c in dev.clicks]
     assert pts and all(x >= 360 and y >= 1100 for x, y in pts)  # 右下「決定」，不是左下キャンセル
 
@@ -590,8 +597,10 @@ def test_stage2_screen_is_not_a_confirm_dialog(dev):
     """点了「チェンジ」、确认框还没弹出来的阶段 2 画面（calib …/04）：不是确认框，也不该被当成「换完了」。"""
     img = cv2.imread(str(CHANGE_CONFIRM / "m20-after-change-tap.jpg"))
     load(img)
-    assert not kaa_patches.confirm_change_dialog(img) and dev.clicks == []
-    assert R.InProduce.DialogCardChange2.Title.exists()  # 还在阶段 2：等待循环会继续等，而不是判完成
+    assert not card_ops.confirm_change_dialog(img) and dev.clicks == []
+    from hiro.vision.ui_templates import tpl
+
+    assert tpl("InProduce.DialogCardChange2.Title").exists(img)  # 还在阶段 2：等待循环会继续等，而不是判完成
 
 
 def test_select_memory_sort_by_ocr_and_fast_scan(monkeypatch):
@@ -600,7 +609,7 @@ def test_select_memory_sort_by_ocr_and_fast_scan(monkeypatch):
 
     import hiro.loop.kaa_patches as kp
 
-    monkeypatch.setattr(kp, "_memory_snap", lambda img, tag: None)
+    monkeypatch.setattr(ms, "_memory_snap", lambda img, tag: None)
     clicks, t = [], [0.0]
     sort_dialog = [("ソート・フィルタ", 1.0, (200, 60, 520, 100)), ("タグ", 1.0, (380, 260, 440, 286)), ("入手", 1.0, (180, 380, 240, 406)),
                    ("決定", 1.0, (470, 1145, 530, 1175))]  # fmt: skip
@@ -608,7 +617,7 @@ def test_select_memory_sort_by_ocr_and_fast_scan(monkeypatch):
     ok = kp.select_memory(("1", "2", "3"), shoot=lambda: img, click=lambda x, y: clicks.append((x, y)), swipe=lambda *a: None,
                           texts_of=lambda im: ["9999"], sleep=lambda s: t.__setitem__(0, t[0] + s), boxes_of=lambda im: sort_dialog)  # fmt: skip
     assert not ok
-    assert clicks[2] == (210, 393) and kp.MEMORY_SORT_NEWEST not in clicks  # 点的是 OCR 找到的「入手」，不是固定坐标（也不是「タグ」）
+    assert clicks[2] == (210, 393) and ms.MEMORY_SORT_NEWEST not in clicks  # 点的是 OCR 找到的「入手」，不是固定坐标（也不是「タグ」）
     assert (500, 1160) in clicks  # 「決定」
     assert t[0] < 120  # 翻满 12 页 × 9 格的等待合计 < 2 分钟（原来约 5 分钟）
 
@@ -640,7 +649,7 @@ def test_enhance_pick_verify_survives_slow_reads():
                 self.lag = 1
 
     page = Slow(f, {("prev", (141, 905)): "target", ("target", (364, 1160)): "after"}, "prev")
-    assert kaa_patches.enhance_card(None, cid, **page.kw()) is True
+    assert card_ops.enhance_card(None, cid, **page.kw()) is True
     assert page.clicks[0] == (141, 905) and page.state == "after"
 
 
@@ -659,7 +668,7 @@ def test_read_loaded_waits_for_card_art():
     loaded = cv2.imread(str(DECK_DIALOG / "dmm-remove-art-loaded.jpg"))
     frames = iter([loading, loading, loaded])
     t = [0.0]
-    img, d = kp.read_loaded(lambda: next(frames), kp.CARD_OP_REGION["remove"], sleep=lambda s: t.__setitem__(0, t[0] + s), clock=lambda: t[0])
+    img, d = card_ops.read_loaded(lambda: next(frames), card_ops.CARD_OP_REGION["remove"], sleep=lambda s: t.__setitem__(0, t[0] + s), clock=lambda: t[0])
     assert len(d["cards"]) == 20 and all(c.get("card_id") for c in d["cards"])
     assert img is loaded and t[0] <= 1.0
 
@@ -686,7 +695,7 @@ def test_read_loaded_gives_up_when_no_progress():
     deck.read_card_dialog = fake_read
     try:
         t = [0.0]
-        kp.read_loaded(shoot, (0, 0, 1, 1), sleep=lambda s: t.__setitem__(0, t[0] + s), clock=lambda: t[0])
+        card_ops.read_loaded(shoot, (0, 0, 1, 1), sleep=lambda s: t.__setitem__(0, t[0] + s), clock=lambda: t[0])
     finally:
         deck.read_card_dialog = orig
-    assert calls["n"] == 1 + kp.CARD_ART_STALL
+    assert calls["n"] == 1 + card_ops.CARD_ART_STALL

@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_first_run_g33.py（fix_matto_prep_watchdog 5b5adff）
 """第三十三局：本地设置被重置后，开始确认页点「プロデュース開始」依次弹 4 个首次设置框（总控实机截图 tests/fixtures/first_run/）。
 - ボイス再生確認：「決定」左边的对勾被 OCR 读成「く決定」，以前按全等找「決定」找不到，不点（设置框会一直盖着）；
 - コミュ早送り設定 / 演出スキップ設定：skip_settings 照常处理；
@@ -67,10 +66,12 @@ def test_support_event_dialog_real_frame(monkeypatch):
 
     raw = _boxes("4-support-event")
     assert ss.read(raw) is None  # 不归 skip_settings，归 _first_run_settings
-    boxes = [NS(text=t, rect=((b[0] + b[2]) // 2, (b[1] + b[3]) // 2, 1, 1)) for t, _, b in raw]
+    from hiro.vision.ocr import Box, Text
+
+    boxes = [Text(t, Box(*b)) for t, _, b in raw]
     clicks = []
-    monkeypatch.setitem(sys.modules, "kotonebot", NS(device=NS(click=lambda r: clicks.append(r[:2]), screenshot=lambda: None),
-                                                     ocr=NS(ocr=lambda: boxes)))  # fmt: skip
+    monkeypatch.setitem(sys.modules, "kotonebot", NS(device=NS(click=lambda *r: clicks.append(r), screenshot=lambda: None)))
+    monkeypatch.setattr("hiro.loop.controller.screen_texts", lambda *a, **k: boxes)
     monkeypatch.setattr("hiro.loop.controller.time.sleep", lambda s: None)
     c = HiroController.__new__(HiroController)
     c._texts = [b.text for b in boxes]

@@ -1438,7 +1438,7 @@
  },
  {
   "file": "maindmm1m-20261110-205150-r3-00290.jpg",
-  "note": "maindmm1m-20261110-205150-r3",
+  "note": "maindmm1m-20261110-205150-r3；状态栏第 2 格是淡色茶杯（饮料效果），以前读到这里就停，只记了前 2 项（2026-11-12 补全）",
   "quick": null,
   "scene": "HIF_EXAM",
   "fields": {
@@ -1486,11 +1486,39 @@
      "slot": 1,
      "kind": "status",
      "value": 4
+    },
+    {
+     "slot": 2,
+     "kind": "enchant",
+     "card_id": null,
+     "faint": true
+    },
+    {
+     "slot": 3,
+     "kind": "enchant",
+     "card_id": "p_card-02-ido-3_105"
+    },
+    {
+     "slot": 4,
+     "kind": "enchant",
+     "card_id": "p_card-02-men-2_004"
+    },
+    {
+     "slot": 5,
+     "kind": "status",
+     "value": 1
+    },
+    {
+     "slot": 6,
+     "kind": "enchant",
+     "card_id": "p_card-02-act-1_037",
+     "value": 2
     }
    ],
    "status": {
     "examcardplayaggressive": 119,
-    "examreview": 4
+    "examreview": 4,
+    "examstaminaconsumptiondownfix": 1
    },
    "hand": [
     {
@@ -3472,14 +3500,25 @@
  },
  {
   "file": "qualifydmm2-20261111-002000-00081.jpg",
-  "note": "qualifydmm2-20261111-002000",
-  "quick": null,
+  "note": "qualifydmm2-20261111-002000；支援能力横幅盖着「パワフル漢方ドリンク」获得演出（同 qualifyz1 11-17 17:35 停机），快速判页应认成获得页点过（9580c0c 目视核对）",
+  "quick": "ACQUIRE",
   "scene": "DIALOG",
   "fields": {
    "kind": "other",
    "danger": false
   },
-  "page": "DIALOG"
+  "page": "DIALOG",
+  "tap": [
+   12,
+   12
+  ],
+  "quick_fields": {
+   "kind": "drink",
+   "drink_id": "pdrink_00-2-009"
+  },
+  "xfail_on": {
+   "windows": "RapidOCR 读不出被横幅压住的名称栏（只读到「正」），快速判页认不成获得页；Mac Vision 能读"
+  }
  },
  {
   "file": "qualifydmm2-20261111-002000-00091.jpg",

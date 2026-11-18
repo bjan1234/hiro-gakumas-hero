@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/support_screens.py（develop c3fc27f）
 """支援卡相关画面（用户 2026-11-02：支援卡不再用おまかせ）。样本 reports/live/rental/（540x960，放大到 720x1280 再读）。
 
 - 支援卡卡片（read_tile）：横版插画，左下「Lv 60」+ 4 个突破标记（已突破 = 亮的粉白花形，未突破 = 半透明暗色），右下属性圆标
@@ -131,7 +130,8 @@ def _texts(img: MatLike, boxes):
         from hiro.vision.pages import _texts as t
 
         boxes = t(img)
-    return [(t.replace(" ", ""), b) for t, b in boxes]
+    # 「サポート」的「ポ」常被 OCR 读成「ボ」（11-16 Mac 账号 2 第 2 步标题「2.サボート選択」，整页认不出、自动编成失败），这里统一回「ポ」
+    return [(t.replace(" ", "").replace("サボート", "サポート"), b) for t, b in boxes]
 
 
 def _center(b) -> list[int]:

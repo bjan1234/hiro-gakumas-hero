@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/digits.py（develop c3fc27f）；开源版改：游戏素材经插件 AssetSource（hiro.vision.assets），拿不到时退路见各处注释
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """用游戏自带字体读数字。
 
@@ -24,6 +23,10 @@ CHARS = "0123456789%"
 GLYPH_H = 40  # 比较时统一的字形高度
 WHITE = ((0, 0, 190), (180, 70, 255))
 DARK_V = 140  # 描边亮度上限
+# 缩放过的画面（DMM 1080 宽窗口缩到 720）描边被白字和青底混浅（亮度 140–170），外圈「深色描边」占比掉到 0.2–0.5，
+# 字形全被当成背景丢掉、read_text 返回空（9580c0c 11-17，genki_dmm 9 张）。第一遍按 DARK_V 切不出字或有字认不准时，
+# 按 DARK_V_SOFT 再切一遍，那一遍所有字都认得出才用。原尺寸（Mac / 720 宽）第一遍就读出，不受影响。
+DARK_V_SOFT = 170
 RING_DARK_MIN = 0.55  # 字符外圈中深色描边的占比下限；背景色块外圈不是描边
 MIN_SCORE = 0.7  # 实测正确字符 0.81–0.93；数字间露出的背景块被认成「1」时约 0.57
 MIN_HEIGHT_RATIO = 0.6  # 比最高字符矮得多的连通域是噪点或「%」之外的小符号
@@ -82,6 +85,16 @@ def read_text(img: MatLike, box: tuple[int, int, int, int], *, align: bool = Fal
 
 
 def _read_glyphs(img: MatLike, box: tuple[int, int, int, int], *, align: bool = False) -> tuple[str, bool, dict | None]:
+    """_read_glyphs_at(DARK_V)；切不出字或有字认不准时按 DARK_V_SOFT 再切一遍（缩放后描边变浅的画面），那一遍全认出才用。"""
+    text, uncertain, info = _read_glyphs_at(img, box, align=align, dark_v=DARK_V)
+    if (not text or uncertain) and _templates():
+        t2, u2, i2 = _read_glyphs_at(img, box, align=align, dark_v=DARK_V_SOFT)
+        if t2 and not u2:
+            return t2, u2, i2
+    return text, uncertain, info
+
+
+def _read_glyphs_at(img: MatLike, box: tuple[int, int, int, int], *, align: bool = False, dark_v: int = DARK_V) -> tuple[str, bool, dict | None]:
     """read_text 的实现；另返回所取那组字形的信息 {span: (x1, y1, x2, y2) 原图坐标, glyphs: 字形个数, occluded: 是否疑似漏字}。
     没有数字字体（开源默认素材）时照常按描边切出字形、给出 span 和字形个数，只是每个字都记为没认出（整串「不确定」），
     由调用方交给 ddddocr；read_score 用字形个数核对 OCR 的位数。"""
@@ -93,7 +106,7 @@ def _read_glyphs(img: MatLike, box: tuple[int, int, int, int], *, align: bool = 
     inner = ((bx1 - x1) * scale, (by1 - y1) * scale, (bx2 - x1) * scale, (by2 - y1) * scale)
     crop = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
     hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-    dark = hsv[:, :, 2] < DARK_V
+    dark = hsv[:, :, 2] < dark_v
     fill = cv2.inRange(hsv, *WHITE)
     fill[cv2.dilate(dark.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0] = 0
     fill = cv2.morphologyEx(fill, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
@@ -280,13 +293,55 @@ def read_int(img: MatLike, box: tuple[int, int, int, int], *, align: bool = Fals
     return int(m.group()) if m and not uncertain else None
 
 
+WHITE_DIGIT_H = 0.7  # read_white_digits：连通块高度至少为最高字的这么多倍
+WHITE_DIGIT_TOP = 0.3  # 顶边与最高字相差不超过字高的这么多倍
+
+
+def read_white_digits(img: MatLike, box: tuple[int, int, int, int]) -> int | None:
+    """白色填充 + 深色描边的数字（考试 HUD 元気角标）：只留白色像素，再只留和最高那块等高、顶边对齐的连通块，交 ddddocr。
+    框里的其他东西（体力条没满时的深灰圆头、角标左下的浅色高光、背景亮线）不是白色或比数字矮，读之前就抹掉
+    （DMM mainverify2 11-17：整框交 ddddocr 时元気 0 → 10、100 → 2100、700 → 5700）。框里没有白色块返回 None。"""
+    x1, y1, x2, y2 = box
+    crop = img[y1:y2, x1:x2]
+    if crop.size == 0:
+        return None
+    mask = cv2.inRange(cv2.cvtColor(crop, cv2.COLOR_BGR2HSV), *WHITE)
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(mask)
+    if n <= 1:
+        return None
+    tallest = max(range(1, n), key=lambda i: stats[i][cv2.CC_STAT_HEIGHT])
+    th, ty = stats[tallest][cv2.CC_STAT_HEIGHT], stats[tallest][cv2.CC_STAT_TOP]
+    keep = [i for i in range(1, n) if stats[i][cv2.CC_STAT_HEIGHT] >= th * WHITE_DIGIT_H and abs(stats[i][cv2.CC_STAT_TOP] - ty) <= th * WHITE_DIGIT_TOP]
+    out = np.zeros_like(crop)
+    out[np.isin(labels, keep)] = 255
+    text = (_dddd().classification(cv2.imencode(".png", cv2.resize(out, None, fx=2, fy=2))[1].tobytes()) or "").translate(DDDD_FIX)
+    m = re.search(r"\d+", text)
+    return int(m.group()) if m else None
+
+
 DDDD_FIX = str.maketrans({"o": "0", "O": "0", "l": "1", "I": "1"})
 
 
-def read_dddd(img: MatLike, box: tuple[int, int, int, int]) -> int | None:
-    """通用 OCR（KAA 自带的 ddddocr）读数字。"""
-    from kaa.tasks.produce.new.play_cards.page import _dddd
+@cache
+def _dddd():
+    import ddddocr
 
+    return ddddocr.DdddOcr(show_ad=False)
+
+
+def dddd_digits(crop: MatLike) -> list[int]:
+    """ddddocr 读一块里的数字（灰度、放大 2 倍、Otsu 二值化），返回读到的各个整数（同 KAA _digits_from_image）。"""
+    if crop is None or crop.size == 0:
+        return []
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    gray = cv2.resize(gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_LINEAR)
+    _, bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    ok, buf = cv2.imencode(".png", bw)
+    return [int(n) for n in re.findall(r"\d+", _dddd().classification(buf.tobytes()) or "")] if ok else []
+
+
+def read_dddd(img: MatLike, box: tuple[int, int, int, int]) -> int | None:
+    """通用 OCR（ddddocr）读数字。"""
     x1, y1, x2, y2 = box
     crop = cv2.resize(img[y1:y2, x1:x2], None, fx=2, fy=2)
     m = re.search(r"\d+", (_dddd().classification(cv2.imencode(".png", crop)[1].tobytes()) or "").translate(DDDD_FIX))

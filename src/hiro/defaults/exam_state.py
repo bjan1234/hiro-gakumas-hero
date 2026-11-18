@@ -1,7 +1,5 @@
 """ExamStateSource 默认实现：画面识别 + 状态机记账（confidence = "screen"，牌库顺序未知）。
 
-来源：digital-hiro src/hiro/produce/battle.py（_read_screen / _overlay_retry / _screen_exam_fields / _hand_mismatch / screen_state）。
-
 流程：识别层读整帧（hiro.vision.hif.read_hif_exam）→ Observation → reduce → GameState.exam（契约字段）→ BattleState。
 - 读不到的字段保持 None，BattleState / 提示词标「未识别」，不猜。
 - 识别给的手牌与执行器定位的手牌（frame.cards，点击用）张数相同时用识别的（带强化次数）；张数对不上时退回执行器的读数。

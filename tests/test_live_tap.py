@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_live_tap.py（c3fc27f）
 """第三十二局：夺冠后横屏 LIVE 开始前有一页「Campus mode!! / 篠澤広 / 作詞… / TAP TO START」（1280x720），要点一下才开始。
 d88829f 后横屏帧只处理窗口、不点，停在这页约 5 分钟（看门狗把横屏算进展，不报警）。"""
 

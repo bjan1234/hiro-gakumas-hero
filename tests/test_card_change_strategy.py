@@ -1,5 +1,6 @@
-# 来源：digital-hiro tests/test_card_change_strategy.py（c3fc27f）
 """HiroHifStrategy.on_skill_card_change：按决策的 card_id 换出；决策取消时传 cancel；阶段 1 候选未识别时换入第 0 张。"""
+
+import pytest
 
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.state import CAMPUS_HIRO
@@ -27,9 +28,23 @@ class StubSession:
         self.notes.append(text)
 
 
+_CTX: list = []  # 最近建的 StubCtx：换卡执行器（card_ops.change_stage1 / 2）的替身把调用记到它上面
+
+
+@pytest.fixture(autouse=True)
+def _route_card_ops(monkeypatch):
+    from hiro.produce import card_ops
+
+    monkeypatch.setattr(card_ops, "change_stage1", lambda _self, index: _CTX[-1].commit_stage1(index))
+    monkeypatch.setattr(card_ops, "change_stage2", lambda _self, index, **kw: _CTX[-1].commit_stage2(index, **kw))
+    yield
+    _CTX.clear()
+
+
 class StubCtx:
     def __init__(self, stage):
         self.stage, self.calls = stage, []
+        _CTX.append(self)
 
     def commit_stage1(self, index):
         self.calls.append(("s1", index))
@@ -127,18 +142,52 @@ def test_stage1_rereads_until_candidates_reach_state():
     assert ctx.calls[0] == ("s1", 2)  # 按价值选 デイドリーミング，不是第 0 张
 
 
-def test_change_pick_by_cull_switch(monkeypatch):
-    """CHANGE_PICK_BY_CULL：换入按删卡顺序挑（最晚才会被删的），默认关时仍按 card_value（Win2 seq19：止められない想い vs 気まぐれハート）。"""
+def test_change_pick_by_cull():
+    """换入按删卡顺序挑（最晚才会被删的），不挑冲突牌（Win2 seq19：止められない想い vs 気まぐれハート；用户 11-11 定为一直开）。"""
     from hiro.brain import deciders as D
 
     cands = [{"index": 0, "card_id": "p_card-02-men-2_056", "upgrade": 0, "name": "止められない想い"},
              {"index": 1, "card_id": "p_card-02-men-3_043", "upgrade": 0, "name": "トキメキ"},
              {"index": 2, "card_id": "p_card-02-men-2_100", "upgrade": 0, "name": "気まぐれハート"}]  # fmt: skip
     state = GameState(page_fields={"candidates": cands}, produce={"mode": "produce-008"})
-    monkeypatch.setattr(D, "CHANGE_PICK_BY_CULL", False)
-    off = ProduceDeciders(CAMPUS_HIRO, None, change_controlled=True).change_pick(state).action.args["pick_index"]
-    monkeypatch.setattr(D, "CHANGE_PICK_BY_CULL", True)
     on = ProduceDeciders(CAMPUS_HIRO, None, change_controlled=True).change_pick(state).action.args["pick_index"]
     keys = {c["index"]: D.cull_key(c["card_id"], 0, finals=True) for c in cands}
-    assert off == 0  # 默认：价值最高的 止められない想い
-    assert on == max(keys, key=keys.get) and on != 1  # 开：最晚才会被删的；不挑冲突牌 トキメキ
+    assert on == max(keys, key=keys.get) and on != 1  # 最晚才会被删的；不挑冲突牌 トキメキ
+
+def test_forced_change_falls_back_to_ledger_when_screen_all_protected():
+    """DMM mainz3（11-18 03:34，窗口 559x993）：牌组 22 张，换卡对话框整副拼接不可信只留第一屏 12 张，全是核心 / 保护卡；
+    取消后绕回换卡页，「没有可换出的非保护卡」停机。一屏里挑不出时按牌组账本挑价值最低的非保护卡，执行按 card_id 翻屏找。"""
+
+    class LedgerSession(StubSession):
+        def observe(self, scene, **_):
+            self.state = GameState(page_fields=dict(self.fields_by_page.get(scene, {})),
+                                   produce={"deck": [{"card_id": DAYDREAM, "upgrade": 1}, {"card_id": BASIC, "upgrade": 0}]})  # fmt: skip
+            return scene
+
+    st = _strategy({})
+    st.s = LedgerSession({"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": DAYDREAM, "upgrade": 1}], "deck_complete": False}})
+    st.CHANGE_OBSERVE_TRIES = 1
+    st.s.recover = lambda *a: None
+    st.deciders.decide = lambda page, state, **kw: __import__("hiro.contracts", fromlist=["Decision"]).Decision(
+        Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7)
+    st._change_cancels = 1
+    ctx = StubCtx(stage=2)
+    st.on_skill_card_change(ctx)
+    assert ctx.calls == [("s2", BASIC, False)] and ctx.stage2_args[0] is None  # 按 card_id 翻屏找，不按格子号
+
+
+def test_forced_change_gives_up_after_repeated_failures():
+    """mainz3 r1（11-18 03:47）：强制换出的卡执行侧没点成，每次取消都绕回换卡页，转了 2 分钟。强制换出 CHANGE_FORCED_MAX 次都没换成就停下。"""
+    import pytest
+
+    from hiro.produce.hif import UnhandledPage
+
+    st = _strategy({})
+    st.s = StubSession({"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": BASIC, "upgrade": 0}], "deck_complete": True}})
+    st.CHANGE_OBSERVE_TRIES = 1
+    st.s.recover = lambda *a: None
+    st.deciders.decide = lambda page, state, **kw: __import__("hiro.contracts", fromlist=["Decision"]).Decision(
+        Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7)
+    st._change_cancels = 1 + st.CHANGE_FORCED_MAX
+    with pytest.raises(UnhandledPage, match="强制换出"):
+        st.on_skill_card_change(StubCtx(stage=2))

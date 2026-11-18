@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/run_hif.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """一条命令跑 HIF 培育：KAA 流程骨架 + 策略（默认 hiro.produce.hif.HiroHifStrategy）+ 主循环 trace。
 
     python -m hiro.run_hif resume                      # 继续进行中的培育
@@ -99,16 +99,16 @@ def _supervised_resume(scenario, idol, session, Strategy=None) -> None:
 def _refill_ap(scenario) -> bool:
     """AP 不足：在培育页重新点 H.I.F 按钮弹出「AP不足」，交 hiro.loop.ap_refill（只喝 APドリンク，确认框有ジュエル就取消）。
     只打选拔时本战还要 20 AP，一起补上。"""
-    from kaa.tasks import R
     from kotonebot import device
 
     from hiro.loop import ap_refill
     from hiro.produce.ops import ocr_boxes
+    from hiro.vision.ui_templates import tap
 
-    btn = R.Produce.ButtonHifMain if scenario == HifScenario.MAIN else R.Produce.ButtonHifQualify
+    btn = "Produce.ButtonHifMain" if scenario == HifScenario.MAIN else "Produce.ButtonHifQualify"
     mode = "main" if scenario == HifScenario.MAIN else "qualify"
     # 多试几帧，模板没中按 OCR「本戦 / 選抜試験」定位（第二十七局：只截一次、模板没中就失败，按钮其实在）
-    if not ap_refill.open_hif(device.screenshot, lambda x, y: device.click(x, y), ocr_boxes, mode=mode, try_template=btn.try_click):
+    if not ap_refill.open_hif(device.screenshot, lambda x, y: device.click(x, y), ocr_boxes, mode=mode, try_template=lambda: tap(btn, device.screenshot(), device.click)):
         logger.error("AP 补充：%.0fs 内培育页没找到 H.I.F「%s」按钮，弹不出「AP不足」", ap_refill.OPEN_TIMEOUT, ap_refill.HIF_BUTTON_TEXT[mode])
         return False
     r = ap_refill.refill(device.screenshot, lambda x, y: device.click(x, y), ocr_boxes, extra_ap=0 if scenario == HifScenario.MAIN else 20,
@@ -186,16 +186,21 @@ def main():
         os.environ["HIRO_DEBUG_RECOG"] = "1"  # Session 读它：全部 Check 写进 trace、页面变化都存帧
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s")
 
-    scenario = HifScenario.MAIN if args.mode == "main" else HifScenario.QUALIFY
-    Strategy = load_strategy(args.strategy)
-    from hiro.kaa_env import SetupMissing
+    own = os.environ.get("HIRO_RUNTIME", "kaa").strip().lower() == "own"  # 新主循环（hiro.runtime，不用 KAA）；缺省仍是 KAA 主循环
+    if not own:
+        scenario = HifScenario.MAIN if args.mode == "main" else HifScenario.QUALIFY
+        Strategy = load_strategy(args.strategy)
+        from hiro.kaa_env import SetupMissing
 
-    try:
-        init_kaa(scenario, idol=args.idol, require_sets=args.command == "new")
-    except SetupMissing as e:
-        print(str(e), file=sys.stderr)
-        return 2
+        try:
+            init_kaa(scenario, idol=args.idol, require_sets=args.command == "new")
+        except SetupMissing as e:
+            print(str(e), file=sys.stderr)
+            return 2
     from hiro import kaa_env
+
+    if own:
+        kaa_env.apply_formation_plan(args.idol)
 
     if args.main_attr is None and kaa_env.PLAN_MAIN_ATTR:
         args.main_attr = kaa_env.PLAN_MAIN_ATTR  # 没给 --main-attr：用开局编成方案的主属性（策略、租借格、trace 都按它）
@@ -210,8 +215,20 @@ def main():
 
     name = args.trace or datetime.now().strftime("%Y%m%d-%H%M%S")
     trace = TraceWriter(name=name, meta={"command": args.command, "mode": args.mode, "idol": args.idol, "llm": None if args.no_llm else (args.llm or "env/default"), "main_attr": args.main_attr, "debug_recog": os.environ.get("HIRO_DEBUG_RECOG") == "1",
-                                         "strategy": f"{Strategy.__module__}:{Strategy.__qualname__}", "manifest": manifest.to_dict()})  # fmt: skip
+                                         "strategy": "hiro.produce.hif:HifCore" if own else f"{Strategy.__module__}:{Strategy.__qualname__}",
+                                         "runtime": "own" if own else "kaa", "manifest": manifest.to_dict()})  # fmt: skip
     session = Session(trace)
+    if own:
+        from hiro.loop import pause_flag
+        from hiro.runtime import play
+
+        pause_flag.wait_until_recording()
+        logger.info("新主循环（HIRO_RUNTIME=own）；trace → %s", trace.dir)
+        try:
+            return play.run(args, session)
+        finally:
+            trace.close()
+            _write_report(trace, name)
     HiroController.session = session
     for k, v in {"session": session, "use_llm": not args.no_llm, "llm_spec": args.llm, "main_attr": args.main_attr,
                  "exams_done": args.exams_done}.items():  # fmt: skip
@@ -323,16 +340,25 @@ def main():
     finally:
         rec_watch.stop()
         trace.close()
-        try:
-            r = report(trace.dir)
-            out = Path("reports/runs") / f"{name}.json"
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(json.dumps(r, ensure_ascii=False, indent=1), encoding="utf-8")
-            print(markdown(r))
-            print(f"→ {out}")
-        except Exception as e:  # 报告失败不影响已写好的 trace
-            logger.error("生成报告失败：%r", e)
+        _write_report(trace, name)
     return 0
+
+
+def _write_report(trace, name: str) -> None:
+    """每段结束写 reports/runs/<名>.json 并打印摘要（含 KAA 出手次数；新主循环下应为空）。"""
+    try:
+        r = report(trace.dir)
+        from hiro.loop import kaa_usage
+
+        r["kaa_usage"] = kaa_usage.snapshot()  # 去 KAA 第 0 步：这一段里 KAA 出手的次数
+        logger.info("KAA 出手：%s", r["kaa_usage"] or "无")
+        out = Path("reports/runs") / f"{name}.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(r, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(markdown(r))
+        print(f"→ {out}")
+    except Exception as e:  # 报告失败不影响已写好的 trace
+        logger.error("生成报告失败：%r", e)
 
 
 if __name__ == "__main__":

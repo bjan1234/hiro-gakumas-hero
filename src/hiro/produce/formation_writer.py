@@ -1,8 +1,9 @@
-# 来源：digital-hiro src/hiro/produce/formation_writer.py（7744207）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
-"""开局时把编成位改成方案（hiro.brain.formation_plan）：第 2 步支援卡、第 3 步回忆，就地修正对不上的格子。
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+"""把编成位改成方案（hiro.brain.formation_plan）：支援卡、回忆，就地修正对不上的格子。
 
-只在 KAA 已经切到方案的编成号（建议 20 号专用位）之后、点「次へ」之前运行；不进菜单、不碰其他编成位。开关
-HIRO_FORMATION_AUTOFIX=1 才启用（默认关，2026-11-06：执行步骤还没实机验证）。
+两个用处：开局第 2 步支援卡（HIRO_FORMATION_AUTOFIX=1 才启用，在 KAA 切到方案的编成号之后、点「次へ」之前）；
+编成菜单（hiro.produce.formation_menu，tools/write_formation.py）里写支援卡和回忆。开局第 3 步不再写回忆、只核对
+（协调 11-17：第 3 步选择页只露约 3 行、排序和菜单不同，按库存行号找不准）。不碰方案编成号以外的编成位。
 
 规则：
 - 只改必须改的格子：已经在编成里的方案卡不动；先换「认出来但不在方案里」的格子，再用认不出的格子。
@@ -15,10 +16,13 @@ HIRO_FORMATION_AUTOFIX=1 才启用（默认关，2026-11-06：执行步骤还没
 
 from __future__ import annotations
 
+import json
+
 import logging
-import time
 from dataclasses import dataclass, field
 from typing import Callable
+
+from hiro.devices.active import sleep as _sleep
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +57,7 @@ class Device:
     click: Callable
     swipe: Callable
     ocr: Callable | None = None
-    sleep: Callable = time.sleep
+    sleep: Callable = _sleep
     calib: Callable | None = None  # calib(img, tag)：存帧（实机排查用）
 
     def snap(self, img, tag: str) -> None:
@@ -148,15 +152,33 @@ def pick_support(dev: Device, target: str, *, read_list) -> None:
     raise FormationWriteError(f"支援卡选择列表里没找到 {target}（库存里没有，或认不出）")
 
 
-def fix_support(dev: Device, plan: dict, *, read_formation, read_list) -> list[dict]:
-    """第 2 步：读 5 格，和方案不一致的格子逐个点开、选方案的卡、決定，再核对。返回改动记录。"""
+SETTLE_READS, SETTLE_GAP_S = 8, 0.5
+
+
+def _settled_step2(dev: Device, read_formation, view: str = "step2"):
+    """第 2 步 5 格读到连续两次一样才算数（刚从别的编成号翻过来时卡片还在动画里，第 1 格常读成认不出，
+    11-16 Mac 实机：于是去列表里找一张已经在编成里的卡，找不到就不开局）。读不到稳定结果时用最后一次。"""
+    prev, page = None, None
+    for _ in range(SETTLE_READS):
+        page = read_formation(dev.shoot())
+        if page is not None and page.get("view") == view:
+            cur = [s.get("support_card_id") for s in page["slots"]]
+            if cur == prev:
+                return page
+            prev = cur
+        dev.sleep(SETTLE_GAP_S)
+    return page if page is not None and page.get("view") == view else None
+
+
+def fix_support(dev: Device, plan: dict, *, read_formation, read_list, view: str = "step2") -> list[dict]:
+    """第 2 步：读 5 格，和方案不一致的格子逐个点开、选方案的卡、決定，再核对。返回改动记录。
+    view：read_formation 的页面类型，开局第 2 步是 step2，编成菜单（hiro.produce.formation_menu）是 formation。"""
     want = [o["support_card_id"] for o in (plan.get("support") or {}).get("own") or []]
     if not want:
         return []
-    img = dev.shoot()
-    page = read_formation(img)
-    if page is None or page.get("view") != "step2":
-        raise FormationWriteError("不在第 2 步支援卡页面")
+    page = _settled_step2(dev, read_formation, view)
+    if page is None:
+        raise FormationWriteError("不在第 2 步支援卡页面" if view == "step2" else "不在支援卡编成页")
     current = [s.get("support_card_id") for s in page["slots"]]
     moves = fix_plan(current, want)
     done = []
@@ -166,9 +188,9 @@ def fix_support(dev: Device, plan: dict, *, read_formation, read_list) -> list[d
         dev.click(*tile["center"])
         dev.sleep(1.5)
         pick_support(dev, target, read_list=read_list)
-        img, page2 = _wait(dev, read_formation, lambda p: p.get("view") == "step2")
+        img, page2 = _wait(dev, read_formation, lambda p: p.get("view") == view)
         if page2 is None:
-            raise FormationWriteError("決定后没回到第 2 步")
+            raise FormationWriteError("決定后没回到第 2 步" if view == "step2" else "決定后没回到支援卡编成页")
         got = page2["slots"][slot].get("support_card_id")
         if got != target:
             dev.snap(img, f"support-verify-fail-{slot}")
@@ -182,7 +204,9 @@ def fix_support(dev: Device, plan: dict, *, read_formation, read_list) -> list[d
 
 # 第 3 步四格回忆的插图（点开进回忆选择页）：720x1280，顺序 左上、右上、左下、右下（11-04 实机帧；技能卡小图标在其右侧）
 STEP3_SLOTS = ((152, 770), (478, 770), (152, 901), (478, 901))
-SEARCH_ROWS = 3  # 目标行上下各找几行
+SEARCH_ROWS = 8  # 目标行上下各找几行（库存行号可能偏：扫描漏行 / 重扫后列表变了，11-16 账号 2 偏了十几行）
+ABILITY_SIMILAR = 0.85  # 能力文字（OCR 原文）相似度达到这个就算同一份；卡 / 强化 / 时机一致但能力不像的，整窗口找完没有更好的才用
+PICKER_OPEN_TRIES = 4  # 点回忆格后最多看几次选择页开没开（每次 1.5 秒，中途再点一次）
 PICKER_DECIDE = (497, 1157)
 
 
@@ -192,34 +216,74 @@ def memory_key(e: dict) -> str:
     return entry_key(e)
 
 
+def _core(key: str):
+    """内容键里稳定的部分：卡、强化、时机。属性不比：选择页顶部显示的是「当前编成 + 这份回忆」的总加成，随编成变
+    （11-16 账号 2：扫描时和开局时读到的属性对不上）；能力文字是 OCR 原文，常差一两个字，另外按相似度比。"""
+    try:
+        return json.loads(key)[:3]
+    except (TypeError, ValueError):
+        return None
+
+
+def _abilities_text(key: str) -> str:
+    try:
+        ab = json.loads(key)[7] or []
+    except (TypeError, ValueError, IndexError):
+        return ""
+    return "".join(a.get("text", "") if isinstance(a, dict) else str(a) for a in ab)
+
+
+def _similar(a: str, b: str) -> float:
+    from difflib import SequenceMatcher
+
+    return 1.0 if a == b else SequenceMatcher(None, a, b).ratio()
+
+
 def pick_memory(picker, target: dict, *, decide=PICKER_DECIDE) -> None:
-    """在已打开的回忆选择页里按库存位置找到 target（cell = [行, 列]、key = entry_key），核对后「決定」。"""
-    from hiro.produce.memory_picker import ROW_PITCH, page_rows, to_top
+    """在已打开的回忆选择页里按库存位置找到 target（cell = [行, 列]、key = entry_key），核对后「決定」。
+    从顶往下按精确行号走（滑动不按像素估算，扫描库存时也是这样数的），只读目标行上下 SEARCH_ROWS 行里同一列的格子：
+    内容键完全一样、或卡 / 强化 / 时机一致且能力文字相似（≥ ABILITY_SIMILAR）就选；一个都没有时，再走一遍选第一份卡 / 强化 / 时机一致的。"""
+    from hiro.produce.memory_picker import iter_rows
 
     row, col = target["cell"]
-    img = to_top(picker)
-    lead = max(0, row - SEARCH_ROWS)  # 目标行停在屏幕中间：滚动有误差时上下都还看得到
-    if lead > 0:
-        img = picker.scroll(px=int(lead * ROW_PITCH))
-    rows = page_rows(img)
+    want_core, want_ab = _core(target["key"]), _abilities_text(target["key"])
     tried = 0
-    for r in rows[: SEARCH_ROWS * 2 + 1]:
-        cell = next((c for c in r if c["col"] == col), None)
-        if cell is None:
-            continue
-        picker.select(cell)
-        got = picker.read_selected()
-        tried += 1
-        if memory_key(got) == target["key"]:
-            picker.click(*decide)
-            picker.sleep(1.5)
-            return
+
+    def walk(accept) -> bool:
+        """从顶往下按精确行号走（memory_picker.iter_rows），只读目标行上下 SEARCH_ROWS 行里同一列的格子。"""
+        nonlocal tried
+        for g, r in iter_rows(picker):
+            if g < row - SEARCH_ROWS:
+                continue
+            if g > row + SEARCH_ROWS:
+                return False
+            cell = next((c for c in r if c["col"] == col), None)
+            if cell is None:
+                continue
+            picker.select(cell)
+            got = memory_key(picker.read_selected())
+            tried += 1
+            if accept(got):
+                picker.click(*decide)
+                picker.sleep(1.5)
+                return True
+        return False
+
+    def strong(key: str) -> bool:
+        return key == target["key"] or (want_core is not None and _core(key) == want_core and _similar(_abilities_text(key), want_ab) >= ABILITY_SIMILAR)
+
+    if walk(strong):
+        return
+    if want_core is not None and walk(lambda key: _core(key) == want_core):
+        logger.warning("回忆选择页：第 %d 行附近没有能力文字也对得上的，选了第一份卡 / 强化 / 时机一致的", row)
+        return
     picker.cancel()
-    raise FormationWriteError(f"回忆选择页第 {row} 行附近没找到方案里的回忆（试了 {tried} 格），库存可能过期，请重扫")
+    raise FormationWriteError(f"回忆选择页第 {row} 行上下 {SEARCH_ROWS} 行里没找到方案里的回忆（试了 {tried} 格），库存可能过期，请重扫")
 
 
-def fix_memory(dev: Device, plan: dict, *, read_icons, make_picker) -> list[dict]:
-    """第 3 步：认四格回忆的卡，和方案不一致的格子逐个点开、按库存位置选那份回忆、決定，再认一次核对。"""
+def fix_memory(dev: Device, plan: dict, *, read_icons, make_picker, slots=STEP3_SLOTS) -> list[dict]:
+    """第 3 步：认四格回忆的卡，和方案不一致的格子逐个点开、按库存位置选那份回忆、決定，再认一次核对。
+    slots：点开选择页的四个位置（编成菜单用 formation_menu.MEMORY_TILES）。"""
     from hiro.vision.memory_icons import card_key
 
     chosen = (plan.get("memory") or {}).get("chosen") or []
@@ -238,14 +302,24 @@ def fix_memory(dev: Device, plan: dict, *, read_icons, make_picker) -> list[dict
     done = []
     for slot, key in moves:
         logger.info("编成修正：回忆第 %d 格 %s → %s", slot + 1, current[slot] or "认不出", key)
-        dev.click(*STEP3_SLOTS[slot])
-        dev.sleep(1.5)
-        picker = make_picker()
         from hiro.produce.memory_picker import picker_open
 
-        if not picker_open(picker.ocr(picker.shoot())):
+        picker, opened = make_picker(), False
+        for attempt in range(PICKER_OPEN_TRIES):  # 页面打开有时慢（11-16 Mac 实机：1.5 秒后还没开 → 不开局）：多等、没开再点一次
+            if attempt == 0 or attempt == PICKER_OPEN_TRIES // 2:
+                dev.click(*slots[slot])
+            dev.sleep(1.5)
+            if picker_open(picker.ocr(picker.shoot())):
+                opened = True
+                break
+        if not opened:
             raise FormationWriteError("点回忆格没打开回忆选择页")
-        pick_memory(picker, targets[key])
+        from hiro.produce.memory_picker import PickerClosed
+
+        try:
+            pick_memory(picker, targets[key])
+        except PickerClosed as e:  # 找的途中选择页关了（点成了「決定」）：这一格可能被换成了别的回忆，停下交给人
+            raise FormationWriteError(f"回忆第 {slot + 1} 格：找方案里的回忆时选择页关了，这一格可能被换成了别的回忆：{e}") from e
         img = None
         for _ in range(10):
             img = dev.shoot()

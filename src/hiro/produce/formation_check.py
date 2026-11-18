@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/produce/formation_check.py（99092bc）（GPL-3.0-or-later）
 """开局编成核对（hiro.brain.formation_plan 的方案 vs 游戏画面）：对不上就停，不开局。
 
 - 第 2 步「サポート選択」：read_support_formation 读 5 格自己的卡，和方案的 own 比。认出来的卡不在方案里、或全部认出但缺方案里的卡、
@@ -108,5 +107,6 @@ def check_memory_cards(reads: list[dict], plan: dict, names: dict | None = None)
         msg = f"第 {i} 格回忆像 {nm(r['card'])}（分 {r['score']}），不是方案里的卡" + (f"（方案里最像的 {nm(best_k)} 分 {exp[best_k]}）" if best_k else "")
         (problems if gap >= CONFIDENT_MARGIN else warnings).append(msg if gap >= CONFIDENT_MARGIN else msg + "，差距不大，不拦")
     if reads and unknown == len(reads):
-        warnings.append("四格回忆都认不出：第 3 步布局可能变了，图标位置要重新标定")
+        # 一格都认不出不能当「没认错」放行（11-17 Mac p15c：翻编成号的动画还没完就读了，四格分 28–40，照样开局）
+        problems.append("四格回忆都认不出（画面还在切换，或第 3 步布局变了、图标位置要重新标定），不能确认是方案的回忆")
     return problems, warnings

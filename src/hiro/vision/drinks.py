@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/drinks.py（develop c3fc27f）
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """P 饮料图标识别：多尺度模板匹配，对比 KAA 饮料图库（resources/game_data/drinks，68x68）。
 
@@ -11,16 +10,20 @@ from functools import lru_cache
 import cv2
 import numpy as np
 from cv2.typing import MatLike
-from kaa.db.drink import Drink
-from kaa.game_data.paths import sprites_path
+from hiro import master
 
 SCALES = (1.05, 1.15, 1.25, 1.35)
 
 
 @lru_cache(maxsize=1)
 def _templates() -> list[tuple[str, list[np.ndarray]]]:
+    from hiro import plugins
+
     out = []
-    folder = sprites_path("drinks")
+    src = plugins.get("asset_source")
+    folder = src.game_data("drinks") if src is not None and hasattr(src, "game_data") else None
+    if folder is None:
+        return out
     for name in sorted(os.listdir(folder)):
         img = cv2.imread(os.path.join(folder, name))
         if img is None:
@@ -51,7 +54,7 @@ def match_drink(slot: MatLike) -> tuple[str | None, float, float]:
 def drink_info(asset_id: str | None) -> dict | None:
     if asset_id is None:
         return None
-    d = Drink.from_asset_id(asset_id)
+    d = master.drink_by_asset(asset_id)
     if d is None:
         return {"asset_id": asset_id}
     return {"asset_id": asset_id, "name": d.name, "effect": getattr(d, "description", None) or getattr(d, "effect_display_text", None)}

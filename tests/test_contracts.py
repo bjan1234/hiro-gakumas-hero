@@ -1,6 +1,7 @@
 """契约：往返、schema 校验、与现有结构的互转、数据集样本。"""
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ from hiro.contracts import (
 from hiro.contracts.schemas import OUT, dump
 
 FIX = Path(__file__).with_name("fixtures")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))  # state_demo / contract_samples
 
 
 def test_schema_files_match_code():
@@ -42,7 +44,7 @@ def test_game_state_roundtrip_and_produce_state():
     g.validate()
     assert GameState.from_json(g.to_json()) == g
     assert g.produce_state() is None  # 字段不全
-    from hiro.state.demo import SAMPLE
+    from state_demo import SAMPLE
 
     full = GameState(mode="produce", produce=SAMPLE.to_dict())
     assert full.produce_state() == SAMPLE
@@ -63,7 +65,7 @@ def test_observation_rejects_bad_source_and_unregistered_field():
 
 
 def test_dataset_samples_validate(tmp_path):
-    from hiro.contracts.samples import from_manifest
+    from contract_samples import from_manifest
 
     ds = Path("datasets/20261029-224103-hif-qualify")
     if not ds.exists():

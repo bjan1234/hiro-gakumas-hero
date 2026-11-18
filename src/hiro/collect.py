@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/collect.py（develop ce5085f）
 """实机采集：持续截图，画面变化时保存并打上识别结果，用于积累样本、验证识别。
 
     .venv/bin/python -m hiro.collect [--interval 0.5] [--minutes 30] [--name 备注] [--port 8765]
@@ -9,9 +8,13 @@
 需要操作时不要另起进程，而是通过本进程的本机 HTTP 接口下发，由采集循环在同一线程执行：
     curl 'http://127.0.0.1:8765/tap?x=360&y=1161&wait=1.5'
     curl 'http://127.0.0.1:8765/dtap?x=100&y=1010&wait=1.5'   # 行动按钮等需要双击确认
-    curl 'http://127.0.0.1:8765/swipe?x1=360&y1=900&x2=360&y2=400&duration=0.4&wait=1'
+    curl 'http://127.0.0.1:8765/swipe?x1=360&y1=900&x2=360&y2=400&duration=0.4&hold=0.3&wait=1'
     curl 'http://127.0.0.1:8765/shot'
 每个命令返回执行后那一帧的识别结果与截图路径。
+
+设备走 hiro.tool_device（hiro.devices + 危险点击拦截：点在 ジュエル / 購入 等字上会被拦下，命令返回 error），
+判页走 hiro.vision.classify.classify（纯函数），不经 kotonebot / KAA。
+选卡弹窗（SELECT_CARD）的读卡还靠 KAA 的卡面插图比对（vision.extract._select_card），这里不读，fields 记 skipped。
 """
 
 import argparse
@@ -19,24 +22,21 @@ import json
 import queue
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import cv2
 import numpy as np
 
-import hiro  # noqa: F401
-
-from hiro.device import connect
-from kaa.config.schema import KaaConfig
-from kaa.kaa_context import init as kaa_init
-from kotonebot.backend.context import device, init_context, manual_context
-
+from hiro.tool_device import open_tool_device
+from hiro.vision.classify import classify
 from hiro.vision.extract import extract
 from hiro.vision.observe import observation
-from hiro.vision.scene import classify_current
+
+# 读这几页的字段还要 KAA（见模块说明），collect 不读
+NEEDS_KAA = {"SELECT_CARD": "选卡读卡还靠 KAA 的卡面插图比对（vision.extract._select_card），collect 不经 KAA，不读"}
 
 
 def check_stale() -> str | None:
@@ -96,10 +96,8 @@ def main():
     out = Path(args.dir) if args.dir else Path("datasets") / f"{datetime.now():%Y%m%d-%H%M%S}-{args.name}"
     (out / "frames").mkdir(parents=True, exist_ok=True)
     manifest = (out / "manifest.jsonl").open("a", encoding="utf-8")
-    kaa_init(KaaConfig(), "collect")
-    init_context(target_device=connect())
-    manual_context().begin()
-    commands: "queue.Queue[_Command]" = queue.Queue()
+    d = open_tool_device()
+    commands: queue.Queue[_Command] = queue.Queue()
     threading.Thread(target=_serve, args=(args.port, commands), daemon=True).start()
     print(f"collecting into {out}; commands on http://127.0.0.1:{args.port}", flush=True)
 
@@ -107,24 +105,35 @@ def main():
     last_auto = {"scene": None, "t": 0.0}
     seq = sum(1 for _ in (out / "manifest.jsonl").open()) if (out / "manifest.jsonl").exists() else 0
     deadline = time.time() + args.minutes * 60
-    def save(img, capture_ms: float, trigger: str | None) -> dict:
+    def page_of(img):
+        tick = time.perf_counter()
+        hit = classify(img)
+        return hit, (time.perf_counter() - tick) * 1000
+
+    def save(img, capture_ms: float, trigger: str | None, hit=None, classify_ms: float | None = None) -> dict:
         nonlocal seq
-        result = classify_current()
-        fields, extract_ms = extract(result.scene, img)
+        if hit is None:
+            hit, classify_ms = page_of(img)
+        scene, area = hit.name, ("unknown" if hit.name == "unknown" else hit.area)
+        if scene in NEEDS_KAA:
+            fields, extract_ms = {"skipped": NEEDS_KAA[scene]}, 0.0
+        else:
+            fields, extract_ms = extract(scene, img)
         seq += 1
-        name = f"{seq:05d}-{result.scene}.jpg"
+        name = f"{seq:05d}-{scene}.jpg"
         cv2.imwrite(str(out / "frames" / name), img, [cv2.IMWRITE_JPEG_QUALITY, 92])  # PNG 约 0.7MB/帧，曾把磁盘写满
         t = time.time()
-        timings = {"capture": round(capture_ms, 1), "classify": round(result.elapsed_ms, 1), "extract": round(extract_ms, 1)}
-        obs = observation(seq, t, result.scene, fields, area=result.area, screenshot=f"frames/{name}", timings_ms=timings)
+        timings = {"capture": round(capture_ms, 1), "classify": round(classify_ms, 1), "extract": round(extract_ms, 1)}
+        obs = observation(seq, t, scene, fields, area=area, screenshot=f"frames/{name}", timings_ms=timings)
+        page_fields = {k: v for k, v in (hit.fields or {}).items() if k != "_quick"}
         row = {
-            "seq": seq, "t": t, "file": f"frames/{name}", "area": result.area, "scene": result.scene,
+            "seq": seq, "t": t, "file": f"frames/{name}", "area": area, "scene": scene, "page_source": hit.source,
             "trigger": trigger, "capture_ms": timings["capture"], "classify_ms": timings["classify"],
-            "extract_ms": timings["extract"], "fields": fields, "observation": obs.to_dict(),
+            "extract_ms": timings["extract"], "fields": fields, "page_fields": page_fields or None, "observation": obs.to_dict(),
         }
         manifest.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
         manifest.flush()
-        print(f"{seq:05d} {result.area}/{result.scene} classify={result.elapsed_ms:.0f}ms extract={extract_ms:.0f}ms {trigger or ''}", flush=True)
+        print(f"{seq:05d} {area}/{scene} ({hit.source}) classify={classify_ms:.0f}ms extract={extract_ms:.0f}ms {trigger or ''}", flush=True)
         return row
 
     def run_command(cmd: _Command) -> None:
@@ -132,17 +141,20 @@ def main():
         p = cmd.params
         try:
             if cmd.name == "tap":
-                device.click(int(p["x"]), int(p["y"]))
+                d.tap(int(p["x"]), int(p["y"]))
             elif cmd.name == "dtap":
-                device.double_click(int(p["x"]), int(p["y"]))
+                d.tap(int(p["x"]), int(p["y"]))
+                time.sleep(0.08)
+                d.tap(int(p["x"]), int(p["y"]))
             elif cmd.name == "swipe":
-                device.swipe(int(p["x1"]), int(p["y1"]), int(p["x2"]), int(p["y2"]), float(p.get("duration", 0.4)))
+                d.swipe(int(p["x1"]), int(p["y1"]), int(p["x2"]), int(p["y2"]),
+                        duration=float(p.get("duration", 0.4)), hold=float(p.get("hold", 0)))  # fmt: skip
             elif cmd.name != "shot":
                 cmd.result = {"error": f"unknown command {cmd.name}"}
                 return
             time.sleep(float(p.get("wait", 1.5 if cmd.name != "shot" else 0)))
             tick = time.perf_counter()
-            img = device.screenshot()
+            img = d.screenshot()
             last_hash = dhash(img)
             cmd.result = save(img, (time.perf_counter() - tick) * 1000, f"{cmd.name} {p}")
             cmd.result["path"] = str(out / cmd.result["file"])
@@ -156,7 +168,7 @@ def main():
         while not commands.empty():
             run_command(commands.get())
         try:
-            img = device.screenshot()
+            img = d.screenshot()
         except Exception as e:  # 截图偶发失败（锁屏、窗口切换），跳过本次
             print(f"screenshot failed: {e}", flush=True)
             time.sleep(1)
@@ -165,10 +177,10 @@ def main():
         h = dhash(img)
         if last_hash is None or int(np.count_nonzero(h != last_hash)) > args.threshold:
             last_hash = h
-            scene = classify_current().scene
-            if scene != last_auto["scene"] or time.time() - last_auto["t"] >= args.min_gap:
-                save(img, capture_ms, None)
-                last_auto.update(scene=scene, t=time.time())
+            hit, classify_ms = page_of(img)
+            if hit.name != last_auto["scene"] or time.time() - last_auto["t"] >= args.min_gap:
+                save(img, capture_ms, None, hit, classify_ms)
+                last_auto.update(scene=hit.name, t=time.time())
         time.sleep(max(0.0, args.interval - (time.perf_counter() - tick)))
 
 

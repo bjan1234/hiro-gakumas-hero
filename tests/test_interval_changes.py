@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_interval_changes.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """轮间「チェンジ」格（index 2 / 3）：换入候选的 card_id / upgrade（决策 da6c8e5 要接进方案，总控 2026-11-03）。
 
 card_id 一直读得到；upgrade 在橙色插画的卡上常是 None：「+」的宽松红色阈值（色相 ≤14）把橙色线条算进去了。

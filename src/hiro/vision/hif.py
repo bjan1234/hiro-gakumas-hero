@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/hif.py（develop c3fc27f）
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """H.I.F 考试画面：场景判定与 HUD/手牌读取。
 
@@ -7,26 +6,26 @@ KAA 的考试判定依赖普通考试的排名文字模板，H.I.F 考试布局�
 """
 
 import re
+from dataclasses import dataclass
 from functools import cache, lru_cache
 from pathlib import Path
 
 import cv2
 import numpy as np
 from cv2.typing import MatLike
-from kaa.db.skill_card import SkillCard
-from kaa.tasks.produce.new.play_cards import ui as kaa_ui
-from kaa.tasks.produce.new.play_cards.ui import _locate_letters
-from kotonebot.primitives import Rect
+from hiro import master
 
 from hiro.vision import layout
 from hiro.vision.card_art import match_card_art
 from hiro.vision.cards import card_summary, card_version
+from hiro.vision.hand_slots import CARD_OFFSET, card_letters, hand_slots
 from hiro.vision.digits import _iou, _scale, _templates, read_dddd, read_int, read_number, read_score
 from hiro.vision.items import read_drink_slots, read_pitems
+from hiro.vision.ocr import Box, ocr, ocr_batch
 from hiro.vision.ocr import engine as ocr_engine
-from hiro.vision.ocr import ocr, ocr_batch
 from hiro.vision.region_cache import RegionCache, cached
 from hiro.vision.status import read_status_column, status_summary
+from hiro.vision.ui_templates import normalize
 
 TEMPLATES = Path(__file__).with_name("templates")
 ATTRS = {"ボーカル": "vocal", "ダンス": "dance", "ビジュアル": "visual"}
@@ -71,12 +70,20 @@ def _match_white(img: MatLike, name: str, box) -> tuple[float, tuple[int, int]]:
     return float(score), (loc[0] + x1, loc[1] + y1)
 
 
+BREAKTHROUGH_MIN = 0.6  # 顶部「突破ライン」条（选拔赛）；偶像之路考试帧最高 0.38
+BREAKTHROUGH_STRONG = 0.75  # 「突破ライン」条匹配到这个分数，「残りターン」可放宽到 FINALS_TURNS_MIN（考试帧 0.80–0.82）
+
+
 def is_hif_exam(img: MatLike, threshold: float = 0.6) -> bool:
     # 考试帧经 JPG 压缩后低至 0.72，其余培育画面最高 0.21
     score, _ = _match(img, "hif_exam_remaining_turns", (0, 0, 160, 45))
     if score < threshold:
-        # 本战 R2 开局画面压暗，「残りターン」只有 0.57：顶部有本战名次条时放宽到 0.45
-        return score >= FINALS_TURNS_MIN and is_finals_strip(img)
+        # 本战 R2 开局画面压暗，「残りターン」只有 0.57：顶部有本战名次条时放宽到 0.45。
+        # 选拔③露天舞台的亮天空压在「残りターン」后面，DMM 小窗口（541x961 放大）上只有 0.50（11-14 own2，180 秒认不出停机）：
+        # 顶部「突破ライン」条匹配得很稳（0.82）时同样放宽到 0.45（非考试画面「残りターン」最高 0.21）
+        if score < FINALS_TURNS_MIN:
+            return False
+        return is_finals_strip(img) or _match_white(img, "hif_exam_breakthrough", TOP_STRIP)[0] >= BREAKTHROUGH_STRONG
     # 加分特效会压暗文字（实测低至 0.64）；非考试画面过不了上面的「残りターン」，这里只做确认
     score, _ = _match_white(img, "hif_exam_breakthrough", TOP_STRIP)
     return score >= 0.6 or is_finals_strip(img)  # 本战没有突破线，顶部是 1st / 2nd / 3rd 名次条（识别-05）
@@ -461,6 +468,13 @@ def read_ranking(img: MatLike) -> dict:
     """
     if is_finals_strip(img):
         return read_finals_ranking(img)
+    if _match_white(img, "hif_exam_breakthrough", TOP_STRIP)[0] < BREAKTHROUGH_MIN:
+        from hiro.vision.tower import read_tower_ranking
+
+        # 没有突破线也不是本战名次条：偶像之路的 6 人名次条（hiro.vision.tower）
+        if (t := read_tower_ranking(img)) is not None:
+            npcs = [v for i, v in enumerate(t["scores"], 1) if i != t["my_rank"]]
+            return {"my_rank_index": t["my_rank"], "my_score": t["my_score"], "npc_scores": npcs, "my_score_read": None, "tower": t}
     x1, y1, x2, y2 = RANK_STRIP
     strip = img[y1:y2, x1:x2]
     hsv = cv2.cvtColor(strip, cv2.COLOR_BGR2HSV)
@@ -522,12 +536,12 @@ def read_ranking(img: MatLike) -> dict:
 ART_MIN_SCORE = 0.55
 
 
-def _asset_to_card(key: str) -> SkillCard | None:
+def _asset_to_card(key: str) -> master.Card | None:
     asset = key.removeprefix("img_general_skillcard_")
     base = asset.split("-")
     # 角色专属插图带 -角色 后缀（如 men-2_111-shro），数据库 assetId 不带
     asset_id = "img_general_skillcard_" + "-".join(base[:2])
-    return SkillCard.from_asset_id(asset_id) or SkillCard.from_asset_id(key)
+    return master.card_by_asset(asset_id) or master.card_by_asset(key)
 
 
 UNAVAILABLE_LETTER_MAX = 170  # 卡名首字母框平均亮度：可用约 225，不可用（压暗）约 115
@@ -540,7 +554,7 @@ AMBIGUOUS_LETTER_V = (140, 210)
 CARD_HALF_W = 90  # 手牌卡面半宽（720x1280）；3 张时卡间距 217 不重叠，4 张时 165 会被下一张盖住右侧
 
 
-def _name_crop(img: MatLike, letter: Rect, next_cx: int | None = None) -> MatLike:
+def _name_crop(img: MatLike, letter: Box, next_cx: int | None = None) -> MatLike:
     """卡名栏。next_cx 为右边下一张卡的中心：后出的卡盖在前一张上，可见区只到下一张卡的左缘。"""
     cx, top = letter.x1 + letter.w // 2, letter.y1
     right = cx + 95 if next_cx is None else min(cx + 95, next_cx - CARD_HALF_W)
@@ -551,7 +565,7 @@ def _clean_name(text: str) -> str:
     return text.replace("＋", "+").replace(" ", "")
 
 
-def _name_bar(img: MatLike, letter: Rect) -> str:
+def _name_bar(img: MatLike, letter: Box) -> str:
     """卡面下方的卡名栏，带强化标记（デイドリーミング+、セルフケアの基本++）。"""
     return _clean_name("".join(t for t, _ in ocr(_name_crop(img, letter))))
 
@@ -568,16 +582,16 @@ def _fold(name: str) -> str:
 
 
 @lru_cache(maxsize=1)
-def _base_names() -> dict[str, list[SkillCard]]:
+def _base_names() -> dict[str, list[master.Card]]:
     """归一化后的基础卡名（不带「+」）→ 未强化版本的卡（同名多张时有多项）。"""
-    out: dict[str, list[SkillCard]] = {}
-    for card in SkillCard.all():
+    out: dict[str, list[master.Card]] = {}
+    for card in master.cards():
         if not card.upgrade_count:
             out.setdefault(_fold(card.name.rstrip("+")), []).append(card)
     return out
 
 
-def _card_from_name(text: str, art_top: list[tuple[str, float]]) -> tuple[SkillCard | None, bool]:
+def _card_from_name(text: str, art_top: list[tuple[str, float]]) -> tuple[master.Card | None, bool]:
     """卡名栏 OCR 文字 → (未强化版本的卡, 是否完整卡名精确命中)。
 
     精确命中归一化后的基础卡名直接定卡；否则卡名可能被下一张卡盖住或末字读错：从末尾去掉 0–2 个字，
@@ -609,7 +623,7 @@ def _overlay_on_hand(img: MatLike, letters: list) -> bool:
     return any(lo <= float(img[r.y1 : r.y1 + r.h, r.x1 : r.x1 + r.w].mean()) <= hi for r in letters)
 
 
-def _available(img: MatLike, letter: Rect) -> bool:
+def _available(img: MatLike, letter: Box) -> bool:
     x1, y1, w, h = letter.xywh
     return float(img[y1 : y1 + h, x1 : x1 + w].mean()) > UNAVAILABLE_LETTER_MAX
 
@@ -683,24 +697,66 @@ def plus_count(crop: MatLike, *, center_x: int | None = None) -> int | None:
 
 
 ART_SURE = 0.7  # 卡面相关分达到此值不再 OCR 卡名核对（数据集 458 张手牌：≥0.7 的全部正确）；低于此值（含靠前五一致才认的）读卡名交叉核对
+ART_MARGIN = 0.03  # 前五里另一张卡的分数和第一名差不到这么多：卡面分不开，也读卡名核对（偶像之路 r1：準備運動 0.713 对トークタイム 0.711，
+# 灰着的牌面两张 act-1 卡很像，卡面认成準備運動，卡名是トークタイム+，8a3a1e7 11-14）
 NAME_EXACT_CONF = 0.9  # 卡名与卡面不一致、以卡名为准时的置信度（卡名完整精确命中）
 NAME_PREFIX_CONF = 0.7  # 同上，卡名只是前缀命中（被下一张卡盖住）
 
 
-def _read_card(img: MatLike, slot: int, letter: Rect, next_cx: int | None = None) -> dict:
-    """一张手牌。卡面相关定卡、卡名栏数「+」定强化次数；卡面没把握（< ART_SURE）时 OCR 卡名栏交叉核对（约 100ms）：
-    两者一致 → 置信度 1.0；不一致且卡名唯一对应一张卡 → 以卡名为准（卡面结果记在 art_name）；卡名读不出 → 保留卡面结果。
-    两者都定不了卡时 name 为 None（不猜）。"""
-    x2, y2 = letter.center.x, letter.top_left.y
-    x1, y1 = x2 - kaa_ui.CARD_OFFSET[0], y2 - kaa_ui.CARD_OFFSET[1]
-    top = _match_shifted(img, x1, y1, x2, y2)
+def _art_card(top: list[tuple[str, float]]) -> tuple[str, float, int, master.Card | None]:
+    """卡面相关的前五 → (第一名资源名, 分数, 前五里同一张卡的个数, 卡或 None)。分数 ≥ ART_MIN_SCORE，或同一张卡占前五中 ≥ 3 个（角色专属卡的各角色插图
+    几乎相同，分数低也可信）才认。"""
     key, score = top[0]
     base = lambda k: "-".join(k.removeprefix("img_general_skillcard_").split("-")[:2])  # noqa: E731
     consensus = sum(1 for k, _ in top if base(k) == base(key))
-    # 角色专属卡的各角色插图几乎相同，同一卡占据前五中 ≥3 个时即使分数低也可信
-    art = _asset_to_card(key) if score >= ART_MIN_SCORE or consensus >= 3 else None
+    return key, score, consensus, _asset_to_card(key) if score >= ART_MIN_SCORE or consensus >= 3 else None
+
+
+def _art_margin(top: list[tuple[str, float]]) -> float:
+    """卡面第一名比前五里最好的另一张卡高多少（前五都是同一张卡时为 1）。"""
+    base = lambda k: "-".join(k.removeprefix("img_general_skillcard_").split("-")[:2])  # noqa: E731
+    other = next((sc for k, sc in top if base(k) != base(top[0][0])), None)
+    return 1.0 if other is None else top[0][1] - other
+
+
+@dataclass(frozen=True)
+class HandCard:
+    """考试手牌的一张：位置（卡面左半边，点这里出牌）、能不能打、卡面认出的卡（没把握为 None）。
+    考试执行器用它取点击位置（替换 KAA locate_cards，属性名同 KAA）；完整读法（强化次数、徽章、卡名核对）见 read_hand。"""
+
+    rect: Box
+    letter: Box
+    available: bool
+    card: master.Card | None
+
+    @property
+    def center(self):
+        return self.rect.center
+
+
+def hand_cards(img: MatLike, *, cache: RegionCache | None = None) -> list[HandCard]:
+    """手牌从左到右：位置和可用性按 hiro.vision.hand_slots（同 KAA），卡按卡面相关认（不 OCR；cache 给了就按卡面区域
+    复用上一帧的结果）。"""
+    img = normalize(img)
+    out = []
+    for s in hand_slots(img):
+        r = s.rect
+        crop = img[max(0, r.y1 - 12) : r.y2 + 12, max(0, r.x1 - 8) : r.x2 + 8]
+        card = cached(cache, f"hand-art@{r.x1}", crop, lambda r=r: _art_card(_match_shifted(img, r.x1, r.y1, r.x2, r.y2))[3])
+        out.append(HandCard(r, s.letter, s.available, card))
+    return out
+
+
+def _read_card(img: MatLike, slot: int, letter: Box, next_cx: int | None = None) -> dict:
+    """一张手牌。卡面相关定卡、卡名栏数「+」定强化次数；卡面没把握（< ART_SURE，或和另一张卡差不到 ART_MARGIN）时 OCR 卡名栏交叉核对（约 100ms）：
+    两者一致 → 置信度 1.0；不一致且卡名唯一对应一张卡 → 以卡名为准（卡面结果记在 art_name）；卡名读不出 → 保留卡面结果。
+    两者都定不了卡时 name 为 None（不猜）。"""
+    x2, y2 = letter.center.x, letter.top_left.y
+    x1, y1 = x2 - CARD_OFFSET[0], y2 - CARD_OFFSET[1]
+    top = _match_shifted(img, x1, y1, x2, y2)
+    key, score, consensus, art = _art_card(top)
     name_text, named, exact = None, None, False
-    if art is None or score < ART_SURE:
+    if art is None or score < ART_SURE or _art_margin(top) < ART_MARGIN:
         name_text = _clean_name("".join(t for t, _ in ocr(_name_crop(img, letter, next_cx))))
         named, exact = _card_from_name(name_text, top)
     art_name = None
@@ -853,15 +909,15 @@ def hand_layout(xs: list[int]) -> str:
     return "shifted"
 
 
-def read_hand(img: MatLike, *, letters: list[Rect] | None = None, cache: RegionCache | None = None) -> tuple[list[dict], int]:
+def read_hand(img: MatLike, *, letters: list[Box] | None = None, cache: RegionCache | None = None) -> tuple[list[dict], int]:
     """手牌：按 KAA 的卡名首字母框定位每张卡，用灰度相关识别卡面（对压暗的不可用卡也有效），卡面没把握时用卡名栏 OCR 核对；
     每张另读左上角预计得分徽章（badge_score）。cache：某张卡（卡面 + 卡名栏 + 首字母框）/ 徽章区与上次相同则复用。"""
     if letters is None:
-        letters = sorted(_locate_letters(img), key=lambda r: r.x1)
+        letters = sorted(card_letters(img), key=lambda r: r.x1)
     hand = []
     for slot, letter in enumerate(letters):
         x2, y2 = letter.center.x, letter.top_left.y
-        x1, y1 = x2 - kaa_ui.CARD_OFFSET[0], y2 - kaa_ui.CARD_OFFSET[1]
+        x1, y1 = x2 - CARD_OFFSET[0], y2 - CARD_OFFSET[1]
         region = img[max(0, y1 - 12) : letter.y1 + 46, max(0, x1 - 8) : min(img.shape[1], letter.x1 + letter.w // 2 + 96)]
         next_cx = letters[slot + 1].x1 + letters[slot + 1].w // 2 if slot + 1 < len(letters) else None
         entry = cached(cache, f"card@{x2}", region, lambda slot=slot, letter=letter, nx=next_cx: _read_card(img, slot, letter, nx))
@@ -877,11 +933,22 @@ def read_hand(img: MatLike, *, letters: list[Rect] | None = None, cache: RegionC
 def read_hand_badges(img: MatLike) -> list[int | None] | None:
     """只读每张手牌的预计得分徽章（不认卡），约 10 ms：给存档路径的手牌补 badge_score。
     手牌布局不稳定（有卡被抬起 / 动画中 / 没有手牌）时返回 None。不可打出的卡游戏不显示徽章（实测 46 张都没有），给 None。"""
-    letters = sorted(_locate_letters(img), key=lambda r: r.x1)
+    letters = sorted(card_letters(img), key=lambda r: r.x1)
     xs = [r.x1 + r.w // 2 for r in letters]
     if hand_layout(xs) != "ok":
         return None
     return [read_badge(img, cx, xs[i + 1] if i + 1 < len(xs) else None)["badge_score"] for i, cx in enumerate(xs)]
+
+
+EXAM_TYPE_BOX = (123, 4, 214, 50)  # 考试左上角的考试类型徽章（KAA R.InProduce.BoxDetectExamType）
+
+
+def is_final_exam(img: MatLike) -> bool:
+    """考试类型徽章偏黄 / 偏红 = 最终考试（本战 R2 等），同 KAA ExamContext.is_final_exam：Lab 的 b 均值 > 145，或 b > 138 且 a > 135。"""
+    x1, y1, x2, y2 = EXAM_TYPE_BOX
+    lab = cv2.cvtColor(normalize(img)[y1:y2, x1:x2], cv2.COLOR_BGR2Lab)
+    a, b = float(np.mean(lab[..., 1])), float(np.mean(lab[..., 2]))
+    return b > 145 or (b > 138 and a > 135)
 
 
 EXAM_CACHE = RegionCache()  # 考试循环逐帧调用时复用不变区域的结果；离线评测传 cache=None
@@ -892,7 +959,27 @@ def read_hif_hud(img: MatLike, *, fallback: bool = False) -> dict:
     字体比对没把握（被特效遮住）时为 None；fallback=True 时退回 ddddocr（每个约 200ms）。"""
     read = read_number if fallback else read_int
     return {"remaining_turns": read(img, BOX_TURNS, align=True), "hp": read(img, BOX_HP, align=True),
-            "genki": read(img, BOX_GENKI, align=True)}  # fmt: skip
+            "genki": read_genki(img) if fallback else read_int(img, BOX_GENKI, align=True)}  # fmt: skip
+
+
+def read_genki(img: MatLike) -> int | None:
+    """考试 HUD 元気：字体比对有把握就用；没把握时只认白色数字（read_white_digits），不让 ddddocr 读整个放宽框——
+    框左放宽 20 是为了不切掉四位数首位，没满的体力条右端深灰圆头会被读成「1」（DMM mainverify2 11-17：元気 0 读成 10，
+    引擎以为「届いて！」（元気 ≥7）能打，搜索判「能打出的牌对不上」退回 UINet）。两种读数一个是另一个去掉开头几位时取短的
+    （多出来的是框左边伸进来的东西），其他不一致时用白色读数。"""
+    from hiro.vision.digits import read_white_digits
+
+    value = read_int(img, BOX_GENKI, align=True)
+    if value is not None:
+        return value
+    whole, white = read_number(img, BOX_GENKI, align=True), read_white_digits(img, BOX_GENKI)
+    if whole is None or white is None or whole == white:
+        return white if white is not None else whole
+    a, b = str(whole), str(white)
+    if a.endswith(b) or b.endswith(a):
+        # 多出来的是框左边的东西：整框读进了体力条圆头（0 → 10、700 → 5700），白色读进了角标左边的白色装饰（23 → 423）
+        return min(whole, white, key=lambda v: len(str(v)))
+    return white
 
 
 def read_hif_exam(img: MatLike, *, cache: RegionCache | None = EXAM_CACHE) -> dict:
@@ -905,7 +992,7 @@ def read_hif_exam(img: MatLike, *, cache: RegionCache | None = EXAM_CACHE) -> di
 
 
 def _read_hif_exam(img: MatLike, cache: RegionCache | None) -> dict:
-    letters = sorted(_locate_letters(img), key=lambda r: r.x1)
+    letters = sorted(card_letters(img), key=lambda r: r.x1)
     finals = is_finals_strip(img)  # 本战：没有突破线，顶部是 3 人名次条
     texts = _texts({"attr": _attr_crop(img)} if finals else {"attr": _attr_crop(img), "break": _breakthrough_crop(img)}, cache)
     hand, missing = read_hand(img, letters=letters, cache=cache)
@@ -926,7 +1013,7 @@ def _read_hif_exam(img: MatLike, cache: RegionCache | None) -> dict:
         **cached(cache, "ranking", img[y1:y2, x1:x2], lambda: read_ranking(img)),
         **(_parse_breakthrough(texts["break"]) if not finals else {"rank_line": None, "participants": None}),
         "finals": finals,
-        "genki": num("genki", BOX_GENKI),
+        "genki": cached(cache, "num:genki", img[BOX_GENKI[1] : BOX_GENKI[3], BOX_GENKI[0] : BOX_GENKI[2]], lambda: read_genki(img)),
         "hp": num("hp", BOX_HP),
         "deck_count": None,  # 画面上没有山札张数（旧版读的是 P 道具剩余次数，见 pitem_charges）
         "pitem_charges": num("pitem_charges", BOX_PITEM_CHARGES),

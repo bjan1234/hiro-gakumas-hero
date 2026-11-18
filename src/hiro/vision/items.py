@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/items.py（develop c3fc27f）；开源版改：游戏素材经插件 AssetSource（hiro.vision.assets），拿不到时退路见各处注释
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """考试画面中持有的 P 饮料（左下 4 格）与 P 道具（右侧牌库图标下方）。
 
@@ -62,7 +61,7 @@ class IconLibrary:
             return cls.empty(size)
         masks_arr = np.stack(masks)
         index = folder / "index.json"  # 资源名 → 名称（可选；KAA 公开数据没有）
-        names = json.loads(index.read_text()) if index.exists() else {}
+        names = json.loads(index.read_text(encoding="utf-8")) if index.exists() else {}
         return cls(keys, np.stack(rows), masks_arr, masks_arr.sum(axis=1), size, names)
 
     @classmethod
@@ -142,7 +141,7 @@ def read_drink_slots(img: MatLike, *, cache: RegionCache | None = None) -> list[
 
 def _read_drink_slots(img: MatLike) -> list[dict]:
     """考试页与培育页的饮料栏高度不同：两行都比一次，取 4 格最高分之和大的那行（空槽两行都低，不影响）。"""
-    from kaa.db.drink import Drink
+    from hiro import master
 
     lib = _library("pdrink", DRINK_SIZE)
     half = DRINK_SIZE // 2
@@ -162,7 +161,7 @@ def _read_drink_slots(img: MatLike) -> list[dict]:
                  "rect": [cx - half, cy - half, DRINK_SIZE, DRINK_SIZE], "center": [cx, cy], "available": None,
                  "score": round(score, 3), "margin": round(score - second, 3), "confidence": None}  # fmt: skip
         if (score >= MIN_SCORE and score - second >= MIN_MARGIN) or (score >= LOW_SCORE and score - second >= LOW_MARGIN):
-            drink = Drink.from_asset_id(asset)
+            drink = master.drink_by_asset(asset)
             sat = float(cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)[:, :, 1].mean())
             entry.update(state="drink", drink_id=drink.id if drink else None, asset=asset, name=lib.names.get(asset) or (drink.name if drink else None),  # KAA 图库没有名称表：按主数据取
                          available=sat >= GREY_SAT_MAX, confidence=round(score, 3))  # fmt: skip
@@ -196,13 +195,47 @@ def drink_full_badge(img: MatLike) -> bool:
     return red >= FULL_BADGE_MIN_PX and any("上限" in t for t, _, _ in ocr_boxes(img[y1:y2, x1:x2]))
 
 
+CUP_MIN = 0.55  # 空槽杯子图标的边缘匹配分：真空槽暗背景 ≥ 0.9、亮背景（白墙）0.67–0.84；账号 2 只有 3 格，第 4 个位置是背景，最高 0.40
+
+
+def _grad(gray: np.ndarray) -> np.ndarray:
+    g = cv2.GaussianBlur(gray, (3, 3), 0).astype(np.float32)
+    return cv2.magnitude(cv2.Sobel(g, cv2.CV_32F, 1, 0), cv2.Sobel(g, cv2.CV_32F, 0, 1))
+
+
+def _empty_cup(img: MatLike, center) -> float:
+    """空槽半透明杯子图标的匹配分：比边缘（梯度幅值，TM_CCOEFF_NORMED，在格子中心 ±34 像素里找），亮背景上杯子对比度低也认得出
+    （灰度直接比在白墙背景上只有 0.36–0.42，和「没有这一格」分不开）。没有模板时 0。"""
+    tpl = _cup_template()
+    if tpl is None:
+        return 0.0
+    x, y = center
+    g = cv2.cvtColor(img[max(0, y - 34) : y + 34, max(0, x - 34) : x + 34], cv2.COLOR_BGR2GRAY)
+    if g.shape[0] < tpl.shape[0] or g.shape[1] < tpl.shape[1]:
+        return 0.0
+    return float(cv2.matchTemplate(_grad(g), tpl, cv2.TM_CCOEFF_NORMED).max())
+
+
+@cache
+def _cup_template():
+    from hiro.vision.ui_templates import PACK
+
+    img = cv2.imread(str(PACK / "InProduce.DrinkSlotEmptyCup.png"), cv2.IMREAD_GRAYSCALE)
+    return None if img is None else _grad(img)[4:-4, 4:-4]  # 去掉切图边上的假边缘
+
+
 def read_bar_drinks(img: MatLike) -> dict:
     """培育页底栏饮料 → ProduceState 格式 {drinks: [drink_id…]（从左到右）, drink_capacity}。
-    有一格没把握（unknown）或认出的饮料没有 id 时 drinks 为 None；4 格都是饮料或空槽时 drink_capacity = 4（H.I.F 全部培育页实测都是 4 格）。"""
+    有一格没把握（unknown）或认出的饮料没有 id 时 drinks 为 None。
+    drink_capacity 只在第 4 格确定存在时给 4（有饮料，或空槽的杯子图标 ≥ CUP_MIN），其余不给（None，状态保留原值）：
+    账号 2 饮料栏只有 3 格（Mac p15-main3 11-17），原来第 4 个位置读成「空槽」、容量写成 4，相談连买饮料都没成。
+    不从底栏读「3」：获得演出 / cut-in 盖住底栏时 4 格账号也会像 3 格（fixtures 9 张）。3 格靠相談页的「Pドリンク所持上限」定。"""
     slots = read_drink_slots(img)
     sure = all(d["state"] in ("drink", "empty") for d in slots) and all(d["drink_id"] for d in slots if d["state"] == "drink")
+    last = slots[-1] if slots else None
+    four = last is not None and (last["state"] == "drink" or (last["state"] == "empty" and _empty_cup(img, last["center"]) >= CUP_MIN))
     return {"drinks": [d["drink_id"] for d in slots if d["state"] == "drink"] if sure else None,
-            "drink_capacity": len(slots) if sure else None}  # fmt: skip
+            "drink_capacity": len(slots) if sure and four else None}  # fmt: skip
 
 
 def read_drinks(img: MatLike, *, cache: RegionCache | None = None) -> list[dict | None]:
@@ -258,10 +291,10 @@ def _drink_effects() -> dict[str, tuple[str, str]]:
     """drink_id → (名称, 规范化的效果说明)。"""
     import json
 
-    from kaa.db.sqlite import select_many
+    from hiro import master
 
     out = {}
-    for r in select_many("SELECT id, name, produceDescriptions FROM ProduceDrink;"):
+    for r in master.rows("SELECT id, name, produceDescriptions FROM ProduceDrink;"):
         try:
             parts = json.loads(r["produceDescriptions"] or "[]")
         except ValueError:
@@ -341,7 +374,7 @@ def read_pdrink_max(img: MatLike) -> dict | None:
     complete=False：列表没滚到底，下面可能还有没看到的已有饮料（index 只对看到的行有效）。格式见 docs/llm-context.md「PDRINK_MAX」。"""
     import re
 
-    from kaa.db.drink import Drink
+    from hiro import master
 
     from hiro.vision.ocr import ocr_boxes
 
@@ -373,7 +406,7 @@ def read_pdrink_max(img: MatLike) -> dict | None:
                  "center": [OVERFLOW_ICON_X, int(y)], "method": "effect" if did else None, "score": round(sim, 3), "margin": round(margin, 3)}  # fmt: skip
         if did is None:
             score, second, asset = _match_drink_icon(img, OVERFLOW_ICON_X, y)
-            drink = Drink.from_asset_id(asset) if score >= OVERFLOW_MIN and score - second >= OVERFLOW_MARGIN else None
+            drink = master.drink_by_asset(asset) if score >= OVERFLOW_MIN and score - second >= OVERFLOW_MARGIN else None
             if drink is not None:
                 entry.update(drink_id=drink.id, name=lib.names.get(asset) or drink.name, method="icon", score=round(score, 3), margin=round(score - second, 3))
         return entry

@@ -1,4 +1,3 @@
-# 来源：digital-hiro tools/play_game.py（c3fc27f）；开源版：偶像 / 主属性改成参数，trace 名不带内部前缀
 """从首页开一整局（选拔 → 本战），或只打本战。选拔结束后不等人工，直接开本战。
 
     python tools/play_game.py --idol <偶像卡 skin id> [--main-attr Da] [--tag 1]           # 整局：选拔 + 本战
@@ -86,11 +85,13 @@ def parse_memory_img(img, boxes, ocr) -> tuple[int, int, int] | None:
 
 def read_memory() -> tuple[int, int, int] | None:
     sys.path.insert(0, str(ROOT / "src"))
-    import hiro  # noqa: F401
-    from hiro.device import connect
-    from hiro.produce.ops import ocr_boxes
+    from hiro.tool_device import open_tool_device
+    from hiro.vision.ocr import ocr_boxes as _ocr
 
-    d = connect()
+    def ocr_boxes(img):
+        return _ocr(img, scale=1.5)  # 和 hiro.produce.ops.ocr_boxes 一样（那个模块要 import kotonebot）
+
+    d = open_tool_device()  # 只截图，不点
     votes: list[tuple[int, int, int]] = []
     for _ in range(8):
         img = d.screenshot()
@@ -150,7 +151,7 @@ def run(mode: str, trace: str, common: list[str], extra: list[str]) -> int:
     t0 = time.monotonic()
     cur = ROOT / ".temp/current_run"  # 当前在跑的 trace 名：录屏 / 剪辑等外部流程按它对齐（主仓库同款）
     cur.parent.mkdir(parents=True, exist_ok=True)
-    cur.write_text(trace)
+    cur.write_text(trace, encoding="utf-8")
     with open(log, "w") as f:
         code = subprocess.call(run_cmd(mode, trace, common, extra), cwd=ROOT, stdout=f, stderr=subprocess.STDOUT,
                                env=child_env())  # fmt: skip

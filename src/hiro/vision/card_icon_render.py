@@ -1,9 +1,8 @@
-# 来源：digital-hiro src/hiro/vision/card_icon_render.py（5af2874）；开源版：精灵图从使用者素材目录读，另带 build 命令（GPL-3.0-or-later）
 """按游戏 UI 的真实结构渲染技能卡小图标（没有角标的「干净」版本），给回忆 / 牌组小图标认卡用。
 
 结构取自客户端 data.unity3d 里开局准备页回忆格的技能卡图标
 （ProduceStartScreen/…/Memory/List/MemoryThumbnail/ProduceCardImageButton，Il2CppDumper DummyDll + UnityPy 读出，
-2026-11-06，导出脚本在 digital-hiro-research/gkmas-assets/tools/ui/），设计尺寸 96×96：
+2026-11-06，导出脚本在作者本机，未随仓库发布），设计尺寸 96×96：
 
 - NameBaseColor：四边内缩 4，bg_round_r12_24px 九宫格，染成 0.94 灰。
 - BaseGradationMask：四边内缩 4 的圆角裁剪；里面是稀有度底色：SSR 用 card_gradation_ssr（外扩 2），

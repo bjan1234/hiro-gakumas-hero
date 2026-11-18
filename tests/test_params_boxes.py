@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_params_boxes.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """选行动页属性读数（hiro.vision.action.stat_boxes）：数字框按左侧属性图标定位。
 
 第十九局本战 seq 12（总控 2026-11-03）：Da 2296 压在白衣服上、字体比对不确定，退回 ddddocr；旧固定框左边界 345 切掉了首位「2」的一半，

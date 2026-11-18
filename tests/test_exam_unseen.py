@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_exam_unseen.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """HIF_EXAM：看不到 ≠ 没有（数据确认-01 第 6 条与 2026-10-31 全量重读）。
 
 - 出牌放大 / 回合切换 / 发牌动画时画面上没有手牌：hand 给 None，不给 []（与「0 张手牌」分开）。

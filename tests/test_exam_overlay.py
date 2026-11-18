@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_exam_overlay.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """考试手牌可打判定遇到过场白光（「スキルカードサポート」「もう一枚使用できます」）：hand_layout="overlay"，观测里手牌给 None。
 
 第二十七局 #168（协调 D26）：压暗的两张牌字母亮度被白光抬到 182 / 177，越过阈值 170 被判可打；第二十八局 #178 可打的 イメトレ 也是 177，

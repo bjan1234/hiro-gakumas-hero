@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/sim/interval.py（develop 864e037）
 """轮间（R1 与 R2 之间的商店）按计算选（协调 4a 第八局本战分析 B3，用户：「当前的策略太垃圾了，每个决策的影响都要能算出来」）。
 
 做法：
@@ -38,7 +37,7 @@ WAPPEN_STAR = 15  # 轮间买一张卡用掉一枚ワッペン：星星 +15（�
 
 @lru_cache(maxsize=None)
 def _template(name: str = TEMPLATE) -> dict:
-    return json.loads((FIXTURES / f"{name}.json").read_text())
+    return json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
 
 
 @dataclass
@@ -53,10 +52,16 @@ class R2Setup:
     star: int | None = None
     template: str = TEMPLATE  # 开局模板：R2 用 r2-opening（12 回合），R1 可用 campus-20261019/r1-opening（9 回合）
     fill: bool = True  # R2 模板时按応援棒补到 22 张（借 R2 模板模拟选拔考试时关掉）
+    # 这一局的编成（任务 ②：搜索起点不能带模板那一局的 P 道具 / 支援卡 / 回忆附魔）。None = 沿用模板（评估类用途照旧）。
+    items: tuple | None = None  # P 道具 master ID
+    supports: tuple | None = None  # 支援卡 supportCardList 项（dict：_supportCardId / _filterParameterType / _cardSearchId / _produceCardUpgradePermil）
+    skills: tuple | None = None  # 开考附魔的回忆技能 p_memory_skill-…
 
     def key(self) -> tuple:
         deck = tuple(sorted(tuple(tuple(x) if isinstance(x, list) else x for x in c) for c in self.deck))
-        return (deck, tuple(sorted(self.drinks)), self.hp, self.max_hp, tuple(sorted(self.permil.items())), self.template, self.fill)
+        sup = None if self.supports is None else tuple(tuple(sorted(x.items())) for x in self.supports)
+        return (deck, tuple(sorted(self.drinks)), self.hp, self.max_hp, tuple(sorted(self.permil.items())), self.template, self.fill,
+                None if self.items is None else tuple(sorted(self.items)), sup, None if self.skills is None else tuple(sorted(self.skills)))
 
 
 # H.I.F応援棒（R1 结束后获得）：R2 开考时山札不满 22 张，用名字含「基本」的随机卡补到 22 张 [wiki][もなみ][いおん ep07]。
@@ -76,6 +81,36 @@ def ouenbou_fill(deck: list) -> list:
     return out
 
 
+@lru_cache(maxsize=None)
+def _custom_reactions(item_id: str) -> int:
+    """定制 P 道具育成中的触发次数（_reactionCount，永久附魔按它叠层）：画面读不到，按主数据的上限（produceEffectTriggerCount）算——
+    到本战时一般已触发满（验证 2：リボンくま 「以降の試験開始時 好印象+3・やる気+3（プロデュース中2回）」真值叠 2 层）。非定制道具 0。"""
+    if not str(item_id).startswith("customize_pitem-"):
+        return 0
+    try:
+        from gakumas_exam.master import shared
+
+        from hiro.sim.engine import master_commit
+
+        row = next((r for r in shared(master_commit()).table("ProduceCustomizeItem") if r["id"] == item_id), None)
+        return max(1, int((row or {}).get("produceEffectTriggerCount") or 1))
+    except Exception:  # noqa: BLE001
+        return 1
+
+
+def loadout_into(o: dict, *, items=None, supports=None, skills=None) -> None:
+    """把开考快照里的 P 道具 / 支援卡 / 回忆附魔换成给定的（None = 不动，沿用模板）。
+    episode_from_observation 只读 items 的 _id / _reactionCount、supports 原样、active_statuses 里 TriggerEffect 的 _startEnchantOriginId。"""
+    if items is not None:
+        o["items"] = [{"_id": i, "_fireCount": 0, "_reactionCount": _custom_reactions(i), "_itemType": 2 if str(i).startswith("customize_pitem-") else 1,
+                       "_parentCustomItemIds": []} for i in items]  # fmt: skip
+    if supports is not None:
+        o["supports"] = [dict(x) for x in supports]
+    if skills is not None:
+        keep = [st for st in o.get("active_statuses") or [] if not (st.get("data") or {}).get("_startEnchantOriginId")]
+        o["active_statuses"] = keep + [{"type": {"class": "TriggerEffectStatusEffect"}, "data": {"_startEnchantOriginId": sk}} for sk in skills]
+
+
 def r2_opening(setup: R2Setup) -> dict:
     o = copy.deepcopy(_template(setup.template))
     tmpl = next(iter(o["cards"].values()))
@@ -92,6 +127,7 @@ def r2_opening(setup: R2Setup) -> dict:
         o["cards"][inst] = c
         o["zones"]["deck"].append(inst)
     o["drinks"] = [{"_id": d} for d in setup.drinks]
+    loadout_into(o, items=setup.items, supports=setup.supports, skills=setup.skills)
     s = o["scalars"]
     s.update(stamina=min(setup.hp, setup.max_hp), maxStamina=setup.max_hp, vocalBonusPermil=setup.permil["Vo"],
              danceBonusPermil=setup.permil["Da"], visualBonusPermil=setup.permil["Vi"])  # fmt: skip
@@ -422,7 +458,8 @@ def options(shelf: dict, setup: R2Setup, p: int, *, wappen_left: int = 2, junk: 
 
 
 def _with(s: R2Setup, **kw) -> R2Setup:
-    d = dict(deck=list(s.deck), drinks=list(s.drinks), hp=s.hp, max_hp=s.max_hp, permil=dict(s.permil), star=s.star, template=s.template, fill=s.fill)
+    d = dict(deck=list(s.deck), drinks=list(s.drinks), hp=s.hp, max_hp=s.max_hp, permil=dict(s.permil), star=s.star, template=s.template, fill=s.fill,
+             items=s.items, supports=s.supports, skills=s.skills)
     d.update(kw)
     return R2Setup(**d)
 
@@ -812,6 +849,7 @@ def plan_tiered(shelf: dict, *, hp: int, max_hp: int, p: int, star: int | None, 
     # 原来「中间回到几由 B3 模拟定」不经检验（第十八、十九局都回到 24）；用户 2026-11-03「回体力的必要性也待考证」，
     # 第十九局 R2 开局快照 64 局配对：17 比 24 −0.9 万 ± 1.3 万（不显著），16（不回）−3.5 万 ± 1.2 万，12 −4.3 万 ± 1.2 万（决策-17 §5）
     same = {o.key for o in sim} == {o.key for o in rule}
+    unsure = alt = None
     pair, n_used = _pair_adaptive([setup, apply_all(setup, rule)] + ([] if same else [apply_all(setup, sim)]), list(seeds), policy, workers, **kw)
     r_rule = pair[1]
     pick, deviation = rule, None
@@ -827,6 +865,14 @@ def plan_tiered(shelf: dict, *, hp: int, max_hp: int, p: int, star: int | None, 
                          "has_hp": any(o.group == "hp" for o in sim) and {o.key for o in sim if o.group == "hp"} != {o.key for o in rule if o.group == "hp"}}  # fmt: skip
         notes.append(f"模拟方案 {'、'.join(o.label for o in sim) or '不买'} 比社区默认 {d:+,.0f} ± {se:,.0f}"
                      + ("（> 2 个标准误：偏离社区默认）" if deviation else "（不到 2 个标准误：按社区默认）"))
+        # 决策点补全：模拟方案更好但在噪声内 → 拿不准，交 LLM 二选一（deciders._interval_ask）。回体力超过角色目标的模拟方案不算
+        # （用户「控制在半血以上就好」：多回体力要单独显著，这里没有检验）
+        if deviation is None and d > 0 and not any(o.group == "hp" and int(o.key[2:]) > max(target_hp, hp) for o in sim):
+            unsure = f"模拟方案 {'、'.join(o.label for o in sim) or '不买'} 比社区默认 {d:+,.0f} ± {se:,.0f}，在噪声内"
+            alt = {"target_hp": max([hp] + [int(o.key[2:]) for o in sim if o.group == "hp"]),
+                   "buy": [a[1]["index"] for o in sim if o.group != "hp" for a in o.actions if "index" in a[1]],
+                   "upgrade": next((o.card_id for o in sim if o.key == "upgrade"), None) or next((o.card_id for o in rule if o.key == "upgrade"), None),
+                   "labels": [o.label for o in sim], "gain": r_sim["gain"], "gain_se": r_sim["gain_se"], "cost": sum(o.cost for o in sim)}
     else:
         notes.append("模拟方案与社区默认一致")
     r_pick = pair[1] if pick is rule else pair[2]
@@ -875,7 +921,7 @@ def plan_tiered(shelf: dict, *, hp: int, max_hp: int, p: int, star: int | None, 
     up = next((o.card_id for o in pick if o.key == "upgrade"), None) or next((o.card_id for o in rule if o.key == "upgrade"), None)
     return {"target_hp": target, "buy": buy, "upgrade": up, "labels": [o.label for o in pick], "gain": gain, "gain_se": gain_se,
             "cost": sum(o.cost for o in pick), "significant": True, "final": True, "rule_labels": [o.label for o in rule], "rule_notes": notes,
-            "deviation": deviation, "rows": run["combos"], "seconds": round(time.monotonic() - t0, 1), "policy": policy, "seeds": list(seeds)[:n_used]}  # fmt: skip
+            "deviation": deviation, "unsure": unsure, "alt": alt, "rows": run["combos"], "seconds": round(time.monotonic() - t0, 1), "policy": policy, "seeds": list(seeds)[:n_used]}  # fmt: skip
 
 
 # ---------------------------------------------------------------- 轮间刷新货架（用户 2026-11-02：第十六局 R2 只有 漢方、第十七局只有 ハーブティー）

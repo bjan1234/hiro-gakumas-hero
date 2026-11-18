@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/action.py（develop c3fc27f）
 """培育「行动选择」页：读出决策需要的状态与可选行动。
 
 页面结构（720x1280，三种变体共用上半部分）：
@@ -50,8 +49,14 @@ ACTIONS = [
     (re.compile(r"差し入れ"), "present"),
     (re.compile(r"特別指導"), "special_training"),
     (re.compile(r"おでかけ"), "outing"),
+    (re.compile(r"^営業$"), "sales"),  # N.I.A 営業（2次まで 6 週 等只有这一个按钮，11-17 原来读不出、决策 Wait 停）
+    (re.compile(r"活動支給"), "allowance"),  # 初 普通周的「活動支給」（领饮料 / 卡），3940a9 的 hajime_nia 决策认 allowance
+    # N.I.A「Vo.自主レッスン」：属性前缀和「レッスン」之间夹着「自主」，要先于下面的 lesson（11-17 N.I.A 采样：attr 读成 None）
+    (re.compile(r"(Vo|Da|Vi)?\.?自主レッ[スズ]ン"), "self_lesson"),
     (re.compile(r"(Vo|Da|Vi)?\.?レッ[スズ]ン"), "lesson"),
 ]
+# 课程按钮左上角的 SP 角标（InProduce.IconSp）相对按钮文字中心的位置：N.I.A 实机 (−67, −146)
+SP_DX, SP_DY = (-110, -20), (-190, -100)
 # 授業按钮右下角属性小图标的色相（OpenCV 0–180）：粉=Vo、蓝=Da、黄=Vi
 ATTR_HUE = {"vo": (160, 180), "da": (95, 115), "vi": (15, 35)}
 
@@ -64,6 +69,7 @@ class ActionOption:
     center: tuple[int, int]
     hp_cost: int | None = None  # 课程卡右上角「-8」
     hp_gain: int | None = None  # 「休む」左上角的回复量
+    sp: bool | None = None  # 课程（lesson / self_lesson）左上角有 SP 角标；其余 None
 
 
 @dataclass
@@ -79,11 +85,15 @@ class ActionSelectState:
     star: int | None
     advice: str | None
     options: list[ActionOption] = field(default_factory=list)
+    exam_next: str | None = None  # 初 / N.I.A：页头「中間 / 1次 / 2次 / 最終まで」→ mid1 / mid2 / final（3940a9 按它查下一场的审查基准）
+    weeks_left: int | None = None  # 初 / N.I.A：页头「N週」（离下一场考试还有几周；换算成 step 见 hiro.state.modes.step_from_header）
 
     @property
     def complete(self) -> bool:
-        """头部数值齐全、有可选行动且课程类按钮都认出了属性。按钮滑入动画中的帧不完整，应等下一帧。"""
-        lessons_ok = all(o.attr for o in self.options if o.kind in ("class", "open_lesson"))
+        """头部数值齐全、有可选行动且课程类按钮都认出了属性。按钮滑入动画中的帧不完整，应等下一帧。
+        初的「授業」只有一个按钮、不分属性（3940a9 11-17），不要求属性。"""
+        need_attr = ("open_lesson",) if self.exam_next else ("class", "open_lesson")
+        lessons_ok = all(o.attr for o in self.options if o.kind in need_attr)
         return (None not in (self.days_left, self.stamina, self.p_points) and None not in self.params.values()
                 and bool(self.options) and lessons_ok)
 
@@ -145,7 +155,43 @@ def _cost_by_heart(img: MatLike, cx: int, ty: int, read: int | None) -> int | No
     return int(m.group(1)) if m else None
 
 
-def _options(img: MatLike) -> list[ActionOption]:
+OIKOMI = re.compile(r"(ボーカル|ダンス|ビジュアル)を重点的")
+OIKOMI_ATTR = {"ボーカル": "vo", "ダンス": "da", "ビジュアル": "vi"}
+OIKOMI_BAND = (600, 1000)  # 追い込み三选一「〜を重点的に」的 y 范围（初 Mac 11-17：约 y 700 / 800 / 902）
+OIKOMI_ICON_X = (55, 115)  # 选项条左边的属性图标
+
+
+def _oikomi_options(img: MatLike) -> list[ActionOption]:
+    """初「追い込みレッスン」：选行动页上盖着三条「ボーカル / ダンス / ビジュアルを重点的に」。属性按左边图标颜色认（用户 11-17：图标优先），
+    认不出再看文字。没有这三条返回空。"""
+    y1, y2 = OIKOMI_BAND
+    out = []
+    for text, _, b in ocr_boxes(img[y1:y2], scale=2):
+        m = OIKOMI.search(text.replace(" ", ""))
+        if not m:
+            continue
+        cy = (b[1] + b[3]) // 2 + y1
+        hsv = cv2.cvtColor(img[cy - 22 : cy + 22, OIKOMI_ICON_X[0] : OIKOMI_ICON_X[1]], cv2.COLOR_BGR2HSV)
+        vivid = (hsv[:, :, 1] > 100) & (hsv[:, :, 2] > 120)
+        hues = hsv[:, :, 0][vivid]
+        counts = {a: int(((hues >= lo) & (hues <= hi)).sum()) for a, (lo, hi) in ATTR_HUE.items()}
+        best = max(counts, key=counts.get)
+        attr = best if counts[best] >= 40 else OIKOMI_ATTR[m.group(1)]
+        out.append(ActionOption("oikomi", text.replace(" ", ""), attr, ((b[0] + b[2]) // 2, cy)))
+    return sorted(out, key=lambda o: o.center[1]) if len(out) == 3 else []
+
+
+OIKOMI_STAT_BAND = (425, 485)  # 追い込み页的三维数值换成大号排版（约 y 455，x 150 / 380 / 610），普通页的 STAT_ROW 读不到
+
+
+def _oikomi_params(img: MatLike) -> dict:
+    y1, y2 = OIKOMI_STAT_BAND
+    # 左边的属性图标常被读成一个字（「込260」）：取末尾的数字
+    nums = sorted(((b[0] + b[2]) / 2, int(m.group(1))) for t, _, b in ocr_boxes(img[y1:y2], scale=2) if (m := re.search(r"(\d{2,4})$", t.strip())))
+    return dict(zip(ATTRS, (v for _, v in nums))) if len(nums) == 3 else {a: None for a in ATTRS}
+
+
+def _options(img: MatLike, *, hajime: bool = False) -> list[ActionOption]:
     y1, y2 = BUTTON_BAND
     tokens = [(t, (b[0], b[1] + y1, b[2], b[3] + y1)) for t, _, b in ocr_boxes(img[y1:y2], scale=2)]
     costs = []
@@ -165,13 +211,18 @@ def _options(img: MatLike) -> list[ActionOption]:
             # 按钮图标在文字上方；「休む」是右侧的小按钮，文字在图标下方紧挨着
             center = (cx, ty - 22) if kind == "rest" else (cx, ty - 70)
             attr = None
-            if m.groups() and m.group(1):
+            if kind == "self_lesson":
+                # N.I.A 自主レッスン：按钮右下的属性小图标颜色优先，文字前缀兜底（用户 11-17：图标优先）
+                attr = _attr_by_badge(img, cx, ty - 20) or (m.group(1).lower() if m.group(1) else None)
+            elif m.groups() and m.group(1):
                 attr = m.group(1).lower()
-            elif kind == "class":
+            elif kind == "class" and not hajime:  # 初的「授業」不分属性（右下小图标是别的东西，读出来是幻影 Da）
                 attr = _attr_by_badge(img, cx, ty - 20)
             if attr is None and kind in ("open_lesson", "lesson"):
                 attr = _attr_by_band(img, cx, ty)
             option = ActionOption(kind, compact, attr, center)
+            if kind in ("lesson", "self_lesson"):
+                option.sp = any(SP_DX[0] < x - cx < SP_DX[1] and SP_DY[0] < y - ty < SP_DY[1] for x, y in _sp_badges(img))
             if kind == "rest":
                 # 回复量在按钮左上角的爱心徽章里（白字深描边），位于文字左上方
                 option.hp_gain = read_number(img, (cx - 58, ty - 96, cx - 14, ty - 54))
@@ -183,6 +234,12 @@ def _options(img: MatLike) -> list[ActionOption]:
             out.append(option)
             break
     return sorted(out, key=lambda o: (o.center[1] > 950, o.center[0]))
+
+
+def _sp_badges(img) -> list[tuple[int, int]]:
+    from hiro.vision.ui_templates import tpl
+
+    return [(m.rect.center.x, m.rect.center.y) for m in tpl("InProduce.IconSp").find_all(img)]
 
 
 STAMINA_SLASH_MISREAD = "10"  # 「/」被 Apple Vision 认成的字符（画面稍亮时「33/33」→「33133」「33033」）
@@ -238,6 +295,22 @@ def normalize_hif(text: str) -> str:
     return re.sub(r"H[\s.．。、,，「」|｜lI1Ｉ]{0,4}F", "H.I.F", text)
 
 
+# 初 / N.I.A 页头「中間まで / 1次まで / 2次まで / 最終まで」（H.I.F 是「選抜試験1まで」「H.I.F本戦まで」）。初 Mac 11-17、N.I.A Mac 11-17 帧核过
+HAJIME_HEADER = {"中間": "mid1", "1次": "mid1", "2次": "mid2", "最終": "final"}
+WEEKS_MAX = 12
+
+
+def _weeks(header: str, img: MatLike) -> int | None:
+    """页头「N週」：OCR 常把「3」读成「ろ」（初 / N.I.A 帧「中間まで ろ週」「2次まで ろ週」）；读不出数字再用 ddddocr 读大号数字（同 _days_dddd）。"""
+    m = re.search(r"([\dろ]{1,2})\s*週", header)
+    if m:
+        v = int(m.group(1).replace("ろ", "3"))
+        if 1 <= v <= WEEKS_MAX:
+            return v
+    v = _days_dddd(img)
+    return v if v is not None and 1 <= v <= WEEKS_MAX else None
+
+
 def read_action_select(img: MatLike) -> ActionSelectState:
     header = " ".join(t for t, _ in ocr(img[:HEADER_BAND, :280], scale=2))
     exam = re.search(r"(\S+?)まで", header)
@@ -258,18 +331,23 @@ def read_action_select(img: MatLike) -> ActionSelectState:
         g = re.search(r"(\d+(?:\.\d)?)\s*%", small_text(GROWTH_BOXES[a]))
         growth[a] = float(g.group(1)) if g else None
     advice = "".join(t for t, _ in ocr(img[slice(*ADVICE_BAND)], scale=2)) or None
+    exam_next = next((v for k, v in HAJIME_HEADER.items() if exam and k in exam.group(1)), None)
+    weeks_left = _weeks(header, img) if exam_next else None
+    options = _oikomi_options(img) if exam_next else []
     return ActionSelectState(
         exam=normalize_hif(exam.group(1)) if exam else None,
         days_left=days if days is not None else _days_dddd(img),
         stamina=stamina[0] if stamina else None,
         max_stamina=stamina[1] if stamina else None,
         p_points=int(points.group()) if points else None,
-        params={a: read_number(img, box) for a, box in stat_boxes(img).items()},
+        params=_oikomi_params(img) if options else {a: read_number(img, box) for a, box in stat_boxes(img).items()},
         param_caps=caps,
         growth_pct=growth,
         star=read_number(img, STAR_BOX),
         advice=advice,
-        options=_options(img),
+        options=options or _options(img, hajime=exam_next is not None),
+        exam_next=exam_next,
+        weeks_left=weeks_left,
     )
 
 

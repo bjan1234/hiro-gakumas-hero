@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_resume_state.py（fix_matto_resume_state 1fc4d19）
 """D43 第三十三局本战：run_hif resume --trace <同名> 续跑。
 - TraceWriter 以前 seq 从 1 重编，覆盖前几段的 frames/000NN.jpg、run.json；现在接着已有的编号往下写，run.json 记 segments；
 - 续跑停在相談（不读头部 P / 体力），state.produce 全空，决策只能不买；现在用之前段最后一个有 produce 的状态打底（来源 infer，画面读到就覆盖）。
@@ -83,10 +82,10 @@ def test_consult_rereads_when_p_missing(monkeypatch):
         reads.append(k.get("scene"))
         if len(reads) >= 2:
             sess.state = GameState(page_fields={"shelf": []}, produce={"produce_point": 380})
-        return NS(fields={})
+        return NS(fields={"shelf": [{"index": 0}]})
 
     sess = NS(state=GameState(page_fields={"shelf": []}, produce={}), observe=observe, record=lambda *a, **k: None,
-              observe_complete=lambda *a, **k: observe(scene="CONSULT"))  # fmt: skip
+              observe_complete=lambda *a, **k: observe(scene="CONSULT"), left_page=lambda *a: None)  # fmt: skip
     seen = []
     h = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
     h.s = sess

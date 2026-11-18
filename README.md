@@ -1,7 +1,7 @@
 # hiro-gakumas-hero · 数字小广
 
 让大模型自己玩《学园偶像大师》（学マス）的 H.I.F 模式：从截图识别、状态推算、决策，到点击执行和逐回合复盘，
-全部自动化。角色是 Campus 模式的篠澤広。
+全部自动化。角色是 Campus 模式的篠澤広。能在 macOS（带 MaaTools 的 PlayCover 分支）、Windows MuMu 模拟器和 Windows DMM 版上跑。
 
 > 非官方的个人研究项目，与游戏的开发商和运营方无关。仓库的 `assets/pack/` 带了一套识别用的游戏素材（卡面、图标、字体、
 > 界面图、布局），**权利属于游戏的权利人，不属于本仓库的 GPL**，仅供识别游戏画面的研究用途，详见 [assets/pack/README.md](assets/pack/README.md)；
@@ -20,14 +20,21 @@
 | 32 | 只打本战 | 1,135,657 | 549,384 | 586,273 |
 | 33 | **整局** | 1,094,909 | 450,164 | 644,745 |
 
-对手第一名（十王星南）两轮合计稳定在约 108 万。上面的成绩用的是作者的完整系统（考试局面来自解密的考试存档，见下文）；
-本仓库现在带模拟器（轮间 / 饮料 / 相談按模拟，考试预演从画面局面推），不读存档也能打完一局。
+对手第一名（十王星南）两轮合计稳定在约 108 万。上面的成绩是在 macOS 上用作者的完整系统打的（考试局面来自解密的考试存档，见下文）。
+
+本仓库不读存档也能打完一局：带模拟器，轮间、饮料、相談按模拟决定，考试预演从画面局面推。用开源版在 Windows 上打的结果：
+
+| 平台 | 结果 |
+|---|---|
+| Windows + MuMu 12 | 22 局里 3 次本战夺冠 |
+| Windows DMM 版 | 选拔加本战整局打通过（中途有人工处理），本战最好第 3 名；还在修平台问题，目标是连续 3 局零人工介入 |
 
 ## 它是怎么工作的
 
 ```
                        ┌───────────── 策略层 hiro.brain / hiro.defaults.advisor ─────────────┐
                        │ 社区攻略先验（docs/hif-playbook.md）→ 规则链 → LLM 兜底             │
+                       │ 预演 hiro.sim ─► 考试引擎 vendor/gakumas-player（Python / Rust）    │
                        └──────────────▲────────────────────────────────┬──────────────────┘
                                       │ 状态（契约）                    │ 决策（契约）
 截图 ─► 识别层 hiro.vision ─► Observation ─► reduce（纯函数，可重放）─► 状态 hiro.state
@@ -47,8 +54,12 @@
   | 插件 | 回答什么 | 本仓库的默认实现 |
   |---|---|---|
   | `asset_source` | 素材和主数据从哪来 | KAA 公开数据 + 随仓库素材包 `assets/pack/` + 使用者自建素材 |
-  | `exam_state_source` | 考试局面从哪来 | 画面识别 + 状态机记账 |
-  | `exam_advisor` | 考试每一步怎么打 | 社区规则链 + LLM 兜底 |
+  | `exam_state_source` | 考试局面从哪来 | 画面识别 + 状态机记账；要预演时换成 `hiro.sim.screen_source:SimScreenExamStateSource`（`play.ps1` 缺省就用它） |
+  | `exam_advisor` | 考试每一步怎么打 | [gakumas-bench](https://github.com/matto49/gakumas-bench) 的开源算法（缺省 [UINet](https://github.com/yuzeis/GKMSUINet)，`hiro.bench_bridge`），出错时这一步退回社区规则；`HIRO_BENCH_ADVISOR=0` 时是社区规则链 + LLM 兜底 |
+
+  换实现有两种办法：设环境变量 `HIRO_ASSET_SOURCE` / `HIRO_EXAM_STATE_SOURCE` / `HIRO_EXAM_ADVISOR`（`包.模块:类名`），
+  或者在另一个包的 `pyproject.toml` 里声明入口点 `[project.entry-points."hiro_gakumas.plugins"]`，装进同一个环境就自动登记。
+  作者读存档的局面来源就是这样做成私有插件的，主仓库里没有任何读存档的代码。每局的 `run.json` 记下这一局实际用了哪些实现。
 
 - **安全拦截写在代码里**：不用ジュエル、不破棄、不按跨端培育的「開始する」、通信错误不点タイトルへ、LLM 兜底只能点识别出的文字框
   （完整列表见 [AGENTS.md](AGENTS.md)）。
@@ -66,14 +77,20 @@ setup 检测到 Rust 工具链时本地编译（快约 8 倍）；没有时下�
 
 考试局面：作者自己的系统读解密的考试存档（精确局面，不开源）；本仓库的 `hiro.sim.screen_source` 改从画面推——
 用培育记账的牌组合成开局，按执行的动作跟踪、抽到的牌按画面对齐，对不上就按画面重建（Windows 实机记录离线重放：97% 以上的步能给出预演）。
+本战开局会主动打开牌组一览把整副牌读一遍，牌组记不全就建不起开局。DMM 版本战实测：每次 R2 都合成了开局（22 张），
+预演每步中位 31 ms、p90 125 ms（Rust 后端，16 个确定化世界）。`play.ps1` 缺省只在 R2 预演（`HIRO_EXAM_SIM_ROUNDS=r2`，
+R1 按社区规则打），代码缺省是 R1、R2 都预演。
 
 ## 快速开始
 
 作者实机验证过的平台：macOS（Apple Silicon）+ PlayCover，Windows + MuMu 12（22 局 3 次本战夺冠），和 Windows DMM 版
 （`-Device dmm`，要管理员权限、游戏用日文原版）。安卓设备 / 模拟器（ADB）、雷电与 [KAA](https://github.com/XcantloadX/kotones-auto-assistant) 对齐，用 `HIRO_DEVICE` 选择、走 KAA 的设备工厂，
-代码和离线测试都有，但还没有实机打过一局（见 [AGENTS.md](AGENTS.md)「设备」）。macOS 上默认的截图和点击走 [hguandl 的 PlayCover 分支](https://github.com/hguandl/PlayCover)
-里的 MaaTools 服务，需要用这个分支，并在游戏的 PlayCover 设置里打开 `maaTools`（端口 `maaToolsPort`）；用原版 PlayCover 时会退回 Quartz 截图，
-这时游戏窗口要在前台，点击也更不稳。
+代码和离线测试都有，但还没有实机打过一局（见 [AGENTS.md](AGENTS.md)「设备」）。
+
+> **macOS 只支持带 MaaTools 的 PlayCover。** 请安装 [hguandl 的 PlayCover 分支](https://github.com/hguandl/PlayCover)，
+> 并在游戏的 PlayCover 设置里打开 `maaTools`（端口 `maaToolsPort`）。截图和点击都走游戏进程内的 MaaTools 服务，
+> 不要求游戏在前台，也不动鼠标。**原版 PlayCover 不支持**：以前「连不上 MaaTools 就退回 Quartz 截图」的兼容路径已经去掉，
+> 连不上时程序会报错停下，不会换一种方式继续。换装分支版后，第一次要从 PlayCover 界面启动游戏（让它装好 MaaTools 用的插件）。
 
 ```bash
 git clone https://github.com/matto49/hiro-gakumas-hero
@@ -92,6 +109,7 @@ PYTHONPATH=src .venv/bin/python -m pytest -q            # 没有截图样例时�
    ```
 
    也可以让程序按社区攻略选支援卡和回忆、生成开局编成方案，开局时自动核对编成，见 [docs/formation-plan.md](docs/formation-plan.md)。
+   考试要用预演，再加 `HIRO_EXAM_STATE_SOURCE=hiro.sim.screen_source:SimScreenExamStateSource`（Windows 的 `play.ps1` 已经替你设好）。
 
    **Windows（MuMu / DMM 版）**：装环境用 `scripts\setup.ps1`，开局用 `scripts\play.ps1`（缺省就是作者夺冠时的配置）：
 
@@ -101,6 +119,17 @@ PYTHONPATH=src .venv/bin/python -m pytest -q            # 没有截图样例时�
    ```
 
    DMM 版加 `-Device dmm`（脚本会申请管理员权限）。参数和注意事项见 [AGENTS.md](AGENTS.md)「设备」。
+
+   Windows 上要知道的几件事：
+
+   - **DMM 版开局后别动那台机器的鼠标。** DMM 版游戏不看点击消息里的坐标，只认真实光标的位置，所以后台点击的做法是：
+     先等光标停稳，把游戏窗口挪到「要点的位置正好在光标下」，再发点击消息。光标本身不会被移动，但游戏窗口会跟着光标跳；
+     人一动鼠标，程序就会等着，或者点偏。最好把这台机器当专用机。MuMu 走 adb，没有这个问题。
+   - **DMM 版要用日文原版客户端。** 装了汉化补丁（比如 gakuen-imas-localify）的中文界面认不出来。
+   - **内存**：hiro 的进程要 3 GB 多（图库、卡图索引、OCR 模型、主数据、模拟器），DMM 版游戏本身约 4 GB。
+     内存吃紧时加 `-NoSim` 关掉模拟器；MuMu 被系统杀掉时加 `-Relaunch`，让程序自己拉起游戏。
+   - **文字识别**：Windows 缺省用 RapidOCR，macOS 缺省用系统自带的 Vision，用 `HIRO_OCR` 切换。
+   - **Rust**：`setup.ps1` 找不到 cargo 时，会下载 CI 编好的考试引擎预编译包，不用自己装 Rust。
 
 3. **看复盘**：`python tools/viewer/build_exam_view.py <trace>`，打开生成的 HTML。
 
@@ -123,7 +152,7 @@ open /tmp/hiro-view/demo-run.html
 | 考试效果名（やる気、好印象…）、P 道具名、开始确认页的支援卡 | 可用（素材包带图标和支援卡图） |
 | 支援卡效果、考试要求 / 倍率 / 星级基准 | 不可用（策略层走规则退路） |
 
-（带素材包的读数还没在开源仓库里打一整局验证过，A5 那局用的是不带素材包的配置。）
+（Windows 上 MuMu 的 22 局和 DMM 版的整局都是带素材包打的；每次改识别都拿 DMM 实机帧的回归集（`tests/dmm_regression.json`，样例帧不随仓库）在 Mac 两种 OCR 和 Windows 上各跑一遍。）
 
 不想用随仓库的素材包时，设 `HIRO_BUNDLED_ASSETS=0`，识别层退回只用 KAA 公开数据，考试效果名等要跑 `capture_icons` 补。
 
@@ -137,13 +166,17 @@ open /tmp/hiro-view/demo-run.html
 | `src/hiro/vision/`、`perception/` | 识别层 |
 | `src/hiro/state/`、`loop/reduce.py` | 状态、记账、不变量 |
 | `src/hiro/brain/`、`defaults/advisor.py` | 策略层：规则、社区先验、LLM 适配（`claude -p`、OpenAI 兼容） |
-| `src/hiro/exec/`、`loop/`、`produce/`、`device.py` | 操作层：执行器、主循环、页面处理、恢复、安全拦截 |
+| `src/hiro/exec/`、`loop/`、`produce/`、`device.py` | 操作层：执行器、主循环、页面处理、恢复、安全拦截；`loop/win_desktop.py` 是 DMM 后台点击的桌面保护 |
+| `src/hiro/sim/` | 模拟器接入：轮间 / 饮料 / 相談的模拟、考试预演、从画面跟踪局面（`screen_source.py`） |
 | `src/hiro/plugins.py`、`defaults/` | 插件接口与默认实现 |
 | `tools/play_game.py`、`src/hiro/run_hif.py` | 入口 |
-| `tools/viewer/`、`tools/audit/` | 复盘页、低级失误审计、过场耗时 |
+| `scripts/` | `setup.sh` / `setup.ps1` 装环境，`play.ps1` 是 Windows 一键开局 |
+| `tools/viewer/`、`tools/audit/`、`tools/preview_stats.py` | 复盘页、低级失误审计、过场耗时、预演耗时统计 |
 | `tools/assets/capture_icons.py` | 从自己的截图补齐图标素材 |
 | `docs/` | 契约、状态机、素材与退路、H.I.F 社区打法 |
+| `vendor/gakumas-player` | 考试引擎 `gakumas_exam`、Rust 版 `gakumas_exam_rs`、培育公式 `gakumas_produce`；主数据由 `vendor/gakumas-player/scripts/fetch_master.py` 下载（setup 会跑），不进仓库 |
 | `vendor/kaa` | KAA（kotones-auto-assistant），子模块，固定版本 |
+| `.github/workflows/` | 测试；考试引擎 Rust 预编译包（Windows / macOS / Linux，发到 Release） |
 
 ## 致谢与许可
 
@@ -152,8 +185,8 @@ open /tmp/hiro-view/demo-run.html
   本仓库随之采用 **GPL-3.0-or-later**。从 KAA 派生的文件在文件头注明。
 - 截图和点击默认通过 [hguandl 的 PlayCover 分支](https://github.com/hguandl/PlayCover)（GPL-3.0，派生自 PlayCover）里
   [PlayTools](https://github.com/hguandl/PlayTools)（AGPL-3.0）内置的 MaaTools 服务完成：它在游戏进程内开 TCP 服务，进程内截图、注入触摸，
-  不要求游戏在前台，也不动鼠标。本仓库只按它的协议做客户端（`hiro/device.py`），不包含它的代码。连不上时退回 kotonebot 的 Quartz 截图
-  + `CGEventPostToPid` 投递。致谢 MaaTools 的作者们。
+  不要求游戏在前台，也不动鼠标。本仓库只按它的协议做客户端（`hiro/device.py`），不包含它的代码；macOS 上只支持这一种方式。
+  致谢 MaaTools 的作者们。
 - H.I.F 打法整理自社区攻略（seesaawiki、wikiwiki 等），出处写在 `docs/hif-playbook.md` 和 `hiro/brain/hif_rules.py`。
 - 《学園アイドルマスター》及相关名称、图像的权利属于其权利人。`assets/pack/` 里随仓库带的识别素材同样属于权利人，仅供识别研究用途（见 `assets/pack/README.md`）；请遵守游戏的用户协议，
   不要把相关技术用于破坏公平性或损害他人利益的用途。

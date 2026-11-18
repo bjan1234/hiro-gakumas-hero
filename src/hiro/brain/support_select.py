@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/brain/support_select.py @ c3fc27f（GPL-3.0-or-later）；支援卡技能改走 AssetSource.support_effects()
 """支援卡编成选择（用户 2026-11-02：支援卡、回忆都不用おまかせ）。自己 5 格 + 租借 1 格，由这里选。
 
 方法（社区 いおん ep02 / 05 / 08，docs/hif-playbook.md）：
@@ -197,6 +196,25 @@ def normalize_inventory(inventory: dict) -> dict:
     return out
 
 
+RENTAL_LEVEL = 60  # 租借列表里常见的满级 SSR（Lv60）。突破段不给（limit_rank 要 SupportCardLevelLimitRank__N 枚举名，给整数会编不出技能）
+
+
+def virtual_rentals() -> list[dict]:
+    """没有实机租借列表时，按「可租到的满级 SSR」估租借格（协调 11-17：租借位本来就在用，方案评估要算进去）：
+    主数据里和当前方案（PLAN）一致的全部 SSR，按 Lv60 当租借候选。偏乐观（列表里不一定有最好的那张），
+    开局时 rental.py 仍按价值从实际列表挑。"""
+    from hiro.state.context import catalog
+
+    out = []
+    for r in catalog().rows("SupportCard"):
+        if r.get("rarity") != "SupportCardRarity_Ssr":
+            continue
+        e = {"support_card_id": r["id"], "level": RENTAL_LEVEL, "estimated": True}
+        if not plan_mismatch(e):
+            out.append(e)
+    return out
+
+
 def make_slot(entry: dict, rental: bool = False) -> Slot | None:
     from hiro.state.context import catalog
 
@@ -279,9 +297,14 @@ def formation_value(slots: list[Slot]) -> tuple[float, dict]:
     return total, sp
 
 
+NEED_RENTAL = False  # choose() 里设：编成 6 格且有租借候选时第 6 格只能是租借卡（游戏的「レンタルのみ」格）
+
+
 def _valid(slots: list[Slot]) -> bool:
     ids = [s.card_id for s in slots]
-    return len(set(ids)) == len(ids) and sum(s.rental for s in slots) <= 1 and sum(s.attr == MAIN_ATTR for s in slots) == MAIN_COUNT
+    n_rent = sum(s.rental for s in slots)
+    return (len(set(ids)) == len(ids) and (n_rent == 1 if NEED_RENTAL else n_rent <= 1)
+            and sum(s.attr == MAIN_ATTR for s in slots) == MAIN_COUNT)  # fmt: skip
 
 
 def choose(inventory: dict, *, size: int = 6) -> dict:
@@ -300,8 +323,11 @@ def choose(inventory: dict, *, size: int = 6) -> dict:
     main = sorted((s for s in pool if s.attr == MAIN_ATTR), key=lambda s: -single[id(s)])
     other = sorted((s for s in pool if s.attr != MAIN_ATTR), key=lambda s: -single[id(s)])
 
+    global NEED_RENTAL
+    NEED_RENTAL = bool(rent) and size >= 6
+
     def greedy() -> list[Slot]:
-        pick: list[Slot] = []
+        pick: list[Slot] = [max(rent, key=lambda s: single[id(s)])] if NEED_RENTAL else []
         for group, want in ((main, MAIN_COUNT), (other, size - MAIN_COUNT)):
             for s in group:
                 if sum(x.attr == MAIN_ATTR for x in pick) >= MAIN_COUNT and s.attr == MAIN_ATTR:

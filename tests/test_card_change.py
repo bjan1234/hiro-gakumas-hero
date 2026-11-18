@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_card_change.py（c3fc27f）
 """授業セレクトチェンジ：换卡未受控时授業改选眠気档；换卡决策器选换入 / 换出（核心卡不换出）。
 
 第 4 局本战两次授業セレクトチェンジ 由 KAA 固定换第 0 张，换走了 デイドリーミング、がむしゃら
@@ -77,7 +76,7 @@ def test_choose_card_to_change():
 
 
 def test_protected_list_has_gamushara_and_core():
-    from hiro.loop.kaa_patches import protected_card_ids
+    from hiro.produce.card_ops import protected_card_ids
 
     ids = protected_card_ids()
     assert {"p_card-02-act-1_071", DAYDREAM, TODOITE} <= ids and HIGH not in ids

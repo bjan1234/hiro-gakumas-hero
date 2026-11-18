@@ -26,6 +26,7 @@ from typing import Any
 from hiro.defaults.exam_state import ScreenExamStateSource
 
 logger = logging.getLogger(__name__)
+_SEEN_ERRORS: set[str] = set()  # 预演异常：每种只在第一次记调用栈
 
 FINALS_LABELS = ("r1", "r2")
 # 哪几轮给预演（逗号分隔，缺省 r1,r2）。Windows 第二十局：R1 有预演时 LLM 跟着预演早兑现，R1 只打 8.2 万（R2 反而受益），
@@ -33,6 +34,9 @@ FINALS_LABELS = ("r1", "r2")
 ROUNDS = tuple(x.strip().lower() for x in os.environ.get("HIRO_EXAM_SIM_ROUNDS", "r1,r2").split(",") if x.strip())
 PREVIEW_WORLDS = int(os.environ.get("HIRO_EXAM_SIM_WORLDS", "16"))
 PREVIEW_BUDGET_S = float(os.environ.get("HIRO_EXAM_SIM_BUDGET_S", "7.5"))
+# 手牌里有、引擎各区都没有的卡（考试中生成的 眠気、账本漏记的支援事件卡）在当前局面上新建接住（Rust new_card），一场最多这么多张：
+# 再多多半是认卡认错，宁可退回画面读数（DMM mainverify2 11-17）
+NEW_CARD_LIMIT = 8
 
 
 def _round_label(exam: str | None) -> str | None:
@@ -41,6 +45,17 @@ def _round_label(exam: str | None) -> str | None:
         return None
     base = str(exam).split("#", 1)[0].lower()
     return base if base in FINALS_LABELS else None
+
+
+def _track_all() -> bool:
+    """出牌交给 bench 算法（hiro.bench_bridge，默认开）时，本战 R1 / R2 都跟踪，给出牌插件提供引擎局面（预演仍按 HIRO_EXAM_SIM_ROUNDS）。
+    R1 以前不跟踪是因为 LLM 跟着 R1 预演过早兑现（Windows 第二十局）；bench 出牌不看预演，这个理由不成立了。"""
+    try:
+        from hiro.bench_bridge.advisor import enabled
+
+        return enabled() and os.environ.get("HIRO_EXAM_SIM_TRACK_ALL", "1") != "0"
+    except Exception:  # noqa: BLE001
+        return False
 
 
 class SimScreenExamStateSource(ScreenExamStateSource):
@@ -55,15 +70,24 @@ class SimScreenExamStateSource(ScreenExamStateSource):
         self.lost: str | None = None
         self.stats = {"tracked": 0, "rebuilt": 0, "lost": 0}
         self.screen_drinks: list = []  # 画面饮料栏（槽位 → drink_id），模拟器的饮料顺序可能不同
+        self.template: str | None = None  # 合成开局用的模板（r1 / r2 / selection）
+        self.preview_on = True
 
     # ---------------------------------------------------------------- 生命周期
     def begin(self, context: dict[str, Any]) -> None:
         super().begin(context)
         ctx = context or {}
         self.label = _round_label(ctx.get("exam"))
-        if self.label is not None and self.label not in ROUNDS:
-            self.label = None  # 这一轮不给预演（HIRO_EXAM_SIM_ROUNDS）
+        self.template = self.label
+        self.preview_on = self.label in ROUNDS
+        # 选拔考试不跟踪：没有自己的合成模板，借本战模板会带进本战的 P 道具 / 附魔，画面上又常有合成牌组里没有的卡
+        # （2026-11-12 qualifydmmw1 离线重放 81 步丢 51 步），出牌插件走画面读数路径
+        if self.label is not None and not self.preview_on and not _track_all():
+            self.label = None  # 这一轮不跟踪、不给预演（HIRO_EXAM_SIM_ROUNDS）
         self.tracker = self.game = self.meta = None
+        self.setup = None
+        self._created = 0  # 按场算，同 _added
+        self._added = 0  # 「一场最多加 6 张」按场算：以前不清零，同一局里 R1、R2 和几次再挑戦累计到 6 张后，后面的考试都加不进、整场给不出预演
         self.lost = None
         self.stats = {"tracked": 0, "rebuilt": 0, "lost": 0}
 
@@ -141,13 +165,34 @@ class SimScreenExamStateSource(ScreenExamStateSource):
         drinks = [d.drink_id for d in state.drinks if getattr(d, "drink_id", None)]
         max_hp = state.max_hp or (self.profile.max_hp if self.profile is not None else None) or 33
         permil = {k: v for k, v in (getattr(memory, "attr_permil", None) or {}).items() if v} or dict(CONTEXT.get("permil") or {})
-        setup, notes = rv.setup_for(self.label, deck=deck, drinks=drinks, hp=state.hp or max_hp, max_hp=max_hp, permil=permil)
+        setup, notes = rv.setup_for(self.template or self.label, deck=deck, drinks=drinks, hp=state.hp or max_hp, max_hp=max_hp, permil=permil)
+        # 任务 ②：P 道具 / 支援卡 / 回忆附魔换成这一局的（原来是模板那一局的，任务 ① 查到搜出来的未来是错的）
+        run, run_notes = self._run_loadout()
+        setup = iv._with(setup, **run)
+        notes = list(notes) + run_notes
         game = self._new_game(setup, copy.deepcopy(memory))
         self.setup = setup
         self.tracker = SimTracker(game, 0, self.meta)
         logger.info("模拟器跟踪：%s 合成开局（牌组 %d 张、饮料 %s、体力 %s/%s%s）", self.label, len(deck), drinks, state.hp, max_hp,
                     "；" + "、".join(notes) if notes else "")  # fmt: skip
         return True
+
+    def _run_loadout(self) -> tuple[dict, list]:
+        """这一局的编成（hiro.search.loadout）：P 道具来自培育记账，支援卡 / 回忆附魔来自开局编成方案（HIRO_FORMATION_PLAN=off 时没有）。"""
+        import os
+
+        from hiro.search.loadout import run_loadout
+
+        produce = (getattr(self.session.state, "produce", None) or {}) if self.session is not None else {}
+        plan = None
+        if os.environ.get("HIRO_FORMATION_PLAN", "").lower() != "off":
+            try:
+                from hiro.brain.formation_plan import load
+
+                plan = load(os.environ.get("HIRO_FORMATION_PLAN") or None)
+            except Exception as e:  # noqa: BLE001
+                logger.info("开局编成方案读不了：%s", e)
+        return run_loadout(produce, plan)
 
     def _new_game(self, setup, memory):
         from hiro.sim import interval as iv
@@ -160,6 +205,21 @@ class SimScreenExamStateSource(ScreenExamStateSource):
         self.meta = getattr(exam, "meta", None)
         game.meta = self.meta
         return game
+
+    def _new_card(self, env, cid: str, up) -> Any:
+        """在当前局面上新建一张画面上有、引擎里没有的卡（不进任何区，由重建放进手牌）。不从开局重新编译：考试中引擎自己生成的卡
+        （成長痛 塞进山札的 眠気）留在局面里（DMM mainverify2 R1：引擎里已有一张 眠気、画面两张，_add_basic 加一张重编译后
+        只剩加的那张，「补了応援棒基础卡；画面上的 眠気 在模拟器里找不到」）。旧 Rust 包 / Python 后端没有 new_card：返回 None，走 _add_basic。
+        新建的卡不带定制（customize_counts 为空）：账本漏记的若是特別指導定制过的卡，搜索按没定制算（3940a9：影响不大）。"""
+        rx = getattr(env, "rx", None)
+        if rx is None or not hasattr(rx, "new_card") or getattr(self, "_created", 0) >= NEW_CARD_LIMIT:
+            return None
+        try:
+            g = rx.new_card(cid, int(up or 0))
+        except (KeyError, ValueError):
+            return None
+        self._created = getattr(self, "_created", 0) + 1
+        return g
 
     def _add_basic(self, missing: list) -> bool:
         """R2 応援棒随机补的基础卡（名字含「基本」，实机随机、模拟器按固定轮换补）、考试里生成的基础类卡（成長痛 塞进山札的 眠気 等，
@@ -186,7 +246,15 @@ class SimScreenExamStateSource(ScreenExamStateSource):
         rows = []
         if self.session is not None:
             rows = (getattr(self.session.state, "produce", None) or {}).get("deck") or []
-        deck = [(c["card_id"], int(c.get("upgrade") or 0)) for c in rows if isinstance(c, dict) and c.get("card_id")]
+        from hiro.search.loadout import customize_counts
+
+        deck = []
+        for c in rows:
+            if not (isinstance(c, dict) and c.get("card_id")):
+                continue
+            up = int(c.get("upgrade") or 0)
+            counts = customize_counts(c["card_id"], up, c.get("customize"))  # 特別指導记下的定制（任务 ②）
+            deck.append((c["card_id"], up, counts) if counts else (c["card_id"], up))
         if deck:
             return deck
         from hiro.state.finals_context import CONTEXT
@@ -202,6 +270,16 @@ class SimScreenExamStateSource(ScreenExamStateSource):
         self._missing = []
         env = clone(self.tracker.game.env)
         notes: list[str] = []
+        # 先执行上一步已经做了、但没和画面核对上的动作，再按画面修牌区和数值：原来从出牌之前的局面重建，这一步出牌的效果
+        # （卡上挂的附魔、移到除外的卡、状态）整个丢了（任务 ② 验证 2：附魔完全一致的步只有 40%）
+        pending = getattr(self.tracker, "pending", None)
+        if pending:
+            try:
+                fast_apply(env, pending)
+                notes.append("先执行上一步的动作")
+            except Exception as e:  # noqa: BLE001  这一步在旧局面上执行不了：照旧从旧局面按画面重建
+                env = clone(self.tracker.game.env)
+                notes.append(f"上一步的动作执行不了（{type(e).__name__}），从旧局面重建")
         guard = 0
         while not env.ended and state.remaining_turns is not None and self.tracker.screen_remaining(env) > state.remaining_turns and guard < 6:
             fast_apply(env, {"kind": "end_turn"})
@@ -222,6 +300,8 @@ class SimScreenExamStateSource(ScreenExamStateSource):
                         break
                 if pick is not None:
                     break
+            if pick is None and (pick := self._new_card(env, cid, up)) is not None:
+                notes.append(f"{cid} ← 新建（考试中生成 / 牌组账本没有）")
             if pick is None:
                 self._missing.append((cid, up))
                 continue
@@ -236,6 +316,13 @@ class SimScreenExamStateSource(ScreenExamStateSource):
                 setattr(env, attr, v)
         if env.actions <= 0 and any(c.available for c in state.hand):
             env.actions = 1
+        # 饮料栏按画面（画面每格都认出时）：重建从上一次对上的局面出发，中间喝掉的那瓶原来会一直留在引擎里（任务 ② 验证 2）
+        screen_drinks = [getattr(d, "drink_id", None) for d in state.drinks or []]
+        if all(screen_drinks) and sorted(env.drinks.values()) != sorted(screen_drinks):
+            rx = getattr(env, "rx", None)
+            if rx is not None and hasattr(type(rx), "drinks") and getattr(type(rx).drinks, "__set__", None):
+                notes.append(f"饮料按画面：{sorted(env.drinks.values())} → {screen_drinks}")
+                rx.drinks = screen_drinks
         _order_hand(env, want, notes)
         game = SimGame(env, self.label, self.profile)
         game.memory, game.meta = self.tracker.game.memory, self.meta
@@ -245,6 +332,13 @@ class SimScreenExamStateSource(ScreenExamStateSource):
     def previews(self, state: Any) -> list | None:
         if self.game is None:
             return None
+        try:
+            state.sim_game = self.game  # 对齐过画面的引擎局面：给出招插件（hiro.bench_bridge）转 UIObs 用
+            state.sim_exact_exam = self.template in FINALS_LABELS  # 合成模板的回合数 / 属性表是这场考试的（选拔考试借的模板不是）
+        except AttributeError:
+            pass
+        if not getattr(self, "preview_on", True):
+            return None  # 只跟踪不预演（这一轮不在 HIRO_EXAM_SIM_ROUNDS）
         from hiro.contracts import Preview
         from hiro.sim.preview import preview_actions, slot_previews
 
@@ -268,7 +362,11 @@ class SimScreenExamStateSource(ScreenExamStateSource):
                     remap[k] = p
             out = Preview.from_slots(remap)
         except Exception as e:  # noqa: BLE001
-            logger.info("模拟器预演失败：%s: %s", type(e).__name__, e)
+            # 同一种异常第一次出现时带调用栈（DMM 本战 R2 预演 24 次 KeyError '…@3' 只有一句文字，查不到在哪一步查表）
+            sig = f"{type(e).__name__}: {e}"
+            first = sig not in _SEEN_ERRORS
+            _SEEN_ERRORS.add(sig)
+            logger.info("模拟器预演失败：%s", sig, exc_info=first)
             return None
         legal = {a.legal_key() if hasattr(a, "legal_key") else a for a in (state.legal_actions() if hasattr(state, "legal_actions") else [])}
         if legal:

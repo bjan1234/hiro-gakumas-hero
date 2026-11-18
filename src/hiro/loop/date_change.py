@@ -1,4 +1,3 @@
-# 来源：digital-hiro hiro/loop/date_change.py（c3fc27f）
 """游戏日切换（凌晨 4:00）「日付変更 / 日付が変わりました。/ タイトルへ」与数据更新「データ更新 / データ更新があります。/ タイトルへ」的处理。
 
 main13 本战（2026-11-02 04:00）：R1 结果页之后弹出这个框，hif.on_exam_entered 收尾的 `for _ in Loop()` 一直找到压在弹窗下面的
@@ -16,7 +15,7 @@ from hiro.vision.textnorm import contains_any
 import time
 from collections.abc import Callable
 
-from hiro.log import logging
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +180,7 @@ def loop_callback(ocr: Callable, *, every: float = 5.0, clock: Callable[[], floa
         from hiro.loop import comm_error
 
         if comm_error.comm_error(boxes) is not None:
-            from kotonebot import device
+            from hiro.devices.active import device
 
             comm_error.handle(boxes, lambda x, y: device.click(x, y))
         return False

@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/produce/card_exclude.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """三选一「カード除去」（KAA 没有这个操作）：决策给 ExcludeCard{pick_index}。
 
 三选一弹窗（实机帧 tests/fixtures/select_card）：候选卡中心 (220/360/500, 880)，底部中间「受け取る」，
@@ -16,7 +16,8 @@ import time
 from collections.abc import Callable
 
 import numpy as np
-from kotonebot import device, logging
+import logging
+from hiro.devices.active import device, sleep as _sleep
 
 from hiro.contracts import Action, ExecutionResult
 from hiro.produce.ops import Run, button_sv, find_text, orange_lit, roi_diff
@@ -52,7 +53,7 @@ def exclude_card(
     shoot: Callable[[], np.ndarray] | None = None,
     click: Callable[[int, int], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
     ocr=None,
     calib: bool = True,
 ) -> ExecutionResult:

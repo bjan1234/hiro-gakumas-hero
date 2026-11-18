@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/produce/special_guidance.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """「特別指導」（技能卡定制）执行。KAA 的 ProduceAction 里没有这一项，选行动页识别给的是 options 里 option="special_guidance"
 的中心（第三局 r10 第 19 天：(442, 1009)，与「相談」并排）。
 
@@ -19,7 +19,8 @@ import time
 from collections.abc import Callable
 
 import numpy as np
-from kotonebot import device, logging
+import logging
+from hiro.devices.active import device, sleep as _sleep
 
 from hiro.contracts import Action, ActionKind, ExecutionResult
 from hiro.produce.ops import Run, button_sv, find_text, orange_lit
@@ -68,7 +69,7 @@ def enter(
     shoot: Callable[[], np.ndarray] | None = None,
     click: Callable[[int, int], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
     ocr=None,
     calib: bool = True,
 ) -> ExecutionResult:
@@ -243,7 +244,7 @@ def leave(
     shoot: Callable[[], np.ndarray] | None = None,
     click: Callable[[int, int], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
     ocr=None,
     calib: bool = True,
 ) -> ExecutionResult:
@@ -263,7 +264,7 @@ def customize(
     shoot: Callable[[], np.ndarray] | None = None,
     click: Callable[[int, int], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
     ocr=None,
     calib: bool = True,
 ) -> ExecutionResult:

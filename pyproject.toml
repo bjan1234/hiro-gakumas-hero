@@ -13,7 +13,16 @@ dependencies = ["numpy", "opencv-python-headless"]
 [project.optional-dependencies]
 dev = ["pytest"]
 # 实机游玩：操作层 / 识别层基于 KAA（kotones-auto-assistant，GPL-3.0），以 git 子模块 vendor/kaa 固定版本引入
-play = ["ksaa", "pyyaml"]  # pyyaml：只在构建模拟器主数据时用（vendor/gakumas-player/scripts/fetch_master.py）
+play = ["ksaa", "pyyaml", "ddddocr==1.6.1", "faiss-cpu>=1.14.3"]  # ddddocr：HUD 数字的退路读法（hiro.vision.digits）  # faiss：卡面图库（hiro.vision.card_db）  # pyyaml：只在构建模拟器主数据时用（vendor/gakumas-player/scripts/fetch_master.py）
+# 考试出牌用 gakumas-bench 的开源算法（缺省 UINet，hiro.bench_bridge）：都按固定提交装；没装时考试出牌退回社区规则
+# onnxruntime 不另外指定版本：KAA 钉在 ~=1.14，UINet 原模型由 hiro.bench_bridge 转成 1.14 能读的写法（setup 时做）
+bench = [
+    "gkbench @ git+https://github.com/matto49/gakumas-bench@bcec19047068b51498459e812ca8577a5d16ddb8",
+    "gkms-uinet @ git+https://github.com/yuzeis/GKMSUINet@1201b841828d9874b604f7d48f7b00ddf3b71d95",
+    "onnxruntime",
+]
+# 实验：DMM 版用 MaaFramework（LGPL-3.0）截图 / 点击（HIRO_DMM_DRIVER=maafw，缺省不用），见 hiro/device_maafw.py
+dmm-maa = ["maafw>=5.14"]
 
 [tool.uv.sources]
 ksaa = { path = "vendor/kaa", editable = true }

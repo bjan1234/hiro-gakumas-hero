@@ -11,6 +11,7 @@ reduce 本身仍是纯函数；Session.observe 依次调用 check → gate → r
 from __future__ import annotations
 
 import copy
+import dataclasses
 from typing import Any
 
 from hiro.contracts import Check, Event, Expect, GameState, Observation, Prediction
@@ -28,6 +29,7 @@ def _no_prediction(state, event) -> list:
 # ---------------------------------------------------------------------------- 事件
 def apply_event(state: GameState, event: Event, *, predictor=None) -> tuple[GameState, list[Prediction]]:
     """纯函数：返回新状态与预测。牌组按事件增减（已知时）；字段状态记 predicted。"""
+    event = _memory_upgrade(state, event)
     s = copy.deepcopy(state)
     s.ledger.append(event)
     del s.ledger[:-LEDGER_KEEP]
@@ -59,6 +61,22 @@ def _prediction(p: Any) -> Prediction:
                       expires_after=p.get("expires_after"))  # fmt: skip
 
 
+def _memory_upgrade(state: GameState, event: Event) -> Event:
+    """回忆效果展示的卡（识别给 memory_effect）：牌组里已有同一张、强化次数更低 → 是回忆把它强化了，改记 CARD_UPGRADE；
+    没有 → 照旧是获得（开局回忆卡加入牌组也是这个画面，events/acquire-memory-00028）。DMM q4 11-17：选拔试验后两张回忆卡
+    私がスター / 届いて！ 被强化成 +，原来各记一次获得，账本多 2 张。只看没配上动作的识别事件（apply_event 只收没配上的）。"""
+    a = event.args or {}
+    if event.kind != "CARD_ACQUIRE" or event.origin != "observed" or not a.get("memory_effect") or not a.get("card_id"):
+        return event
+    up = int(a.get("upgrade") or 0)
+    deck = (state.produce or {}).get("deck") or []
+    lower = [int(c.get("upgrade") or 0) for c in deck if c.get("card_id") == a["card_id"] and int(c.get("upgrade") or 0) < up]
+    if not up or not lower:
+        return event
+    return dataclasses.replace(event, kind="CARD_UPGRADE", args={"card_id": a["card_id"], "upgrade": max(lower), "source": "memory"},
+                               note=f"回忆效果展示 {a['card_id']}+{up}：牌组里已有强化 {max(lower)} 的同一张，记成强化（不是获得）")  # fmt: skip
+
+
 def _apply_deck(s: GameState, e: Event) -> None:
     if e.kind == "DECK_REVIEW" and e.args.get("deck") is not None:
         s.produce = s.produce if s.produce is not None else {}
@@ -87,12 +105,29 @@ def _apply_deck(s: GameState, e: Event) -> None:
     elif e.kind == "CARD_CHANGE":
         remove(a.get("remove_card_id"))
         add(a.get("card_id"), a.get("upgrade"))
+    elif e.kind == "CARD_CUSTOMIZE" and a.get("customize_id"):
+        i = a.get("deck_index")
+        c = deck[i] if isinstance(i, int) and 0 <= i < len(deck) and deck[i].get("card_id") == a.get("card_id") else \
+            next((c for c in deck if c.get("card_id") == a.get("card_id")), None)  # fmt: skip
+        if c is not None:
+            cz = c.setdefault("customize", {})
+            cz[a["customize_id"]] = int(cz.get(a["customize_id"]) or 0) + int(a.get("levels") or 1)
+            c["customized"] = True
     elif e.kind == "CARD_UPGRADE":
         c = next((c for c in deck if c.get("card_id") == a.get("card_id") and not c.get("upgrade")), None)
         if c is not None:
             c["upgrade"] = 1
     elif e.kind == "DECK_REVIEW" and a.get("deck") is not None:
-        prod["deck"] = [{"card_id": c.get("card_id"), "upgrade": int(c.get("upgrade") or 0)} for c in a["deck"]]
+        # 牌组页只读得到「有没有定制」：特別指導记下的定制按同卡同强化带过去，不被牌组确认冲掉（任务 ②）
+        old = [c for c in deck if c.get("customize")]
+        new = [{"card_id": c.get("card_id"), "upgrade": int(c.get("upgrade") or 0)} for c in a["deck"]]
+        for c in new:
+            hit = next((o for o in old if o.get("card_id") == c["card_id"] and int(o.get("upgrade") or 0) == c["upgrade"]), None) \
+                or next((o for o in old if o.get("card_id") == c["card_id"]), None)  # fmt: skip
+            if hit is not None:
+                old.remove(hit)
+                c["customize"], c["customized"] = dict(hit["customize"]), True
+        prod["deck"] = new
         s.pending_review = [f for f in s.pending_review if f != "produce.deck"]
         s.field_status["produce.deck"] = "verified"
     elif e.kind in ("CARD_AUTO_PROCESS", "UNMODELED_CHANGE") and "deck" in str(a.get("field", "deck")):
@@ -134,6 +169,8 @@ def events_from_step(page: str | None, action: dict, ok: bool, page_fields: dict
             deck = (produce or {}).get("deck") or []
             i = args.get("card_index")
             c = deck[i] if isinstance(i, int) and 0 <= i < len(deck) else {}
+            if args.get("card_id"):  # 对话框里实际删的那张（主循环做成后写回）优先于决策写的 card_index
+                c = {"card_id": args["card_id"], "upgrade": args.get("upgrade")}
             E("CARD_DELETE", card_id=c.get("card_id"), upgrade=c.get("upgrade"), source="consult")
         elif "index" in args:
             shelf = page_fields.get("shelf") or []
@@ -141,6 +178,15 @@ def events_from_step(page: str | None, action: dict, ok: bool, page_fields: dict
             item = shelf[i] if 0 <= i < len(shelf) else {}
             E("SHOP_BUY", kind="card" if item.get("card_id") else "drink", card_id=item.get("card_id"), drink_id=item.get("drink_id"),
               upgrade=item.get("upgrade"), price=item.get("price"))  # fmt: skip
+    elif page == "HIF_ROUND_INTERVAL" and kind == "IntervalBuy" and "index" in args:
+        # 轮间买卡 / 饮料：同相談记 SHOP_BUY，卡进牌组账本（p13 复盘：以前没记，R2 开局重建找不到轮间买的 アイドル魂、退回 uinet）。
+        # 货架格子编号就是决策的 index（买走后那格 card_id 变空，所以用决策这一步的货架）
+        iv = page_fields.get("interval") or {}
+        i = int(args["index"])
+        item = next((c for c in (iv.get("cards") or []) + (iv.get("drinks") or []) if c.get("index") == i), {})
+        if item.get("card_id") or item.get("drink_id"):
+            E("SHOP_BUY", kind="card" if item.get("card_id") else "drink", card_id=item.get("card_id"), drink_id=item.get("drink_id"),
+              upgrade=item.get("upgrade"), price=item.get("price"), source="interval")  # fmt: skip
     elif page == "SKILL_CARD_CHANGE_1" and kind == "ChangeCard" and not args.get("cancel"):
         cands = page_fields.get("candidates") or []
         i = args.get("pick_index")
@@ -158,6 +204,21 @@ def events_from_step(page: str | None, action: dict, ok: bool, page_fields: dict
         E("CARD_DELETE", card_id=args["card_id"], upgrade=args.get("upgrade"), source="event")
     elif page == "SKILL_CARD_ENHANCE" and args.get("card_id"):
         E("CARD_UPGRADE", card_id=args["card_id"], upgrade=args.get("upgrade"), source="event")
+    elif page == "SELECT_PITEM" and kind == "ActivateEffect":
+        # 定制 P 道具（背包 → 毛绒 → 装饰）：选中的那一项拼成 master ID，替换上一段（任务 ②：搜索起点要带这一局的 P 道具）
+        from hiro.brain import pitem
+
+        items = page_fields.get("pitems") or []
+        i = next(iter(args.get("pick_indexes") or []), None)
+        p = pitem.parse(items[int(i)]) if isinstance(i, int) and 0 <= i < len(items) else None
+        new = pitem.custom_id(p) if p else None
+        if new:
+            old = next((x for x in (produce or {}).get("items") or [] if str(x).startswith("customize_pitem-")), None)
+            E("PITEM_CUSTOMIZE", item_id=new, replaces=old)
+    elif page == "SPECIAL_GUIDANCE" and kind == "CustomizeCard" and args.get("customize_id"):
+        # 记下定制了哪一项、几级（任务 ②：搜索起点要知道卡的定制，原来只记「定制过」）
+        E("CARD_CUSTOMIZE", card_id=args.get("card_id"), deck_index=args.get("card_index"), customize_id=args["customize_id"],
+          levels=int(args.get("levels") or 1))  # fmt: skip
     elif page == "PDRINK_MAX" and kind == "DiscardDrink" and args.get("receive") and args.get("discard"):
         E("DRINK_DISCARD", index=args["discard"][0])
     return ev

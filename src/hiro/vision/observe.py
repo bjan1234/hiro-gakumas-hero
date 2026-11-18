@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/observe.py（develop c3fc27f）；保留开源版的 register_adapter 注册接口
 """识别结果 → 决策层数据结构。识别模块保留各自的原始输出，这里是两边唯一的对接点。
 
 - 培育：字段名对齐 hiro.state.produce.ProduceState（客户端协议 UserProduceProgress），
@@ -16,6 +15,10 @@ ATTR_KEY = {"vo": "Vo", "da": "Da", "vi": "Vi"}
 OPTION_NAME = {
     "open_lesson": "training",
     "lesson": "training",
+    "self_lesson": "training",  # N.I.A 自主レッスン
+    "sales": "sales",  # N.I.A 営業
+    "allowance": "allowance",  # 初 活動支給
+    "oikomi": "training",  # 初 追い込みレッスン（选项带 oikomi: true）
     "class": "class",
     "outing": "outing",
     "present": "gift",
@@ -84,9 +87,15 @@ def produce_observation(action: dict) -> dict:
             "hp_cost": o.get("hp_cost"),
             "hp_gain": o.get("hp_gain"),
             "center": list(o["center"]),
+            **({"sp": o["sp"]} if o.get("sp") is not None else {}),
+            **({"oikomi": True} if o["kind"] == "oikomi" else {}),
         }
         for o in action.get("options", [])
     ]
+    if action.get("exam_next"):
+        obs["exam_next"] = action["exam_next"]
+        if action.get("weeks_left") is not None:
+            obs["weeks_left"] = action["weeks_left"]  # reduce 按 produce.mode 换算成 step（hiro.state.modes.step_from_header）
     obs["complete"] = bool(action.get("complete"))
     return obs
 
@@ -109,9 +118,9 @@ def battle_observation(exam: dict) -> dict:
     for d in exam.get("drinks") or []:
         if d is None:
             continue
-        from kaa.db.drink import Drink
+        from hiro import master
 
-        drink = Drink.from_asset_id(d["asset"])
+        drink = master.drink_by_asset(d["asset"])
         if drink is not None:
             drinks.append(drink_view(d["slot"], drink))
     obs = {
@@ -145,11 +154,11 @@ def _select_card_observation(fields: dict) -> dict:
 
 
 def _select_drink_observation(fields: dict) -> dict:
-    from kaa.db.drink import Drink
+    from hiro import master
 
     cands = []
     for o in fields.get("options") or []:
-        drink = Drink.from_asset_id(o["asset_id"]) if o.get("asset_id") else None
+        drink = master.drink_by_asset(o["asset_id"]) if o.get("asset_id") else None
         cands.append({"slot": o.get("slot"), "drink_id": drink.id if drink else None, "name": o.get("name"), "score": o.get("score")})
     # held：底栏已有饮料（饮料满时先丢一瓶再领：点 held[i].center → 捨てる）；full：「Pドリンク所持上限」
     held = [{k: d.get(k) for k in ("index", "drink_id", "name", "center", "method")} for d in fields["held"]] if "held" in fields else None
@@ -166,9 +175,9 @@ def _jsonable_battle(obs: dict) -> dict:
 @lru_cache(maxsize=1)
 def _effect_types() -> dict[str, str]:
     """图标键（小写）→ ProduceExamEffectType_*。素材包 index 缺名的 H.I.F 新类型，用 KAA game.db 的 effectType 补。"""
-    from kaa.db.sqlite import select_many
+    from hiro import master
 
-    rows = select_many("SELECT DISTINCT effectType FROM ProduceExamEffect;")
+    rows = master.rows("SELECT DISTINCT effectType FROM ProduceExamEffect;")
     return {r[0].removeprefix("ProduceExamEffectType_").lower(): r[0] for r in rows if r[0]}
 
 
@@ -247,8 +256,12 @@ def _consult_observation(fields: dict) -> dict:
     # 货架没完整出现（入场剧情、获得动画、详情弹窗盖住）时格子会读出幻影（实机第四局 r4 00092 剧情帧读出「私がスター+」）：
     # shelf 给 None，reduce 保留上一帧完整的货架，observe_complete 会等到货架出现
     shelf = fields.get("shelf") if fields.get("complete") is not False else None
+    capacity = fields.get("drink_capacity")
+    if fields.get("drinks_full") and fields.get("drinks") is not None:
+        capacity = len(fields["drinks"])  # 游戏说饮料栏满了：容量就是现在持有的瓶数（底栏读数从不把账号 2 的 3 格读成 4，这个值会留着）
     return {"shelf": shelf, "services": fields.get("services"), "rerolls_left": fields.get("rerolls_left"),
-            "complete": fields.get("complete"), "drinks": fields.get("drinks"), "drink_capacity": fields.get("drink_capacity"),
+            "complete": fields.get("complete"), "drinks": fields.get("drinks"), "drink_capacity": capacity,
+            "drinks_full": fields.get("drinks_full") or None,
             "stamina": fields.get("stamina"), "max_stamina": fields.get("max_stamina"), "produce_point": fields.get("produce_point")}  # fmt: skip
 
 
@@ -314,7 +327,7 @@ def _pdrink_max_observation(fields: dict) -> dict:
 
 
 # 页面地图（hiro.vision.pages，docs/pages-hif.md）：识别字段原样透传，只取登记过的键
-MAP_PAGE_KEYS = {'DIALOG': ('kind', 'title', 'danger', 'confirm'), 'ACQUIRE': ('kind', 'card_id', 'drink_id', 'pitem_id', 'pitem_ids', 'name', 'upgrade', 'agree'), 'STAR_GAIN': ('gain', 'star', 'star_shown'), 'HIF_EXAM_BRIEFING': ('exam_no', 'rank_line', 'participants', 'star', 'star_ok', 'params', 'multiplier_pct', 'complete', 'finals'), 'PITEM_CUSTOMIZE': (), 'PITEM_CUSTOMIZE_DONE': (), 'MENU': ('kind',), 'UPGRADE_RESULT': ('name', 'card_id', 'upgrade'), 'TRANSITION': ('kind',), 'GIFT': ('bag',), 'PRODUCE_LOG': ('close',), 'CUSTOMIZE_RESULT': ('name', 'card_id', 'upgrade'), 'DELETE_RESULT': ('cards', 'text'), 'HIF_FINALS_START': ('selected_memory', 'qualify_memories'), 'HIF_FINALS_RANKING': ('kind', 'score', 'round_score', 'entries', 'next', 'my_score', 'rank', 'finals_round', 'round_result', 'retry', 'my_gain', 'final', 'outcome', 'passed'), 'HIF_ROUND_INTERVAL': ('stamina', 'max_stamina', 'produce_point', 'interval', 'complete', 'dialog')}
+MAP_PAGE_KEYS = {'DIALOG': ('kind', 'title', 'danger', 'confirm'), 'ACQUIRE': ('kind', 'card_id', 'drink_id', 'pitem_id', 'pitem_ids', 'name', 'upgrade', 'agree', 'memory_effect'), 'STAR_GAIN': ('gain', 'star', 'star_shown'), 'HIF_EXAM_BRIEFING': ('exam_no', 'rank_line', 'participants', 'star', 'star_ok', 'params', 'multiplier_pct', 'complete', 'finals'), 'PITEM_CUSTOMIZE': (), 'PITEM_CUSTOMIZE_DONE': (), 'MENU': ('kind',), 'UPGRADE_RESULT': ('name', 'card_id', 'upgrade'), 'TRANSITION': ('kind',), 'GIFT': ('bag',), 'PRODUCE_LOG': ('close',), 'CUSTOMIZE_RESULT': ('name', 'card_id', 'upgrade'), 'DELETE_RESULT': ('cards', 'text'), 'HIF_FINALS_START': ('selected_memory', 'qualify_memories'), 'HIF_FINALS_RANKING': ('kind', 'score', 'round_score', 'entries', 'next', 'my_score', 'rank', 'finals_round', 'round_result', 'retry', 'my_gain', 'final', 'outcome', 'passed'), 'HIF_ROUND_INTERVAL': ('stamina', 'max_stamina', 'produce_point', 'interval', 'complete', 'dialog')}
 
 
 def _map_page_adapter(page: str):
@@ -342,6 +355,8 @@ FIELD_ADAPTERS = {
     "SPECIAL_GUIDANCE": _special_guidance_observation,
     "STUDY": _event_observation,
     "OUTING": _event_observation,
+    # 事件选项页：原来没登记，observation 把读出的选项整个丢掉，决策器看到 0 项停机（初开场二选一，协调 11-17）
+    "EVENT_CHOICE": lambda f: {**_event_observation(f), "dialogue_only": f.get("dialogue_only")},
     "SELECT_PITEM": _select_pitem_observation,
     "PRODUCE_START_CONFIRM": _start_confirm_observation,
     "DECK_LIST": _deck_list_observation,
@@ -370,6 +385,7 @@ FIELD_METHODS: dict[str, dict[str, str]] = {
     "SELECT_DRINK": {"candidates": "template", "held": "template", "full": "ocr"},
     "STUDY": {"choices": "ocr", "selected": "derived", "effect": "ocr", "complete": "derived"},
     "OUTING": {"choices": "ocr", "selected": "derived", "effect": "ocr", "complete": "derived"},
+    "EVENT_CHOICE": {"choices": "ocr", "selected": "derived", "effect": "ocr", "complete": "derived", "dialogue_only": "template"},
     "SELECT_PITEM": {"pitems": "template", "selected": "derived", "confirm_enabled": "kaa"},
     "PRODUCE_START_CONFIRM": {"supports": "template", "main_attr": "derived"},
     "CONSULT": {"shelf": "template", "services": "ocr", "rerolls_left": "ocr", "complete": "ocr", "drinks": "template", "drink_capacity": "template",
@@ -387,7 +403,7 @@ FIELD_METHODS: dict[str, dict[str, str]] = {
     "SPECIAL_GUIDANCE": {"cards": "template", "selected": "template", "selected_card": "ocr", "agree": "template", "scrollable": "template", "complete": "template",
                          "view": "ocr", "menu": "ocr", "cards_left": "ocr", "at_top": "template", "produce_point": "ocr", "stamina": "ocr", "max_stamina": "ocr"},
     "DIALOG": {"kind": "ocr", "title": "ocr", "danger": "ocr", "confirm": "ocr"}, "ACQUIRE": {"kind": "ocr", "card_id": "ocr", "drink_id": "ocr", "pitem_id": "ocr",
-    "pitem_ids": "ocr", "name": "ocr", "upgrade": "ocr", "agree": "template"}, "STAR_GAIN": {"gain": "ocr", "star": "ocr", "star_shown": "ocr"},
+    "pitem_ids": "ocr", "name": "ocr", "upgrade": "ocr", "agree": "template", "memory_effect": "ocr"}, "STAR_GAIN": {"gain": "ocr", "star": "ocr", "star_shown": "ocr"},
     "HIF_EXAM_BRIEFING": {"exam_no": "ocr", "rank_line": "ocr", "participants": "ocr", "star": "ocr", "star_ok": "ocr", "params": "ocr",
                           "multiplier_pct": "ocr", "complete": "ocr", "finals": "ocr"},
     "MENU": {"kind": "ocr"}, "UPGRADE_RESULT": {"name": "ocr", "card_id": "ocr", "upgrade": "ocr"}, "TRANSITION": {"kind": "ocr"}, "GIFT": {"bag": "template"}, "PRODUCE_LOG": {"close": "ocr"}, "CUSTOMIZE_RESULT": {"name": "ocr", "card_id": "ocr", "upgrade": "ocr"}, "DELETE_RESULT": {"cards": "ocr", "text": "ocr"}, "HIF_FINALS_START": {"selected_memory": "ocr", "qualify_memories": "ocr"}, "HIF_FINALS_RANKING": {"kind": "ocr", "score": "ocr", "round_score": "ocr", "entries": "ocr", "next": "ocr", "my_score": "ocr", "rank": "derived", "finals_round": "derived",
@@ -506,7 +522,8 @@ def field_meta(scene: str, raw: dict, fields: dict) -> dict:
 
 
 def observation(seq: int, t: float, scene: str, raw: dict | None, *, area: str = "unknown", screenshot: str | None = None,
-                source: str = "screen", stable_frames: int = 1, timings_ms: dict | None = None, ready: bool = False):  # fmt: skip
+                source: str = "screen", stable_frames: int = 1, timings_ms: dict | None = None, ready: bool = False,
+                page_source: str | None = None):  # fmt: skip
     """识别原始输出（hiro.vision.extract 的 fields）→ hiro.contracts.Observation。
 
     raw 为 None 或带 error 时 fields 为空；ready=True 表示 raw 已经是契约字段（例如存档投影、考试循环自己拼的手牌），不再转换。
@@ -531,6 +548,6 @@ def observation(seq: int, t: float, scene: str, raw: dict | None, *, area: str =
     elif raw and "error" in raw:
         meta = {"_error": FieldMeta(method="vision", note=str(raw["error"]))}
     return Observation(
-        seq=seq, t=t, page=PageObs(name=scene, area=area, stable_frames=stable_frames),
+        seq=seq, t=t, page=PageObs(name=scene, area=area, stable_frames=stable_frames, source=page_source),
         fields=fields, field_meta=meta, screenshot=screenshot, source=source, timings_ms=dict(timings_ms or {}),
     )  # fmt: skip

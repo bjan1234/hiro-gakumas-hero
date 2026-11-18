@@ -6,7 +6,7 @@
 - 图标（P 饮料 / P 道具 / 考试效果名）：给 None（P 道具 / 考试效果图标可用 tools/assets/capture_icons.py 从自己的截图生成）；
 - 数字字体：HUD 数字、分数、手牌徽章改走 ddddocr，并用 Apple Vision / 字形个数核对（digits._number_without_font、
   digits._score_without_font、hif.read_badge）；
-- 界面 Sprite：页面签名关闭，KAA 判不出时由 scene._fallback 像素补判；
+- 界面 Sprite：页面签名关闭，模板判不出时由 classify.pixel_fallback 像素补判；
 - 支援卡图：支援卡 id 给 None。
 图标 kind 用插件约定的名字：drink（P 饮料）/ pitem（P 道具）/ status（考试效果）。
 默认素材下哪些读数可用 / 降级 / 不可用见 docs/assets.md。

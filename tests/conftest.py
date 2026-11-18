@@ -71,7 +71,7 @@ _TOP_READ = re.compile(r"\(([^()]*(?:\([^()]*\)[^()]*)*)\)\.read_text\(")
 
 
 def _missing_top_files(f: Path, top: str) -> list[Path]:
-    """模块顶层就要读的文件（`X = Path(__file__)…` 常量拼出来的 `(…).read_text()`）哪些不在。
+    """模块顶层就要读的文件（`X = Path(__file__)…` 常量拼出来的 `(…).read_text(encoding="utf-8")`）哪些不在。
     按具体文件判断：tests/fixtures 是空目录、或只放了部分样例时，缺 action/truth.json 的 test_action.py 不收集，别的照常。
     只对路径表达式求值（不给 builtins），算不出来的读法不管（交给 pytest 正常报错）。"""
     ns: dict = {"Path": Path, "__file__": str(f)}
@@ -165,11 +165,13 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "user_assets(*kinds): 需要自建素材（HIRO_USER_ASSETS）；kinds 见 hiro.vision.assets.USER_ASSETS")
     config.addinivalue_line("markers", "synthetic: 只用合成图（源码里的 .png 是自己画的），不按「读样例截图」跳过")
     config.addinivalue_line("markers", "fixtures: 要读 tests/fixtures 的截图样例（经类 / 多层辅助函数间接读，自动判断看不出来时显式标）")
+    config.addinivalue_line("markers", "kaa: 要 KAA（可选组 play）：经 hiro.produce.hif 的策略类 / kaa_patches 等在运行时才导入，自动判断看不出来时显式标")
     config.addinivalue_line("markers", "master: 要主数据 game.db（经决策器 / 识别层间接查，自动判断看不出来时显式标）")
     config.addinivalue_line("markers", "sim_master: 要真跑模拟器（vendor/gakumas-player 的主数据 catalog.sqlite 已构建）")
     config.addinivalue_line("markers", "lowres_sample(why): 样例是低分辨率截图（360x640 / 540x960 放大），只在 Vision OCR 下断言；"
                                        "RapidOCR（Windows / DMM 默认）读这类放大图错字多，DMM 实机帧 1081x1921 另有回归集")
     config.addinivalue_line("markers", "vision_only(why): 测的是以 Apple Vision 为裁判的路径，非 Vision OCR 下跳过（写明为什么实机不走这条路）")
+    config.addinivalue_line("markers", "bench_on: 不关 bench 出招（其余测试一律 HIRO_BENCH_ADVISOR=0，免得装了 gkbench 时去下载模型）")
 
 
 def _missing_user_assets(kinds) -> list[str]:
@@ -211,6 +213,8 @@ def pytest_collection_modifyitems(config, items):
         if item.get_closest_marker("sim_master") is not None and not _sim_master_ok():
             item.add_marker(pytest.mark.skip(reason="需要模拟器主数据（python vendor/gakumas-player/scripts/fetch_master.py）"))
             continue
+        if item.get_closest_marker("kaa") is not None and not _kaa_ok():
+            item.add_marker(pytest.mark.skip(reason="需要 KAA（pip install -e '.[play]'）"))
         if item.get_closest_marker("master") is not None and not _master_ok():
             item.add_marker(pytest.mark.skip(reason="需要主数据 game.db（KAA 公开数据，HIRO_KAA_GAME_DATA）"))
             continue
@@ -309,6 +313,8 @@ def _sim_test_defaults(request, monkeypatch):
     """同主仓库：测试默认关掉培育里的饮料模拟（drinks.SIM）、轮间刷新估值的续打（drink_gains）；要测的用例自己打开 / monkeypatch。
     引用了 hiro.sim 的测试文件：决策器的「模拟器可用」按引擎能导入算（用例自己 monkeypatch 了方案 / 增益表，不需要主数据）；
     标了 sim_master 的用例要真跑模拟，没构建主数据（vendor/gakumas-player/scripts/fetch_master.py）时跳过。"""
+    # 决策点补全的 LLM 路径缺省全开（用户 11-14）；别的用例给了 MockLLM 也只验原来的规则 / LLM 调用，这里统一关，要测的用例自己 setenv
+    monkeypatch.setenv("HIRO_PRODUCE_LLM", "off")
     try:
         from hiro.brain import deciders, drinks
         from hiro.sim import interval as iv
@@ -327,3 +333,26 @@ def _sim_test_defaults(request, monkeypatch):
     else:
         monkeypatch.setattr(deciders, "_sim_ready", lambda: False)  # 别的决策器用例只验规则（本机建了主数据也不跑模拟）
     yield
+
+
+@pytest.fixture(autouse=True)
+def _bench_advisor_off(monkeypatch, request):
+    """缺省出招器是 bench 算法（hiro.bench_bridge）：装了 gkbench 时构造它会去下载 UINet 模型。
+    测试里默认关掉（不联网、行为和以前的规则出招一致）；bench 中转层自己的测试（标 bench_on）再打开。"""
+    if request.node.get_closest_marker("bench_on") is None:
+        monkeypatch.setenv("HIRO_BENCH_ADVISOR", "0")
+
+
+_KAA_MISSING = re.compile(r"No module named '(?:kaa|kotonebot)\b|import of (?:kaa|kotonebot)\b")
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_make_collect_report(collector):
+    """没装 KAA（公开 CI 只装 dev 组）时，测试文件间接用到 KAA（例如导入 hiro.produce.hif 的策略类、从别的测试文件导入的替身顶层 import kaa）
+    在收集阶段就报 ModuleNotFoundError。_collect_ignore 只看顶层的直接导入，拦不住这种；这里把「缺 KAA / kotonebot」导致的收集错误改成跳过。
+    装了 KAA 时不改任何结果。"""
+    outcome = yield
+    rep = outcome.get_result()
+    if rep.failed and isinstance(collector, pytest.Module) and _KAA_MISSING.search(str(rep.longrepr)) and not _kaa_ok():
+        rep.outcome = "skipped"
+        rep.longrepr = (str(collector.path), 0, "Skipped: 要 KAA（可选组 play，子模块 vendor/kaa）")

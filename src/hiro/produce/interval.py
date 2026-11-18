@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/produce/interval.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """H.I.F 轮间（インターバル，R1 与 R2 之间）执行器：execute_interval(action, page_fields) -> ExecutionResult。
 
 一步一个动作，由上层循环「decide → execute → 重新 observe」，直到 IntervalEnd。第四局本战轮间被 KAA ctx.end() 直接结束，
@@ -23,7 +23,8 @@ import time
 from collections.abc import Callable
 
 import numpy as np
-from kotonebot import device, logging
+import logging
+from hiro.devices.active import device, sleep as _sleep
 
 from hiro.contracts import Action, ActionKind, ExecutionResult
 from hiro.produce import shop
@@ -103,7 +104,7 @@ def _end(r: Run) -> ExecutionResult:
     """終了 →「本戦へ」，再等左上「インターバル」标题消失才算离开。
     第五局 21:26：「本戦へ」后画面淡出期间（calib 212647/04-end）标题还在，原来这时就返回成功，KAA 仍认得轮间标题，
     主循环又进来发了一次 IntervalEnd。"""
-    res = shop._end(r)
+    res = shop.tap_end(r)
     if not res.ok:
         return res
     left, img = r.until(lambda im: not on_interval(im, r.ocr), LEAVE_TIMEOUT)
@@ -225,12 +226,12 @@ def _recover(r: Run, info: dict | None, target_hp: int | None = None) -> Executi
 
 
 def _upgrade(r: Run, card_index: int, info: dict | None, card_id: str | None = None, choose_card=None, deck_size: int | None = None) -> ExecutionResult:
-    """轮间「強化」：打开牌组选卡页 → 有 card_id / choose_card 时走 kaa_patches._card_op（按 card_id 定位、核对、确认、
+    """轮间「強化」：打开牌组选卡页 → 有 card_id / choose_card 时走 card_ops._card_op（按 card_id 定位、核对、确认、
     认不出就取消）；都没有时按 card_index 点网格（旧路径）。"""
     if (info or {}).get("available") is False:
         return r.result(False, "「強化」不可用（识别为灰色）")
     if card_id or choose_card is not None:
-        from hiro.loop.kaa_patches import _card_op
+        from hiro.produce.card_ops import _card_op
 
         r.tap(UPGRADE_TAP)
         ok, img = r.until(shop.cancel_visible, DECK_TIMEOUT)
@@ -300,7 +301,7 @@ def execute_interval(
     shoot: Callable[[], np.ndarray] | None = None,
     click: Callable[[int, int], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
     purchased: Callable[[np.ndarray, list], bool] = shop.ocr_purchased,
     confirm_reader=shop._read_dialog,
     ocr=None,

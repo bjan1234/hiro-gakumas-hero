@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_blunders.py（develop 4770d2b）
 """低级失误审计（tools/audit/blunders.py）：每个检测器用第九–十二局里真实出现过的片段做 fixture。
 
 真实数据里还没出现过的种类（点错牌、结果页没分数、手牌重建）用真实片段做「不该报」的用例，再改一个字段做「该报」的用例。
@@ -238,7 +237,7 @@ def test_crash_after_produce_end_and_manual_restart():
 
 def test_manual_log(tmp_path):
     p = tmp_path / "manual.jsonl"
-    p.write_text(json.dumps({"run": "lead35-qualify12-20261101-164908", "reason": "全屏切换", "detail": "手动点了一下"}, ensure_ascii=False) + "\n")
+    p.write_text(json.dumps({"run": "lead35-qualify12-20261101-164908", "reason": "全屏切换", "detail": "手动点了一下"}, ensure_ascii=False) + "\n", encoding="utf-8")
     f = B.manual_log([seg(None, run={}), B.Segment("lead35-qualify12-20261101-164908-r1", Path("."), {}, [], [], [])], p)
     assert kinds(f) == ["manual_intervention"] and "全屏切换" in f[0].detail
 

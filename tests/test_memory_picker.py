@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_memory_picker.py（c3fc27f）
 """回忆选择页（hiro.produce.memory_picker）离线测试：总控上次扫描留下的半分辨率实拍帧（放大到 720x1280）。"""
 
 import json
@@ -96,7 +95,7 @@ def test_scan_reads_each_cell_and_cancels(tmp_path):
     assert e["card"]["name"] == "デイドリーミング" and e["timing"] == "start" and any("初期Pポイント" in a["text"] for a in e["abilities"])
     assert inv["complete"] and dev.state == "closed"  # 画面不动 = 到顶也到底
     assert (475, 1160) not in dev.taps  # 从不点「決定」
-    assert json.loads(out.read_text())["entries"][0]["card"]["card_id"] == "p_card-02-act-1_037"
+    assert json.loads(out.read_text(encoding="utf-8"))["entries"][0]["card"]["card_id"] == "p_card-02-act-1_037"
 
 
 def test_scan_refuses_outside_picker(tmp_path):
@@ -129,16 +128,20 @@ class ScrollList:
 
     TOP = 600  # 第 0 行在滚动位置 0 时的上沿
 
-    def __init__(self, fling=None, slop=1.0, stuck=(), copies=1):
+    def __init__(self, fling=None, slop=1.0, stuck=(), copies=1, dead_after_row=None):
         self.rows, self.base = list_rows() * copies, PAGES[0].copy()
         if copies > 1:  # 重复拼接时给每一份打上不同的色块，保证行各不相同
             for i in range(len(self.rows)):
                 self.rows[i] = self.rows[i].copy()
-                self.rows[i][40:80, 100:140] = ((i * 37) % 255, (i * 91) % 255, (i * 53) % 255)
+                for c in range(3):  # 每格都打一块（压进缩略图区），重复的几份行也对不上
+                    x0 = mp.COL_X[c] - 60
+                    self.rows[i][30:90, x0 : x0 + 120] = ((i * 37 + c * 80) % 255, (i * 91) % 255, (i * 53 + c * 40) % 255)
         self.slop, self.stuck = slop, set(stuck)
+        self.dead_after_row = dead_after_row  # 滚到这一行之后，从原起点 (360, SWIPE_FROM) 起滑列表不动（起点落在锁格上，11-16 账号 2 假到底）
         gap = self.base[575:580, 40:680].reshape(-1, 3).mean(0)
         self.base[mp.GRID_Y[0] : mp.GRID_Y[1] + 60, :] = gap.astype(np.uint8)
         self.offset, self.fling, self.swipes, self.read = 0.0, dict(fling or {}), 0, []
+        self.selected = None  # 最后点过的格子 (行, 列)：画橙色选中框（实机：读完一页，选中框留在下一页的重叠行上）
         self.max_offset = (len(self.rows) - 2) * mp.ROW_PITCH
 
     def shoot(self):
@@ -148,6 +151,12 @@ class ScrollList:
             y1, y2 = max(y, mp.GRID_Y[0] - 5), min(y + 118, mp.GRID_Y[1] + 60)
             if y2 > y1:
                 img[y1:y2] = row[y1 - y : y2 - y]
+        if self.selected is not None:
+            r, c = self.selected
+            y = int(round(self.TOP + r * mp.ROW_PITCH - self.offset))
+            x = mp.COL_X[c] - mp.CELL_W // 2
+            if mp.GRID_Y[0] <= y and y + 118 <= mp.GRID_Y[1] + 60:
+                cv2.rectangle(img, (x + 6, y + 6), (x + mp.CELL_W - 7, y + 111), (0, 140, 255), 12)  # 选中框画在格子里（伸进缩略图区）
         img[1005:1060, 30:690] = (250, 250, 250)  # 浮在列表上的「編成詳細 / 筛选 / 排序」按钮
         return img
 
@@ -155,6 +164,9 @@ class ScrollList:
         self.swipes += 1
         if self.swipes in self.stuck:
             return  # 这一次滑动没让列表动
+        if (self.dead_after_row is not None and self.offset >= self.dead_after_row * mp.ROW_PITCH
+                and (x1, y1) == (360, mp.SWIPE_FROM) and y1 > y2):  # fmt: skip
+            return
         rows = (y1 - y2) * self.slop / mp.ROW_PITCH + (self.fling.pop(self.swipes, 0) if y1 > y2 else 0)
         self.offset = min(max(0.0, self.offset + rows * mp.ROW_PITCH), self.max_offset)
 
@@ -168,10 +180,17 @@ class ListPicker(mp.Picker):
         self.lst = lst
 
     def select(self, cell):
-        self.lst.read.append((self.lst.row_at(cell["center"][1]), cell["col"]))
+        self.select_checked(cell)
+
+    def select_checked(self, cell):
+        rc = (self.lst.row_at(cell["center"][1]), cell["col"])
+        self.lst.read.append(rc)
+        self.lst.selected = rc
+        return True, None
 
     def read_selected(self):
-        return {}
+        r, c = self.lst.read[-1]
+        return {"card": {"card_id": f"m{r}-{c}"}}  # 每格内容不同
 
     def cancel(self):
         return True
@@ -234,3 +253,184 @@ def test_occluded_row_is_not_counted():
     lst.offset = 0.6 * mp.ROW_PITCH  # 第 3 个完整行的下沿压到按钮下面
     rows = mp.grid_rows(lst.shoot())
     assert rows and all(y2 <= mp.ROW_BOTTOM_MAX for _, y2 in rows)
+
+
+@pytest.mark.fixtures
+def test_scan_stops_at_gap_instead_of_rereading_old_rows(tmp_path, monkeypatch):
+    """账号 2 11-15：对不上后往回滑了几行接着记，旧行被当成新行记了一遍又一遍（仕切り直し 记了 7 份），后面行号全偏。
+    现在：找不到上一页最后一行就停，complete=False，记 aborted；已记的行号不重复。"""
+    lst = ScrollList(fling={4: 5}, copies=3)  # 第 4 次滑动（前两次是回顶部的下滑）多滚 5 行：往回滑能找回来，照常扫完
+    inv = run_scan(tmp_path, lst, monkeypatch)
+    assert inv["complete"] and not inv.get("aborted") and sorted(set(lst.read)) == all_cells(lst)
+    lst = ScrollList(fling={4: 12}, copies=3)  # 多滚 12 行：往回滑 6 行也找不到
+    inv = run_scan(tmp_path, lst, monkeypatch)
+    assert inv.get("aborted") and not inv["complete"] and inv["gaps"]
+    slots = [e["slot"] for e in inv["entries"]]
+    assert len(slots) == len(set(slots)) and len(lst.read) == len(set(lst.read))  # 没有重读、没有重号
+
+
+class StalePicker(ListPicker):
+    """点格子后详情栏不刷新：stale 里的格子第一次读到上一格的内容；always 里的格子一直读到上一格的内容。"""
+
+    def __init__(self, lst, stale=(), always=()):
+        super().__init__(lst)
+        self.stale, self.always, self.seen = set(stale), set(always), {}
+
+    def read_selected(self):
+        rc = self.lst.read[-1]
+        self.seen[rc] = self.seen.get(rc, 0) + 1
+        prev = next((x for x in reversed(self.lst.read) if x != rc), rc)  # 上一个不同的格子（重读时同一格会再记一次）
+        if rc in self.always or (rc in self.stale and self.seen[rc] == 1):
+            return {"card": {"card_id": f"m{prev[0]}-{prev[1]}"}} if prev != rc else {"card": {"card_id": "x"}}
+        return {"card": {"card_id": f"m{rc[0]}-{rc[1]}"}}
+
+
+@pytest.mark.fixtures
+def test_stale_detail_is_reread_or_marked_suspect(tmp_path, monkeypatch):
+    """详情栏没刷新（读到上一格的内容、缩略图不同）：再点一次重读；重读还是一样就标 suspect=same_as_prev（formation_plan 不选）。"""
+    monkeypatch.setattr(mp, "picker_open", lambda boxes: True)
+    lst = ScrollList()
+    inv = mp.scan(StalePicker(lst, stale={(1, 1)}, always={(2, 0)}), tmp_path / "inv.json")
+    by = {tuple(e["cell"]): e for e in inv["entries"]}
+    assert by[(1, 1)]["card"]["card_id"] == "m1-1" and "suspect" not in by[(1, 1)]  # 重读后对了
+    assert by[(2, 0)]["suspect"] == "same_as_prev" and inv["suspects"] == 1
+
+
+def test_mark_suspects_rules():
+    es = [{"slot": 0, "thumb": "a", "card": {"card_id": "c1"}}, {"slot": 1, "thumb": "b", "card": {"card_id": "c1"}},
+          {"slot": 2, "thumb": "b", "card": {"card_id": "c1"}}, {"slot": 3, "thumb": "c", "card": None},
+          {"slot": 4, "thumb": "d", "card": {"card_id": "c4"}, "refreshed": False}]  # fmt: skip
+    assert mp.mark_suspects(es) == 3
+    # 同内容同缩略图：真的有两份一样的回忆（不是没刷新），不标
+    assert [e.get("suspect") for e in es] == [None, "same_as_prev", None, "card_unread", "detail_not_refreshed"]
+
+
+
+@pytest.mark.fixtures
+def test_dead_swipe_start_is_not_the_end(tmp_path, monkeypatch):
+    """账号 2 11-16：第 15 行之后原起点滑不动，扫描判成到底（48 份、complete=True，实际 100 多份）。换起点再滑，扫完整个列表。"""
+    lst = ScrollList(copies=3, dead_after_row=5)
+    inv = run_scan(tmp_path, lst, monkeypatch)
+    assert sorted(set(lst.read)) == all_cells(lst) and inv["complete"] and not inv.get("aborted")
+
+
+@pytest.mark.fixtures
+def test_stuck_and_not_on_picker_is_aborted_not_complete(tmp_path, monkeypatch):
+    lst = ScrollList(copies=2)
+    state = {"open": True}
+    monkeypatch.setattr(mp, "picker_open", lambda boxes: state["open"])
+    picker = ListPicker(lst)
+    real = lst.swipe
+
+    def swipe(*a):
+        if lst.offset >= 3 * mp.ROW_PITCH:  # 第 3 行之后弹了别的画面：列表滑不动，也不是选择页了
+            state["open"] = False
+            return
+        real(*a)
+
+    picker.swipe = swipe
+    inv = mp.scan(picker, tmp_path / "inv.json")
+    assert inv.get("aborted") and not inv["complete"]
+
+
+def test_content_key_ignores_stats():
+    """选择页顶部属性是「编成合计 ± 增减」，同一份回忆换个编成就不一样：判「没刷新」的内容键不含属性。"""
+    a = {"card": {"card_id": "c", "upgrade": 1}, "timing": "mid", "abilities": [{"text": "x"}], "stats": {"Vo": 20}}
+    b = {**a, "stats": {"Vo": 35}}
+    assert mp.content_key(a) == mp.content_key(b)
+
+
+def test_purple_locked_rows_are_detected():
+    """紫色锁格（只有卡种徽记、「SS 開」、锁图标，没有偶像照片，账号 2 第 16 行起）：照样是完整行、每格一个指纹。"""
+    import os
+
+    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "memory-picker-purple-locked-rows.png"
+    if not path.exists():
+        pytest.skip("需要实机截图 pages/memory-picker-purple-locked-rows.png")
+    img = cv2.resize(cv2.imread(str(path)), (720, 1280))
+    assert mp.grid_rows(img) == [(676, 794), (814, 933)]  # 上面被详情栏截一半、下面压到浮动按钮的不算
+    cells = mp.grid_cells(img)
+    assert len(cells) == 6 and len({c["hash"] for c in cells}) == 6
+
+
+class ClosingPicker(ListPicker):
+    """读到某一格时选择页关了（实机：点成了「決定」，回到编成菜单）。"""
+
+    def __init__(self, lst, close_at):
+        super().__init__(lst)
+        self.close_at, self.closed, self.clicks = close_at, False, []
+        self.click = lambda x, y: self.clicks.append((x, y))
+
+    def select_checked(self, cell):
+        if self.closed:
+            raise mp.PickerClosed("选择页不见了")
+        out = super().select_checked(cell)
+        if self.lst.read[-1] == self.close_at:
+            self.closed = True
+        return out
+
+
+@pytest.mark.fixtures
+def test_picker_closed_mid_scan_stops_and_flags_formation(tmp_path, monkeypatch):
+    """11-16 账号 2：扫描中选择页关了、编成第 1 格被换掉，扫描还接着点了下一格、最后又点了キャンセル。
+    现在：立即停，记 aborted + formation_may_have_changed，不再点格子、不点キャンセル。"""
+    monkeypatch.setattr(mp, "picker_open", lambda boxes: True)
+    lst = ScrollList()
+    picker = ClosingPicker(lst, close_at=(2, 1))
+    cancels = []
+    picker.cancel = lambda: cancels.append(1) or True
+    inv = mp.scan(picker, tmp_path / "inv.json")
+    assert inv.get("formation_may_have_changed") and "人工核对" in inv["aborted"] and not inv["complete"]
+    assert lst.read[-1] == (2, 1) and cancels == []  # 关了之后没再点别的格子，也没点キャンセル
+
+
+def test_select_checked_never_taps_same_cell_twice():
+    """详情栏没变也不再点同一格（再点已选中的格子可能被当成「決定」）；点之前核对还在选择页。"""
+    still = np.zeros((1280, 720, 3), np.uint8)
+    taps = []
+    p = mp.Picker(lambda: still, lambda x, y: taps.append((x, y)), lambda *a: None, ocr=lambda im: [("キャンセル", 1, (0, 0, 1, 1)),
+                  ("決定", 1, (0, 0, 1, 1)), ("編成詳細", 1, (0, 0, 1, 1))], clock=iter(range(0, 10_000)).__next__, sleep=lambda s: None)  # fmt: skip
+    changed, _ = p.select_checked({"center": [360, 700]})
+    assert not changed and taps == [(360, 700)]
+    p.ocr = lambda im: []  # 选择页不见了
+    with pytest.raises(mp.PickerClosed):
+        p.select_checked({"center": [140, 700]})
+    assert taps == [(360, 700)]  # 不在选择页就不点
+
+
+def test_scroll_splits_big_distance_inside_list_area():
+    """11-17 开局第 3 步：一次滑约 16 行，终点 y 成负数，kotonebot swipe 报 argument out of range。拆成每次 ≤ 3 行、起止点都在列表区。"""
+    swipes = []
+    p = mp.Picker(lambda: None, lambda x, y: None, lambda x1, y1, x2, y2: swipes.append((y1, y2)), ocr=lambda im: [], sleep=lambda s: None)
+    p.scroll(px=int(16 * mp.ROW_PITCH))
+    assert sum(a - b for a, b in swipes) == int(16 * mp.ROW_PITCH) and len(swipes) >= 6
+    assert all(abs(a - b) <= mp.SCROLL_STEP_MAX and mp.GRID_Y[0] <= min(a, b) and max(a, b) <= mp.GRID_Y[1] for a, b in swipes)
+    swipes.clear()
+    p.scroll(px=-int(5 * mp.ROW_PITCH))
+    assert sum(b - a for a, b in swipes) == int(5 * mp.ROW_PITCH) and all(mp.GRID_Y[0] <= min(a, b) and max(a, b) <= mp.GRID_Y[1] for a, b in swipes)
+
+
+def test_cancel_finds_button_by_ocr():
+    """开局第 3 步的选择页多了 所持メモリー / レンタル 页签，キャンセル 在 (220,1160) 附近：按 OCR 找，不点死坐标。"""
+    taps, state = [], {"open": True}
+    boxes = lambda im: ([("キャンセル", 1.0, (180, 1145, 260, 1175)), ("決定", 1.0, (440, 1145, 510, 1175)), ("編成詳細", 1.0, (80, 1040, 200, 1060))]  # noqa: E731
+                        if state["open"] else [])  # fmt: skip
+
+    def click(x, y):
+        taps.append((x, y))
+        state["open"] = False
+
+    p = mp.Picker(lambda: None, click, lambda *a: None, ocr=boxes, sleep=lambda s: None)
+    assert p.cancel() is True and taps == [(220, 1160)]
+
+
+@pytest.mark.fixtures
+@pytest.mark.parametrize("kw", [{}, {"slop": 0.97, "copies": 3}])
+def test_iter_rows_counts_rows_exactly(kw):
+    """按页与页重叠精确数行号（不按滑过的像素估算）：每一行产出的行号就是列表里的真实行号。"""
+    lst = ScrollList(**kw)
+    picker = ListPicker(lst)
+    seen = []
+    for g, r in mp.iter_rows(picker):
+        seen.append((g, lst.row_at(r[0]["center"][1])))
+    assert [g for g, _ in seen] == list(range(len(lst.rows))) and all(g == real for g, real in seen)

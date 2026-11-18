@@ -1,4 +1,4 @@
-# 来源：digital-hiro tests/test_no_omakase.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """支援卡和回忆默认不用「おまかせ」（用户 2026-11-02）：开源版要求写编成号，确实想用おまかせ写 auto。"""
 
 from types import SimpleNamespace as NS
@@ -14,6 +14,7 @@ def _reload_env(monkeypatch, **env):
 
     for k in ("HIRO_SUPPORT_SET", "HIRO_MEMORY_SET", "HIRO_MEMORY_CARDS"):
         monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("HIRO_FORMATION_PLAN", "off")  # 不读本机 conf/formation-plan.json（实机生成的方案会补上编成号）
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     return importlib.reload(kaa_env)
@@ -62,18 +63,19 @@ def test_default_rental_pick_uses_main_attr(monkeypatch):
     assert kaa_patches._default_rental_pick() and callable(scorers[-1])  # 有方案：按编成价值打分
 
 
-def _fake_R(next_enabled: bool):
-    btn = NS(q=lambda **k: NS(exists=lambda: next_enabled))
-    return NS(Produce=NS(TextStepIndicator2=NS(exists=lambda: True), Step2=NS(ButtonNext=btn)))
+def _fake_templates(monkeypatch, next_enabled: bool):
+    """第 2 步页面：步骤条在；「次へ」亮不亮由 next_enabled 定。"""
+    import hiro.vision.ui_templates as ui
+
+    monkeypatch.setattr(ui, "tpl", lambda name: NS(exists=lambda img: True))
+    monkeypatch.setattr(ui, "find_enabled", lambda name, img: object() if next_enabled else None)
 
 
 def test_rent_step2_stops_when_rental_slot_empty(monkeypatch):
     import sys
 
-    import kaa.tasks
-
-    monkeypatch.setattr(kaa.tasks, "R", _fake_R(False))
-    monkeypatch.setitem(sys.modules, "kaa.tasks.produce.prepare", NS(_select_set=lambda n: None))
+    _fake_templates(monkeypatch, False)
+    monkeypatch.setattr(kaa_patches, "select_set", lambda n: None)  # 翻编成号（hiro.produce.prep_steps）不在这条用例里测
     monkeypatch.setattr(kaa_patches, "device", NS(screenshot=lambda: None), raising=False)
     import kotonebot
 
@@ -84,13 +86,10 @@ def test_rent_step2_stops_when_rental_slot_empty(monkeypatch):
 
 
 def test_rent_step2_passes_when_set_full(monkeypatch):
-    import sys
-
-    import kaa.tasks
     import kotonebot
 
-    monkeypatch.setattr(kaa.tasks, "R", _fake_R(True))
-    monkeypatch.setitem(sys.modules, "kaa.tasks.produce.prepare", NS(_select_set=lambda n: None))
+    _fake_templates(monkeypatch, True)
+    monkeypatch.setattr(kaa_patches, "select_set", lambda n: None)  # 翻编成号（hiro.produce.prep_steps）不在这条用例里测
     monkeypatch.setattr(kotonebot, "device", NS(screenshot=lambda: None))
     assert kaa_patches._rent_step2(lambda **k: True)(set_number=1, auto_set=False) is True
 

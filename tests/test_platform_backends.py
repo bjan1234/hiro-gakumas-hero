@@ -15,18 +15,38 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 
 
 # ---------------------------------------------------------------- 设备后端
-def test_auto_on_mac_prefers_maatools_then_quartz():
-    assert device.resolve_backend("auto", platform="darwin", maatools_up=True) == "maatools"
-    assert device.resolve_backend("auto", platform="darwin", maatools_up=False) == "quartz"
+def test_auto_on_mac_is_maatools():
+    assert device.resolve_backend("auto", platform="darwin") == "maatools"
+
+
+def test_original_playcover_quartz_is_no_longer_supported(monkeypatch):
+    monkeypatch.setenv("HIRO_DEVICE", "quartz")
+    with pytest.raises(ValueError, match="可选"):
+        device.requested_backend()
+
+
+def test_maatools_unreachable_says_hguandl_playcover(monkeypatch):
+    pytest.importorskip("kotonebot")
+    import socket
+
+    from hiro.devices import maatools
+
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()  # 没人在听的端口
+    monkeypatch.setattr(device, "MaaToolsImpl", lambda dev: maatools.MaaToolsImpl(dev, port))
+    with pytest.raises(RuntimeError, match="hguandl"):
+        device.connect("maatools")
 
 
 def test_auto_elsewhere_requires_explicit_device():
     with pytest.raises(RuntimeError, match="HIRO_DEVICE"):
-        device.resolve_backend("auto", platform="win32", maatools_up=False)
+        device.resolve_backend("auto", platform="win32")
 
 
 def test_explicit_backend_passes_through(monkeypatch):
-    for name in ("maatools", "quartz", "adb", "mumu", "leidian", "dmm"):
+    for name in ("maatools", "adb", "mumu", "leidian", "dmm"):
         monkeypatch.setenv("HIRO_DEVICE", name)
         assert device.resolve_backend() == name
 
@@ -70,7 +90,7 @@ def kaa_config():
 
 
 def test_playcover_keeps_kaa_default(kaa_config):
-    for name in ("auto", "maatools", "quartz"):
+    for name in ("auto", "maatools"):
         assert kaa_env.kaa_backend(name) is None
 
 
@@ -128,32 +148,54 @@ def test_ocr_engine_selection(monkeypatch):
 
 
 def test_rapidocr_boxes_scaled_back(monkeypatch):
-    """RapidOCR 路径：放大 3 倍识别，框要除回原图坐标；只要英文时用英文模型。"""
-    from kotonebot.backend import ocr as kocr
-    from kotonebot.primitives.geometry import Rect
-
-    class Res:
-        def __init__(self, text, xywh):
-            self.text, self.confidence, self.original_rect = text, 0.9, Rect(xywh=xywh)
-
+    """RapidOCR 路径：放大 3 倍识别，小图居中补白到 631 再识别，框减去补白偏移、除回原图坐标；只要英文时用英文模型；全角转半角。"""
     calls = []
 
-    class Eng:
-        def __init__(self, tag):
-            self.tag = tag
+    def eng(tag):
+        def run(img):
+            calls.append((tag, img.shape[:2]))
+            ox, oy = (631 - 300) // 2, (631 - 120) // 2  # 300×120 的放大图补到 631×631 的偏移
+            return [[[[ox + 30, oy + 60], [ox + 120, oy + 60], [ox + 120, oy + 90], [ox + 30, oy + 90]], "１２３", 0.9]], None
 
-        def ocr(self, img, rect=None):
-            calls.append((self.tag, img.shape[:2], rect.xywh))
-            return [Res("123", (30, 60, 90, 30))]
+        return run
 
-    monkeypatch.setattr(kocr, "jp", lambda: Eng("jp"))
-    monkeypatch.setattr(kocr, "en", lambda: Eng("en"))
+    monkeypatch.setattr(ocr, "_rapid_engine", lambda languages: eng("en" if tuple(languages) == ("en-US",) else "ja"))
     monkeypatch.setattr(ocr, "_engine", "rapidocr")
     img = np.full((40, 100, 3), 255, np.uint8)
     assert ocr.ocr_boxes(img) == [("123", 0.9, (10, 20, 40, 30))]
-    assert calls[-1] == ("jp", (120, 300), (0, 0, 300, 120))  # 传整图 rect，避免拿到补白画布坐标
+    assert calls[-1] == ("ja", (631, 631))
     assert ocr.ocr(img, languages=("en-US",)) == [("123", 0.9)]
     assert calls[-1][0] == "en"
+
+
+def test_rapidocr_model_lookup(monkeypatch, tmp_path):
+    """识别模型先找 cache/rapidocr，没有再找已装 kaa 包里随带的同名文件；都没有讲清楚缺什么。"""
+    (tmp_path / "japan_PP-OCRv3_rec_infer.onnx").write_bytes(b"x")
+    monkeypatch.setattr(ocr, "RAPID_DIR", tmp_path)
+    assert ocr._rapid_model("ja") == tmp_path / "japan_PP-OCRv3_rec_infer.onnx"
+    monkeypatch.setattr("importlib.util.find_spec", lambda name: None)
+    with pytest.raises(RuntimeError, match="en_PP-OCRv3_rec_infer.onnx"):
+        ocr._rapid_model("en")
+
+
+def test_screen_texts_region_sorted_and_sanitized(monkeypatch):
+    """screen_texts：区域坐标加回整帧、自上而下 / 同行从左到右、NFKC 规整；Box.center 与 kotonebot 点 Rect 的位置相同。"""
+    seen = {}
+
+    def fake(img, *, scale):
+        seen["shape"], seen["scale"] = img.shape[:2], scale
+        return [("Ｂ（２）", 1.0, (60, 5, 80, 15)), ("A", 0.8, (0, 6, 20, 16)), ("上", 0.9, (0, 0, 10, 4))]
+
+    monkeypatch.setattr(ocr, "ocr_boxes", fake)
+    img = np.zeros((1280, 720, 3), np.uint8)
+    got = ocr.screen_texts(img, (100, 200, 300, 50))
+    assert seen == {"shape": (50, 300), "scale": ocr.SCREEN_SCALE}
+    assert [t.text for t in got] == ["上", "A", "B(2)"]
+    assert got[1].rect == ocr.Box(100, 206, 120, 216) and got[1].rect.center == (110, 211) and got[1].conf == 0.8
+    assert ocr.Box(10, 10, 15, 13).center == (12, 11)  # x1 + w // 2，同 kotonebot device.click(Rect)
+    assert ocr.find_text(img, "B(").text == "B(2)"
+    assert ocr.find_text(img, lambda t: t.startswith("Z")) is None
+    assert ocr.screen_texts(None) == []
 
 
 # ---------------------------------------------------------------- 非 macOS 能导入

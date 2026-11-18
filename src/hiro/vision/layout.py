@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/layout.py（develop c3fc27f）；开源版改：游戏素材经插件 AssetSource（hiro.vision.assets），拿不到时退路见各处注释
 """界面元素坐标：素材包里的静态布局（tools/assets/layout）+ 截图校准。
 
 静态布局按锚点算出，纯锚点元素（回合圆盘、状态栏首槽等）可直接用；位置或尺寸由运行时组件决定的元素
@@ -23,12 +22,12 @@ EXAM = "ExamTypeAuditionView"
 @cache
 def _views() -> dict:
     views = assets.layout()  # AssetSource 给的完整 UI 布局（自建素材包）；没有时用随仓库的实测框
-    return views if views else json.loads(DEFAULT.read_text())
+    return views if views else json.loads(DEFAULT.read_text(encoding="utf-8"))
 
 
 @cache
 def calibration() -> dict:
-    return json.loads(CALIB.read_text()) if CALIB.exists() else {}
+    return json.loads(CALIB.read_text(encoding="utf-8")) if CALIB.exists() else {}
 
 
 def node(view: str, suffix: str) -> tuple[str, dict]:

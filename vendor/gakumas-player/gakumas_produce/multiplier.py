@@ -8,14 +8,14 @@
   未达基准约 1.85~2 倍，正好达到 2 倍，超过后 2~3 倍、3 倍封顶；
 - 夺冠局：R1 星星 916 ≥ 600 → 已封顶 3 倍，1.5×3=4.5，Vo/Vi 还原到 10 位精度；R2 1096/800 → 星星倍率 2.911。
 
-社区核对（2026-10-30，strategy/evidence/hif-community-20261030.json）：seesaawiki / wikiwiki / 攻略文均无精确公式，
+社区核对（2026-10-30，data/community/hif-community-20261030.json）：seesaawiki / wikiwiki / 攻略文均无精确公式，
 只有上面的边界与「基准差 1 约 1.99 倍」；下面的曲线满足这些边界，形状仍是本地拟合。
 
 假设（ASSUMED，待更多考试数据）：
 - 超过基准后按「星星/基准」线性增长：factor = 2 + STAR_SLOPE×(星星/基准-1)，STAR_SLOPE 由 R2 一个点拟合；
   若改为按星星绝对差线性，R1 需要 ≥925 星才封顶（记录 916），所以暂取比值模型；
 - 未达基准：factor = 1.85 + 0.15×(星星/基准)。
-每打一场考试，就往 simulator/fixtures/multiplier-observations.json 补一条（存档读倍率，画面读属性与星星）。
+每打一场考试，就往 data/multiplier-observations.json 补一条（存档读倍率，画面读属性与星星）。
 """
 from __future__ import annotations
 import json
@@ -24,12 +24,12 @@ from pathlib import Path
 
 from .attributes import hif_preview
 
-OBSERVATIONS=Path(__file__).resolve().parents[1]/'simulator'/'fixtures'/'multiplier-observations.json'
+OBSERVATIONS=Path(__file__).resolve().parents[1]/'data'/'multiplier-observations.json'
 ATTRS=('Vo','Da','Vi')
 
 
 def load_observations(path=OBSERVATIONS):
-    return json.loads(Path(path).read_text())['observations']
+    return json.loads(Path(path).read_text(encoding='utf-8'))['observations']
 
 
 def base_permil(mode,position,stats,idol_card_id):

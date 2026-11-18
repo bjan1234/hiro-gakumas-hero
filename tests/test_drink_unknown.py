@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_drink_unknown.py（c3fc27f）
 """第十八局选拔 20:23：饮料溢出页持有一格认不出（drink_id=None、name 也空）→ drink_name(None) 抛异常 → KAA 默认 Leave 跳过新饮料。
 现在：未知饮料按中等价值（不当空位、不优先丢），决策不抛异常；决策给不出时 hif 重读再决策。"""
 
@@ -34,6 +33,7 @@ def test_unknown_kept_over_known_bad():
     assert d.action.args["discard"] == [2], d.reason
 
 
+@pytest.mark.kaa
 def test_hif_pdrink_max_rereads_on_wait(monkeypatch):
     """决策给不出（Wait）时 on_pdrink_max 重读再决策，不直接走 KAA 默认的跳过新饮料。"""
     from types import SimpleNamespace as NS
@@ -55,6 +55,6 @@ def test_hif_pdrink_max_rereads_on_wait(monkeypatch):
     strat.s, strat.deciders = sess, Deciders()
     monkeypatch.setattr(hif, "sleep", lambda s: None)
     monkeypatch.setattr(hif, "device", NS(screenshot=lambda: None))  # 合并后执行侧版本重读前会先截图
-    monkeypatch.setattr(hif.HifGrindStrategy, "on_pdrink_max", lambda self, ctx: "kaa", raising=False)
+    monkeypatch.setattr("hiro.produce.drink_swap.skip_incoming", lambda **k: True)
     strat.on_pdrink_max(None)
     assert calls == ["PDRINK_MAX", "PDRINK_MAX"]

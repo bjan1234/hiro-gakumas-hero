@@ -1,4 +1,3 @@
-# 来源：digital-hiro hiro/daily_guard.py（c3fc27f）
 """日常任务（tools/daily/run_daily.py）的兜底：弹窗看守 + 单项超时。
 
 2026-11-02 mission_reward：ミッションパス页弹「ミッションパスPt獲得」说明框（只有「閉じる」），KAA 的循环不认，空转约 10 分钟。
@@ -15,7 +14,7 @@ import threading
 import time
 from collections.abc import Callable
 
-from hiro.log import logging
+import logging
 
 logger = logging.getLogger(__name__)
 

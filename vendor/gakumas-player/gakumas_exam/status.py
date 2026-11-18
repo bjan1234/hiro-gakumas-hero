@@ -17,8 +17,8 @@ from .master import E
 
 ET = E('ProduceExamEffectType')
 PH = E('ProduceExamPhaseType')
-_CLASSES = json.loads((Path(__file__).resolve().parent / 'status_classes.json').read_text())['classes']
-_TARGET = json.loads((Path(__file__).resolve().parent / 'effect_target_types.json').read_text())
+_CLASSES = json.loads((Path(__file__).resolve().parent / 'status_classes.json').read_text(encoding='utf-8'))['classes']
+_TARGET = json.loads((Path(__file__).resolve().parent / 'effect_target_types.json').read_text(encoding='utf-8'))
 DEBUFF_EFFECT_TYPES = {ET[k] for k, v in _TARGET.items() if v == 2 and k in ET}
 
 DEBUFF_STATUS_CLASSES = {

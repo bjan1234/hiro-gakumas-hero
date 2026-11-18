@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/extract.py（develop c3fc27f）
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """按场景提取决策用字段。新增场景的字段读取在这里登记。"""
 
@@ -12,7 +11,7 @@ from hiro.vision.action import read_action_select
 from hiro.vision.cards import card_summary, dialog_card_upgraded
 from hiro.vision.deck import read_card_dialog, read_confirm_dialog, read_deck_list
 from hiro.vision.drinks import read_drink_dialog
-from hiro.vision.event import read_event_choices
+from hiro.vision.event import read_event_choice_page, read_event_choices
 from hiro.vision.items import read_pdrink_max
 from hiro.vision.pages import page_fields
 from hiro.vision.hif import read_hif_exam, read_hif_result
@@ -52,15 +51,11 @@ def _dialog_counter(img: MatLike, box, button: tuple | None = None) -> int | Non
 
 
 def _select_card(img: MatLike) -> dict:
-    from kaa.game_ui import badge
-    from kaa.tasks import R
-    from kaa.tasks.produce.new.page import CardSelectContext, ProducePage
+    from hiro.vision.card_select import recommended_flags, select_card_options
 
-    ctx = CardSelectContext(ProducePage(), None)
-    cards = ctx.fetch_cards()
-    # 「おすすめ」可以同时挂在多张卡下；按 KAA fetch_recommend_card 的规则配对，recommended 取第一张（与 KAA 一致）
-    badges = [b.rect for b in R.InProduce.TextRecommend.find_all()] if cards else []
-    flags = [m.badge is not None for m in badge.match([c.rect for c in cards], badges, "mb")] if badges else [False] * len(cards)
+    cards = select_card_options(img)
+    # 「おすすめ」可以同时挂在多张卡下（同 KAA fetch_recommend_card 的配对规则），recommended 取第一张
+    flags = recommended_flags(img, cards)
     options = []
     for i, o in enumerate(cards):
         upgraded, red = dialog_card_upgraded(img, o.rect)
@@ -152,6 +147,7 @@ EXTRACTORS = {
     "CONSULT": _consult,
     "STUDY": read_event_choices,
     "OUTING": read_event_choices,
+    "EVENT_CHOICE": read_event_choice_page,  # 事件选项页（判页 INITIAL_CHOICE）：只留真有按钮的行（二选一不出幻影第 0 项），带 dialogue_only
     "ACTION_SELECT": _action_select,
     "DECK_LIST": read_deck_list,
     "SKILL_CARD_REMOVAL": _removal_dialog,

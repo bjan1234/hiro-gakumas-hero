@@ -79,17 +79,16 @@
    体积大，Windows 上 20 分钟还没拉完，2026-11-11 W4）；子模块由安装脚本只拉 `vendor/kaa` 这一层。
    自检最后会打印插件来源、有没有主数据和自建素材，以及开局命令。
 2. 游戏窗口：用 [hguandl 的 PlayCover 分支](https://github.com/hguandl/PlayCover)，在游戏的 PlayCover 设置里打开 `maaTools`（端口 `maaToolsPort`）。
-   默认的截图和点击走游戏进程内的 MaaTools 服务（见 `hiro/device.py` 开头注释），**不要求窗口在前台，也不动鼠标**；
-   只有 MaaTools 连不上、退回 Quartz 截图 + `CGEventPostToPid` 时，才需要保持竖屏窗口在前台。
+   截图和点击走游戏进程内的 MaaTools 服务（见 `hiro/devices/maatools.py`），**不要求窗口在前台，也不动鼠标**。
+   **原版 PlayCover 不支持**（2026-11-13 起）：MaaTools 连不上时直接报错停下，不再退回 Quartz 截图 + `CGEventPostToPid`。
    macOS 要给运行它的终端 / 程序「屏幕录制」权限；截图报 `could not create image from display` 时先查这个权限和显示器状态。
 
    **设备**（`HIRO_DEVICE`，与 KAA 支持的平台对齐）：
 
    | `HIRO_DEVICE` | 平台 | 截图 / 点击 | 验证情况 |
    |---|---|---|---|
-   | `auto`（缺省） | macOS：MaaTools 能连就 `maatools`，否则 `quartz`；其他系统要求显式设置 | — | — |
-   | `maatools` | macOS + hguandl 分支 PlayCover | 游戏进程内 MaaTools | 作者实机验证（6 次夺冠） |
-   | `quartz` | macOS + 原版 PlayCover | Quartz 截图 + `CGEventPostToPid`，要游戏在前台 | 作者实机用过 |
+   | `auto`（缺省） | macOS 上就是 `maatools`；其他系统要求显式设置 | — | — |
+   | `maatools` | macOS + hguandl 分支 PlayCover（原版不支持） | 游戏进程内 MaaTools | 作者实机验证（6 次夺冠） |
    | `adb` | 任意安卓设备 / 模拟器（KAA 的 custom） | `HIRO_SCREENSHOT=adb`（缺省）或 `uiautomator2` | 未实机验证 |
    | `mumu` | MuMu 12 | `adb`（缺省；Windows 上 `nemu_ipc` 截图可用但点击送不到游戏，别用） | Windows + MuMu 6.8 实机打过（见下） |
    | `leidian` | 雷电模拟器 | `adb` / `uiautomator2` | 未实机验证 |
@@ -100,7 +99,9 @@
      MuMu 缺省开后台模式（按游戏包名截它所在的显示；MuMu 6 把应用放在单独的显示里，不开时截到的是模拟器桌面），
      `HIRO_MUMU_BACKGROUND=0` 关掉。组合不合法时开局前就报错（用 KAA 自己的配置校验）。
    - 非 PlayCover 后端不做 PlayCover 专用的退路（横屏 LIVE 黑屏时切全屏、MaaTools 点了没反应时用真实鼠标再点）。
-   - 文字识别（`HIRO_OCR`）：macOS 缺省用 Apple Vision，其他系统自动改用 KAA 自带的 RapidOCR（日文 / 英文模型）。
+   - 文字识别（`HIRO_OCR`）：macOS 缺省用 Apple Vision，其他系统自动改用 RapidOCR（`rapidocr_onnxruntime` + PaddleOCR PP-OCRv3 日文 / 英文识别模型，
+     模型先找 `cache/rapidocr/`，没有就用已装 kaa 包里随带的那份）。页面判定、找按钮的整帧文字统一走 `hiro.vision.ocr.screen_texts`，
+     不再调 kotonebot 的 `ocr`。
      RapidOCR 在作者的回归截图上的准确率与速度见 `docs/assets.md`；换平台后先用自己的截图验一遍。
    - Windows 用 PowerShell 版安装脚本：`powershell -NoProfile -ExecutionPolicy Bypass -File scripts\setup.ps1`（步骤与 `setup.sh` 相同）。
      作者的 Windows 台式机上实测过安装、自检和全套离线测试，以及 `HIRO_DEVICE=mumu`（MuMu 6.8，截图 / 点击 `adb`）
@@ -123,8 +124,23 @@
      - 同一个账号不要同时开 MuMu 和 DMM：另一端进入培育时会弹「プロデュースデータの破棄」。
      - 后台点击要读真实光标（游戏认的是光标位置，SendMessage 前先把窗口挪到目标点落在光标下）：程序在跑时别在这台 Windows 上
        弹 UAC / 锁屏。真碰上了，`hiro.loop.win_desktop` 会等桌面恢复（最多 10 分钟）再重做，超时讲清原因停下。
-     - 滑动到终点会原地停 0.3 秒再松手（`HIRO_DMM_SWIPE_HOLD=0` 关掉）：直接松手时选卡对话框按松手速度惯性多滑，
+     - 滑动到终点会原地停 0.3 秒再松手：直接松手时选卡对话框按松手速度惯性多滑，
        相邻两屏没有重叠的行，牌组拼接不可信。
+     - 实验（缺省关）：`HIRO_DMM_DRIVER=maafw` 把截图 / 点击换成 MaaFramework 的 Win32 控制器（`pip install maafw`，`hiro/device_maafw.py`）。
+       `HIRO_MAAFW_SCREENCAP`（缺省 `FramePool`）、`HIRO_MAAFW_INPUT`（缺省 `SendMessageWithWindowPos`，和现在的后台点击同一种做法）。
+       2026-11-11 只读实测（普通权限、游戏以管理员运行）：FramePool 约 29 ms、GDI 约 11 ms 一张 1081×1921，画面正常；PrintWindow 连不上；
+       DXGI_DesktopDup_Window 全黑。点击还没实测（要以管理员身份跑）。`tools/maafw_probe.py` 逐个截图方式试一遍。
+     - 去 KAA 的新设备层 `hiro/devices/`（2026-11-13，还没有调用方，主循环仍走 `hiro.device.connect()`）：统一接口 6 个方法
+       （`connect / close / screenshot / tap / swipe(…, hold=) / alive`，逻辑坐标 720×1280、横屏 1280×720，失败抛 `DeviceGone` /
+       `DeviceUnavailable`），三个实现 `MaaToolsDevice`（Mac）、`MaaFwWin32Device`（DMM）、`AdbDevice`（MuMu / 雷电 / 真机，
+       `HIRO_ADB`、`HIRO_ADB_PATH`），`hiro.devices.open_device()` 按 `HIRO_DEVICE` 选。不 import kotonebot / KAA。
+       另有两个不在统一接口里的可选方法，各自只给一个调用方：`MaaToolsDevice.real_tap`（drink_swap 的 PlayCover 真实鼠标兜底）、
+       `AdbDevice.shell`（`hiro.loop.game_app` 的 `foreground(shell)` / `relaunch(shell)`）。横屏判断看 `dev.orientation`。
+     - 游戏窗口尺寸（用户 2026-11-14 定）：客户区按显示器自适应，9:16，高 = 主显示器工作区高（去掉任务栏）− 窗口外框高，
+       上限 1080x1920、下限 540x960；窗口挪到工作区左上角，整个窗口在屏幕内。`-Runtime own` 开局时 `hiro.runtime.play.fit_dmm_window`
+       核对、不对就调（`hiro.devices.win_window`，要管理员），显示器放不下 540x960 或调不过去就停下报告，实际尺寸记进 trace 备注；
+       `HIRO_DMM_FIT=0` 关掉。窗口小了截图要放大，小字 OCR 和模板分数会掉（541x961 时「残りターン」0.50、牌组按钮 0.78）。
+       看 / 调：`python -m hiro.devices.win_window [fit | 宽 高]`。不改系统缩放和分辨率。
      - 考试里判「画面稳了」另要求一致读数持续 1.5 秒（`play.ps1 -Device dmm` 缺省设 `HIRO_SETTLE_MIN_S=1.5`，自己设了就用自己的）：
        DMM 截图约 0.19 秒一张，三次读数不到 1 秒，会落在两段动画之间，回合没切完就决策（dmm1m：190 次决策 23 次作废重来）。
    - Windows 上的坑（实测）：16 GB 内存同时开 MuMu、模拟器和其他常驻程序时 MuMu 会被系统杀掉，开局前先关掉不用的程序；
@@ -169,9 +185,12 @@ PYTHONPATH=src python -m hiro.run_hif resume --mode qualify|main   # 续跑进�
 | `HIRO_USER_ASSETS` | 自建素材目录（`capture_icons` 的产出），可选；与随仓库素材包并用，同类图库取文件更多的一个 |
 | `HIRO_BUNDLED_ASSETS` | 随仓库素材包目录，默认 `assets/pack`；设 `0` 关掉 |
 | `HIRO_ASSET_SOURCE` / `HIRO_EXAM_STATE_SOURCE` / `HIRO_EXAM_ADVISOR` | 换插件实现（`包.模块:类名`）。考试预演：`HIRO_EXAM_STATE_SOURCE=hiro.sim.screen_source:SimScreenExamStateSource` |
+| `HIRO_BENCH_ADVISOR` / `HIRO_BENCH_ALGO` | 考试出牌（缺省开）：用 gakumas-bench 的开源算法，`HIRO_BENCH_ALGO` 写法同 bench（缺省 `uinet`，也可 `my.py:Cls`）；出错 / 不合法 / 缺依赖时这一步退回社区规则（不调 LLM）。`HIRO_BENCH_ADVISOR=0` 关掉，回到社区规则 + LLM。模型和主数据缓存在 `~/.cache/hiro/bench`（`HIRO_BENCH_CACHE`），`python -m hiro.bench_bridge check` 查能不能用 |
+| `HIRO_EXAM_ADVISOR` | 考试出招插件（`模块:类`）。缺省 `hiro.search.advisor:SearchAdvisor`（用户 11-14 定）：本战 R1 / R2 每步用 Rust GNRPA 搜 15 秒、8 个世界、CPU 核数 − 1 个线程（`hiro.search.advisor.BUDGET`），局面来自模拟器跟踪、开局是这一局的编成，和画面核对过；要求局面来源是 `SimScreenExamStateSource`（`play.ps1` 缺省就是）和带 `search` 的 Rust 后端，没有就整局退回 bench 中转层（日志写明）；搜不了的步（选拔考试、核不上、出错）也退回。设 `hiro.bench_bridge.advisor:BenchAdvisor` 换回 bench 中转层。偶像之路场次另由 `HIRO_TOWER_ALGO` 选（缺省 `hiro.search.tower_algo:TowerGnrpa`，每步 5 秒；Rust 后端没有 search / plan_many 时退回 uinet，理由里写明）|
 | `HIRO_EXAM_POLICY` | 有预演时怎么用：`llm`（缺省，预演写进提示词给 LLM 参考）/ `expert`（按预演期望 + 硬规则链直接选） |
+| `HIRO_PRODUCE_LLM` | 培育决策点补全：规则 / 模拟拿不准时交 LLM 在候选里选（LLM 不可用或输出非法按规则兜底）。缺省（不设）或 `all` 全开（用户 11-14 定），`off` 全关，逗号分隔写名字只开这几条：`change_remove`（换卡第 2 段换出哪张）、`remove_card`（删卡）、`select_drink`（饮料三选一）、`consult`（相談买饮料）、`drink_overflow`（饮料满丢哪瓶）、`interval`（轮间：社区默认方案 / 模拟方案二选一）、`select_pitem`（P 道具三选一）、`special_guidance`（特別指導：优先表做完后表外定制做不做）、`event_choice`（事件选项页：没有全面更好的选项时）、`card_move`（考试里的技能卡移动对话框：前两名差不多或有卡没认出时）。每局报告里有各决策器的来源统计和兜底次数；离线回放黄金用例：`python -m hiro.brain.cases --llm claude:sonnet` |
 | `HIRO_SIM=0` | 不用模拟器（轮间 / 饮料 / 相談只按社区规则） |
-| `HIRO_INTERVAL_REFRESH=0` | 关掉规则版的轮间货架刷新（没有模拟器时：货架没有复制 / 爆发饮料先刷新） |
+| `HIRO_DECK_REVIEW` | 培育中主动打开牌组一览读全量（约 10 秒一次）。缺省：本战开局牌组为空时读一次；牌组标成待复核时（跳过剧情后支援事件可能给了卡、删卡没对上等）到选行动页读一次，同一天只试一次。`1` = 另外每个考试段第一次到选行动页都读（调试）；`0` = 只保留开局那次，待复核不读 |
 | `HIRO_STRATEGY` | 换培育策略类（KAA `HifGrindStrategy` 子类），默认 `hiro.produce.hif:HiroHifStrategy` |
 | `HIRO_PAUSE_FLAG` | 外部暂停旗标文件路径：文件存在就暂停对局 |
 | `HIRO_DEVICE` / `HIRO_ADB` / `HIRO_SCREENSHOT` / `HIRO_EMULATOR_INSTANCE` | 设备后端与连接，见「三、环境」的「设备」表 |

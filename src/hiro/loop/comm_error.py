@@ -1,4 +1,3 @@
-# 来源：digital-hiro hiro/loop/comm_error.py（c3fc27f）
 """「通信エラー」弹窗（第二十二局本战轮间 12:26：游戏弹「通信エラー / 通信中にエラーが発生しました」，按钮 タイトルへ / リトライ；
 轮间每步「8s 内轮间主画面没出现」失败重试，主循环把它判成 unknown，195s 后停机。总控点了リトライ后又弹
 「通信エラー / 時間が経っているのでタイトルに戻します」，只有「閉じる」，只能回标题）。
@@ -17,7 +16,7 @@ from hiro.vision.textnorm import contains
 import time
 from collections.abc import Callable
 
-from hiro.log import logging
+import logging
 
 from hiro.loop.date_change import DateChanged
 

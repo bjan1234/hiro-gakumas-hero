@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/produce/memory_picker.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """回忆（メモリー）选择页的点击路径与只读扫描：给总控在实机上跑，产出 reports/live/memory-inventory.json。
 
 画面（编成页点某一格回忆打开的选择页，720x1280；依据 reports/live/memory-formation/cand-*.jpg、memscan2-*.jpg）：
@@ -15,6 +15,7 @@
 
 import hashlib
 import json
+import logging
 import re
 import time
 from collections.abc import Callable
@@ -22,8 +23,8 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from kotonebot import logging
 
+from hiro.devices.active import sleep as _sleep
 from hiro.produce.ops import find_text, ocr_boxes, roi_diff
 from hiro import imgio
 
@@ -42,6 +43,7 @@ PAGE_PREV, PAGE_NEXT = (230, 530), (485, 530)
 CANCEL_TAP = (211, 1162)
 FILTER_TAP, SORT_KEY_TAP, SORT_DIR_TAP = (399, 1050), (495, 1050), (653, 1050)
 SWIPE_FROM, SWIPE_ROWS = 1000, 2  # 一次上滑 2 行（行距 137.5），可见 3 行 → 与上一页重叠 1 行，用来核对没有跳行
+SCROLL_STEP_MAX = int(3 * 137.5)  # 一次滑动最多这么多像素（3 行）：上滑 1000→588、下滑 600→1012，都在列表区（560–1040）里
 SWIPE_DURATION, SWIPE_HOLD = 1.0, 0.4  # 慢滑 + 终点停住再抬起：不带惯性（2026-11-01 实机：3 行快滑一次滚过 4 行以上，整行漏扫）
 CELL_MATCH_MAX = 14.0  # 两张格子缩略图（48x24 灰度）平均差 ≤ 这个算同一格（行带上下差 1–2 像素也能对上）
 MAX_BACKTRACK = 3
@@ -163,10 +165,14 @@ def read_ability_page(boxes) -> list[dict]:
     return out
 
 
+class PickerClosed(RuntimeError):
+    """回忆选择页不见了（多半点成了「決定」，编成可能被改了）：扫描 / 读取立即停下，不再点任何东西。"""
+
+
 class Picker:
     """回忆选择页上的操作。shoot / click / swipe / ocr / clock / sleep 可注入（离线测试）。"""
 
-    def __init__(self, shoot, click, swipe, *, ocr=ocr_boxes, clock=time.monotonic, sleep=time.sleep, calib_dir: Path | None = None):
+    def __init__(self, shoot, click, swipe, *, ocr=ocr_boxes, clock=time.monotonic, sleep=_sleep, calib_dir: Path | None = None):
         self.shoot, self.click, self.swipe, self.ocr, self.clock, self.sleep = shoot, click, swipe, ocr, clock, sleep
         self.calib_dir, self._n = calib_dir, 0
 
@@ -190,22 +196,45 @@ class Picker:
 
     def select(self, cell: dict) -> np.ndarray:
         """点一格；详情栏变了（或本来就是这格）后返回画面。"""
+        return self.select_checked(cell)[1]
+
+    def ensure_open(self, boxes=None, img=None) -> list:
+        """还在回忆选择页（キャンセル / 決定 / 編成詳細 都在）；不在了抛 PickerClosed。返回用过的 OCR 结果。"""
+        if boxes is None:
+            boxes = self.ocr(img if img is not None else self.shoot())
+        if not picker_open(boxes):
+            raise PickerClosed("回忆选择页不见了（可能点成了「決定」，编成可能被改了）")
+        return boxes
+
+    def select_checked(self, cell: dict) -> tuple[bool, np.ndarray]:
+        """点一格（只点一次），返回 (详情栏变了没有, 画面)。点之前核对还在选择页。
+        详情栏没变也不再点同一格：再点已选中的格子可能被游戏当成「決定」（11-16 账号 2：扫描中选择页关了、编成第 1 格被换成
+        ラブリーウインク），只多等一会儿。"""
         before = self.shoot()
+        self.ensure_open(img=before)
         self.click(*cell["center"])
-        _, img = self._wait_change(before, DETAIL_ROI)
-        return img
+        changed, img = self._wait_change(before, DETAIL_ROI)
+        if not changed:
+            self.sleep(0.8)
+            changed, img = self._wait_change(before, DETAIL_ROI)
+        return changed, img
 
     def to_page(self, page: int) -> tuple[np.ndarray, list]:
-        """详情栏翻到第 page 页（1 / 2）。"""
+        """详情栏翻到第 page 页（1 / 2）。每次点翻页箭头前核对还在选择页、并且认出了页码（认不出页码就不盲点，等一下重读）。"""
         img = self.shoot()
-        boxes = self.ocr(img)
+        boxes = self.ensure_open(self.ocr(img))
         for _ in range(3):
             cur = detail_page(boxes)
             if cur == page:
                 return img, boxes
-            self.click(*(PAGE_NEXT if (cur or 1) < page else PAGE_PREV))
+            if cur is None:
+                self.sleep(0.4)
+                img = self.shoot()
+                boxes = self.ensure_open(self.ocr(img))
+                continue
+            self.click(*(PAGE_NEXT if cur < page else PAGE_PREV))
             _, img = self._wait_change(img, DETAIL_ROI)
-            boxes = self.ocr(img)
+            boxes = self.ensure_open(self.ocr(img))
         return img, boxes
 
     def read_selected(self) -> dict:
@@ -216,16 +245,28 @@ class Picker:
         self.to_page(1)
         return entry
 
-    def scroll(self, rows: float = SWIPE_ROWS, *, px: int | None = None) -> np.ndarray:
-        """上滑 rows 行（负数下滑；或直接给像素 px），慢滑、终点停住，返回滑后的画面。"""
+    def scroll(self, rows: float = SWIPE_ROWS, *, px: int | None = None, x: int = 360, y_from: int | None = None) -> np.ndarray:
+        """上滑 rows 行（负数下滑；或直接给像素 px），慢滑、终点停住，返回滑后的画面。x / y_from：换个起点滑（原起点没让列表动时）。"""
         dy = int(px if px is not None else rows * ROW_PITCH)
-        y1 = SWIPE_FROM if dy > 0 else GRID_Y[0] + 40
-        self.swipe(360, y1, 360, y1 - dy)
+        # 一次最多滑 SCROLL_STEP_MAX：起止点都留在列表区里（11-17 开局第 3 步：一次滑约 16 行，终点 y 成了负数，kotonebot swipe 报
+        # argument out of range）。大距离拆成几次
+        while abs(dy) > SCROLL_STEP_MAX:
+            step = SCROLL_STEP_MAX if dy > 0 else -SCROLL_STEP_MAX
+            y1 = y_from if y_from is not None else (SWIPE_FROM if step > 0 else GRID_Y[0] + 40)
+            self.swipe(x, y1, x, y1 - step)
+            self.sleep(SCROLL_SETTLE)
+            dy -= step
+        y1 = y_from if y_from is not None else (SWIPE_FROM if dy > 0 else GRID_Y[0] + 40)
+        self.swipe(x, y1, x, y1 - dy)
         self.sleep(SCROLL_SETTLE)
         return self.shoot()
 
     def cancel(self) -> bool:
-        self.click(*CANCEL_TAP)
+        """点「キャンセル」关掉选择页（按 OCR 找：编成菜单的选择页在 (211,1162)，开局第 3 步的多了 所持メモリー / レンタル 页签、
+        在 (220,1160) 附近；找不到才点 CANCEL_TAP）。返回选择页关了没有。"""
+        boxes = self.ocr(self.shoot())
+        pos = find_text(boxes, "キャンセル", region=(0, 1080, 720, 1280)) or CANCEL_TAP
+        self.click(*pos)
         self.sleep(1.0)
         return not picker_open(self.ocr(self.shoot()))
 
@@ -282,66 +323,199 @@ def grid_still(a: np.ndarray, b: np.ndarray) -> bool:
     return roi_diff(a, b, (GRID_X[0], GRID_Y[0], GRID_X[1] - GRID_X[0], GRID_Y[1] - GRID_Y[0])) < 2.0
 
 
+def content_key(e: dict) -> str:
+    """一格读到的内容（卡 + 强化 + 时机 + 能力）：判断详情栏是不是没刷新（和上一格一模一样）。
+    不含属性：选择页顶部是「当前编成合计 ± 这份回忆的增减」（如 Vo 20 -15），不是这份回忆自己的（协调 11-16）。"""
+    card = e.get("card") or {}
+    return json.dumps([card.get("card_id") or e.get("card_text"), card.get("upgrade"), e.get("timing"), e.get("abilities")], ensure_ascii=False)
+
+
+ALT_SWIPES = ((150, 940), (570, 940), (360, 880))  # 原起点 (360, SWIPE_FROM) 没让列表动时换这几个起点再试（起点可能落在锁格 / 浮动按钮上）
+
+
+def scroll_moved(picker: "Picker", before: np.ndarray, px: int) -> tuple[bool, np.ndarray]:
+    """往上滑 px：列表区（整块像素，不靠认出的行）动了返回 (True, 画面)；原起点不动就换 ALT_SWIPES 的起点再试，都不动 (False, 最后一帧)。"""
+    img = picker.scroll(px=px)
+    if not grid_still(before, img):
+        return True, img
+    for x, y1 in ALT_SWIPES:
+        img = picker.scroll(px=px, x=x, y_from=y1)
+        if not grid_still(before, img):
+            logger.info("回忆扫描：原起点滑不动，换起点 (%d, %d) 滑动了", x, y1)
+            return True, img
+    return False, img
+
+
+def _at_end(picker: "Picker", inv: dict, img: np.ndarray, pages: int) -> None:
+    """列表滑不动：还在回忆选择页才算到底（complete）；不在了（被别的画面挡住）记 aborted。都存帧。"""
+    picker.snap(img, f"page{pages:03d}-end")
+    if picker_open(picker.ocr(img)):
+        inv["complete"] = True
+    else:
+        inv["aborted"] = f"第 {pages} 页后列表滑不动，而且画面不是回忆选择页了（被别的画面挡住？），停止扫描"
+        logger.warning("回忆扫描：%s", inv["aborted"])
+
+
+def align(prev: list[list[dict]], cur: list[list[dict]]) -> int | None:
+    """prev 的最后一行在 cur 里是第几行（往前能对上的行也都要对上）；找不到 None。
+    不只看 cur 开头：滑多了 / 滑少了 / 没滑动，都能对上位置。"""
+    if not prev or not cur:
+        return None
+    for k in range(len(cur) - 1, -1, -1):
+        n = min(k + 1, len(prev))
+        if all(same_row(prev[len(prev) - 1 - i], cur[k - i]) for i in range(n)):
+            return k
+    return None
+
+
+def iter_rows(picker: "Picker", *, max_pages: int = 600):
+    """从顶部往下逐页走，产出 (全局行号, 这一行的格子)，行号按页与页的重叠精确计数（同 scan：读完重截当上一页、align 找上一页最后一行、
+    对不上一行一行往回滑），不按滑过的像素估算（11-17 编成菜单：按每屏行数累计会高估，第 70 行 ±30 行都找不到）。
+    调用方可以在拿到一行后点格子读详情；走不下去（到底 / 对不上）就结束。"""
+    img = to_top(picker)
+    base, start = 0, 0
+    for _ in range(max_pages):
+        rows = page_rows(img)
+        for i in range(start, len(rows)):
+            yield base + i, rows[i]
+        prev_img = picker.shoot()
+        prev = page_rows(prev_img) or rows
+        if not prev:
+            return
+        dy = prev[-1][0]["rect"][1] - prev[0][0]["rect"][1] if len(prev) > 1 else int(ROW_PITCH)
+        moved, img = scroll_moved(picker, prev_img, dy)
+        if not moved:
+            return  # 到底
+        k = align(prev, page_rows(img))
+        back = 0
+        while k is None and back < SCAN_BACKTRACK:
+            back += 1
+            img = picker.scroll(-1)
+            k = align(prev, page_rows(img))
+        if k is None:
+            logger.warning("回忆列表：第 %d 行之后对不上（往回滑了 %d 行），行号没法继续数，停", base + len(prev) - 1, back)
+            return
+        base, start = base + len(prev) - 1 - k, k + 1
+
+
+def mark_suspects(entries: list[dict]) -> int:
+    """标可疑记录（suspect 写原因；formation_plan 不选可疑的）：
+    - card_unread：卡名读不出；
+    - same_as_prev：和按格子顺序的上一格内容一模一样、但格子缩略图不同（点了格子详情栏没刷新，读到的是上一格；2026-11-15 账号 2）；
+    - detail_not_refreshed：点了两次详情栏都没变（且不是同一张缩略图）。
+    返回可疑条数。"""
+    n = 0
+    prev = None
+    for e in sorted(entries, key=lambda x: x.get("slot", 0)):
+        why = e.get("suspect")
+        if why is None and not (e.get("card") or {}).get("card_id"):
+            why = "card_unread"
+        if why is None and prev is not None and content_key(e) == content_key(prev) and e.get("thumb") != prev.get("thumb"):
+            why = "same_as_prev"
+        if why is None and e.get("refreshed") is False and (prev is None or e.get("thumb") != prev.get("thumb")):
+            why = "detail_not_refreshed"
+        if why is not None:
+            e["suspect"] = why
+            n += 1
+        prev = e
+    return n
+
+
+SCAN_BACKTRACK = 6  # 新页里找不到上一页最后一行时，最多往回滑几行再找
+
+
 def scan(picker: Picker, out: Path, *, max_pages: int = 600, on_entry: Callable[[dict], None] | None = None) -> dict:
-    """从顶部开始逐行读。每次把本页最后一个完整行滑到最上面（按实测行位置算像素，不按固定行数，误差不会累积），
-    新页开头应正好是上一页最后一行：按格子缩略图核对，没重叠就往回滑一行再找，还对不上记进 gaps 并继续。
-    到底的判定：连续 2 次滑动后回忆格区都完全不变（整页与上一页重叠只说明滑得太少，不算到底）。
-    每个格子一条记录（slot = 全局行号 * 3 + 列）；每读一格写一次 out（覆盖，旧文件留 .bak）。结束点「キャンセル」。只读。"""
+    """从顶部开始逐行读。每页读完重新截一张图当「上一页」（读的时候点了格子，选中框会留在上一页最后一格，不重截会和新页对不上），
+    再把最后一个完整行滑到最上面；新页里找上一页最后一行的位置（align），之后的行是新的。
+    对不上：一行一行往回滑（最多 SCAN_BACKTRACK 行）找上一页最后一行；还找不到就停止扫描（gaps 记下，complete=False），不接着往下记
+    （2026-11-15 账号 2：对不上后往回滑了 3 行接着记，旧行被当成新行记了一遍又一遍，行号全偏）。
+    到底的判定：连续 2 次滑动后回忆格区都完全不变。每格读完核对详情栏有没有刷新，最后 mark_suspects 标可疑记录。
+    每个格子一条记录（slot = 全局行号 * 3 + 列，thumb = 格子缩略图指纹）；每读一格写一次 out。结束点「キャンセル」。只读。"""
     img = picker.shoot()
     if not picker_open(picker.ocr(img)):
         raise RuntimeError("不在回忆选择页（没看到 キャンセル / 決定 / 編成詳細）：请先在编成页点开一格回忆")
     if out.exists():
-        out.with_suffix(out.suffix + ".bak").write_text(out.read_text())
+        out.with_suffix(out.suffix + ".bak").write_text(out.read_text(encoding="utf-8"), encoding="utf-8")
     img = to_top(picker)
     inv = {"entries": [], "gaps": [], "scanned_at": None, "complete": False}
     pages = new = 0
     row_base, start = 0, 0  # 当前页第 0 行的全局行号；本页从第几行开始读（前面的行上一页读过）
-    while pages < max_pages:
-        picker.snap(img, f"page{pages:03d}")
-        rows = page_rows(img)
-        for r in range(start, len(rows)):
-            for cell in rows[r]:
-                picker.select(cell)
-                e = picker.read_selected()
-                e.update(page=pages, slot=(row_base + r) * 3 + cell["col"], cell=[row_base + r, cell["col"]])
-                inv["entries"].append(e)
-                new += 1
-                if on_entry:
-                    on_entry(e)
-                inv["scanned_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-                out.write_text(json.dumps(inv, ensure_ascii=False, indent=1))
-        prev, prev_base, before = rows, row_base, img
-        pages += 1
-        if not prev:
-            img = picker.scroll(SWIPE_ROWS)
-            if grid_still(before, img) and grid_still(img, picker.scroll(SWIPE_ROWS)):
+    last = None  # 上一条记录：判断详情栏是不是没刷新
+
+    def save():
+        inv["scanned_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        out.write_text(json.dumps(inv, ensure_ascii=False, indent=1), encoding="utf-8")
+
+    closed = False
+    try:
+        while pages < max_pages:
+            picker.snap(img, f"page{pages:03d}")
+            rows = page_rows(img)
+            for r in range(start, len(rows)):
+                for cell in rows[r]:
+                    changed, _ = picker.select_checked(cell)
+                    e = picker.read_selected()
+                    if last is not None and content_key(e) == content_key(last) and cell["hash"] != last.get("thumb"):
+                        # 详情栏还是上一格的内容：等一下重读（不再点同一格：再点已选中的格子可能被当成「決定」）
+                        picker.sleep(1.0)
+                        e = picker.read_selected()
+                    e.update(page=pages, slot=(row_base + r) * 3 + cell["col"], cell=[row_base + r, cell["col"]], thumb=cell["hash"],
+                             refreshed=changed)  # fmt: skip
+                    if last is not None and content_key(e) == content_key(last) and cell["hash"] != last.get("thumb"):
+                        e["suspect"] = "same_as_prev"
+                        logger.warning("回忆扫描：第 %s 格读到的和上一格一模一样（缩略图不同），记为可疑", e["cell"])
+                    inv["entries"].append(e)
+                    last = e
+                    new += 1
+                    if on_entry:
+                        on_entry(e)
+                    save()
+            pages += 1
+            prev_img = picker.shoot()  # 读完重截：选中框状态和下一页一致
+            prev, prev_base = page_rows(prev_img) or rows, row_base
+            if not prev:  # 一行都没认出：不能直接算到底，按整块列表区像素看滑不滑得动
+                moved, img = scroll_moved(picker, prev_img, int(SWIPE_ROWS * ROW_PITCH))
+                if not moved:
+                    _at_end(picker, inv, img, pages)
+                    break
+                row_base, start = prev_base, 0
+                continue
+            dy = prev[-1][0]["rect"][1] - prev[0][0]["rect"][1] if len(prev) > 1 else int(ROW_PITCH)
+            moved, img = scroll_moved(picker, prev_img, dy)
+            if not moved:  # 原起点和换的几个起点都滑不动，还在选择页：到底
+                _at_end(picker, inv, img, pages)
                 break
-            row_base, start = prev_base, 0
-            continue
-        dy = prev[-1][0]["rect"][1] - prev[0][0]["rect"][1] if len(prev) > 1 else int(ROW_PITCH)
-        img = picker.scroll(px=dy)
-        if grid_still(before, img):  # 没动：再滑一次，还不动才算到底
-            img = picker.scroll(px=dy)
-            if grid_still(before, img):
-                inv["complete"] = True
-                break
-        cur = page_rows(img)
-        m = row_overlap(prev, cur)
-        back = 0
-        while m == 0 and back < MAX_BACKTRACK:  # 滚过头：往回滑一行再找重叠
-            back += 1
-            img = picker.scroll(-1)
             cur = page_rows(img)
-            m = row_overlap(prev, cur)
-        if m == 0:
-            inv["gaps"].append({"after_row": prev_base + len(prev) - 1, "page": pages})
-            logger.warning("回忆扫描：第 %d 页和上一页对不上（往回滑了 %d 次），可能漏了行，继续往下扫", pages, back)
-            row_base, start = prev_base + len(prev), 0
-        else:
-            row_base, start = prev_base + len(prev) - m, m
-    out.write_text(json.dumps(inv, ensure_ascii=False, indent=1))
-    picker.cancel()
-    logger.info("回忆扫描：%d 页，读了 %d 格，漏行 %d 处，complete=%s → %s", pages, new, len(inv["gaps"]), inv["complete"], out)
+            k = align(prev, cur)
+            if k is None:  # 留证据：读完重截的上一页、滑过去的这一页（11-15 那次对不上的原因没留帧，查不了）
+                picker.snap(prev_img, f"page{pages - 1:03d}-after-read")
+                picker.snap(img, f"page{pages:03d}-nomatch")
+            back = 0
+            while k is None and back < SCAN_BACKTRACK:  # 滑过头（惯性）：一行一行往回滑，直到看见上一页最后一行
+                back += 1
+                img = picker.scroll(-1)
+                k = align(prev, page_rows(img))
+            if k is None:
+                inv["gaps"].append({"after_row": prev_base + len(prev) - 1, "page": pages})
+                inv["aborted"] = f"第 {pages} 页和上一页对不上（往回滑了 {back} 行也找不到），停止扫描，后面没扫"
+                logger.warning("回忆扫描：%s", inv["aborted"])
+                break
+            row_base = prev_base + len(prev) - 1 - k
+            start = k + 1
+    except PickerClosed as ex:
+        # 选择页在扫描中关了：多半点成了「決定」，编成号的这一格可能被换成刚选中的回忆。立即停，不再点任何东西（不点キャンセル）
+        closed = True
+        picker.snap(picker.shoot(), f"page{pages:03d}-picker-closed")
+        last_cell = inv["entries"][-1]["cell"] if inv["entries"] else None
+        inv["aborted"] = f"读格子时回忆选择页关了（最后一条记录 {last_cell}）：{ex}。编成可能被改成了刚选中的那份回忆，请人工核对编成"
+        inv["formation_may_have_changed"] = True
+        logger.error("回忆扫描：%s", inv["aborted"])
+    inv["suspects"] = mark_suspects(inv["entries"])
+    save()
+    if not closed and picker_open(picker.ocr(picker.shoot())):
+        picker.cancel()  # 只在还在选择页时点キャンセル（不在了就别在别的画面上乱点）
+    logger.info("回忆扫描：%d 页，读了 %d 格，可疑 %d 格，漏行 %d 处，complete=%s → %s", pages, new, inv["suspects"], len(inv["gaps"]),
+                inv["complete"], out)  # fmt: skip
     return inv
 
 
@@ -355,7 +529,7 @@ def explore(picker: Picker, out_dir: Path) -> list[dict]:
         boxes = picker.ocr(img)
         imgio.imwrite(str(out_dir / f"{len(log):02d}-{tag}.png"), img)
         log.append({"tag": tag, "texts": [[t, list(b)] for t, _, b in boxes]})
-        (out_dir / "explore.json").write_text(json.dumps(log, ensure_ascii=False, indent=1))
+        (out_dir / "explore.json").write_text(json.dumps(log, ensure_ascii=False, indent=1), encoding="utf-8")
         return img, boxes
 
     img, boxes = shot("picker")

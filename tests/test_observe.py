@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_observe.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """识别结果 → 决策层数据结构的对接（ProduceState 字段名、BattleState 观测参数）。"""
 
 import json
@@ -20,7 +19,7 @@ SCHEDULE = {1: {"shop", "gift", "special_guidance"}, 2: {"training"}, 3: {"class
 
 
 def test_produce_observation_matches_schedule():
-    for name in json.loads((FIX / "action" / "truth.json").read_text()):
+    for name in json.loads((FIX / "action" / "truth.json").read_text(encoding="utf-8")):
         obs = produce_observation(read_action_select(cv2.imread(str(FIX / "action" / f"{name}.jpg"))).to_dict())
         assert obs["mode"] == "produce-007"
         assert set(obs["params"]) == {"Vo", "Da", "Vi"} and obs["param_cap"] == 3000

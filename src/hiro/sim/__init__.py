@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/sim/__init__.py（develop 864e037）
 """离线对局环境：用 gakumas-player 的考试引擎 gakumas_exam（默认 Rust 后端 gakumas_exam_rs，没编译时用 Python 版）
 和培育层公式 gakumas_produce 驱动决策层（社区公开 master）。
 
@@ -31,10 +30,10 @@ def master_ready() -> bool:
         return False
     import json
 
-    return (ROOT / "data" / "master" / json.loads(cur.read_text())["database"]).exists()
+    return (ROOT / "data" / "master" / json.loads(cur.read_text(encoding="utf-8"))["database"]).exists()
 
 
 ROOT = engine_root()
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-FIXTURES = ROOT / "simulator" / "fixtures"
+FIXTURES = ROOT / "data" / "openings"  # 考试开局快照：campus-20261019/r1-opening、r2-opening

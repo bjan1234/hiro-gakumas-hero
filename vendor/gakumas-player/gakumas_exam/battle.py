@@ -74,24 +74,34 @@ class _Library:
         key = self.keys.get(k)
         if key is None:
             key = f'{card.card_id}@{card.upgrade}' + (':c' + ''.join(map(str, k[2])) if any(k[2]) else '')
-            self.keys[k] = key
             if key not in self.cards:
+                # 先算定义、成功后再登记键名：以前先登记，算定义抛错时键名留在缓存里，之后同一张卡直接返回它，
+                # 按它查 cards 就 KeyError（dmmw1 本战 'p_card-02-men-2_100@3'，同一进程里一直坏下去）
                 self.cards[key] = self._card_def(card)
+            self.keys[k] = key
         return key
 
+    def _variant(self, card_id, upgrade):
+        """主数据里 ≤ upgrade 的最高强化等级：考试中强化可以超过最高等级，游戏按最高等级算（同 cards.ExamCard.base_row）。"""
+        u = upgrade
+        while u > 0 and self.master.get('ProduceCard', card_id, u) is None:
+            u -= 1
+        return u
+
     def _card_def(self, card):
-        row = self.master.card(card.card_id, card.upgrade)
+        upgrade = self._variant(card.card_id, card.upgrade)
+        row = self.master.card(card.card_id, upgrade)
         ids = row.get('produceCardCustomizeIds') or []
         custom = [dict(id=i, count=n) for i, n in zip(ids, card.customize_counts or ()) if n]
         try:
-            return self.adapter.card(card.card_id, card.upgrade, custom or None)
+            return self.adapter.card(card.card_id, upgrade, custom or None)
         except Exception:  # noqa: BLE001  旧适配器不支持的卡：只给估价要用的外形
             cat = {1: 'active', 2: 'mental', 3: 'trouble'}.get(row.get('category'), 'other')
             return dict(name=row['name'], role='trouble' if cat == 'trouble' else 'bridge', once=row.get('playMovePositionType') == 2,
                         initial=row.get('isInitial', False), order=0, category=cat, rarity=row.get('rarity'), search_tag=row.get('searchTag'),
                         trouble=cat == 'trouble', end_turn_lost=row.get('isEndTurnLost', False),
                         cost=dict(kind='stamina', value=row.get('stamina', 0)), requires=[], effects=[],
-                        provenance=dict(kind='fidelity-fallback', card_id=card.card_id, upgrade=card.upgrade, customization={}))
+                        provenance=dict(kind='fidelity-fallback', card_id=card.card_id, upgrade=upgrade, customization={}))
 
     def drink(self, drink_id):
         d = self.drinks.get(drink_id)

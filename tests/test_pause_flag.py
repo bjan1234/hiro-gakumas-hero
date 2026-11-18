@@ -46,7 +46,7 @@ def test_flag_appears_pauses_and_disappears_resumes(tmp_path):
     w = rp.Watcher(flow, session=sess, flag=flag)
     w.tick()
     assert flow.calls == [] and not rp.paused()
-    flag.write_text("1793782800 片段 45s 不增长\n")
+    flag.write_text("1793782800 片段 45s 不增长\n", encoding="utf-8")
     w.tick()
     w.tick()  # 还在：不重复暂停
     assert flow.calls == ["pause"] and rp.paused() and sess.notes[0].startswith("rec_pause:") and "片段 45s 不增长" in sess.notes[0]
@@ -57,16 +57,16 @@ def test_flag_appears_pauses_and_disappears_resumes(tmp_path):
 
 def test_reason_strips_epoch(tmp_path):
     flag = tmp_path / "REC_DOWN"
-    flag.write_text("1793782800 录屏没启动")
+    flag.write_text("1793782800 录屏没启动", encoding="utf-8")
     assert rp.reason(flag) == "录屏没启动"
-    flag.write_text("")
+    flag.write_text("", encoding="utf-8")
     assert rp.reason(flag) == "（没写原因）"
     assert rp.reason(tmp_path / "none") is None
 
 
 def test_wait_until_recording_before_start(tmp_path):
     flag = tmp_path / "REC_DOWN"
-    flag.write_text("1 已停")
+    flag.write_text("1 已停", encoding="utf-8")
     t = [0.0]
 
     def sleep(s):
@@ -82,7 +82,7 @@ def test_wait_until_recording_before_start(tmp_path):
 def test_disabled_does_not_wait(tmp_path, monkeypatch):
     monkeypatch.setattr(rp, "ENABLED", False)
     flag = tmp_path / "REC_DOWN"
-    flag.write_text("1 已停")
+    flag.write_text("1 已停", encoding="utf-8")
     assert rp.wait_until_recording(flag=flag, sleep=lambda s: (_ for _ in ()).throw(AssertionError())) == 0
 
 
@@ -141,11 +141,9 @@ def test_finish_loop_stops_at_checkpoint_and_timeout_excludes_pause(monkeypatch)
 
     monkeypatch.setattr("kotonebot.device", NS(screenshot=screenshot, click=lambda *a: None, click_center=lambda: None), raising=False)
     monkeypatch.setattr(rs, "at_home", lambda: len(shots) >= 5)
-    monkeypatch.setattr(rs, "ocr", NS(ocr=lambda: []))
-    monkeypatch.setattr(rs, "R", NS(InProduce=NS(End=NS(ButtonGenerate=NS(try_click=lambda: False)), ButtonNextNoIcon=NS(try_click=lambda: False)),
-                                   Produce=NS(SaveMemoPic=NS(Title=NS(exists=lambda: False))),
-                                   Common=NS(ButtonIconClose=NS(try_click=lambda: False), ButtonNext=NS(try_click=lambda: False), ButtonHome=NS(try_click=lambda: False)),
-                                   ))  # fmt: skip
+    monkeypatch.setattr(rs, "screen_texts", lambda *a, **k: [])
+    monkeypatch.setattr(rs, "tap", lambda name, img, click: False)  # 画面上什么模板都没有
+    monkeypatch.setattr(rs, "tpl", lambda name: NS(exists=lambda img: False))
     monkeypatch.setattr(rs.time, "sleep", lambda s: t.__setitem__(0, t[0] + s))
     assert rs.finish_produce_end(timeout=180.0) is True  # 墙钟过了 300s 以上，但暂停不计，没超时
 
@@ -172,7 +170,7 @@ def test_real_flow_controller_blocks_checkpoint(tmp_path):
     th.start()
     w = rp.Watcher(flow, flag=flag)
     _t.sleep(0.1)
-    flag.write_text("1 崩溃重启中")
+    flag.write_text("1 崩溃重启中", encoding="utf-8")
     w.tick()
     _t.sleep(0.1)
     frozen = count[0]
@@ -189,7 +187,7 @@ def test_real_flow_controller_blocks_checkpoint(tmp_path):
 def test_watcher_stop_resumes(tmp_path):
     """进程退出时还在暂停：stop() 先恢复，别把主线程留在暂停里。"""
     flow, flag = Flow(), tmp_path / "REC_DOWN"
-    flag.write_text("1 已停")
+    flag.write_text("1 已停", encoding="utf-8")
     w = rp.Watcher(flow, flag=flag)
     w.tick()
     w.stop()

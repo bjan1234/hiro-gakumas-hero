@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/pitem_select.py（develop c3fc27f）
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """H.I.F 考试后的「P 道具选择」页（SELECT_PITEM）：标题「獲得するPアイテムを選択してください」，三个彩色背包，下方「受け取る」。
 
@@ -30,11 +29,11 @@ def is_select_pitem(img: MatLike) -> bool:
 def read_pitem_select(img: MatLike, *, button_disabled: bool | None = None) -> dict:
     """→ {"options": [{slot, color, rect[x, y, w, h], center[x, y], selected}], "selected": slot | None, "confirm_enabled": bool | None}。
 
-    button_disabled 由调用方给出（需要 KAA 上下文：R.InProduce.AcquireBtnDisabled.exists()）；None 时自己查。"""
+    button_disabled 可由调用方给出；None 时按模板 InProduce.AcquireBtnDisabled 自己查。"""
     if button_disabled is None:
-        from kaa.tasks import R
+        from hiro.vision.ui_templates import tpl
 
-        button_disabled = bool(R.InProduce.AcquireBtnDisabled.exists())
+        button_disabled = tpl("InProduce.AcquireBtnDisabled").exists(img)
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     options = []
     for slot, (x1, y1, x2, y2) in enumerate(BAG_BOXES):

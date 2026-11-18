@@ -36,6 +36,10 @@ class AssetSource(Protocol):
     def card_art_dir(self) -> Path | None:
         """技能卡卡面图（识别手牌、选卡）。"""
 
+    def game_data(self, category: str) -> Path | None:
+        """KAA 公开数据里的原图目录（idol_cards / skill_cards / drinks）；没有返回 None。"""
+        return None
+
     def icon_dir(self, kind: str) -> Path | None:
         """图标目录，kind 如 "drink" / "pitem" / "status"。"""
 
@@ -100,7 +104,8 @@ class ExamStateSource(Protocol):
 
 @runtime_checkable
 class ExamAdvisor(Protocol):
-    """考试里每一步怎么打。默认实现：社区规则 + LLM 兜底，不需要模拟器。"""
+    """考试里每一步怎么打。默认实现：gakumas-bench 算法（缺省 UINet，hiro.bench_bridge），出错时退回社区规则；
+    HIRO_BENCH_ADVISOR=0 时是社区规则 + LLM（hiro.defaults.advisor:RuleLLMAdvisor）。"""
 
     def on_round_start(self, round_no: int, context: dict[str, Any]) -> None: ...
 
@@ -114,7 +119,7 @@ KINDS: dict[str, tuple[type, str, str]] = {
     # 种类 → (接口, 环境变量, 默认实现 "模块:类")
     "asset_source": (AssetSource, "HIRO_ASSET_SOURCE", "hiro.defaults.assets:PublicAssetSource"),
     "exam_state_source": (ExamStateSource, "HIRO_EXAM_STATE_SOURCE", "hiro.defaults.exam_state:ScreenExamStateSource"),
-    "exam_advisor": (ExamAdvisor, "HIRO_EXAM_ADVISOR", "hiro.defaults.advisor:RuleLLMAdvisor"),
+    "exam_advisor": (ExamAdvisor, "HIRO_EXAM_ADVISOR", "hiro.search.advisor:SearchAdvisor"),  # 任务 ②：搜索不了退回 bench 中转层
 }
 _registered: dict[str, Callable[[], Any]] = {}
 _cache: dict[str, Any] = {}

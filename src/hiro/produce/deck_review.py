@@ -1,4 +1,3 @@
-# 来源：digital-hiro hiro/produce/deck_review.py（c3fc27f）
 """主动查看牌组（docs/state-events.md §6）：选行动页底栏的牌组按钮 → 「所持スキルカード」一览 → 读一屏（不全就滑到底再读、拼起来）→ 关闭。
 
 只在三种情况调用（hif.HiroHifStrategy._maybe_review_deck）：pending_review 含 produce.deck；每场考试之间第一次到选行动页；调试模式。
@@ -8,6 +7,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from hiro.devices.active import sleep as _sleep
 from hiro import imgio
 
 CLOSE_TEXTS = ("閉じる",)
@@ -21,6 +21,8 @@ SAME_SCREEN_DIFF = 2.0  # 视口灰度平均差小于这个 = 滑不动了（到
 # 滑完等列表停稳再截：先等 SWIPE_SETTLE，之后每 STILL_EVERY 截一张，相邻两张差 < SAME_SCREEN_DIFF 算停稳，最多等 STILL_MAX。
 # 第二十三局（录像、机器负载高）：滑到底后列表在回弹，每屏都截在动的时候，相邻屏一直不一样 → 拍满 6 屏，读整副 58.8s（平时 10–14s）
 SWIPE_SETTLE, STILL_EVERY, STILL_MAX = 0.8, 0.3, 2.5
+END_SWIPES = 8  # 回到顶 / 滑到底：一直滑到画面不动，最多这么多次
+ROWS_PER_SCREEN = 3  # 一览一屏整 3 行（4 张一行）：首屏 + 末屏最多盖住 6 行 = 24 张
 SAVE_DIR = None  # 每屏截图存这里（识屏要核对第一次实机的一览页帧）；None 不存
 
 
@@ -79,7 +81,7 @@ def _still(shoot, sleep, clock):
 
 
 def review_deck(*, shoot: Callable, click: Callable[[int, int], None], swipe: Callable[[int, int, int, int, float], None],
-                ocr_texts: Callable, sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic) -> dict:  # fmt: skip
+                ocr_texts: Callable, sleep: Callable[[float], None] = _sleep, clock: Callable[[], float] = time.monotonic) -> dict:  # fmt: skip
     """返回 {deck, deck_size, problems, opened, closed}。deck 为 ProduceState.deck 格式或 None。"""
     from hiro.vision.deck import find_deck_button, is_deck_list, merge_deck_pages, read_deck_list
 
@@ -131,6 +133,19 @@ def review_deck(*, shoot: Callable, click: Callable[[int, int], None], swipe: Ca
             page = merge_screens(reads)
             if page.get("deck") is not None:
                 break
+    size = page.get("deck_size")
+    if page.get("deck") is None and size and -(-size // 4) <= 2 * ROWS_PER_SCREEN:
+        # 逐屏拼出的张数和标签对不上（DMM qualifyverify4 11-17：第 2 屏滑过头，拼出 25 张、标签 16 张）：按标签重读一次——
+        # 回到顶读首屏、滑到底读末屏，按行号拼（merge_deck_pages：中间有行没看到、重叠行读得不一样都给 None）。还不对就不写
+        first = "；".join(page.get("problems") or [])
+        top, bottom = _top_and_bottom(shoot, swipe, sleep, clock)
+        imgs += [top, bottom]
+        retry = merge_deck_pages(read_deck_list(top), read_deck_list(bottom))
+        if retry.get("deck") is not None and len(retry["deck"]) == size:
+            out["problems"].append(f"逐屏拼接不对（{first}），按标签 {size} 张回到顶 / 滑到底重读，按行号拼对了")
+            page = retry
+        else:
+            out["problems"].append(f"逐屏拼接不对（{first}），按标签重读也没拼对（{'；'.join(retry.get('problems') or [])}），不写牌组")
     _save(imgs)
     out["page"] = page
     out["screens"] = len(imgs)
@@ -140,6 +155,24 @@ def review_deck(*, shoot: Callable, click: Callable[[int, int], None], swipe: Ca
     if not out["closed"]:
         out["problems"].append("牌组一览没关掉")
     return out
+
+
+def _to_end(shoot, swipe, sleep, clock, *, up: bool):
+    """一直滑到列表停住（相邻两屏一样），返回停稳的那一帧。up=True 回到顶，False 滑到底。"""
+    x1, y1, x2, y2 = LIST_SWIPE
+    seg = (x2, y2, x1, y1) if up else LIST_SWIPE
+    prev = _still(shoot, sleep, clock)
+    for _ in range(END_SWIPES):
+        swipe(*seg, 0.6)
+        cur = _still(shoot, sleep, clock)
+        if _view_diff(prev, cur) < SAME_SCREEN_DIFF:
+            return cur
+        prev = cur
+    return prev
+
+
+def _top_and_bottom(shoot, swipe, sleep, clock):
+    return _to_end(shoot, swipe, sleep, clock, up=True), _to_end(shoot, swipe, sleep, clock, up=False)
 
 
 def _close(shoot, click, ocr_texts, sleep, clock, is_deck_list) -> bool:

@@ -72,3 +72,118 @@ def test_rounds_switch(monkeypatch):
     assert src.label is None  # R1 不给预演
     src.begin({"exam": "r2", "profile": CAMPUS_HIRO})
     assert src.label == "r2"
+
+
+def test_basic_card_budget_resets_per_exam():
+    """「一场最多加 6 张」基础类卡按场算：每次 begin（新一场考试、再挑戦）清零，不跨场累计（DMM 实机：R2 第 3 次再挑戦时
+    画面上的 距離感の基本 加不进合成牌组，「重建失败…在模拟器里找不到」，这一场后面都给不出预演）。"""
+    from hiro.sim.screen_source import SimScreenExamStateSource
+
+    src = SimScreenExamStateSource()
+    src.begin({"exam": "r2"})
+    src._added = 6
+    src.setup = object()
+    src.begin({"exam": "r2"})
+    assert src._added == 0 and src.setup is None
+
+
+def test_tracking_never_errors_on_random_effects(monkeypatch):
+    """dmmt1 R1：跟踪 99 次 sim_error、核对通过 0 次。按画面重放随机效果时给 env.rng 赋新对象，
+    新引擎（gakumas_exam，Python / Rust 都是）的 rng 是只读属性，只能改 rng.state。"""
+    from hiro.contracts import Action
+    from hiro.sim import track
+    from hiro.sim.screen_source import SimScreenExamStateSource
+
+    reasons = []
+    real = track.SimTracker.sync
+
+    def spy(self, screen):
+        r = real(self, screen)
+        reasons.append((r.reason, (r.notes or [""])[-1]))
+        return r
+
+    monkeypatch.setattr(track.SimTracker, "sync", spy)
+    deck, truth = _truth()
+    src = SimScreenExamStateSource()
+    src.begin({"exam": "r1", "profile": CAMPUS_HIRO, "session": _Session(deck)})
+    mem = copy.deepcopy(truth.memory)
+    for _ in range(30):
+        if truth.ended:
+            break
+        state = truth.state()
+        src.game = None
+        src.screen_drinks = [d.drink_id for d in state.drinks]
+        src._sync(state, mem)
+        legal = state.legal_actions()
+        act = next((a for a in legal if a.startswith("play:")), "skip")
+        slot = int(act.split(":")[1]) if act != "skip" else None
+        truth.step(dict(kind="play", id=truth._hand[slot]) if slot is not None else dict(kind="end_turn"))
+        src.executed(Action.from_legal(act), None)
+    assert not [r for r in reasons if r[0] == "sim_error"], reasons
+
+
+SLEEPY = "p_card-00-acc-0_002"
+
+
+def _needs_new_card():
+    rs = pytest.importorskip("gakumas_exam_rs")
+    if not hasattr(getattr(rs, "Exam", object), "new_card"):
+        pytest.skip("Rust 后端没有 new_card")
+
+
+def test_card_missing_from_ledger_is_caught_not_lost():
+    """DMM mainverify2（11-17）：支援事件给的「頭上に注意！」没进牌组账本，R1 T1 起手就有它 → 「画面上的 … 在模拟器里找不到」，
+    搜索整场退回 UINet。账本少的卡出现在手牌时按画面新建一张接住，跟踪不丢。"""
+    _needs_new_card()
+    from hiro.contracts import Action
+    from hiro.sim.screen_source import SimScreenExamStateSource
+
+    deck, truth = _truth()
+    first = truth.state()
+    ids = [c[0] for c in deck]
+    gone = next(c.card_id for c in first.hand if ids.count(c.card_id) == 1)  # 起手里牌组只有一张的卡
+    ledger = [c for c in deck if c[0] != gone]  # 账本漏了它
+    src = SimScreenExamStateSource()
+    src.begin({"exam": "r1", "profile": CAMPUS_HIRO, "session": _Session(ledger)})
+    mem = copy.deepcopy(truth.memory)
+    for _ in range(6):
+        if truth.ended:
+            break
+        state = truth.state()
+        src.game = None
+        src.screen_drinks = [d.drink_id for d in state.drinks]
+        src._sync(state, mem)
+        assert src.game is not None, src.lost
+        legal = state.legal_actions()
+        act = next((a for a in legal if a.startswith("play:")), "skip")
+        slot = int(act.split(":")[1]) if act != "skip" else None
+        truth.step(dict(kind="play", id=truth._hand[slot]) if slot is not None else dict(kind="end_turn"))
+        src.executed(Action.from_legal(act), None)
+    assert src.stats["lost"] == 0
+
+
+def test_second_generated_sleepy_keeps_the_first():
+    """DMM mainverify2 R1 T7（11-17）：引擎里已有一张考试中生成的 眠気（不在合成牌组），画面手牌两张 眠気。原来 _add_basic 把缺的一张
+    加进合成牌组、从开局重新编译，引擎里生成的那张跟着旧局面丢了，重建还是缺一张。要在当前局面上新建，保留已有的那张。"""
+    _needs_new_card()
+    from hiro.sim.screen_source import SimScreenExamStateSource
+
+    deck, truth = _truth()
+    src = SimScreenExamStateSource()
+    src.begin({"exam": "r1", "profile": CAMPUS_HIRO, "session": _Session(deck)})
+    mem = copy.deepcopy(truth.memory)
+    state = truth.state()
+    src.screen_drinks = [d.drink_id for d in state.drinks]
+    src._sync(state, mem)
+    assert src.game is not None
+    rx = src.tracker.game.env.rx
+    g = rx.new_card(SLEEPY, 0)  # 考试中效果塞进山札的那张（合成牌组里没有）
+    rx.set_zone("deck", list(rx.zone("deck")) + [g])
+    screen = copy.deepcopy(state)
+    screen.hand[0].card_id, screen.hand[0].upgrade = SLEEPY, 0
+    screen.hand[1].card_id, screen.hand[1].upgrade = SLEEPY, 0
+    src.game = None
+    src._sync(screen, mem)
+    assert src.game is not None, src.lost
+    hand = [src.game.env.rx.card_info(i)[0] for i in src.game.env.zones["hand"]]
+    assert hand.count(SLEEPY) == 2, hand

@@ -1,22 +1,15 @@
-# 来源：digital-hiro hiro/loop/controller.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """HiroController：KAA ProduceController 的子类，每个调度周期把场景喂给 Session（页面级观测 → reduce），
 弹窗类中断记为 recover:dialog。决策点的完整记录在策略钩子（hiro.produce.hif）与考试循环（hiro.exec.exam）里。"""
 
 import time
-
-def _cx(rect) -> float:
-    return rect.center.x if hasattr(rect, "center") else rect[0] + rect[2] / 2
-
-
-def _cy(rect) -> float:
-    return rect.center.y if hasattr(rect, "center") else rect[1] + rect[3] / 2
-
 
 from kaa.tasks.produce.new.consts import Scene, SceneType
 from kaa.tasks.produce.new.controller import ProduceController
 from kotonebot import logging
 
 from hiro.loop.session import Session
+from hiro.vision.ocr import screen_texts
 
 logger = logging.getLogger(__name__)
 DECK_LIST_CLOSE = (360, 1157)  # 牌组一览「閉じる」（720x1280）
@@ -42,7 +35,7 @@ INTERVAL_TITLE_MIN = 0.88
 
 
 def interval_title_visible(img) -> bool:
-    """轮间「インターバル」标题徽章（KAA R.InProduce.HifInterval.Title 同一张模板）在左上角任意位置出现。
+    """轮间「インターバル」标题徽章（模板 InProduce.HifInterval.Title）在左上角任意位置出现。
     KAA 的 exists() 只在模板原位附近找；回标题再進入后徽章会下移 13px（第二十二局）。"""
     import cv2
 
@@ -61,13 +54,11 @@ _TPL: dict = {}
 
 def _interval_title_tpl():
     if "interval" not in _TPL:
-        from pathlib import Path
-
         import cv2
-        import kaa.tasks.R as kaa_r
 
-        p = Path(kaa_r.__file__).parents[1] / "sprites/f762b40a-df6a-4229-9dfb-e76e24142b37_template.png"
-        img = cv2.imread(str(p))
+        from hiro.vision.ui_templates import PACK, tpl
+
+        img = cv2.imread(str(PACK / tpl("InProduce.HifInterval.Title").file))  # 彩色匹配（INTERVAL_TITLE_MIN 按彩色分数定的）
         _TPL["interval"] = img[:, :, :3] if img is not None else None
     return _TPL["interval"]
 
@@ -126,7 +117,11 @@ class HiroController(ProduceController):
         quick = self._quick_page()
         if quick == "handled":
             return  # 点一下就过的页面（获得演出 / 结果气泡 / TAP 提示 / 礼物箱）：已点，下一轮再判
-        scene = Scene(SceneType.SELECT_PITEM) if quick == "SELECT_PITEM" else (self.page.check_scene() or Scene(SceneType.UNKNOWN))
+        if quick == "SELECT_PITEM":
+            scene, src = Scene(SceneType.SELECT_PITEM), "quick"
+        else:
+            scene = self.page.check_scene() or Scene(SceneType.UNKNOWN)
+            src = "kaa" if scene.type is not SceneType.UNKNOWN else "none"  # 判页来源（PageObs.source），只记不用
         from hiro.loop import kaa_patches
 
         if kaa_patches.BLIND_CHOICE["pending"]:
@@ -143,13 +138,13 @@ class HiroController(ProduceController):
             logger.info("KAA 判到多个剧情按钮（第 %d 次 / 8 秒内），已拦下不点，下一轮再看", len(hits))
         if scene.type is SceneType.UNKNOWN and interval_title_visible(device.screenshot()):
             # 第二十二局：通信エラー 回标题后「再開」进轮间，「インターバル」标题徽章比 KAA 模板位置低 13px，KAA 判不出 → 197s 停机
-            scene = Scene(SceneType.HIF_ROUND_INTERVAL)
+            scene, src = Scene(SceneType.HIF_ROUND_INTERVAL), "interval_title"
         if scene.type in (SceneType.UNKNOWN, SceneType.IDLE) and self._is_hif_exam():
             # KAA 只认普通考试的排名文字（TextExamRank*），H.I.F 选拔 / 本战的考试画面它判不出来
-            scene = Scene(SceneType.EXAM)
+            scene, src = Scene(SceneType.EXAM), "exam_ocr"
         elif scene.type is SceneType.UNKNOWN and (fb := self._fallback_page()) is not None:
             # 像素兜底（hiro.vision.quick.fallback_page）：选行动页带提示气泡 / 淡入、饮料溢出列表，KAA 判 UNKNOWN（第二十一局选拔）
-            scene = Scene(SceneType[fb])
+            scene, src = Scene(SceneType[fb]), "pixel"
             if HiroController.session is not None:
                 HiroController.session.recover("page_misjudged", f"KAA 判不出，像素兜底补判为 {fb}")
             logger.info("UNKNOWN 补判为 %s（像素兜底）", fb)
@@ -174,14 +169,15 @@ class HiroController(ProduceController):
 
             logger.info("UNKNOWN 补判为培育结束（プロデュース完了）")
             if HiroController.session is not None:
-                HiroController.session.observe(scene="PRODUCE_END", area="produce", img=None, fields=False, save_frame=True)
+                HiroController.session.observe(scene="PRODUCE_END", area="produce", img=None, fields=False, save_frame=True,
+                                               page_source="produce_end_ocr")  # fmt: skip
                 HiroController.session.record()
             finish_produce_end()
             self.abort()
             return
         elif scene.type is SceneType.UNKNOWN and self._is_drink_offer():
             # 差し入れ等的饮料三选一（带「受け取らない」勾选框、饮料满时「Pドリンク所持上限」）：KAA 的 TextPDrink 模板认不出
-            scene = Scene(SceneType.SELECT_DRINK)
+            scene, src = Scene(SceneType.SELECT_DRINK), "drink_ocr"
             if HiroController.session is not None:
                 HiroController.session.recover("page_misjudged", "KAA 判不出饮料选择页（差し入れ），OCR 补判为 SELECT_DRINK")
             logger.info("UNKNOWN 补判为 SELECT_DRINK")
@@ -201,12 +197,15 @@ class HiroController(ProduceController):
             return  # 行动记录覆盖层（底栏文档图标）：KAA 会因「Pアイテム…を獲得」判成 SELECT_PITEM；点 ✕ 关掉，下一轮重判
         elif scene.type is SceneType.UNKNOWN and self._is_pitem_select():
             # H.I.F 考试后的 P 道具三选一（背包），KAA 的 TextPItem 模板认不出
-            scene = Scene(SceneType.SELECT_PITEM)
+            scene, src = Scene(SceneType.SELECT_PITEM), "pitem_ocr"
             if HiroController.session is not None:
                 HiroController.session.recover("page_misjudged", "KAA 判不出 H.I.F P 道具选择页，OCR 补判为 SELECT_PITEM")
             logger.info("UNKNOWN 补判为 SELECT_PITEM")
         elif scene.type is SceneType.IDLE:
+            idle = scene
             scene = self._reclassify_idle(scene)
+            if scene is not idle:
+                src = "idle_scene"
         if self._watch_unknown(scene):
             return  # 认不出的画面交给 LLM 看图：已执行一个受限动作（点框 / 点空白 / 等待），下一轮重判
         s = HiroController.session
@@ -215,13 +214,16 @@ class HiroController(ProduceController):
             before = s.state.page.name
             # P 道具页等靠补判认出的页面存一帧，供操作层标定点击位置
             keep = scene.type is SceneType.SELECT_PITEM or (s.debug_recog and name != before)  # 调试模式：页面每次变化都存帧（§7 3b）
-            s.observe(scene=name, area="produce", img=None, fields=False, save_frame=keep)
+            s.observe(scene=name, area="produce", img=None, fields=False, save_frame=keep, page_source=src)
             if s.state.page.name != before:
                 s.record()  # 页面变化才落一条（无决策）
             if scene.type in DIALOGS:
                 s.recover("dialog", f"KAA 中断弹窗 {scene.type.name}")
         if scene.type in (SceneType.UNKNOWN, SceneType.IDLE):
             self._count_taps(1)  # KAA 的 _dispatch 在 UNKNOWN / IDLE 上点一次 skip() (12,12)
+            from hiro.loop import kaa_usage
+
+            kaa_usage.count(f"skip(12,12):{scene.type.name}")
         self._rearm_exam(scene)
         self._dispatch(scene, self._last_scene)
         self._last_scene = scene
@@ -351,7 +353,8 @@ class HiroController(ProduceController):
         s = HiroController.session
         if s is not None:
             before = s.state.page.name
-            s.observe(scene=q["page"], area="produce", img=img, fields=dict(q["fields"]), save_frame=bool(s.debug_recog) or q["page"] != before)
+            s.observe(scene=q["page"], area="produce", img=img, fields=dict(q["fields"]), page_source="quick",
+                      save_frame=bool(s.debug_recog) or q["page"] != before)  # fmt: skip
             if s.state.page.name != before:
                 s.record()
         if q["tap"] is None:
@@ -394,16 +397,16 @@ class HiroController(ProduceController):
         from hiro.exec.exam import _hif_drink_dialogs
 
         # 考试外打开的饮料详情（「レッスン・試験・オーディション以外では使用できません」）：只点キャンセル
-        from kotonebot import device, ocr
+        from kotonebot import device
 
         shared = boxes is not None
-        boxes = boxes if shared else ocr.ocr()
+        boxes = boxes if shared else screen_texts(device.screenshot())
         if any("以外では使用できません" in b.text for b in boxes) or (
             any("ドリンク詳細" in b.text for b in boxes) and not HiroController._in_exam_texts([b.text for b in boxes])
         ):
             btn = next((b for b in boxes if "キャンセル" in b.text), None)
             if btn is not None:
-                device.click(btn.rect)
+                device.click(*btn.rect.center)
                 logger.warning("考试外的饮料详情：点「キャンセル」")
                 if HiroController.session is not None:
                     HiroController.session.recover("dialog", "考试外误开饮料详情，点キャンセル")
@@ -561,7 +564,7 @@ class HiroController(ProduceController):
             logger.warning("LLM 兜底写 trace 失败", exc_info=True)
 
     def _ocr_boxes(self) -> list:
-        """本轮整帧 OCR（Vision，1.5 倍，约 0.5s；kotonebot 整帧约 2–5s），各补判共用一次。框是整帧坐标（.text / .rect）。
+        """本轮整帧 OCR（hiro.vision.ocr.screen_texts，Vision 约 0.5s；RapidOCR 整帧约 2–5s），各补判共用一次。框是整帧坐标（.text / .rect）。
         UNKNOWN 画面每轮以前要做 2–3 次 kotonebot 整帧 OCR，第十五到十七局未识别画面每轮中位 6.7s，KAA 的 skip() 也就 6.7s 才点一下。"""
         if getattr(self, "_boxes", None) is None:
             from kotonebot import device
@@ -569,8 +572,7 @@ class HiroController(ProduceController):
             from hiro.exec.exam import _roi_texts
 
             img = device.screenshot()
-            boxes = _roi_texts(img, 0, img.shape[0]) if img is not None else []
-            self._boxes = sorted(boxes, key=lambda b: (int(b.rect.center.y) // 12, int(b.rect.center.x)))  # 自上而下（同 kotonebot 顺序）
+            self._boxes = _roi_texts(img, 0, img.shape[0]) if img is not None else []  # 自上而下、同行从左到右
         return self._boxes
 
     def _ocr_texts(self) -> list[str]:
@@ -683,19 +685,18 @@ class HiroController(ProduceController):
         # 剧情底栏：SKIP / ログ / AUTO / 早送り。OCR 常把 SKIP 读成「NskIp」「MSkIP」，「AUTO」读成「AuT0」，所以按「早送り」+ 任一其他键判
         if not any("早送" in t for t in texts) or not any("ログ" in t or "AUT" in t.upper() or "SKI" in t.upper() for t in texts):
             return False
-        from kotonebot import device, ocr
+        from kotonebot import device
 
         # 只点真的认出来的 SKIP 框，且在剧情底栏位置（左下）。q14：判据误中非剧情页，按固定位置 (220,1200) 点到饮料栏第 3 格，
         # 打开「Pドリンク詳細」后主循环在考试外连点「使う」67 次
         # 点之前重新截图核对（q15：用的是旧帧，剧情刚结束切回培育页，SKIP 的位置正好是饮料栏 → 又开了饮料详情）
-        device.screenshot()
-        fresh = ocr.ocr()
+        fresh = screen_texts(device.screenshot())
         if not any("早送" in b.text for b in fresh):
             return False
-        btn = next((b for b in fresh if "SKI" in b.text.upper() and _cy(b.rect) > 1120 and _cx(b.rect) < 360), None)
+        btn = next((b for b in fresh if "SKI" in b.text.upper() and b.rect.center.y > 1120 and b.rect.center.x < 360), None)
         if btn is None:
             return False
-        device.click(btn.rect)
+        device.click(*btn.rect.center)
         logger.info("培育剧情：点 SKIP")
         self._unknown_since = None  # 有进展：剧情 / 确认框之后的动画重新计时（q14：确认框 163s + 动画 34s 累计到 197s 停机）
         return True
@@ -709,19 +710,19 @@ class HiroController(ProduceController):
         hit = next((x for x in self.FIRST_RUN_SETTINGS if any(x[0] in t for t in texts)), None)
         if hit is None:
             return False
-        from kotonebot import device, ocr
+        from kotonebot import device
 
-        boxes = ocr.ocr()
+        boxes = screen_texts(device.screenshot())
         opt = next((b for b in boxes if hit[1] in b.text), None) if hit[1] else None
         if opt is not None:
-            device.click(opt.rect)
+            device.click(*opt.rect.center)
             time.sleep(0.5)
         from hiro.loop.skip_settings import is_ok_text
 
         btn = next((b for b in boxes if b.text.strip() == hit[2] or (hit[2] == "決定" and is_ok_text(b.text))), None)
         if btn is None:
             return False
-        device.click(btn.rect)
+        device.click(*btn.rect.center)
         self._unknown_since = None
         logger.warning("一次性设置「%s」：选「%s」→「%s」", hit[0], hit[1], hit[2])
         if HiroController.session is not None:
@@ -737,7 +738,7 @@ class HiroController(ProduceController):
 
             btn = next((t for t in self._ocr_boxes() if "キャンセル" in t.text), None)
             if btn is not None:
-                device.click(btn.rect)
+                device.click(*btn.rect.center)
             else:
                 device.click(220, 1160)
             logger.warning("残留刷新确认框（リフレッシュ確認）：点「キャンセル」交回钩子")
@@ -750,11 +751,11 @@ class HiroController(ProduceController):
         self._recover_cancels = getattr(self, "_recover_cancels", 0) + 1
         if self._recover_cancels > 3:
             return False
-        from kotonebot import device, ocr
+        from kotonebot import device
 
-        btn = next((t for t in ocr.ocr() if "キャンセル" in t.text), None)
+        btn = next((t for t in screen_texts(device.screenshot()) if "キャンセル" in t.text), None)
         if btn is not None:
-            device.click(btn.rect)
+            device.click(*btn.rect.center)
         else:
             device.click(220, 1160)
         logger.warning("轮间残留「体力回復確認」：点「キャンセル」交回轮间钩子（第 %d 次）", self._recover_cancels)
@@ -814,7 +815,7 @@ class HiroController(ProduceController):
     def _advance_ranking(f: dict, strategy=None) -> None:
         """排名页 / 轮次结果页 KAA 认不出、不会自己点「次へ」（main10 R1 结果页卡住）。
         最终页（final）：续跑正好落在这一页时考试结束流程不会跑（main10 -r6 空转 17 分钟），这里先按上限规则判断再挑戦，不挑戦就点「次へ」收尾。"""
-        from kotonebot import device, ocr
+        from kotonebot import device
 
         if f.get("kind") == "final" and strategy is not None and hasattr(strategy, "_finals_retry"):
             try:
@@ -823,10 +824,10 @@ class HiroController(ProduceController):
             except Exception as e:  # 再挑戦判断失败也不能卡住：照常点「次へ」
                 logger.warning("本战最终页再挑戦判断失败：%s", e)
 
-        boxes = ocr.ocr()
+        boxes = screen_texts(device.screenshot())
         btn = next((t for t in boxes if t.text.strip() == "次へ" and t.rect.center.y > 900), None)
         if btn is not None:
-            device.click(btn.rect)
+            device.click(*btn.rect.center)
         elif any("タップして次へ" in t.text or "タップして" in t.text for t in boxes):
             device.click(360, 1180)  # 开考前排名页「タップして次へ」：点画面下方（main11 卡 29 分钟）
 

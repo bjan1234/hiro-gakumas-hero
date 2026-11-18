@@ -95,7 +95,8 @@ schedule_hif.json 日程（有则优先于仓库自带）
 
 ## 文字识别后端：Apple Vision 与 RapidOCR（`HIRO_OCR`）
 
-macOS 缺省用 Apple Vision，其他系统自动改用 KAA 自带的 RapidOCR（日文 / 英文 PaddleOCR 模型）。
+macOS 缺省用 Apple Vision，其他系统自动改用 RapidOCR（`rapidocr_onnxruntime`，日文 / 英文 PaddleOCR PP-OCRv3 模型；
+2026-11-13 起直接调用，不再经过 kotonebot，同一帧的结果与原来逐字节一致）。
 2026-11-06 在作者的实机截图回归集上对比（同一份代码、完整主数据和缓存，只换 OCR 后端；Mac M4）：
 
 | | Apple Vision | RapidOCR |

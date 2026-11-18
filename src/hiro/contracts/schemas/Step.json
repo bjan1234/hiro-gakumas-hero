@@ -34,13 +34,20 @@
       },
       "stable_frames": {
        "type": "integer"
+      },
+      "source": {
+       "type": [
+        "string",
+        "null"
+       ]
       }
      },
      "required": [
       "name",
       "area",
       "confidence",
-      "stable_frames"
+      "stable_frames",
+      "source"
      ],
      "additionalProperties": false,
      "description": "页面判定。name 为 hiro.vision.scene 的场景名（ACTION_SELECT / HIF_EXAM / …，unknown 表示没认出）。"
@@ -191,13 +198,27 @@
        "additionalProperties": {
         "type": "integer"
        }
+      },
+      "brief_exam_no": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "lesson": {
+       "type": [
+        "object",
+        "null"
+       ]
       }
      },
      "required": [
       "label",
       "turn",
       "last_remaining",
-      "brief_permil"
+      "brief_permil",
+      "brief_exam_no",
+      "lesson"
      ],
      "additionalProperties": false,
      "description": "考试内与 ExamMemory 对应、且需要落盘的少量字段；完整记忆仍在 hiro.brain.state.ExamMemory。"
@@ -973,13 +994,20 @@
        },
        "stable_frames": {
         "type": "integer"
+       },
+       "source": {
+        "type": [
+         "string",
+         "null"
+        ]
        }
       },
       "required": [
        "name",
        "area",
        "confidence",
-       "stable_frames"
+       "stable_frames",
+       "source"
       ],
       "additionalProperties": false,
       "description": "页面判定。name 为 hiro.vision.scene 的场景名（ACTION_SELECT / HIF_EXAM / …，unknown 表示没认出）。"
@@ -1080,13 +1108,20 @@
        },
        "stable_frames": {
         "type": "integer"
+       },
+       "source": {
+        "type": [
+         "string",
+         "null"
+        ]
        }
       },
       "required": [
        "name",
        "area",
        "confidence",
-       "stable_frames"
+       "stable_frames",
+       "source"
       ],
       "additionalProperties": false,
       "description": "页面判定。name 为 hiro.vision.scene 的场景名（ACTION_SELECT / HIF_EXAM / …，unknown 表示没认出）。"
@@ -1253,13 +1288,27 @@
        "additionalProperties": {
         "type": "integer"
        }
+      },
+      "brief_exam_no": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "lesson": {
+       "type": [
+        "object",
+        "null"
+       ]
       }
      },
      "required": [
       "label",
       "turn",
       "last_remaining",
-      "brief_permil"
+      "brief_permil",
+      "brief_exam_no",
+      "lesson"
      ],
      "additionalProperties": false,
      "description": "考试内与 ExamMemory 对应、且需要落盘的少量字段；完整记忆仍在 hiro.brain.state.ExamMemory。"

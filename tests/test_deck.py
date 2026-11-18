@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_deck.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """牌组一览（DECK_LIST）与相談削除 / 换卡弹窗的卡格读取。
 
 夹具：

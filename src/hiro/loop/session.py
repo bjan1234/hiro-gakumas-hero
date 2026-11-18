@@ -12,7 +12,7 @@ from typing import Any
 from hiro.contracts import Decision, ExecutionResult, GameState, Observation, Preview, Step, TraceWriter
 from hiro.loop.reduce import reduce
 from hiro.loop.transitions import is_transient, successors
-from hiro.log import logging
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ RECOVER_KINDS = ("page_misjudged", "missing_fields", "llm_invalid", "tap_no_effe
 
 
 def _default_shoot():
-    from kotonebot.backend.context import device
+    from hiro.devices.active import device
 
     return device.screenshot()
 
@@ -53,6 +53,7 @@ class Session:
         self.recoveries: Counter = Counter()
         self.last: Observation | None = None
         self.img = None  # 最近一次 observe 的截图
+        self.last_decision = None  # (页面名, Decision)：最近一次记录的决策（中断层看「刚才是不是选了休息」）
         self.steps = 0
         self._last_exec_t: float | None = None  # 上一个有执行结果的步落盘时刻（time.time），算过场耗时
         from hiro.loop.repeat_guard import Guard
@@ -78,7 +79,8 @@ class Session:
 
     # ---------------------------------------------------------------- 观测
     def observe(self, *, scene: str | None = None, area: str = "produce", img=None, fields: bool | dict = True,
-                ready: bool = False, source: str = "screen", save_frame: bool = True, seq: int | None = None) -> Observation:  # fmt: skip
+                ready: bool = False, source: str = "screen", save_frame: bool = True, seq: int | None = None,
+                page_source: str | None = None) -> Observation:  # fmt: skip
         """截图（或用给定的 img）→ 分类（或用给定的 scene）→ 提取字段（fields=True 走 extract，dict 为原始字段，ready=True 表示已是契约字段）→ reduce。"""
         from hiro.vision.observe import observation
 
@@ -90,6 +92,7 @@ class Session:
         if scene is None:
             t1 = self.clock()
             scene, area = self.classify()
+            page_source = "classify"
             timings["classify"] = (self.clock() - t1) * 1000
         raw = None
         if fields is True and img is not None:
@@ -101,7 +104,7 @@ class Session:
         shot = self.trace.save_frame(seq, img) if (save_frame and img is not None) else None
         stable = self.state.page.frames + 1 if self.state.page.name == scene else 1
         obs = observation(seq, time.time(), scene, raw, area=area, screenshot=shot, source=source, stable_frames=stable,
-                          timings_ms=timings, ready=ready)  # fmt: skip
+                          timings_ms=timings, ready=ready, page_source=page_source)  # fmt: skip
         if fields is not False and source == "screen":
             self._decision_state = None  # 新的决策帧：上一次执行校验没有 record 时不能沿用旧快照
         self.state = self._reduce_checked(obs)
@@ -189,6 +192,18 @@ class Session:
         self.recover("missing_fields", f"{scene} 连续 {tries} 帧缺 {obs.missing(required)}，带缺字段继续")
         return obs
 
+    def left_page(self, scene: str, obs: Observation, required: list[str] | tuple[str, ...]) -> str | None:
+        """页内循环守卫（相談 / 轮间 / 特別指導）：obs（一般是 observe_complete 用尽重试后的那帧）里 required 仍读不到（None 或空）时，
+        不指定页面重新观测一次（重新分类）。已经不在 scene 就记 recover:page_misjudged、返回现在的页面名，调用方退出循环交回主循环；
+        否则返回 None。DMM 第 12 天相談：离开后画面已是选拔加载页 / 考试说明，相談循环按沿用的旧货架又点了 3 次。"""
+        if all(obs.fields.get(n) not in (None, [], {}) for n in required):
+            return None
+        now = self.observe()
+        if now.page.name == scene:
+            return None
+        self.recover("page_misjudged", f"{scene} 页内连续读不到 {list(required)}，重新分类是 {now.page.name}：退出页内循环")
+        return now.page.name
+
     # ---------------------------------------------------------------- 记录
     def recover(self, kind: str, detail: str) -> None:
         assert kind in RECOVER_KINDS, kind
@@ -228,6 +243,7 @@ class Session:
             timings_ms.setdefault("advance_taps", self.advance_taps)
         if decision is not None:
             self.advance_taps = 0
+            self.last_decision = (obs.page.name, decision)
         repeated = None
         if decision is not None and execution is not None and decision.action.kind.name not in ("WAIT", "NOOP"):
             from hiro.loop.repeat_guard import REPEAT_MAX, action_key, state_sig

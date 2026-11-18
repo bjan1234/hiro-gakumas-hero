@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_action_select_wait.py（c3fc27f）
 """第十九局本战第 1 天：Da 2296 读成 3296 被不变量拦下 → 决策器缺属性抛异常 → Wait → choice None → 交给 KAA，
 KAA 按 v0 规则自己进了 Vi 授業。Wait 时要重读再决策；仍是 Wait 就停下，不交给 KAA。"""
 
@@ -25,17 +24,21 @@ def _st(monkeypatch, decisions):
     st._maybe_review_deck = lambda: None
     st.rec = NS(log=lambda *a, **k: None)
     committed = []
-    st._to_produce_action = lambda action, actions: None if action.kind is ActionKind.WAIT else "STUDY_DANCE"
+    from hiro.vision.action_buttons import ActionButton
+    from hiro.vision.ocr import Box
+
+    btn = ActionButton("class", "Da", None, Box(0, 0, 2, 4), "InProduce.ButtonIconStudyDanceHif")
+    monkeypatch.setattr("hiro.vision.action_buttons.available_actions", lambda img: [btn])
+    monkeypatch.setattr("hiro.produce.action_select.action_commit", lambda b: committed.append(b.label))
     st._act = lambda commit, act, **kw: commit()
-    ctx = NS(fetch_available_actions=lambda: (["STUDY_DANCE"], [NS(rect=NS(center=NS(x=1, y=2)))]), commit=lambda c: committed.append(c))
-    return st, ctx, calls, committed
+    return st, None, calls, committed
 
 
 def test_wait_then_real_decision_after_reread(monkeypatch):
     real = Decision(Action.produce_next("class", attr="Da"), "Da 授業", "rule", 0.9)
     st, ctx, calls, committed = _st(monkeypatch, [WAIT, real])
     st.on_action_select(ctx)
-    assert len(calls) == 2 and committed == ["STUDY_DANCE"]
+    assert len(calls) == 2 and committed == ["class/Da"]
 
 
 def test_wait_persists_stops_not_kaa(monkeypatch):

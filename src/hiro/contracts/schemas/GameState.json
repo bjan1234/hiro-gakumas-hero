@@ -77,13 +77,27 @@
      "additionalProperties": {
       "type": "integer"
      }
+    },
+    "brief_exam_no": {
+     "type": [
+      "integer",
+      "null"
+     ]
+    },
+    "lesson": {
+     "type": [
+      "object",
+      "null"
+     ]
     }
    },
    "required": [
     "label",
     "turn",
     "last_remaining",
-    "brief_permil"
+    "brief_permil",
+    "brief_exam_no",
+    "lesson"
    ],
    "additionalProperties": false,
    "description": "考试内与 ExamMemory 对应、且需要落盘的少量字段；完整记忆仍在 hiro.brain.state.ExamMemory。"

@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/customize.py（develop c3fc27f）
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """特別指導（技能卡定制）页：SPECIAL_GUIDANCE（docs/pages-hif.md §4）。按 q10 第 19 天实机帧（reports/live/special-guidance/）写。
 
@@ -33,19 +32,19 @@ CURSOR_MIN_PX = 500  # 选中格四角的橙色角框（141 像素卡格）
 
 @cache
 def _customize_rows() -> dict[str, list[dict]]:
-    from kaa.db.sqlite import select_many
+    from hiro import master
 
     out: dict[str, list[dict]] = {}
-    for r in select_many("SELECT id, customizeCount, producePoint FROM ProduceCardCustomize"):
+    for r in master.rows("SELECT id, customizeCount, producePoint FROM ProduceCardCustomize"):
         out.setdefault(r["id"], []).append({"count": r["customizeCount"], "price": r["producePoint"]})
     return out
 
 
 @cache
 def _card_customize_ids(card_id: str, upgrade: int) -> tuple[str, ...]:
-    from kaa.db.sqlite import select_many
+    from hiro import master
 
-    rows = select_many("SELECT produceCardCustomizeIds FROM ProduceCard WHERE id = ? AND upgradeCount = ?", card_id, upgrade)
+    rows = master.rows("SELECT produceCardCustomizeIds FROM ProduceCard WHERE id = ? AND upgradeCount = ?", card_id, upgrade)
     return tuple(json.loads(rows[0]["produceCardCustomizeIds"] or "[]")) if rows else ()
 
 

@@ -8,6 +8,7 @@ pub mod exam;
 pub mod io;
 pub mod master;
 pub mod num;
+pub mod search;
 pub mod sig;
 pub mod status;
 pub mod sym;
@@ -223,6 +224,16 @@ mod py {
         fn set_review(&mut self, v: i64) {
             self.ex.status.override_review(v);
         }
+        /// 画面读数覆盖一种状态：cls 是状态类名（如 LessonBuffStatusEffect），by_turn 见 StatusCollection::override_single。
+        /// 不认识的类名报错（不往引擎里塞新类）。
+        fn override_status(&mut self, cls: &str, by_turn: bool, n: i64) -> PyResult<()> {
+            if !crate::enums::CLASS_NAMES.iter().any(|c| *c == cls) {
+                return Err(pyo3::exceptions::PyKeyError::new_err(format!("不认识的状态类 {cls}")));
+            }
+            let c = crate::status::class_id(cls);
+            self.ex.status.override_single(c, by_turn, n);
+            Ok(())
+        }
         #[setter]
         fn set_score(&mut self, v: i64) {
             self.ex.score = v;
@@ -273,6 +284,11 @@ mod py {
         fn drinks(&self) -> Vec<String> {
             self.ex.drinks.iter().map(|d| sym::name(*d)).collect()
         }
+        /// 饮料栏按画面设（模拟器跟踪按画面重建时用：任务 ② 验证 2，喝掉的饮料重建后还留在引擎里）
+        #[setter]
+        fn set_drinks(&mut self, v: Vec<String>) {
+            self.ex.drinks = v.iter().map(|d| sym::intern(d)).collect();
+        }
         #[getter]
         fn playing(&self) -> Option<String> {
             self.ex.playing.map(|c| self.ex.cards[c].guid.to_string())
@@ -319,6 +335,40 @@ mod py {
                 })
                 .collect()
         }
+        /// 卡的总强化次数按画面设（模拟器跟踪对齐用：考试中的支援强化是随机的，引擎掷的和实机不同，画面的「+」数才是真的）。
+        /// 只调支援强化那一块（多了去掉、少了补上）；支援强化减到 0 还多时再减考试中强化，不动基础强化。返回改没改。
+        fn set_card_upgrade(&mut self, guid: &str, total: i64) -> bool {
+            let Some(c) = self.find(guid) else { return false };
+            let k = &mut self.ex.cards[c];
+            let mut delta = total - k.upgrade();
+            if delta == 0 {
+                return false;
+            }
+            while delta > 0 {
+                k.support_upgrades.push(sym::NONE);
+                delta -= 1;
+            }
+            while delta < 0 && !k.support_upgrades.is_empty() {
+                k.support_upgrades.pop();
+                delta += 1;
+            }
+            if delta < 0 {
+                k.tmp_upgrade = (k.tmp_upgrade + delta).max(0);
+            }
+            k.invalidate();
+            true
+        }
+        /// 新建一张卡（不放进任何区，调用方用 set_zone 放）→ guid。画面上出现引擎牌组里没有的卡（眠気这类机关 / 效果生成的卡、
+        /// 编成里没读到的牌）时，对齐用它接住。主数据里没有这张卡时报错。
+        fn new_card(&mut self, card_id: &str, upgrade: i64) -> PyResult<String> {
+            let cid = sym::intern(card_id);
+            if self.ex.m.card(cid, upgrade).is_none() {
+                return Err(pyo3::exceptions::PyKeyError::new_err(format!("主数据里没有 {card_id}+{upgrade}")));
+            }
+            let g = self.ex.new_guid();
+            self.ex.add_card_obj(crate::card::Card::new(cid, upgrade, vec![], g.clone()));
+            Ok(g.to_string())
+        }
         fn card_info(&self, guid: &str) -> Option<(String, i64, Vec<i64>)> {
             self.find(guid).map(|c| {
                 let k = &self.ex.cards[c];
@@ -336,10 +386,69 @@ mod py {
         super::bench_game(&ex.ex, seed, worlds)
     }
 
+    /// 世界采样（任务 ②）：重排对局随机数、山札（顶部 known_deck_prefix 张保留）、free_turns 这几个回合的属性（互换）
+    #[pyfunction(name = "sample_world")]
+    fn sample_world_py(ex: &PyExam, known_deck_prefix: usize, free_turns: Vec<usize>, seed: u64) -> PyExam {
+        let h = crate::search::Hidden { known_deck_prefix, free_turns };
+        PyExam { ex: crate::search::sample_world(&ex.ex, &h, seed) }
+    }
+
+    /// 实战出牌搜索（任务 ②）：W 个世界并行 GNRPA，第一手投票。返回 dict：
+    /// best（动作元组或 None）、votes [(动作, 票数, 平均终局分)]、worlds [(第一手, 终局分, 续打数, 是否跑完)]、seconds
+    #[pyfunction(name = "search")]
+    #[pyo3(signature = (ex, known_deck_prefix, free_turns, worlds=8, seconds=15.0, threads=0, seed=0, level=2, iterations=60, alpha=1.0, temperature=1.0, end_bias=-1.0,
+                        rivals=vec![], lost_ssr_max=None, debuffs_min=None, greedy=0.0, prior=None,
+                        pass_rank=None, score_cap=None, clear_score=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn search_py<'py>(py: Python<'py>, ex: &PyExam, known_deck_prefix: usize, free_turns: Vec<usize>, worlds: usize, seconds: f64, threads: usize,
+                      seed: u64, level: u32, iterations: u32, alpha: f64, temperature: f64, end_bias: f64, rivals: Vec<i64>,
+                      lost_ssr_max: Option<i64>, debuffs_min: Option<i64>, greedy: f64,
+                      prior: Option<std::collections::HashMap<u64, f64>>, pass_rank: Option<i64>, score_cap: Option<i64>,
+                      clear_score: Option<i64>) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+        use pyo3::types::PyDict;
+        let h = crate::search::Hidden { known_deck_prefix, free_turns };
+        let obj = crate::search::Objective { rivals, lost_ssr_max, debuffs_min, pass_rank, score_cap, clear_score };
+        let prior: crate::search::Policy = prior.unwrap_or_default().into_iter().collect();
+        let p = crate::search::Params { level, iterations, alpha, temperature, end_bias, greedy, prior: std::sync::Arc::new(prior), obj, ..Default::default() };
+        let ex0 = ex.ex.clone();
+        let r = py.detach(move || crate::search::search(&ex0, &h, worlds, seconds, threads, seed, &p));
+        let tup = |a: Action| -> PyResult<Bound<'py, PyTuple>> {
+            let (k, i) = action_to_tuple(a);
+            if k == "end" { PyTuple::new(py, [k.into_pyobject(py)?.into_any()]) } else { PyTuple::new(py, [k.into_pyobject(py)?.into_any(), i.into_pyobject(py)?.into_any()]) }
+        };
+        let d = PyDict::new(py);
+        d.set_item("best", match r.best { Some(a) => Some(tup(a)?), None => None })?;
+        let votes: PyResult<Vec<_>> = r.votes.iter().map(|&(a, n, m)| Ok((tup(a)?, n, m))).collect();
+        d.set_item("votes", votes?)?;
+        let ws: PyResult<Vec<_>> = r.worlds.iter().map(|w| Ok((match w.first { Some(a) => Some(tup(a)?), None => None }, w.score, w.playouts, w.complete, w.raw, w.stars))).collect();
+        d.set_item("worlds", ws?)?;
+        d.set_item("seconds", r.elapsed.as_secs_f64())?;
+        let pol: std::collections::HashMap<u64, f64> = r.policy.into_iter().collect();
+        d.set_item("policy", pol)?;
+        Ok(d)
+    }
+
+    /// 一批局面各自从当前起搜一整局（不重排隐藏信息），返回 [(目标值, 终局分, 星)]。偶像之路编成评估用。
+    #[pyfunction(name = "plan_many")]
+    #[pyo3(signature = (exams, seconds=1.0, threads=0, seed=0, level=2, iterations=60, rivals=vec![], lost_ssr_max=None, debuffs_min=None, greedy=0.0,
+                        pass_rank=None, score_cap=None, clear_score=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn plan_many_py(py: Python<'_>, exams: Vec<PyRef<'_, PyExam>>, seconds: f64, threads: usize, seed: u64, level: u32, iterations: u32,
+                    rivals: Vec<i64>, lost_ssr_max: Option<i64>, debuffs_min: Option<i64>, greedy: f64, pass_rank: Option<i64>,
+                    score_cap: Option<i64>, clear_score: Option<i64>) -> Vec<(i64, i64, i64)> {
+        let xs: Vec<Exam> = exams.iter().map(|e| e.ex.clone()).collect();
+        let obj = crate::search::Objective { rivals, lost_ssr_max, debuffs_min, pass_rank, score_cap, clear_score };
+        let p = crate::search::Params { level, iterations, greedy, obj, ..Default::default() };
+        py.detach(move || crate::search::plan_many(xs, seconds, threads, seed, &p))
+    }
+
     #[pymodule]
     fn gakumas_exam_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_class::<PyExam>()?;
         m.add_function(wrap_pyfunction!(bench_game_py, m)?)?;
+        m.add_function(wrap_pyfunction!(sample_world_py, m)?)?;
+        m.add_function(wrap_pyfunction!(search_py, m)?)?;
+        m.add_function(wrap_pyfunction!(plan_many_py, m)?)?;
         Ok(())
     }
 }

@@ -65,7 +65,7 @@ def _release(tmp_path, *, wheel=b"fake wheel", sha=None, key="darwin-arm64", sou
     (d / name).write_bytes(wheel)
     manifest = {"source_hash": source_hash or er.source_hash(),
                 "wheels": {key: {"file": name, "sha256": sha or hashlib.sha256(wheel).hexdigest()}}}  # fmt: skip
-    (d / "manifest.json").write_text(json.dumps(manifest))
+    (d / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return (tmp_path / "rel").as_uri()
 
 
@@ -96,5 +96,5 @@ def test_manifest_from_dist(tmp_path):
         (dist / n).write_bytes(n.encode())
     m = er.write_manifest(dist)
     assert set(m["wheels"]) == {"win32-amd64", "darwin-arm64"} and m["source_hash"] == er.source_hash()
-    assert json.loads((dist / "manifest.json").read_text()) == m
+    assert json.loads((dist / "manifest.json").read_text(encoding="utf-8")) == m
     shutil.rmtree(dist)

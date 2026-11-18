@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_q14_delete.py（c3fc27f）
 """第十四局相談删卡（协调 4a / 总控 2026-11-02）：删除对话框滚动没动，两屏拼成 36 张（真实 18 张），
 えいえいおー（protect、keep=2）被当成多出来的副本删掉了。现在受保护卡所有副本都不删、定制过的也不删。帧：tests/fixtures/q14_delete。"""
 
@@ -18,7 +17,7 @@ EIEI = "p_card-02-men-1_031"
 
 
 def _read(name):
-    from hiro.loop.kaa_patches import CARD_OP_REGION
+    from hiro.produce.card_ops import CARD_OP_REGION
     from hiro.vision.deck import read_card_dialog
 
     return read_card_dialog(load(cv2.imread(str(FIX / f"{name}.jpg"))), CARD_OP_REGION["remove"])["cards"]

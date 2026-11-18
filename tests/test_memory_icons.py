@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_memory_icons.py（5af2874）；开源版：没有截图样例 / 渲染库 / 卡面时跳过
 """回忆小图标认卡（第 3 步「メモリー選択」四格 + 回忆选择页详情栏）与开局回忆卡核对。"""
 
 from pathlib import Path
@@ -100,26 +99,49 @@ def test_check_memory_cards_flags_wrong_card(icon_method):
     assert len(problems) == 1 and "第 4 格" in problems[0]
 
 
-def test_blank_screen_only_warns(icon_method):
+def test_all_unknown_blocks(icon_method):
+    """四格都认不出不能放行（11-17 Mac p15c：翻编成号的动画中读的，四格分 28–40，原来只记警告就开局了）。"""
     reads = read_step3_icons(np.full((1280, 720, 3), 128, np.uint8), expect=STEP3_TRUTH)
-    problems, warnings = check_memory_cards(reads, _plan(STEP3_TRUTH))
-    assert problems == [] and any("布局" in w for w in warnings)
+    problems, _ = check_memory_cards(reads, _plan(STEP3_TRUTH))
+    assert len(problems) == 1 and "四格回忆都认不出" in problems[0]
+
+
+P15C_PLAN = ["p_card-02-men-2_004", "p_card-02-act-1_037", "p_card-02-act-3_039", "p_card-02-men-3_002"]
+
+
+def test_step3_check_waits_for_icons_to_settle(monkeypatch):
+    """p15c 实机两帧：翻到编成 20 的那一刻（卡面还在换，四格认不出 / 认错）和 0.6 秒后（四格全对）。
+    给了 shoot 就等停稳再核对：通过；只看第一帧：停下。"""
+    from hiro.produce import formation_steps
+    from hiro.produce.formation_steps import FormationMismatch, check_memory_set
+
+    a, b = FIX / "pages" / "step3-settling-p15c-1.jpg", FIX / "pages" / "step3-settling-p15c-2.jpg"
+    if not (a.is_file() and b.is_file()):
+        pytest.skip("需要实机截图 pages/step3-settling-p15c-*.jpg")
+    first, settled = _img(a), _img(b)
+    plan = _plan(P15C_PLAN)
+    plan["memory"]["set"] = 20
+    monkeypatch.setattr("hiro.produce.formation_check.check_memory_step3", lambda n, plan: ([], []))  # 编成号另有用例，这里只看卡面
+    frames = [first, settled, settled]
+    check_memory_set(first, plan, 20, shoot=lambda: frames.pop(0) if len(frames) > 1 else frames[0], sleep=lambda s: None)
+    with pytest.raises(FormationMismatch):
+        check_memory_set(first, plan, 20)
+    assert formation_steps.STEP3_SETTLE_READS >= 3
 
 
 @NEED_STEP3
-def test_kaa_patches_mode_switch(monkeypatch):
-    pytest.importorskip("kotonebot")
-    from hiro.loop import kaa_patches
+def test_memory_card_check_mode_switch(monkeypatch):
+    from hiro.produce.formation_steps import memory_card_problems
 
     img = _img(STEP3)
     plan = _plan(STEP3_TRUTH[:3] + ["p_card-02-act-3_039"])
     monkeypatch.setenv("HIRO_MEMORY_CARD_CHECK", "warn")
-    p, w = kaa_patches._check_memory_cards(img, plan)
+    p, w = memory_card_problems(img, plan)
     assert p == [] and any("不拦" in x for x in w)
     monkeypatch.setenv("HIRO_MEMORY_CARD_CHECK", "off")
-    assert kaa_patches._check_memory_cards(img, plan) == ([], [])
+    assert memory_card_problems(img, plan) == ([], [])
     monkeypatch.delenv("HIRO_MEMORY_CARD_CHECK")
-    assert kaa_patches._check_memory_cards(img, plan)[0]
+    assert memory_card_problems(img, plan)[0]
 
 
 @NEED_STEP3

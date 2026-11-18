@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_check_settings_nav.py（fix_matto_prep_watchdog 5b5adff）
 """设置检查按 OCR 导航（第三十三局：按固定坐标点「設定」没进去，两张截图都是菜单，读成全 None 被当成「设置被重置」）。"""
 
 import sys

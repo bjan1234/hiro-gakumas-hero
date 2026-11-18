@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/brain/state.py @ c3fc27f（GPL-3.0-or-later）
 """考试决策的状态：一帧画面的快照（BattleState）+ 本场考试的记忆（ExamMemory）。
 
 画面只能读到当前数值；「持续效果还剩几次」「道具还剩几次」「本回合已出过什么」只能靠记忆推出来。

@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_finals_exam.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """识别-05：本战（produce-008）考试画面与名次页。夹具取自第四局本战 R1（reports/runs/20261031-195627、traces/<run>-main4-20261031-194839-r2）。"""
 
 from pathlib import Path

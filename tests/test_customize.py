@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_customize.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """特別指導（SPECIAL_GUIDANCE）：q10 第 19 天实机帧（reports/live/special-guidance/，选卡屏原图 540x960 已放大到 720x1280）。"""
 
 from pathlib import Path

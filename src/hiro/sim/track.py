@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/sim/track.py（develop 864e037）
 """存档读不到时，用模拟器把最近一次读到的局面按实际执行的动作推下去（专家续推）。
 
 起因：main8 本战 R1（reports/runs/20261101-055854）第 3 回合起存档每次都投影失败（Physical card occurs in multiple zones），
@@ -177,8 +176,7 @@ class SimTracker:
 
     def _advance(self, base, actions: list[dict], screen_hand: list, notes: list[str]):
         """按画面推进一步：先原样推；手牌不同时把画面上新出现的牌放到山札顶重放；回合开始「随机强化 1 张」之类的随机效果
-        再换几个随机种子重放，取手牌与强化次数都和画面一致的那次。都不完全一致时取卡 ID 一致的第一次，强化次数按画面改。"""
-        from gakumas_exam.rng import NativeRandom
+        再换几个随机种子重放，取手牌与强化次数都和画面一致的那次。都不完全一致时取卡 ID 一致的第一次（强化次数不一致只记一笔）。"""
 
         want = [cid for cid, _ in screen_hand]
         tries = []
@@ -198,7 +196,8 @@ class SimTracker:
                 replay = clone(base)
                 replay.zones["deck"] = top + deck
                 if k:
-                    replay.rng = NativeRandom((base.rng.state + k * 0x9E3779B9) % 2**32)
+                    # 新引擎（Python / Rust）的 rng 是只读属性，只能改 state；以前赋新对象，每次都 AttributeError（dmmt1 R1 99 次 sim_error）
+                    replay.rng.state = (base.rng.state + k * 0x9E3779B9) % 2**32 or 1
                 _apply_all(replay, actions)
                 tries.append(replay)
                 if _match(replay, screen_hand) == 2:
@@ -277,13 +276,14 @@ def _order_hand(env, screen_hand, notes: list[str]) -> None:
         exact = [i for i in cands if up is None or def_upgrade(env.cards[i]) == up]
         inst = (exact or cands)[0]
         if not exact:
-            # 随机强化重放也没对上：按画面改这张的强化次数（定义库里有这个版本时）
-            keys = [k for k in env.definitions if def_card_id(k) == cid and def_upgrade(k) == up]
-            if keys:
-                notes.append(f"强化次数按画面改：{env.cards[inst]} → {keys[0]}")
-                env.cards[inst] = keys[0]
+            # 画面的「+」数和引擎的 upgrade 同口径（基础 + 考试中 + 支援强化）。考试中的支援强化是随机的，引擎掷的和实机不同：
+            # Rust 后端按画面调支援强化那一块（任务 ② 验证 2：26% 的步手牌强化不同，牌效果不同，やる気 等数值慢慢偏）；
+            # 没有这个入口（Python 后端 / 旧 Rust 包）时只记一笔
+            rx = getattr(env, "rx", None)
+            if rx is not None and up is not None and hasattr(rx, "set_card_upgrade") and rx.set_card_upgrade(inst, int(up)):
+                notes.append(f"强化次数按画面：{env.cards[inst]} → +{up}")
             else:
-                notes.append(f"强化次数：模拟器 {env.cards[inst]} ≠ 画面 +{up}（定义库里没有这个版本，未改）")
+                notes.append(f"强化次数：模拟器 {env.cards[inst]} ≠ 画面 +{up}（未改）")
         ordered.append(inst)
         left.remove(inst)
     env.zones["hand"] = ordered + left

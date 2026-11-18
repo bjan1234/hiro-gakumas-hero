@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/brain/formation.py @ c3fc27f（GPL-3.0-or-later）；支援卡技能改走 AssetSource.support_effects()
 """开局编成：从游戏里预存的支援卡编成 / 记忆编成里按社区规则选第几号（KAA prepare 的编成编号 1–20）。
 
 用户 2026-10-31：记忆和支援卡不用 KAA 自动编成，改成显式配置，并作为决策的一部分。
@@ -106,9 +105,9 @@ def _swaps_hand(card_id: str | None) -> bool:
         return False
     try:
         from hiro.brain.cards import card_view
-        from hiro.brain.cards import kaa_cards as _kaa_cards
+        from hiro import master
 
-        kaa = _kaa_cards().get((card_id, 0))
+        kaa = master.card(card_id)
         return bool(kaa) and "手札をすべて入れ替える" in card_view(0, kaa, available=True).text
     except Exception:
         return False
@@ -240,6 +239,7 @@ def normalize_memory(m: dict) -> dict:
     from hiro.brain.deciders import _customize_text
     from hiro.state.memory_priority import CUSTOM_TEXT_KEYS, parse_param_texts
 
+    raw = m  # 原始扫描记录：开局自动编成要它的 cell / slot / stats 找回这份回忆（_inventory_position），转换后的格式里没有
     if isinstance(m.get("card"), dict):
         m = _from_entry(m)
 
@@ -255,7 +255,7 @@ def normalize_memory(m: dict) -> dict:
     params = m.get("params") or parse_param_texts(m.get("param_texts") or [])
     return {"id": m.get("id", m.get("index")), "card_id": card_id, "name": m.get("card_name") or card_id, "upgrade": up,
             "custom_keys": keys, "customized": customized, "timing": _timing(m), "params": params,
-            "abilities": list(m.get("abilities") or []), "rank": m.get("rank"), "raw": m}  # fmt: skip
+            "abilities": list(m.get("abilities") or []), "rank": m.get("rank"), "raw": raw}  # fmt: skip
 
 
 def memory_quality(mem: dict, gains: dict | None = None, finals: dict | None = None,
@@ -366,6 +366,9 @@ def select_memories(inventory: dict | list, *, gains: dict | None = None, finals
     rows = (inventory.get("memories") or inventory.get("entries") or []) if isinstance(inventory, dict) else inventory
     mems, skipped = [], []
     for raw in rows:
+        if raw.get("suspect"):  # 扫描标的可疑记录（详情栏没刷新读成上一格等，hiro.produce.memory_picker.mark_suspects）：不选
+            skipped.append(f"{raw.get('id') or raw.get('cell')}：扫描记录可疑（{raw['suspect']}）")
+            continue
         m = normalize_memory(raw)
         if m["card_id"] is None:
             skipped.append(f"{raw.get('id')}：卡名读不出（{raw.get('card_name')}）")
@@ -405,7 +408,7 @@ def select_memories(inventory: dict | list, *, gains: dict | None = None, finals
         alt = alts[0] if alts else None
         return {"id": m["id"], "card_id": m["card_id"], "name": e.get("name") or m["name"], "upgrade": m["upgrade"],
                 "timing": m["timing"], "weight": s["weight"], "quality": round(s["quality"], 1), "role": e.get("role"), "slot": e.get("slot"),
-                "sources": e.get("sources", []), "why": s["why"], **_inventory_position(m["raw"]),
+                "sources": e.get("sources", []), "why": s["why"], "abilities": list(m.get("abilities") or []), **_inventory_position(m["raw"]),
                 "vs_same_card": (f"同卡另一份 {alt['id']}：质量 {scored[id(alt)]['quality']:.1f}（{'；'.join(scored[id(alt)]['why']) or '无'}）"
                                  if alt else "库存里只有这一份")}  # fmt: skip
 
@@ -518,7 +521,7 @@ def choose_memory_rental(rental_rows: list[dict], current_formation: list[dict],
             continue
         rentals.append((raw, m))
     own_rows = ((inventory.get("memories") or inventory.get("entries") or []) if isinstance(inventory, dict) else inventory) or []
-    own = [m for m in (normalize_memory(r) for r in own_rows) if m["card_id"]]
+    own = [m for m in (normalize_memory(r) for r in own_rows if not r.get("suspect")) if m["card_id"]]
     scored = _score_memories(cur + [m for _, m in rentals] + own, gains_, finals_, profile)
     base, _ = _formation_score(cur, scored, gains_, finals_, profile) if cur else (0.0, [])
     out["current_total"] = round(base, 1)

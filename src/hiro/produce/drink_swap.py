@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/produce/drink_swap.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """饮料满（所持上限）时丢一瓶已有的、收下新的。丢哪瓶由决策给已有饮料的序号（饮料栏从左到右，0 起）。
 
 两种画面：
@@ -20,7 +20,8 @@ from collections.abc import Callable
 
 import cv2
 import numpy as np
-from kotonebot import device, logging
+import logging
+from hiro.devices.active import device, sleep as _sleep
 
 from hiro.contracts import Action, ActionKind, ExecutionResult
 from hiro.produce.ops import Run, button_sv, find_text, orange_lit
@@ -148,6 +149,9 @@ def _toggle(r: Run, y: int, want: bool, what: str) -> str | None:
     return None if ok else f"{what}的勾选框点了 {TOGGLE_TIMEOUT:.0f}s 没变成{'勾上' if want else '取消'}"
 
 
+OWNED_SCROLL = (360, 900, 360, 650)  # 在已有饮料列表里往上滑 250（x1, y1, x2, y2）；滑回去时反过来
+OWNED_SCROLL_TRIES = 2
+OWNED_SCROLL_SETTLE = 0.6
 LAST_ROWS: dict = {}  # 最近一次 resolve_overflow 在溢出页上看到的行数 {"new": n, "owned": n}（钩子据此把视口外的已有饮料标成点不到）
 
 
@@ -161,9 +165,10 @@ def resolve_overflow(
     shoot: Callable[[], np.ndarray] | None = None,
     click: Callable[[int, int], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
     ocr=None,
     calib: bool = True,
+    swipe: Callable[[int, int, int, int], None] | None = None,
 ) -> ExecutionResult:
     """溢出页（PDRINK_MAX）：丢第 discard 瓶（可多瓶）已有饮料，留下新饮料，点「残す」，等离开溢出页。
     receive_indexes：要勾的新饮料（「受け取ったドリンク」区从上往下 0 起，决策 99fa922 febd374）；没给时勾最下面那瓶，还差再补勾。
@@ -192,15 +197,46 @@ def resolve_overflow(
     if not new:
         return r.result(False, "溢出页上没找到新饮料那一行（可能要往上滚）")
     discards = [int(discard)] if isinstance(discard, int) else [int(i) for i in discard]
-    if bad := [i for i in discards if not 0 <= i < len(owned)]:
-        return r.result(False, f"溢出页上只看到 {len(owned)} 瓶已有饮料，没有第 {bad} 瓶")
+    if [i for i in discards if not 0 <= i < len(owned)]:
+        # 新饮料的说明很长时（センブリソーダ 四行），已有饮料的最后一行被对话框底边切掉、勾选框找不到
+        #（DMM 单局测试 dmmt2 选拔：要丢第 [2] 瓶，只看到 2 瓶，重试一次照样停机）。往上滑一点再找，取消要丢的那几瓶，再滑回来勾新饮料
+        do_swipe = swipe or (lambda x1, y1, x2, y2: device.swipe(x1, y1, x2, y2, duration=0.5))
+        n0 = len(owned)
+        for _ in range(OWNED_SCROLL_TRIES):
+            do_swipe(*OWNED_SCROLL)
+            r.sleep(OWNED_SCROLL_SETTLE)
+            img = r.shoot()
+            h = find_text(r.ocr(img), OVERFLOW_HEADER)
+            owned = [y for y, _ in checkboxes(img) if h is not None and y > h[1]]
+            if not [i for i in discards if not 0 <= i < len(owned)]:
+                break
+        r.snap(img, "scrolled")
+        if bad := [i for i in discards if not 0 <= i < len(owned)]:
+            return r.result(False, f"溢出页上只看到 {len(owned)} 瓶已有饮料（滑动后），没有第 {bad} 瓶")
+        logger.info("饮料溢出：已有饮料只露出 %d 瓶，往上滑后看到 %d 瓶", n0, len(owned))
+        for i in discards:
+            if err := _toggle(r, owned[i], False, f"已有第 {i} 瓶"):
+                return r.result(False, err)
+        do_swipe(*OWNED_SCROLL[2:], *OWNED_SCROLL[:2])  # 滑回去：新饮料那一行要看得到
+        r.sleep(OWNED_SCROLL_SETTLE)
+        img = r.shoot()
+        h = find_text(r.ocr(img), OVERFLOW_HEADER)
+        cbs = checkboxes(img)
+        new = [y for y, _ in cbs if h is not None and y < h[1]]
+        owned = [y for y, _ in cbs if h is not None and y > h[1]]
+        if not new:
+            return r.result(False, "滑回去后没找到新饮料那一行")
+        discards_done = True
+    else:
+        discards_done = False
     receives = [new[-1]] if receive_indexes is None else []
     for j in receive_indexes or []:
         if not 0 <= int(j) < len(new):
             return r.result(False, f"溢出页上只看到 {len(new)} 瓶新饮料，没有第 {j} 瓶")
         receives.append(new[int(j)])
     # 先腾出名额再勾新的：已选满（あと0個選択）时游戏不让多勾（第十七局 #401）。没给 receive_indexes 时勾识别的 incoming = 最下面那瓶
-    steps = [(owned[i], False, f"已有第 {i} 瓶") for i in discards] + [(y, True, f"新饮料第 {new.index(y)} 瓶") for y in receives]
+    steps = ([] if discards_done else [(owned[i], False, f"已有第 {i} 瓶") for i in discards]) + [
+        (y, True, f"新饮料第 {new.index(y)} 瓶") for y in receives]
     for y, want, what in steps:
         if err := _toggle(r, y, want, what):
             return r.result(False, err)
@@ -211,7 +247,7 @@ def resolve_overflow(
     left = select_left(boxes)
     # 补勾顺序：其余新饮料 → 没让丢的已有饮料 → 让丢的已有饮料（从后往前；决策给的数量对不上时宁可少丢一瓶，也要把新饮料留下）
     fill = ([(y, "其余新饮料") for y in new if y not in receives] + [(y, f"已有第 {i} 瓶") for i, y in enumerate(owned) if i not in discards]
-            + [(owned[i], f"已有第 {i} 瓶（原定丢弃）") for i in reversed(discards)])  # fmt: skip
+            + [(owned[i], f"已有第 {i} 瓶（原定丢弃）") for i in reversed(discards) if i < len(owned)])  # fmt: skip
     while left and fill:
         y, what = fill.pop(0)
         if checked(img, y):
@@ -339,7 +375,7 @@ def swap_receive(
     shoot: Callable[[], np.ndarray] | None = None,
     click: Callable[[int, int], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
     ocr=None,
     calib: bool = True,
 ) -> ExecutionResult:
@@ -395,7 +431,7 @@ def discard_then_receive(
     shoot: Callable[[], np.ndarray] | None = None,
     click: Callable[[int, int], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = _sleep,
     ocr=None,
     calib: bool = True,
 ) -> ExecutionResult:
@@ -420,3 +456,47 @@ def discard_then_receive(
     logger.info("饮料替换：丢底栏第 %d 瓶「%s」，收第 %d 个候选", held_index, entry.get("name"), pick_slot)
     return swap_receive(pick_slot, held_index, slots=slots, action=act, shoot=shoot, click=click, clock=clock, sleep=sleep,
                         ocr=ocr, calib=calib)  # fmt: skip
+
+
+def skip_incoming(*, sleep_s=_sleep) -> bool:
+    """饮料满、决策是不要新饮料：确认在溢出页（连认两帧）→「離れる」/「残す」没亮就先勾一个没勾的选框 → 点亮着的那个按钮
+    （替代 KAA ProduceInterrupt._check_pdrink_max；KAA 用彩色直方图找没勾的框，这里灰度找框后按橙色占比判有没有勾，
+    同 ui_templates.checkbox_checked）。点了返回 True；随后的「報酬スキップ」确认由 on_pdrink_max_confirm 放行。
+
+    按钮模板 InProduce.ButtonLeave 也认得「残す」（同一个箭头按钮）：持有全勾、「あと0個選択」时点它 = 留下持有、不收新饮料。
+    认页面：标题「Pドリンク所持上限」模板，或 OCR 读到「手持ち」小标题——列表滚下去时标题不在画面里（Mac h9 11-15：
+    标题模板 0.33，三次都没认出页面就停机）。读到「手持ち」时另外核对新饮料一行都没勾（勾了再点「残す」会丢持有的饮料）。"""
+    from hiro.produce.ops import ocr_boxes
+    from hiro.vision.ui_templates import checkbox_checked, find_enabled, tpl
+
+    def on_page(im) -> tuple[bool, tuple | None]:
+        header = find_text(ocr_boxes(im), OVERFLOW_HEADER)
+        return header is not None or tpl("InProduce.TextPDrinkMax").exists(im), header
+
+    img = device.screenshot()
+    if tpl("InProduce.TextPDrinkMaxConfirmTitle").exists(img):
+        # 「報酬スキップ」确认已经弹出来了：上一次已经点过「残す」/「離れる」（Mac h8 11-15：点完下一拍还把过渡帧判成 PDRINK_MAX，
+        # 处理器又跑一遍，找不到按钮 3 次后停机）。当作已跳过，确认框交给 on_pdrink_max_confirm
+        logger.info("饮料满：「報酬スキップ」确认已经弹出，当作已点过")
+        return True
+    if not on_page(img)[0]:
+        return False
+    img = device.screenshot()  # 再认一帧：对话框可能正在退出
+    ok, header = on_page(img)
+    if not ok:
+        return False
+    if header is not None and any(on for y, on in checkboxes(img) if y < header[1]):
+        logger.warning("饮料满：不要新饮料，但新饮料那一行是勾着的，不点「残す」（会丢持有的饮料）")
+        return False
+    if find_enabled("InProduce.ButtonLeave", img) is None:
+        chk = next((m for m in tpl("Common.CheckboxUnchecked").find_all(img) if checkbox_checked(img, m) is False), None)
+        if chk is not None:
+            device.click(*chk.rect.center)
+            sleep_s(0.2)
+            img = device.screenshot()
+    if (leave := find_enabled("InProduce.ButtonLeave", img)) is not None:
+        device.click(*leave.rect.center)
+        logger.info("饮料满：不要新饮料，点「離れる」/「残す」（留下持有的）")
+        return True
+    return False
+

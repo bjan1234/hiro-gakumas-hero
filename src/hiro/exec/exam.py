@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/produce/battle.py（c3fc27f）的执行部分；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """考试执行器：替代 KAA 的 do_cards。截图 → 等画面稳定 → 读局面（ExamStateSource 插件）→ 出招（ExamAdvisor 插件）→ 点击 → 核对画面变了。
 
 只放「和局面从哪来、怎么决策无关」的执行部分：帧（HUD / 手牌 / 饮料定位）、等稳（轻量签名 + 舞台空白推进）、弹窗处理（危险弹窗只点
@@ -18,13 +18,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from collections.abc import Callable
 
-from kaa.db.drink import Drink
-from kaa.game_ui.drinks_overview import locate_all_drinks_in_3_drink_slots
-from kaa.tasks import R
-from kaa.tasks.produce.new.play_cards.ui import locate_cards
-from kaa.tasks.produce.shared.cards import handle_skill_card_move
-from kotonebot import Loop, contains, device, logging, ocr, sleep
-from kotonebot.primitives import Rect
+from hiro import master
+import logging
+from hiro.devices.active import Loop, device, sleep
 
 from hiro.brain.battle import BattleBrain
 from hiro.brain.rules import Decision
@@ -34,10 +30,14 @@ from hiro.contracts import Action, Decision as DecisionContract, ExecutionResult
 from hiro.perception.lesson import _read_int
 from hiro.produce import ops
 from hiro.recorder import Recorder
+from hiro.exec import schedule_probe
+from hiro.vision.hif import EXAM_CACHE, hand_cards
+from hiro.vision.ocr import Box, Text, find_text, screen_texts
+from hiro.vision.ui_templates import box, tap, tpl
 
 logger = logging.getLogger(__name__)
 
-SKIP_BUTTON = Rect(621, 739, 85, 85)  # 与 KAA do_cards 相同的跳过回合位置（720x1280）
+SKIP_BUTTON = Box(621, 739, 706, 824)  # 与 KAA do_cards 相同的跳过回合位置（720x1280）
 STABLE_GAP = 0.4  # 两次读取间隔；两次一致才算稳定
 CHANGE_TIMEOUT = 8.0  # 执行后等画面变化的最长时间
 LIVE_WAIT_S = 2.0  # 存档暂时对不上（文件正在写、存档落后画面不止一步）时最多等这么久，之后走截图兜底
@@ -46,6 +46,8 @@ NO_WAIT = ("save_playing", "hand_count_1", "sim_error", "hand_cards", "save_stal
 CHANGE_POLL = 0.2  # 等变化时的轮询间隔（每轮一张截图 + 一次 HUD 读取）
 DIALOG_SETTLE = 2.0  # 处理弹窗后等画面稳定的上限
 STABLE_WAIT_S = 6.0  # 画面一直不稳定时最多等这么久，之后用单帧出决策（第十八局 12 次等满 10s，见 _stable_frame）
+EXAM_STALL_S = 180.0  # 考试里这么久没有进展（没有一个动作生效、残りターン 也没变）就退出 run_exam，交回主循环（主循环有自己的看门狗）。
+# 偶像之路不合格名次页认不出「结束」时 run_exam 空转 5 分钟没日志（Mac 稳定性测试 11-14）；不看画面变不变：名次页背景是动的
 SLOW_DIALOG_AFTER = 5.0  # 画面不像考试帧超过这么久（回合切换动画约 2–3s 不算），弹窗检查才退回整帧 OCR（横屏 LIVE 开始提示等没有标题条的页面）
 
 
@@ -65,35 +67,30 @@ def _hud_int(img, box, kaa_box) -> int | None:
 _DRINK_CACHE = None  # 饮料栏区域缓存（考试中饮料栏很少变，命中时约 1ms）
 
 
-def _drinks(img) -> list[tuple[Drink, tuple]]:
-    """饮料栏 → [(Drink, (x, y, w, h))]，从左到右。用识别层的素材包原版图标（hiro.vision.items.read_drink_slots，带区域缓存）；
-    只有识别层有没把握的格（state=unknown）且一瓶都没认出时才退回 KAA。实机（2026-10-31 选拔①）KAA 认不出 H.I.F 饮料。
-    四格都读成空槽时不退回：第十六局本战 144 步里 113 步饮料栏是空的，KAA 每帧还要再匹配 0.2–0.4s，
-    并把空槽认成「Mismatched drink: ビタミンドリンク」，结果也是空。"""
+def _drinks(img) -> list[tuple[master.Drink, tuple]]:
+    """饮料栏 → [(master.Drink, (x, y, w, h))]，从左到右。用识别层的素材包原版图标（hiro.vision.items.read_drink_slots，带区域缓存）；
+    认不出的格不给（这一步就不用那瓶）。原来没把握且一瓶没认出时退回 KAA 的饮料匹配，但 KAA 认不出 H.I.F 饮料（实机 2026-10-31），
+    73 张实机考试帧里这条退路一次都没触发过，去 KAA 时删掉。"""
     global _DRINK_CACHE
     from hiro.vision.items import DRINK_SIZE, read_drink_slots
     from hiro.vision.region_cache import RegionCache
 
     if _DRINK_CACHE is None:
         _DRINK_CACHE = RegionCache()
-    out, unsure = [], True
+    out = []
     try:
         slots = read_drink_slots(img, cache=_DRINK_CACHE)
-        unsure = any(d["state"] == "unknown" for d in slots)
         for d in slots:
             if d["state"] != "drink":
                 continue
-            drink = Drink.from_asset_id(d["asset"])
+            drink = master.drink_by_asset(d["asset"])
             if drink is None:
-                unsure = True
                 continue
             cx, cy = d["center"]
             out.append((drink, (cx - DRINK_SIZE // 2, cy - DRINK_SIZE // 2, DRINK_SIZE, DRINK_SIZE)))
     except Exception:  # 识别异常不能打断考试
-        out, unsure = [], True
-    if out or not unsure:
-        return out
-    return locate_all_drinks_in_3_drink_slots(img)
+        out = []
+    return out
 
 
 def drink_slot_rect(slot: int) -> tuple | None:
@@ -114,12 +111,11 @@ class Frame:
 
         self.img = img
         self.t = time.monotonic()  # 这帧截图的时刻（度量截图→点击）
-        boxes = R.InProduce.InLesson
-        self.remaining = _hud_int(img, hif.BOX_TURNS, boxes.BoxRemainingTurns)
-        self.hp = _hud_int(img, hif.BOX_HP, boxes.BoxHp)
-        self.genki = _hud_int(img, hif.BOX_GENKI, boxes.BoxGenki)
-        self.cards = [c for c in locate_cards(img)]  # KAA 定位：只用来取点击位置
-        self.drinks: list[tuple[Drink, tuple]] = _drinks(img)
+        self.remaining = _hud_int(img, hif.BOX_TURNS, box("InProduce.InLesson.BoxRemainingTurns"))
+        self.hp = _hud_int(img, hif.BOX_HP, box("InProduce.InLesson.BoxHp"))
+        self.genki = _hud_int(img, hif.BOX_GENKI, box("InProduce.InLesson.BoxGenki"))
+        self.cards = hand_cards(img, cache=EXAM_CACHE)  # 位置 / 能不能打 / 卡面认出的卡（hiro.vision.hif.hand_cards）
+        self.drinks: list[tuple[master.Drink, tuple]] = _drinks(img)
         self._hand: list[dict] | None | bool = False  # 识别层手牌，按需读（见 hand）
 
     @property
@@ -188,31 +184,18 @@ SELECT_BAND = (1040, 1200)  # 手牌下方「SELECT」标签（实测 y≈1120�
 DIALOG_BAND_BOTTOM = 1240  # 弹窗按钮行实测 y≈1160（定制页「実行する」y≈1081）
 
 
-class _Text:
-    """局部 OCR 的一段文字，接口与 kotonebot OcrResult 相同（.text、.rect.center），坐标是整帧坐标。"""
-
-    __slots__ = ("text", "rect")
-
-    def __init__(self, text: str, rect: Rect):
-        self.text, self.rect = text, rect
-
-    def __repr__(self) -> str:
-        return f"_Text({self.text!r}, {int(self.rect.center.x)}, {int(self.rect.center.y)})"
-
-
-def _roi_texts(img, y1: int, y2: int) -> list[_Text]:
-    """img[y1:y2] 整行宽的 Vision OCR，返回整帧坐标。img 为 None（测试替身）或识别异常时返回空。"""
+def _roi_texts(img, y1: int, y2: int) -> list[Text]:
+    """img[y1:y2] 整行宽的 OCR（hiro.vision.ocr.screen_texts），返回整帧坐标。img 为 None（测试替身）或识别异常时返回空。"""
     if img is None:
         return []
     try:
-        boxes = ops.ocr_boxes(img[y1:y2])
+        return screen_texts(img, (0, y1, img.shape[1], y2 - y1))
     except Exception:  # 识别异常不能打断考试
         logger.warning("局部 OCR 出错（y %d–%d）", y1, y2, exc_info=True)
         return []
-    return [_Text(t, Rect(bx1, y1 + by1, max(1, bx2 - bx1), max(1, by2 - by1))) for t, _, (bx1, by1, bx2, by2) in boxes]
 
 
-def _selects(img) -> list[_Text]:
+def _selects(img) -> list[Text]:
     """手牌下方的「SELECT」标签（只识别条带）。"""
     return [t for t in _roi_texts(img, *SELECT_BAND) if _is_select(t.text)]
 
@@ -241,12 +224,14 @@ def _button_text(t: str, text: str) -> bool:
 
 
 def _ocr_button(text: str, *, min_y: int, boxes=None) -> list[int] | None:
-    """在 OCR 结果（默认整帧 kotonebot OCR）里找按钮文字，找到就点，返回点击位置。"""
-    hit = next((t for t in (ocr.ocr() if boxes is None else boxes) if _button_text(t.text, text) and t.rect.center.y >= min_y), None)
+    """在 OCR 结果（默认现截一帧整帧 OCR）里找按钮文字，找到就点，返回点击位置。"""
+    boxes = screen_texts(device.screenshot()) if boxes is None else boxes
+    hit = next((t for t in boxes if _button_text(t.text, text) and t.rect.center.y >= min_y), None)
     if hit is None:
         return None
-    device.click(hit.rect)
-    return [int(hit.rect.center.x), int(hit.rect.center.y)]
+    x, y = int(hit.rect.center.x), int(hit.rect.center.y)
+    device.click(x, y)
+    return [x, y]
 
 
 # H.I.F 考试中 KAA 模板认不出的确认框：(标题关键字, 要点的按钮, 按钮最小 y)。都是确认已经做出的决策。
@@ -312,7 +297,7 @@ _RETAP: dict = {"pos": None, "n": 0, "t0": 0.0}
 UNPLAYABLE: dict = {"hit": False}  # 再点上限触发：主循环把本次动作本回合禁用
 
 
-def _select_retap(sel: _Text) -> bool:
+def _select_retap(sel: Text) -> bool:
     """卡停在选中态（卡下方「SELECT」）但没打出 → 再点一次这张卡。
     上一帧的 SELECT 可能是卡已打出、手牌重排前的残影（q11 选拔③ seq 39：再点落在重排后的 イメトレ 上，多打一张）。
     等一下重新截图，SELECT 还在原位（±30px）才点。"""
@@ -444,12 +429,21 @@ STALE_MAX = 3
 
 
 def _stale_before_tap(frame) -> str | None:
-    """点击前重新截图，与决策帧比剩余回合和手牌位置（_lite_sig，约 25ms）。不一致返回原因，一致或判断不了返回 None。"""
+    """点击前重新截图，与决策帧比剩余回合和手牌位置（_lite_sig，约 25ms）。不一致返回原因，一致或判断不了返回 None。
+    决策帧或点击前的画面里刚打出的牌还停在中间（hand_slots.played_card_floating）：那是出牌 / 回合切换的过渡帧，也算过时
+    （偶像之路 Mac 15 层 11-14：100 个决策帧里 24 个是这样，回合正在结束时又点了一次）。"""
+    from hiro.vision.hand_slots import played_card_floating
+
     try:
         a = _lite_sig(frame.img)
         if a is None:
             return None  # 决策帧本身读不出（截图兜底等）：不拦
-        b = _lite_sig(device.screenshot())
+        if played_card_floating(frame.img):
+            return "刚打出的牌还停在画面中间（过渡帧）"
+        img = device.screenshot()
+        if played_card_floating(img):
+            return "点击前刚打出的牌还停在画面中间（过渡帧）"
+        b = _lite_sig(img)
     except Exception:
         return None
     if b is None:
@@ -512,12 +506,11 @@ def _guard_dialog_loop(img, session, memory, last_action, exam) -> None:
 def _lite_sig(img):
     """(剩余回合, 体力, 元気, 手牌字母角标位置)；剩余回合读不到或没有手牌时 None（动画 / 结算中）。"""
     from hiro.vision import hif
-    from kaa.tasks.produce.new.play_cards.ui import _locate_letters
+    from hiro.vision.hand_slots import card_letters
 
     try:
-        b = R.InProduce.InLesson
-        hud = tuple(_hud_int(img, box, kb) for box, kb in ((hif.BOX_TURNS, b.BoxRemainingTurns), (hif.BOX_HP, b.BoxHp), (hif.BOX_GENKI, b.BoxGenki)))
-        letters = tuple(sorted((int(r.x1) // 8, int(r.y1) // 8) for r in _locate_letters(img)))
+        hud = tuple(_hud_int(img, hb, box(f"InProduce.InLesson.{kb}")) for hb, kb in ((hif.BOX_TURNS, "BoxRemainingTurns"), (hif.BOX_HP, "BoxHp"), (hif.BOX_GENKI, "BoxGenki")))
+        letters = tuple(sorted((int(r.x1) // 8, int(r.y1) // 8) for r in card_letters(img)))
     except Exception:
         return None
     if hud[0] is None or not letters:
@@ -562,7 +555,7 @@ def _hif_drink_dialogs(*, force: bool = False, boxes=None) -> bool:
         if not force and now - _last_dialog_ocr < DIALOG_OCR_EVERY:
             return False
         _last_dialog_ocr = now
-        boxes = ocr.ocr()
+        boxes = screen_texts(device.screenshot())
     texts = [t.text for t in boxes]
     if any(w in t for t in texts for w in DANGER_WORDS):
         return _confirm_dialog(boxes, texts)
@@ -572,27 +565,64 @@ def _hif_drink_dialogs(*, force: bool = False, boxes=None) -> bool:
     return _confirm_dialog(boxes, texts)
 
 
+MOVE_CLOSED_S = 3.0  # 技能卡移动对话框消失后再看这么久，确认真关了
+
+
+def _skill_card_move() -> bool:
+    """技能卡移动对话框（照 KAA handle_skill_card_move 移植，行为不变）：全屏找卡名首字母框（A、M、T 依次），对话框还在就双击
+    最后一个、点 ✔，直到对话框消失 MOVE_CLOSED_S 秒。没找到卡返回 False；处理完和 KAA 一样返回 None（调用方照旧往下查别的弹窗）。
+    注意：选哪张是盲选（沿用 KAA，取找到的最后一张），出牌决策没有接管这个对话框。"""
+
+    def letters(img):
+        return [m for name in ("InProduce.A", "InProduce.M", "InProduce.T") for m in tpl(name).find_all(img)]
+
+    cards = letters(device.screenshot())
+    if not cards:
+        logger.info("技能卡移动：没找到卡")
+        return False
+    closed_at = None
+    for _ in Loop():
+        img = device.screenshot()
+        if not tpl("InProduce.IconTitleSkillCardMove").exists(img):
+            closed_at = closed_at if closed_at is not None else time.monotonic()
+            if time.monotonic() - closed_at >= MOVE_CLOSED_S:
+                logger.info("技能卡移动：对话框已关闭")
+                break
+            continue
+        closed_at = None
+        if not cards:
+            cards = letters(img)
+            if not cards:
+                continue  # KAA 这里会对空列表 pop 抛异常；这里等下一帧
+        card = cards.pop()
+        device.double_click(*card.center)
+        sleep(1)
+        tap("Common.IconButtonCheck", device.screenshot(), device.click)
+    return None
+
+
 def _handle_dialogs(img=None, *, slow: bool = False, select: bool = True) -> bool:
     """处理出牌过程中会弹出的对话框（读最近一次截图 img）。返回是否处理了什么。
     处理后等弹窗区域变化 / 画面稳定再返回，不固定睡 2s。"""
-    if R.InProduce.IconTitleSkillCardMove.exists():
-        if handle_skill_card_move():
+    img = img if img is not None else device.screenshot()
+    if tpl("InProduce.IconTitleSkillCardMove").exists(img):
+        if _skill_card_move():
             ops.wait_stable(timeout=DIALOG_SETTLE)
             return True
-    if _exam_dialogs(img if img is not None else device.screenshot(), slow=slow, select=select):
+    if _exam_dialogs(img, slow=slow, select=select):
         return True
-    if R.InProduce.DialogSkillCardUseConfirm.Title.exists():
-        btn = R.InProduce.DialogSkillCardUseConfirm.ButtonConfirm.find()
+    if tpl("InProduce.DialogSkillCardUseConfirm.Title").exists(img):
+        btn = tpl("InProduce.DialogSkillCardUseConfirm.ButtonConfirm").find(img)
         if btn:
             before = device.screenshot()
-            device.click(btn.rect)
-            ops.wait_change(before, roi=btn.rect, timeout=DIALOG_SETTLE, use_signature=False)
+            device.click(*btn.center)
+            ops.wait_change(before, roi=btn.rect.xywh, timeout=DIALOG_SETTLE, use_signature=False)
             return True
     return False
 
 
 def _usable(f: Frame) -> bool:
-    return f.remaining is not None and (bool(f.cards) or bool(ocr.find(contains("0枚"), rect=R.InProduce.BoxNoSkillCard)))
+    return f.remaining is not None and (bool(f.cards) or find_text(f.img, "0枚", rect=box("InProduce.BoxNoSkillCard")) is not None)
 
 
 SIG_FIELDS = ("remaining", "hp", "genki", "hand", "drinks")
@@ -684,7 +714,7 @@ def _screen_calm(max_s: float = 3.0) -> bool:
 
 def _drink_detail(img) -> tuple[bool, object | None]:
     """（详情框是否出来了，「使う」按钮框或 None）。按钮读成「く使う」也算（_button_text）。"""
-    btn = R.InProduce.ButtonUse.find()
+    btn = tpl("InProduce.ButtonUse").find(img)
     if btn:
         return True, btn
     boxes = _roi_texts(img, DRINK_DIALOG_TOP - 300, DIALOG_BAND_BOTTOM)
@@ -706,9 +736,10 @@ def _confirm_drink_use(retap=None) -> list[int] | None:
         shown, btn = _drink_detail(img)
         seen = seen or shown
         if btn is not None:
-            device.click(btn.rect)
+            x, y = int(btn.rect.center.x), int(btn.rect.center.y)  # btn：KAA 模板结果或 OCR 文字框
+            device.click(x, y)
             _after_use()
-            return [int(btn.rect.center.x), int(btn.rect.center.y)]
+            return [x, y]
         if not shown and not retapped and retap is not None and time.monotonic() - start >= DRINK_RETAP_AFTER:
             retapped = True
             logger.info("点饮料 %.1fs 没出详情框（演出中？）：等画面停稳再点一次", DRINK_RETAP_AFTER)
@@ -769,7 +800,7 @@ def _play_card(x: int, y: int, img=None) -> list[list[int]]:
             device.click(x, y)
             taps.append([x, y])
             t0 = time.monotonic()
-            seen: list[_Text] = []
+            seen: list[Text] = []
             now = None
             while time.monotonic() - t0 < PLAY_CONFIRM_TIMEOUT:
                 sleep(PLAY_POLL)
@@ -803,21 +834,18 @@ def _execute(d: Decision, frame: Frame) -> list[list[int]]:
     """执行并返回点击位置（720x1280 逻辑坐标）。"""
     if d.kind == "play":
         c = frame.cards[d.slot]
-        rect = getattr(c, "rect", None)
-        if rect is None:
-            c.double_click()
-            return []
-        return _play_card(int(rect.center.x), int(rect.center.y), frame.img)
+        return _play_card(int(c.rect.center.x), int(c.rect.center.y), frame.img)
     if d.kind == "drink":
         _, rect = frame.drinks[d.slot]
-        r = Rect(xywh=rect)
+        x, y, w, h = rect
+        r = Box(x, y, x + w, y + h)
         with _phase("drink_calm"):
             _screen_calm()  # 演出 / 横幅期间点饮料游戏不响应（第二十五局 R1、R2 各一次）：先等画面停稳
-        device.click(r)
+        device.click(*r.center)
         taps = [[int(r.center.x), int(r.center.y)]]
 
         def retap():
-            device.click(r)
+            device.click(*r.center)
             taps.append([int(r.center.x), int(r.center.y)])
 
         with _phase("drink_confirm"):
@@ -825,7 +853,7 @@ def _execute(d: Decision, frame: Frame) -> list[list[int]]:
         if use is not None:
             taps.append(use)
         return taps
-    device.click(SKIP_BUTTON)
+    device.click(*SKIP_BUTTON.center)
     return [[int(SKIP_BUTTON.center.x), int(SKIP_BUTTON.center.y)]]
 
 
@@ -878,10 +906,25 @@ def _turn_ending(frame) -> bool:
     return a is None or b is None or not _lite_same(a, b)
 
 
-def _play_missed(frame, confirmed: bool) -> bool:
+def _play_observable(card_id: str | None, upgrade: int | None) -> bool:
+    """打出这张牌会不会动元気 / 体力（D34 拿它们没变当「没打出去」的证据）。0 消耗、不加元気的牌（眠気等）打出后两者都不变，
+    用掉本回合最后一次出牌时回合自然结束，不能据此判没打出去（偶像之路 Mac 15 层 11-14：除外区的眠気一步步从 2 涨到 8）。
+    主数据里查不到的牌按「会动」算（保持原判法）。"""
+    from hiro import master
+
+    c = master.card(card_id, upgrade or 0) if card_id else None
+    if c is None:
+        return True
+    text = (c.produce_descriptions or "") + c.effect_display_text
+    other_cost = bool(c.cost_value) and (c.cost_type or "").rsplit("_", 1)[-1] not in ("", "Unknown")  # 消耗好印象 / やる気 等
+    return bool(c.stamina or c.force_stamina or other_cost) or "元気" in text or "体力" in text
+
+
+def _play_missed(frame, confirmed: bool, observable: bool = True) -> bool:
     """D34：没看到 SELECT、没点确认的出牌（只点了一下，或第一下没被接收补点了一下），点完读 HUD：
-    剩余回合变少、元気 / 体力都没变 = 回合自动结束了，牌没打出去。confirmed：_play_card 看到 SELECT 并点了确认。"""
-    if confirmed:
+    剩余回合变少、元気 / 体力都没变 = 回合自动结束了，牌没打出去。confirmed：_play_card 看到 SELECT 并点了确认。
+    observable=False（打这张牌本来就不动元気 / 体力，见 _play_observable）：没有证据，不判没打出去。"""
+    if confirmed or not observable:
         return False
     try:
         a = _lite_sig(frame.img)
@@ -1028,11 +1071,27 @@ def r1_deck_to_note(exam: str, session, context: dict) -> list | None:
     return [(c["card_id"], int(c.get("upgrade") or 0)) for c in rows if isinstance(c, dict) and c.get("card_id")] or None
 
 
+def _round_deck(session) -> list:
+    """这一场考试的牌组 [(card_id, 强化次数)]：培育记账（R2 含轮间买的）；没有时用 R1 记下的（finals_context）。"""
+    rows = []
+    if session is not None:
+        rows = (getattr(session.state, "produce", None) or {}).get("deck") or []
+    deck = [(c["card_id"], int(c.get("upgrade") or 0)) for c in rows if isinstance(c, dict) and c.get("card_id")]
+    if deck:
+        return deck
+    from hiro.state.finals_context import CONTEXT
+
+    return [tuple(x[:2]) for x in CONTEXT.get("deck") or []]
+
+
+SCHEDULE_PROBED: set[str] = set()  # 已经探测过审查日程的考试标签（再挑戦同一场不再点）
+
+
 def run_exam(
     brain: BattleBrain,
     exam: str,
     rec: Recorder,
-    ended: Callable[[], bool],
+    ended: Callable[[object], bool],  # 传本轮截图
     *,
     target_score: int | None = None,
     session=None,
@@ -1056,7 +1115,8 @@ def run_exam(
             session.note(f"读回本场考试记忆（{restored.name}）：T{memory.turn}")
     source.begin({"exam": exam, "profile": brain.profile, "target_score": target_score, "session": session, "brain": brain, "rec": rec})
     advisor.on_round_start(round_no if round_no is not None else (2 if exam == "r2" else 1),
-                           {"exam": exam, "idol": brain.profile.idol_id if brain.profile else None, "brain": brain})  # fmt: skip
+                           {"exam": exam, "idol": brain.profile.idol_id if brain.profile else None, "brain": brain,
+                            "deck": _round_deck(session), "session": session})  # fmt: skip
     rec.log("exam_brain_start", exam=exam, profile=brain.profile.idol_id if brain.profile else None, source=source.confidence())
     failures = 0
     wait_state = BoundedWait(LIVE_WAIT_S)  # 局面来源暂时给不出（返回 None）时最多等这么久，之后换帧重读
@@ -1071,8 +1131,16 @@ def run_exam(
     UNPLAYABLE["hit"] = False
     result_info: dict = {}
     last_state = None
+    progress_t, progress_remaining, stalled = time.monotonic(), None, False
     try:
         for _ in Loop(interval=0.1):
+            if (idle := time.monotonic() - progress_t) >= EXAM_STALL_S:
+                stalled = True
+                logger.error("[%s] 考试 %.0fs 没有进展（没有动作生效、残りターン 没变），退出考试循环交回主循环", exam, idle)
+                rec.log("exam_stalled", exam=exam, idle_s=round(idle, 1), turn=memory.turn, remaining=progress_remaining)
+                if session is not None:
+                    session.recover("unhandled", f"考试 {idle:.0f}s 没有进展，退出考试循环交回主循环")
+                break
             img = device.screenshot()
             with _phase("dialogs"):
                 slow = unusable_since is not None and time.monotonic() - unusable_since >= SLOW_DIALOG_AFTER
@@ -1080,7 +1148,7 @@ def run_exam(
                     _guard_dialog_loop(img, session, memory, last_action, exam)
                     continue
             with _phase("ended"):
-                if ended():
+                if ended(img):
                     break
             frame = None
             if animating and not slow:
@@ -1100,6 +1168,8 @@ def run_exam(
                     unusable_since = time.monotonic()
                 continue
             unusable_since = None
+            if frame.remaining is not None and frame.remaining != progress_remaining:
+                progress_t, progress_remaining = time.monotonic(), frame.remaining
             if UNPLAYABLE.pop("hit", False) and last_action is not None:
                 memory.block(last_action)
                 why = UNPLAYABLE.pop("why", None) or "使用条件不满足（一直停在选中态）"
@@ -1114,6 +1184,17 @@ def run_exam(
             if stable_wait.waited >= STABLE_WAIT_S and session is not None:
                 session.note(f"画面 {stable_wait.waited:.0f}s 不稳定，用单帧出决策")
             stable_wait.reset()
+            if schedule_probe.enabled() and exam not in SCHEDULE_PROBED and memory.turn <= 1 and restored is None and frame.remaining is not None:
+                # 审查日程探测（默认关）：每场考试第 1 回合出牌前点开一次，存帧、关掉、记耗时，回到考试画面后重新截图再决策
+                SCHEDULE_PROBED.add(exam)
+                from hiro.vision import hif as _hif
+
+                with _phase("schedule_probe"):
+                    schedule_probe.probe(frame.img, exam=exam, shoot=device.screenshot, click=lambda x, y: device.click(x, y),
+                                         ocr_boxes=ops.ocr_boxes, is_exam=_hif.is_hif_exam, log=rec.log,
+                                         note=session.note if session is not None else None)  # fmt: skip
+                animating = True
+                continue
             # ---- 局面（插件）
             with _phase("state_read"):
                 state, why = source.read(frame, memory)
@@ -1161,6 +1242,7 @@ def run_exam(
                 stale = _stale_before_tap(frame) if stale_streak < STALE_MAX else None
             if stale is not None:
                 stale_streak += 1
+                _count("stale_frame")  # 决策帧过时（报告 exam_settle.stale_frames）
                 rec.log("exam_stale_frame", exam=exam, action=d.action, reason=stale, remaining=frame.remaining)
                 logger.warning("[%s] 决策帧已过时（%s）：不点 %s，重新决策", exam, stale, d.action)
                 if session is not None:
@@ -1179,7 +1261,9 @@ def run_exam(
             missed = None
             if changed and todo.kind == "play":
                 with _phase("play_verify"):
-                    if _play_missed(frame, PLAY_RESULT["confirmed"]):
+                    card = state.hand[d.slot] if d.kind == "play" and 0 <= d.slot < len(state.hand) else None
+                    observable = _play_observable(getattr(card, "card_id", None), getattr(card, "upgrade", None)) if card else True
+                    if _play_missed(frame, PLAY_RESULT["confirmed"], observable):
                         missed = "回合自动结束了，牌没打出去（没看到 SELECT、没点确认；剩余回合减少、元気 / 体力没变）"
             t_done = time.monotonic()
             _LAST_EXEC["t"] = t_done
@@ -1195,6 +1279,7 @@ def run_exam(
                     session.recover("tap_no_effect", f"{d.action} {missed}")
                     session.note(f"blunder:play_missed_turn_end D34 {d.action}")
             elif changed:
+                progress_t = time.monotonic()
                 brain.commit(state, memory, d)
                 source.executed(Action.from_legal(d.action), result)
                 failures = 0
@@ -1208,7 +1293,7 @@ def run_exam(
                     session.recover("tap_no_effect", f"{d.action} 执行后画面 {CHANGE_TIMEOUT:.0f}s 未变（第 {failures} 次）")
                 if failures >= 3:
                     logger.warning("连续 %d 次动作无效，跳过回合", failures)
-                    device.click(SKIP_BUTTON)
+                    device.click(*SKIP_BUTTON.center)
                     if session is not None:
                         session.note("连续 3 次动作无效，强制跳过回合")
                     failures = 0
@@ -1222,7 +1307,8 @@ def run_exam(
             _anim["taps"] = 0
             t_cycle = t_done
             animating = animating or changed
-        result_info = {"exam": exam, "turns": memory.turn, "history": memory.history}
+        if not stalled:
+            result_info = {"exam": exam, "turns": memory.turn, "history": memory.history}
     finally:
         rec.log("exam_brain_end", exam=exam, turns=memory.turn, history=memory.history)
         if last_state is not None:  # 本战 R1：剩下的饮料和三属性倍率记进 finals_context，轮间 / R2 决策用（只记 r1）
@@ -1236,5 +1322,5 @@ def run_exam(
         source.end(result_info or None)
         advisor.on_round_end(result_info or None)
         if session is not None:
-            save_exam_memory(session.trace.dir, memory, finished=True)
+            save_exam_memory(session.trace.dir, memory, finished=not stalled)  # 卡住退出的不算打完：主循环再进考试时读回记忆
     return memory

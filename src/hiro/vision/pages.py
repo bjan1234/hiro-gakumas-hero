@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/pages.py（develop c3fc27f）
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """H.I.F 培育里 KAA 认不出的页面（页面地图 docs/pages-hif.md）。
 
@@ -21,6 +20,7 @@ HEADER_MIN_FRAC = 0.55  # 行内橙黄像素占比（标题条 0.67–0.76，其
 HEADER_H = (25, 70)
 HEADER_KEEP_FRAC = 0.45  # 标题条开始要 ≥ HEADER_MIN_FRAC，之后 ≥ 这个值就算同一条（滞回）：
 # 「プロデュース再開」标题条右侧有白色「リタイア」按钮，几行橙色只占 0.54，原来标题条被切断、整个框认不出（第二十局 r1 #207）
+HEADER_LONG_TITLE_FRAC = 0.3  # 第二级滞回：长标题白字压低了中间几行的橙色占比
 TITLE_WHITE_MIN = 0.03  # 标题条左段白字像素占比：弹窗 0.046–0.126；获得演出名称栏、橙色背景 ≤ 0.009
 # 标题关键字 → kind（按顺序匹配；OCR 偶有错字，用关键字而不是全文）
 DIALOG_KINDS = (
@@ -74,6 +74,10 @@ def _header_bands(img: MatLike) -> list[tuple[int, int]]:
         # 一条带白字标题的都没有时才放宽（滞回）：开始仍要 ≥ HEADER_MIN_FRAC，之后 ≥ HEADER_KEEP_FRAC 就算同一条。
         # 原算法认得出的框结果不变（全帧放宽会把标题条和下方橙色区域连成一片、超高被丢，61 帧回退）
         out = [(y1, y2) for y1, y2 in _bands(frac, HEADER_KEEP_FRAC) if _white_body(img, y2)]  # 放宽后还要求下方是白色框体（砖墙背景的误检没有）
+    if not any(_title_white(img, y1, y2) for y1, y2 in out):
+        # 再放宽一级：标题很长、白字占满整条（N.I.A「NEXT IDOL AUDITIONライブ設定」11-17：中间几行橙色只占 0.36–0.53，
+        # 标题条被切成几段、每段都不够 HEADER_H，整个框认不出，中断层看不到）。同样要求下方是白色框体
+        out = [(y1, y2) for y1, y2 in _bands(frac, HEADER_LONG_TITLE_FRAC) if _white_body(img, y2)]
     return out
 
 
@@ -84,6 +88,9 @@ def _white_body(img: MatLike, y2: int) -> bool:
         return False  # 标题条贴着画面底边，下面没有框体
     hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
     return float(((hsv[:, :, 1] < 40) & (hsv[:, :, 2] > 225)).mean()) >= 0.6
+
+
+TITLE_RETRY_H, TITLE_RETRY_UP = 40, 40  # 标题条高度不到这么多、标题读空时，往上多裁这么多重读
 
 
 def _title_white(img: MatLike, y1: int, y2: int) -> bool:
@@ -98,7 +105,7 @@ def dialog_header(img: MatLike) -> tuple[int, int] | None:
 
 
 def read_dialog(img: MatLike) -> dict | None:
-    """橙黄标题条的弹窗 → {kind, title, danger, y}。danger：リタイア / 培育数据破棄 这类绝不能确认的弹窗（标题或正文含关键字）。有多个（详情框上叠确认框）时取最下面那个（后弹出的在上层、位置靠下）。
+    """橙黄标题条的弹窗 → {kind, title, body, danger, y}（body：标题条下面的正文 OCR）。danger：リタイア / 培育数据破棄 这类绝不能确认的弹窗（标题或正文含关键字）。有多个（详情框上叠确认框）时取最下面那个（后弹出的在上层、位置靠下）。
     标题认不出关键字时 kind="other"、title 为 OCR 原文；没有标题条返回 None。"""
     from hiro.vision.ocr import ocr
 
@@ -106,16 +113,20 @@ def read_dialog(img: MatLike) -> dict | None:
         if not _title_white(img, y1, y2):
             continue  # 没有白色标题字：获得演出的金色名称栏、橙色背景的场景
         title = "".join(t for t, _ in ocr(img[max(0, y1 - 4) : y2 + 4, 20:560])).replace(" ", "")
+        if not title and y2 - y1 < TITLE_RETRY_H:
+            # 标题条被大号白字切成两段时只认出下半截（「スキルカード再抽選確認」：条 635–695，认出 670–695），字被裁掉读空：往上多裁一截再读
+            title = "".join(t for t, _ in ocr(img[max(0, y1 - TITLE_RETRY_UP) : y2 + 4, 20:560])).replace(" ", "")
         if not title:
             continue
         kind = next((k for key, k in DIALOG_KINDS if key in title), "other")
         # 正文总要读：标题 OCR 偶尔乱码（实测「プロデュース・リタイア確認」→「ーメリダイノ唯談」），
         # 危险弹窗不能只靠标题。danger=True 时执行侧一律只点キャンセル（不依赖 kind 判没判对）
-        body = "".join(t for t, _ in ocr(img[y2 : min(img.shape[0], y2 + 450), 20:700])).replace(" ", "")
+        crop = img[y2 : min(img.shape[0], y2 + 450), 20:700]
+        body = "".join(t for t, _ in ocr(crop)).replace(" ", "") if crop.size else ""  # 标题条贴着画面底边：没有正文可读
         if kind == "other":
             kind = next((k for key, k in DIALOG_BODY_KINDS if key in body), "other")
         danger = kind in DANGER_KINDS or (kind != "produce_resume" and any(w in title or w in body for w in DANGER_WORDS))
-        return {"kind": kind, "title": title, "danger": danger, "y": int((y1 + y2) // 2)}
+        return {"kind": kind, "title": title, "body": body, "danger": danger, "y": int((y1 + y2) // 2)}
     return None
 
 
@@ -193,11 +204,17 @@ def page_fields(page: str, img: MatLike) -> dict:
 
 
 def _classify_page(img: MatLike) -> tuple[str, dict] | None:
+    from hiro.vision.tower import tower_dialog, tower_page
+
     dialog = read_dialog(img)
     if dialog is not None:
+        if (t := tower_dialog(dialog, _texts(img))) is not None:
+            return t  # 偶像之路：层详情「条件」/ 再挑戦确认（和 H.I.F 的再挑戦確認同标题，按正文分开）
         return "DIALOG", dialog
     boxes = _texts(img)
     texts = [t for t, _ in boxes]
+    if (t := tower_page(img, boxes)) is not None:
+        return t
 
     # 获得演出：名称栏居中、精确命中卡 / 饮料 / P 道具表（hiro.vision.deck.read_acquire_popup 同一规则）
     from hiro.vision.deck import ACQUIRE_BAR, read_acquire_popup
@@ -243,7 +260,32 @@ def _classify_page(img: MatLike) -> tuple[str, dict] | None:
     kind = _transition_kind(boxes)
     if kind is not None:
         return "TRANSITION", {"kind": kind}
+    if (ev := event_dialogue(boxes)) is not None:
+        return "commu", ev
     return None
+
+
+EVENT_SPEAKER_Y = (880, 980)  # 台词框左上的名字条（N.I.A 星南独白：「星南」在 y 927）
+EVENT_LINE_Y = (960, 1130)  # 台词行
+EVENT_TAP = (360, 1030)  # 点台词框推进
+EVENT_BLOCK = ("SKIP", "早送", "AUTO", "ログ", "キャンセル", "決定", "次へ", "閉じる", "OK", "選択", "受け取")
+EVENT_BUTTON_Y = (1070, 1170)  # 台词框下面按钮的位置：这里有字（淡入中的「受け取る」等）就不是单纯台词，不点（点台词框会落在弹窗的勾选框附近）
+
+
+def event_dialogue(boxes) -> dict | None:
+    """事件台词（页头、体力 / P 点、底栏饮料都还在，台词框上方有名字条，没有 SKIP / 早送り 底栏）：协调 11-18，N.I.A 第二局选了相談后
+    星南独白判 unknown，24 秒停。初 / N.I.A / H.I.F 通用：判成 commu，带快速判页格式的点击（点台词框），主循环的 advance 照点。
+    有 SKIP 底栏的剧情由 commu_skip 处理，有按钮字样的不算（选项 / 弹窗另有处理）。"""
+    if any(w in t.upper() if w.isascii() else w in t for t, _ in boxes for w in EVENT_BLOCK):
+        return None
+    if any(EVENT_BUTTON_Y[0] <= (b[1] + b[3]) // 2 <= EVENT_BUTTON_Y[1] for _, b in boxes):
+        return None
+    speaker = next((t for t, b in boxes if 1 <= len(t.strip()) <= 8 and b[2] < 300 and EVENT_SPEAKER_Y[0] <= (b[1] + b[3]) // 2 <= EVENT_SPEAKER_Y[1]), None)
+    lines = [t for t, b in boxes if EVENT_LINE_Y[0] <= (b[1] + b[3]) // 2 <= EVENT_LINE_Y[1] and b[0] < 200 and len(t.strip()) >= 6]
+    if speaker is None or not lines:
+        return None
+    fields = {"kind": "event_dialogue", "speaker": speaker.strip(), "text": "".join(lines)}
+    return {**fields, "_quick": {"page": "commu", "tap": list(EVENT_TAP), "dispatch": None, "fields": fields}}
 
 
 def _transition_kind(boxes) -> str | None:
@@ -483,9 +525,9 @@ def _row_name(boxes, score_box) -> str | None:
 
 @cache
 def _idol_names() -> tuple[str, ...]:
-    from kaa.db.sqlite import select_many
+    from hiro import master
 
-    return tuple(r["lastName"] + r["firstName"] for r in select_many("SELECT lastName, firstName FROM Character"))
+    return tuple(r["lastName"] + r["firstName"] for r in master.rows("SELECT lastName, firstName FROM Character"))
 
 
 def _idol_name(text: str) -> str | None:

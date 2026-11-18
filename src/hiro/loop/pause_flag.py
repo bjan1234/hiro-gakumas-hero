@@ -1,4 +1,3 @@
-# 来源：digital-hiro hiro/loop/rec_pause.py（c3fc27f），通用化为「外部暂停旗标」
 """外部暂停旗标：旗标文件存在就暂停对局，消失就继续（最初用于「录屏一停就暂停对局」，录屏守护进程维护旗标）。
 
 旗标文件存在 = 外部条件不满足（例如录屏没在正常录），内容一行「<epoch> <原因>」；不存在 = 正常。
@@ -8,7 +7,7 @@
   暂停 / 恢复各写一条 WARNING，并在 trace 里记 note（rec_pause / rec_resume），复盘能列出来。
 - active_clock()：扣掉暂停时长的单调时钟。空转看门狗、收尾超时、日切换恢复、AP 等待用它计时，暂停期间不会误停。
 - wait_until_recording()：开局前旗标在就等它消失。
-开关：设了旗标路径（HIRO_PAUSE_FLAG，兼容旧名 HIRO_REC_DOWN）才启用；HIRO_PAUSE=0（兼容 HIRO_REC_PAUSE=0）强制关。
+开关：设了旗标路径（HIRO_PAUSE_FLAG）才启用。
 """
 
 from __future__ import annotations
@@ -19,13 +18,13 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from hiro.log import logging
+import logging
 
 logger = logging.getLogger(__name__)
 
-_FLAG_ENV = os.environ.get("HIRO_PAUSE_FLAG") or os.environ.get("HIRO_REC_DOWN")
+_FLAG_ENV = os.environ.get("HIRO_PAUSE_FLAG")
 FLAG = Path(_FLAG_ENV) if _FLAG_ENV else Path("pause.flag")
-ENABLED = bool(_FLAG_ENV) and (os.environ.get("HIRO_PAUSE") or os.environ.get("HIRO_REC_PAUSE") or "1") != "0"
+ENABLED = bool(_FLAG_ENV)
 POLL = 1.0
 
 _lock = threading.Lock()

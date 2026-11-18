@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_interval_title_low.py（c3fc27f）
 """第二十二局：通信エラー 回标题后「再開」进轮间，「インターバル」标题徽章比 KAA 模板原位低 13px，
 KAA HifInterval.Title.exists() 判不出 → 主循环 UNKNOWN 197s 停机。左上角任意位置找徽章。"""
 

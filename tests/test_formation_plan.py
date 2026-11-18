@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_formation_plan.py @ 99092bc；开源版：没有主数据 / 截图样例时跳过
 """开局编成方案（2026-11-06）：支援卡主属性 / 逆练、回忆流派表与 A/B 栏、方案文件、开局按方案用编成号并核对。"""
 
 import json
@@ -159,8 +158,9 @@ def test_build_plan_for_hiro(tmp_path):
     plan = _hiro_plan()
     assert plan["profile"] == "yaruki" and plan["idol"]["default_main"] == "Da"
     sup, mem = plan["support"], plan["memory"]
-    assert "error" not in sup and len(sup["own"]) == 5 and sup["counts"][plan["main_attr"]] == 3
-    assert sup["rental_rule"]["attr"] == plan["main_attr"]  # 租借补第 4 张主属性
+    # 没有实机租借列表：租借格按满级 SSR 估，6 格一起评估（主属性 4 张，第 6 格只能是租借，协调 11-17）
+    assert "error" not in sup and len(sup["own"]) == 5 and sup["counts"][plan["main_attr"]] == 4
+    assert sup["rental"] and sup["rental"]["rental"] and sup["rental"]["level"] == 60 and sup["rental_estimated"]
     assert len(mem["cards"]) == 4 and "p_card-02-men-2_004" in mem["cards"]
     text = fp.format_report(plan)
     assert "编成 20" in text and "回忆" in text
@@ -253,3 +253,31 @@ def test_memory_set_check():
 
 def test_plan_file_is_json_serializable():
     json.dumps(_hiro_plan(), ensure_ascii=False)
+
+
+def test_scan_entries_keep_inventory_position():
+    """hiro.memory_scan 扫出来的记录（card 是 dict、stats 是 dict、带 slot / cell）：方案里选中的回忆要带上 cell 和 key，
+    开局自动编成靠它们找回这份回忆。以前 normalize_memory 先转格式再取位置，cell / key 全是 None（11-16 Mac 实机：
+    「方案里的回忆没有库存位置（旧版方案）」不开局）。"""
+
+    def entry(i, card_id, timing="start"):
+        return {"card": {"card_id": card_id, "name": card_id, "upgrade": 1}, "timing": timing, "timing_text": "",
+                "abilities": [{"text": "初期ダンス上昇+20", "disabled": False}], "stats": {"dance": 20}, "card_text": "",
+                "effect": "", "page": 0, "slot": i, "cell": [i // 3, i % 3]}  # fmt: skip
+
+    inv = {"entries": [entry(0, "p_card-02-men-2_004"), entry(1, "p_card-02-act-1_037"), entry(2, "p_card-02-act-3_039", "mid"),
+                       entry(3, "p_card-02-men-3_002", "mid"), entry(4, "p_card-00-men-3_005", "mid")]}  # fmt: skip
+    chosen = select_memories(inv)["chosen"]
+    assert chosen and all(c.get("cell") is not None and c.get("key") for c in chosen)
+
+
+def test_support_step2_title_ocr_bo_variant():
+    """第 2 步标题「2.サポート選択」被 OCR 读成「2.サボート選択」（11-16 Mac 账号 2）：也要认成 step2 页。"""
+    import numpy as np
+
+    from hiro.vision.support_screens import read_support_formation
+
+    img = np.zeros((1280, 720, 3), np.uint8)
+    boxes = [("2.サボート選択", (56, 39, 201, 64)), ("20/20", (40, 650, 130, 680)), ("サボートカード編成 20", (30, 980, 300, 1010))]
+    page = read_support_formation(img, boxes)
+    assert page is not None and page["view"] == "step2" and page["name"] == "サポートカード編成20"

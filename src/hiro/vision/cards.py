@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/cards.py（develop c3fc27f）
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """技能卡身份补全。
 
@@ -13,9 +12,8 @@ from functools import lru_cache
 import cv2
 import numpy as np
 from cv2.typing import MatLike
-from kaa.db.skill_card import PRODUCE_CARD_SELECT, SkillCard, _load_exam_effects_from_rows
-from kaa.db.sqlite import select
-from kotonebot.primitives import Rect
+from hiro import master
+from hiro.vision.ocr import Box as Rect  # 框：x1 y1 x2 y2 / w / h（OCR 文字框、模板命中、字母框同一种）
 
 UPGRADE_RED_MIN = 20  # 实测：强化 55–62，未强化 0–1
 # 红色占满检测框的比例上限：「+」只占一小块（选卡框 52–97 / 3300 px）；卡面本身偏红（DMM dmm1m 本战 ノートの端の決意 的肤色手，
@@ -56,14 +54,11 @@ def _upgraded(img: MatLike, box: tuple[slice, slice]) -> tuple[bool, int]:
 
 
 @lru_cache(maxsize=512)
-def card_version(card_id: str, upgrade_count: int) -> SkillCard | None:
-    row = select(f"{PRODUCE_CARD_SELECT} WHERE id = ? AND upgradeCount = ?;", card_id, upgrade_count)
-    if row is None:
-        return None
-    return SkillCard._from_row(row, _load_exam_effects_from_rows([row]))
+def card_version(card_id: str, upgrade_count: int) -> master.Card | None:
+    return master.card(card_id, upgrade_count)
 
 
-def full_text(card: SkillCard) -> str:
+def full_text(card: master.Card) -> str:
     """卡牌完整描述（含使用条件、开局入手、レッスン中1回等），与游戏内卡牌详情一致。
 
     KAA 的 effect_display_text 只拼接各出牌效果的说明，会丢掉卡牌级的条件与属性。
@@ -107,7 +102,7 @@ def full_text(card: SkillCard) -> str:
     return "\n".join(line.strip() for line in lines if line.strip()) or card.effect_display_text
 
 
-def card_summary(card: SkillCard | None, *, upgraded: bool | None = None) -> dict | None:
+def card_summary(card: master.Card | None, *, upgraded: bool | None = None) -> dict | None:
     """卡牌字段；upgraded=True 时换成 +1 版本（选卡/手牌里看不出 ++ 以上，按 +1 处理）。"""
     if card is None:
         return None

@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/deck.py（develop c3fc27f）
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """牌组：培育中「所持スキルカード」一览页（DECK_LIST）与相談削除 / 強化、换卡等同款卡格网格。
 
@@ -6,9 +5,9 @@
 画面（720x1280）：卡格 4 列、按获得顺序排（= 协议 deckProduceCardIndex），超过约 3 行要上下滑；底部标签写着总张数 N。
 
 每格：
-- 定位：卡缩略图底部的类别字母 A / M / T（KAA 模板 R.InProduce.A / M / T），按字母推卡格。
+- 定位：卡缩略图底部的类别字母 A / M / T（模板 InProduce.A / M / T，hiro.vision.ui_templates），按字母推卡格。
   一览页格宽 141、横向间距 161；相談削除 / 强化 / 换卡弹窗格宽 118、间距 147，按字母间距判断是哪种。
-- 定卡：KAA match_card_region（三选一、相談货架同一套缩略图库）。认不出 card_id 为 None。
+- 定卡：hiro.vision.card_db（三选一、相談货架同一套卡面图库，和 KAA match_card_region 同一做法）。认不出 card_id 为 None。
 - 强化：卡格右侧中部的红黄「+」（素材 ProduceAtlas/icon_enhanced），数高饱和红色像素。
   3 张样本 36 格：有「+」71–169 像素（被效果图标盖住一半时 122），没有 ≤3；橙色插图在宽松阈值下会到 107，所以只用严格阈值。
   介于两者之间（压暗、遮挡）→ None。二次及以上强化（++）的缩略图还没有样本：看到「+」一律记 1，field_meta 注明。
@@ -19,6 +18,7 @@
 """
 
 import os
+import re
 from functools import cache
 from pathlib import Path
 
@@ -105,17 +105,13 @@ def read_deck_size(img: MatLike) -> int | None:
 
 
 def _marks(img: MatLike, region: tuple[int, int, int, int]) -> list[tuple[int, int]]:
-    """region 内类别字母 A / M / T 的左上角，按行再按 x 排序。直接在 img 上匹配（KAA 模板与默认阈值），不读设备截图。"""
-    from kaa.tasks import R
-    from kotonebot.backend.image import find_all
-    from kotonebot.primitives import Rect
+    """region 内类别字母 A / M / T 的左上角，按行再按 x 排序。直接在 img 上匹配（模板缺省阈值），不读设备截图。"""
+    from hiro.vision.ui_templates import tpl
 
     x1, y1, x2, y2 = region
-    rect = Rect(x1, y1, x2 - x1, y2 - y1)
     found = []
-    for prefab in (R.InProduce.A, R.InProduce.M, R.InProduce.T):
-        hits = find_all(img, prefab.template.pixels, rect=rect, threshold=prefab.threshold, colored=prefab.colored, debug_output=False)
-        found += [(r.rect.x1, r.rect.y1) for r in hits]
+    for name in ("InProduce.A", "InProduce.M", "InProduce.T"):
+        found += [(m.rect.x1, m.rect.y1) for m in tpl(name).find_all(img, region=(x1, y1, x2 - x1, y2 - y1))]
     found.sort(key=lambda p: (p[1], p[0]))
     rows: list[list[tuple[int, int]]] = []
     for p in found:
@@ -347,15 +343,16 @@ def deck_diff(expected: list[dict], observed: list[dict]) -> dict:
 CURSOR_EXPAND, CURSOR_CORNER = 16, 30  # 选中格的橙色角框在卡格外侧约 16 像素、每角约 30 像素
 CURSOR_MIN_PX_118 = 600  # 118 像素卡格：选中 1103–1251，未选 ≤190（含橙色插图）
 DETAIL_BOX = (170, 95, 720, 160)  # 顶部详情栏第一行（卡名）
+CHANGE2_DETAIL_BOX = (190, 262, 690, 310)  # 换卡阶段 2 详情栏卡名行（mainz3 11-18 点卡后帧：「ひなたぼっこ」在 y≈285）
 
 
 @cache
 def _cards_by_full_name() -> dict[str, list[tuple[str, int]]]:
     """主数据卡名（带「+」，如 距離感の基本+）→ [(card_id, upgrade)]。"""
-    from kaa.db.skill_card import SkillCard
+    from hiro import master
 
     out: dict[str, list[tuple[str, int]]] = {}
-    for c in SkillCard.all():
+    for c in master.cards():
         out.setdefault(c.name, []).append((c._id, int(c.upgrade_count)))
     return out
 
@@ -403,7 +400,7 @@ def _cursor_px(hsv: MatLike, rect: tuple[int, int, int, int]) -> int:
 
 
 # 相談「削除 / 強化」、换卡第 2 步的选卡对话框卡格区域（720x1280）。削除：详情框下 y≈398 起，底部按钮从 y≈1120 起，第 5 行（986–1104）整格可见；
-# 強化：上方两个详情框，卡格 y≈698 起，只露出约 3 行（右侧有滚动条）。与 kaa_patches.CARD_OP_REGION 一致
+# 強化：上方两个详情框，卡格 y≈698 起，只露出约 3 行（右侧有滚动条）。与 produce.card_ops.CARD_OP_REGION 一致
 REMOVAL_GRID = (0, 380, 720, 1110)
 ENHANCE_GRID = (0, 690, 720, 1115)
 SCROLL_X = 683  # 卡格右侧滚动条的滑块列：比左右两侧亮 ≥ 25
@@ -540,14 +537,17 @@ def merge_deck_list(screens: list) -> dict:
     return out
 
 
-def read_card_dialog(img: MatLike, region: tuple[int, int, int, int] = REMOVAL_GRID) -> dict:
+def read_card_dialog(img: MatLike, region: tuple[int, int, int, int] = REMOVAL_GRID, expect: str | None = None,
+                     detail_box: tuple[int, int, int, int] = DETAIL_BOX) -> dict:  # fmt: skip
     """相談削除 / 强化、换卡第 2 步等「从牌组里选一张」的弹窗。
 
     返回 {cards, selected, selected_card, detail, agree}：
     - cards：卡格（read_card_grid）；selected：带橙色角框的格子 index（没有选中 None）；
     - detail：顶部详情栏卡名命中主数据的结果 {card_id, name, upgrade}（没选中时栏里是「スキルカードが選択されていません」→ None）；
     - selected_card：选中的卡。卡格和详情栏都读到时要一致（agree=True），以详情栏为准（带强化次数）；
-      只有一边读到时用那一边；两边不一致时 agree=False、selected_card=None（不猜）。
+      只有一边读到时用那一边（选中格认不出不算冲突）；两边不一致时 agree=False、selected_card=None（不猜）。
+    detail_box：详情栏卡名那一行（相談删除 / 强化在顶部 DETAIL_BOX；换卡阶段 2 详情栏在换入 / 换出缩略图下面，用 CHANGE2_DETAIL_BOX）。
+    expect：调用方知道要选哪张卡（换卡阶段 2 点了按目标卡核对出的、认不出的格子）时给 card_id，详情栏卡名也在它里面找。
     """
     from hiro.vision.ocr import ocr_boxes
 
@@ -557,12 +557,12 @@ def read_card_dialog(img: MatLike, region: tuple[int, int, int, int] = REMOVAL_G
     need = CURSOR_MIN_PX_118 * ((cards[0]["rect"][2] / 118) ** 2 if cards else 1)
     hot = [i for i, v in enumerate(px) if v >= need]
     selected = hot[0] if len(hot) == 1 else None
-    x1, y1, x2, y2 = DETAIL_BOX
-    ids = {c["card_id"] for c in cards if c["card_id"]}
+    x1, y1, x2, y2 = detail_box
+    ids = {c["card_id"] for c in cards if c["card_id"]} | ({expect} if expect else set())
     detail = next((hit for t, _, _ in ocr_boxes(img[y1:y2, x1:x2]) if (hit := card_from_name(t, ids))), None)
     cell = cards[selected] if selected is not None else None
     agree = None
-    if cell is not None and detail is not None:
+    if cell is not None and cell["card_id"] and detail is not None:
         agree = cell["card_id"] == detail["card_id"] and cell["upgrade"] in (detail["upgrade"], None)
     if agree is False:
         chosen = None
@@ -597,9 +597,9 @@ def confirm_kind(img: MatLike) -> str | None:
 
 @cache
 def _drinks_by_name() -> dict[str, str]:
-    from kaa.db.drink import Drink
+    from hiro import master
 
-    return {d.name: d.id for d in Drink.all()}
+    return {d.name: d.id for d in master.drinks()}
 
 
 def read_confirm_dialog(img: MatLike) -> dict | None:
@@ -653,10 +653,10 @@ ACQUIRE_CENTER_X, ACQUIRE_CENTER_TOL = 370, 25
 
 @cache
 def _pitems_by_name() -> dict[str, list[str]]:
-    from kaa.db.sqlite import select_many
+    from hiro import master
 
     out: dict[str, list[str]] = {}
-    for row in select_many("SELECT id, name FROM ProduceItem;"):
+    for row in master.rows("SELECT id, name FROM ProduceItem;"):
         out.setdefault(row["name"], []).append(row["id"])
     return out
 
@@ -692,11 +692,39 @@ def _near_name(text: str) -> str | None:
     return hits.pop() if len(hits) == 1 else None
 
 
+MEMORY_LABEL = (120, 400, 620, 500)  # 卡上方的橙色标签「メモリー効果」
+HUD_PANEL = (520, 25, 705, 160)  # 培育 HUD 右上「審査基準」白框：普通获得演出 0.53–0.54 白，选拔结束后的展示页 ≤ 0.02
+HUD_WHITE_MIN = 0.2
+
+
+def memory_effect_popup(img: MatLike) -> bool:
+    """回忆效果的卡展示：卡上方有「メモリー効果」标签，或者画面上没有培育 HUD（选拔试验结束后的展示：DMM q4 seq 522
+    私がスター+ 标签还没淡入、523 届いて！+ 有标签；回忆卡被强化，原来记成获得、账本多 2 张）。相談买卡的演出背景也压暗（白框 0），
+    但它和购买动作配对、不单独改牌组。是强化还是获得由状态层按牌组定（hiro.loop.events._memory_upgrade）。"""
+    from hiro.vision.ocr import ocr_boxes
+
+    x1, y1, x2, y2 = HUD_PANEL
+    hsv = cv2.cvtColor(img[y1:y2, x1:x2], cv2.COLOR_BGR2HSV)
+    if float(((hsv[..., 1] < 25) & (hsv[..., 2] > 235)).mean()) < HUD_WHITE_MIN:
+        return True
+    x1, y1, x2, y2 = MEMORY_LABEL
+    return any("メモリー" in t and "効果" in t for t, _, _ in ocr_boxes(img[y1:y2, x1:x2]))
+
+
+_JA = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
+
+
+def _stray_fragment(text: str) -> bool:
+    """名称栏里不当文字的碎片：不超过 3 个字、没有假名 / 汉字（被遮挡的 logo 角、图标边）。"""
+    t = text.strip()
+    return len(t) <= 3 and not _JA.search(t)
+
+
 def read_acquire_popup(img: MatLike, art: bool = True) -> dict | None:
     """获得演出的名称栏：{kind: card|drink|pitem, card_id/drink_id/pitem_id, name, upgrade?, art_card_id?, agree?, text}。
 
     名称栏文字居中、且精确命中主数据才算（所以也可当页面判定用：命中不了返回 None，约 80–200 ms 一次 OCR）。
-    卡：再用中间缩略图认卡（KAA match_card_region）核对，agree=False 时 card_id 仍以名称栏为准（带强化次数），由调用方决定是否采信。
+    卡：再用中间缩略图认卡（hiro.vision.card_db）核对，agree=False 时 card_id 仍以名称栏为准（带强化次数），由调用方决定是否采信。
     「H.I.Fワッペン」在 P 道具表里（pitem_00-3-265-0）。同名 P 道具有多个 id 时 pitem_id 为 None、pitem_ids 全列出。
     """
     from hiro.vision.ocr import ocr_boxes
@@ -705,7 +733,9 @@ def read_acquire_popup(img: MatLike, art: bool = True) -> dict | None:
     # 名称栏只有一段居中的文字（中心 x 实测 360–380，名称前带图标）。同一高度上的其他页面：选饮料页瓶身标签「初星水」
     # 偏在两侧；考试「Pドリンク詳細」的饮料名中心 321、右侧还有「捨てる」——有偏离中心的文字就不算
     # 名称前的图标有时被单独切成一个单字框（「と」），不参与判断
-    boxes = [(t, (b[0] + b[2]) / 2 + x1) for t, _, b in ocr_boxes(img[y1:y2, x1:x2]) if len(t.strip()) >= 2]
+    # 很短、不含假名 / 汉字的碎片也不算（DMM qualifyz1 17:35：支援能力横幅盖住获得演出，名称栏右端露出后面横幅的「H.I.F」一角，
+    # 读成「ıF」，整页没认成获得页，180 秒停机）。选饮料页、Pドリンク詳細 旁边的字都是日文，照旧排除
+    boxes = [(t, (b[0] + b[2]) / 2 + x1) for t, _, b in ocr_boxes(img[y1:y2, x1:x2]) if len(t.strip()) >= 2 and not _stray_fragment(t)]
     if not boxes or any(abs(cx - ACQUIRE_CENTER_X) > ACQUIRE_CENTER_TOL for _, cx in boxes):
         return None
     text = "".join(t for t, _ in boxes)
@@ -713,11 +743,15 @@ def read_acquire_popup(img: MatLike, art: bool = True) -> dict | None:
     if item is None:
         return None
     item["text"] = text
+    if item["kind"] == "card":
+        item["memory_effect"] = memory_effect_popup(img)
     if item["kind"] == "card" and art:  # art=False：只判页（hiro.vision.quick），不用卡面核对（首次加载卡图库要 1–2 秒）
-        from kaa.game_ui.skill_card_select import match_card_region
+        from hiro import master
+        from hiro.vision import card_db
 
         ax1, ay1, ax2, ay2 = ACQUIRE_ART
-        art = match_card_region(img[ay1:ay2, ax1:ax2])
+        asset = card_db.match(img[ay1:ay2, ax1:ax2])
+        art = master.card_by_asset(asset) if asset else None
         item["art_card_id"] = art._id if art else None
         item["agree"] = (art._id == item["card_id"]) if art else None
     return item
@@ -726,7 +760,7 @@ def read_acquire_popup(img: MatLike, art: bool = True) -> dict | None:
 # ---------------------------------------------------------------- 换卡第 1 步（SKILL_CARD_CHANGE_1）：换进哪张
 # 布局同三选一：中间一行 3 张候选（类别字母 x≈213 / 352 / 491，间距 139，与删卡页 147、一览 161 都不同），
 # 卡下「おすすめ」，左下「あと N回 カード除去」、右下「あと N回 再抽選」（KAA 参考图 dialog_card_change_1.png）。
-CHANGE1_MARKS = (40, 820, 680, 1020)  # 同 hiro.loop.kaa_patches.CHANGE_LETTERS_BOX
+CHANGE1_MARKS = (40, 820, 680, 1020)  # 同 hiro.produce.card_ops.CHANGE_LETTERS_BOX
 CHANGE1_DX, CHANGE1_DY, CHANGE1_CELL = -53, -110, 124
 CHANGE1_TEXT = (0, 940, 720, 1130)
 
@@ -793,6 +827,7 @@ GRID_ART_INSET = 0.2  # 四边各去掉 20%：避开左上费用、右上「+」
 GRID_SURE_VOTES = 4  # KAA 票数达到这个数（且不并列）直接采信：票数多时卡图相关反而常错（act-1_071 16 票正确，相关第一是别的卡）
 GRID_ART_MIN = 0.55  # 票数临界时：相关第一达到这个数、比次佳卡高 GRID_ART_MARGIN 以上才认
 GRID_ART_MARGIN = 0.13
+GRID_AGREE_MIN = 0.40  # 卡图第一与并列最高票一致时，卡图分的下限
 # 票数临界、相关没有明显胜出时：KAA 并列第一（≥3 票）的卡里取相关分最高的，至少这么多才采信，否则给 None。
 # 样例里 KAA 选对的卡相关分最低 0.22（票数多的也一样），选错的（被弹窗 / 横幅挡住的格、Mac 3:2 认成 アイドル魂）都 ≤ 0.09
 GRID_KAA_ART_MIN = 0.15
@@ -808,17 +843,28 @@ def _grid_norm(img) -> np.ndarray:
     return (g / (np.linalg.norm(g) + 1e-6)).ravel()
 
 
+_CHAR_SUFFIX = re.compile(r"-[a-z]{4}$")
+
+
+def base_asset(asset_id: str) -> str:
+    """去掉角色专属后缀（-ssmk / -hmsz …）得到 base asset_id。KAA 的 strip_character_suffix 只认它 CharacterId 里的角色，
+    新角色（秦谷美鈴 -hmsz）的变体会被当成另一张卡：DMM 的游戏数据里有这些变体，同一张卡的 KAA 票数被拆开（men-3_003 16 + 2 票），
+    卡图相关第一、第二是同一张卡（0.809 / 0.808），领先差为 0，相談货架 2 格认不出、整个货架判不完整。"""
+    return _CHAR_SUFFIX.sub("", asset_id)
+
+
 @cache
 def _grid_art_index() -> tuple[list[str], np.ndarray]:
     """KAA 卡格缩略图库（游戏数据 skill_cards/*.png，正方形图标）→ (base asset_id 列表, 归一化矩阵)。角色专属变体各占一行、同一个 base。"""
-    from kaa.game_data.paths import sprites_path
-    from kaa.game_ui.skill_card_select import strip_character_suffix
+    from hiro import plugins
 
-    folder = str(sprites_path("skill_cards"))
+    src = plugins.get("asset_source")
+    d = src.game_data("skill_cards") if src is not None and hasattr(src, "game_data") else None
+    folder = str(d) if d is not None else ""
     if not os.path.isdir(folder):
         return [], np.zeros((0, GRID_ART_SIZE * GRID_ART_SIZE), np.float32)
     names = sorted(n for n in os.listdir(folder) if n.endswith(".png"))
-    stamp = f"{len(names)}-{int(os.path.getmtime(folder))}-{GRID_ART_SIZE}-{GRID_ART_INSET}"
+    stamp = f"{len(names)}-{int(os.path.getmtime(folder))}-{GRID_ART_SIZE}-{GRID_ART_INSET}-base2"  # base2：按 base_asset 归并
     if os.path.exists(GRID_ART_CACHE):
         data = np.load(GRID_ART_CACHE, allow_pickle=False)
         if str(data["stamp"]) == stamp:
@@ -828,7 +874,7 @@ def _grid_art_index() -> tuple[list[str], np.ndarray]:
         img = cv2.imread(os.path.join(folder, n))
         if img is None:
             continue
-        keys.append(strip_character_suffix(n.removesuffix(".png")))
+        keys.append(base_asset(n.removesuffix(".png")))
         rows.append(_grid_norm(img))
     matrix = np.stack(rows).astype(np.float32)
     os.makedirs(os.path.dirname(GRID_ART_CACHE), exist_ok=True)
@@ -850,18 +896,16 @@ def grid_art_scores(crop) -> list[tuple[str, float]]:
 
 
 def match_grid_card(crop):
-    """卡格缩略图认卡：KAA 票数（match_card_region 同一套图库）为主，票数临界（≤3 票或并列）时用卡图相关核对。
+    """卡格缩略图认卡：卡面图库票数（hiro.vision.card_db，同 KAA match_card_region）为主，票数临界（≤3 票或并列）时用卡图相关核对。
     Windows 上同一帧票数常比 Mac 少 1：仕草の基本 2:2:2 平票、定制过的 えいえいおー+ 2:2（Mac 3:2 却认成 アイドル魂，卡图完全不像）。
     改前改后逐帧对比见私有仓库 .temp/platforms/w3-windows/卡格认卡改前改后.md。"""
-    from kaa.db.skill_card import SkillCard
-    from kaa.game_ui import skill_card_select as scs
+    from hiro import master
+    from hiro.vision import card_db
 
-    db = scs.dialog_cards_db()
-    results = db.query(crop, k=len(db), threshold=None)
     votes: dict[str, int] = {}
     dist: dict[str, float] = {}
-    for r in results or []:
-        a = scs.strip_character_suffix(r.key.removesuffix(".png"))
+    for r in card_db.query(crop):
+        a = base_asset(r.key)
         votes[a] = votes.get(a, 0) + r.votes
         dist[a] = min(dist.get(a, float("inf")), r.distance)
     if not votes:
@@ -870,15 +914,19 @@ def match_grid_card(crop):
     top = votes[ranked[0]]
     second = votes[ranked[1]] if len(ranked) > 1 else 0
     if top >= GRID_SURE_VOTES and top > second:
-        return SkillCard.from_asset_id(ranked[0])
+        return master.card_by_asset(ranked[0])
     art = grid_art_scores(crop)
     if len(art) >= 2 and art[0][1] >= GRID_ART_MIN and art[0][1] - art[1][1] >= GRID_ART_MARGIN:
-        return SkillCard.from_asset_id(art[0][0])
-    if top < scs.MIN_VOTES:
+        return master.card_by_asset(art[0][0])
+    tied = [b for b in ranked if votes[b] == top]
+    if top >= 2 and len(art) >= 2 and art[0][0] in tied and art[0][1] >= GRID_AGREE_MIN and art[0][1] - art[1][1] >= GRID_ART_MARGIN:
+        # 票数不够、但卡图第一正是并列最高票里的一张且明显领先：两路独立证据一致（DMM 本战相談 アイドル宣言+：
+        # Windows 2:2 平票，卡图 0.472 领先 0.144；Mac 同一帧 3 票直接认对）
+        return master.card_by_asset(art[0][0])
+    if top < card_db.MIN_VOTES:
         return None
     if not art:  # 没有卡图素材：按 KAA 原规则（并列时按特征距离排第一的）
-        return SkillCard.from_asset_id(ranked[0])
+        return master.card_by_asset(ranked[0])
     corr = dict(art)
-    tied = [b for b in ranked if votes[b] == top]
     best = max(tied, key=lambda b: corr.get(b, -1.0))
-    return SkillCard.from_asset_id(best) if corr.get(best, -1.0) >= GRID_KAA_ART_MIN else None
+    return master.card_by_asset(best) if corr.get(best, -1.0) >= GRID_KAA_ART_MIN else None

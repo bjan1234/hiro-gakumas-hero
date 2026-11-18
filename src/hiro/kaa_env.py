@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/kaa_env.py（c3fc27f）；调用 KAA（kotones-auto-assistant，GPL-3.0）；开源版：编成号 / 方案名改成环境变量
+# 调用 KAA（kotones-auto-assistant，GPL-3.0）
 """用代码构造 KAA 运行所需的 profile 与培育方案，不经 KAA 图形界面。
 
 KAA 的培育流程通过 `kaa_context.conf()` / `produce_solution()` 读取配置；方案文件写在工作目录的 conf/ 下（别提交）。
@@ -12,7 +12,7 @@ KAA 的培育流程通过 `kaa_context.conf()` / `produce_solution()` 读取配�
   决策器把它们算作已有（三选一里不必再找），续跑记账也从它们起算；不设 = 空。
 - HIRO_KAA_PROFILE / HIRO_KAA_SOLUTION：KAA 的 profile 名与培育方案名（默认 hiro / hiro-gakumas）。
 - 设备（与 KAA 支持的平台对齐，见 hiro.device）：
-  HIRO_DEVICE = auto（macOS 上走 PlayCover）/ maatools / quartz / adb / mumu / leidian / dmm；
+  HIRO_DEVICE = auto（macOS 上走 PlayCover 的 MaaTools）/ maatools / adb / mumu / leidian / dmm；
   HIRO_ADB = adb 地址 ip:port（adb / leidian 用；mumu 不设时由 MuMu SDK 自动取）；
   HIRO_SCREENSHOT = 截图方式（缺省：adb / leidian / mumu → adb，dmm → windows_background）。KAA 的点击走同一个实现：
     Windows + MuMu 6 写 nemu_ipc 时截图正常（后台模式），点击却送不到游戏所在的显示，页面一直不变
@@ -51,7 +51,7 @@ def kaa_backend_from_env():
 
 def kaa_backend(device: str, *, adb: str | None = None, screenshot: str | None = None, instance: str | None = None,
                 platform: str | None = None, mumu_background: bool = True):  # fmt: skip
-    """按 HIRO_DEVICE 等构造 KAA 的 BackendConfig；PlayCover 路线（auto / maatools / quartz）返回 None，不动 KAA 默认值。
+    """按 HIRO_DEVICE 等构造 KAA 的 BackendConfig；PlayCover 路线（auto / maatools）返回 None，不动 KAA 默认值。
     platform 现在只保留给调用方 / 测试（各平台缺省一致）。"""
     from kaa.config.base_config import (
         AutoConnection, BackendConfig, CustomDevice, DmmDevice, LeidianDevice, MuMu12V5Device, TcpConnection,

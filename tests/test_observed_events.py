@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_observed_events.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """H1 §3.1：事件页面 → Event（docs/state-events.md §2.1 字段名）。夹具同 test_deck_events / test_pages，真值按截图目视。"""
 
 from pathlib import Path
@@ -40,8 +39,9 @@ def _one(rel: str):
 @pytest.mark.parametrize(
     ("rel", "kind", "args"),
     [
-        ("events/acquire-memory-00028.jpg", "CARD_ACQUIRE", {"card_id": "p_card-02-men-1_035", "upgrade": 1}),
-        ("events/acquire-shop-00128.jpg", "CARD_ACQUIRE", {"card_id": "p_card-02-act-1_037", "upgrade": 1}),
+        ("events/acquire-memory-00028.jpg", "CARD_ACQUIRE", {"card_id": "p_card-02-men-1_035", "upgrade": 1, "memory_effect": True}),
+        # 相談买卡的演出背景压暗（没有培育 HUD）也带 memory_effect；它总和 ShopBuy 动作配对，不单独改牌组
+        ("events/acquire-shop-00128.jpg", "CARD_ACQUIRE", {"card_id": "p_card-02-act-1_037", "upgrade": 1, "memory_effect": True}),
         ("events/acquire-study-00224.jpg", "CARD_ACQUIRE", {"card_id": "p_card-02-men-2_101", "upgrade": 0}),
         ("events/acquire-upgraded-00303.jpg", "CARD_ACQUIRE", {"card_id": "p_card-02-men-2_111", "upgrade": 1}),
         ("events/acquire-sleepy-00263.jpg", "CARD_ACQUIRE", {"card_id": "p_card-00-acc-0_002", "upgrade": 0}),

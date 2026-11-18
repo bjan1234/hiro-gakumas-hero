@@ -1,4 +1,4 @@
-# 来源：digital-hiro tests/test_interval.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """轮间执行器（hiro.produce.interval）离线测试。
 
 画面：KAA 参考图 hif_interval.png / hif_interval_confirm.png、第四局进入动画帧（tests/fixtures/interval/）；买的流程与相談同一套
@@ -270,7 +270,7 @@ class _Main8(dict):
                 import pytest
 
                 pytest.skip("没有截图样例 tests/fixtures（第八局轮间状态）")
-            self.update(_json.loads(f.read_text()))
+            self.update(_json.loads(f.read_text(encoding="utf-8")))
         return dict.__getitem__(self, k)
 
 

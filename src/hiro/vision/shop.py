@@ -1,11 +1,10 @@
-# 来源：digital-hiro src/hiro/vision/shop.py（develop c3fc27f）
 # 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的识别接口、主数据与界面模板
 """相談（CONSULT）货架：shelf / services / rerolls_left，格式按 docs/llm-context.md「商店字段」。
 
 画面（720x1280）：上排 4 张技能卡、下排 4 瓶 P 饮料，每格 125x126，下方是价格条（SALE 时「原价 → 实付价」两个数）；
 买过的格子盖着「交換済」；再往下是「強化 P100」「削除 P100」两个服务按钮和左下「あと N回 リフレッシュ」。
 - 文字（价格、SALE、交換済、服务价格、刷新次数）：整块只做一次 Apple Vision，按坐标分到各格。
-- 卡：KAA match_card_region（与三选一同一套卡面库）；强化看卡面右上角的红色「+」（有 100–143 像素，无 0）。
+- 卡：hiro.vision.card_db（与三选一同一套卡面库）；强化看卡面右上角的红色「+」（有 100–143 像素，无 0）。
 - 饮料：素材包 P 饮料图标库；货架图标约 102 像素，缩到 56 后在 ±6 像素内找最高分，附置信度，
   低于 DRINK_MIN 或领先次佳不足 DRINK_MARGIN 时 drink_id 为 None。
 价格一律是画面上的实付价；读不到给 None。
@@ -75,7 +74,7 @@ def _card(img: MatLike, x: int, y: int = CARD_Y) -> dict:
 
 
 def _drink(img: MatLike, x: int, y: int = DRINK_Y) -> dict:
-    from kaa.db.drink import Drink
+    from hiro import master
 
     lib = _library("pdrink", MATCH_SIZE)
     cx, cy, h = x + CELL // 2, y + CELL // 2, DRINK_SIZE // 2
@@ -83,7 +82,7 @@ def _drink(img: MatLike, x: int, y: int = DRINK_Y) -> dict:
                         interpolation=cv2.INTER_AREA) for dx in (-6, 0, 6) for dy in (-6, 0, 6)]  # fmt: skip
     (score, asset), (second, _) = max(lib.match_many(crops), key=lambda t: t[0][0])
     ok = score >= DRINK_MIN and score - second >= DRINK_MARGIN
-    drink = Drink.from_asset_id(asset) if ok else None
+    drink = master.drink_by_asset(asset) if ok else None
     return {"kind": "drink", "drink_id": drink.id if drink else None, "name": (lib.names.get(asset) or (drink.name if drink else None)) if ok else None,
             "confidence": round(score, 3), "margin": round(score - second, 3)}  # fmt: skip
 
@@ -110,8 +109,11 @@ def read_consult(img: MatLike) -> dict:
             sale = len(nums) >= 2 or any("SALE" in t.upper().replace(" ", "") for t in texts_in(xr, SALE_BAND[top]))
             purchased = any("交換済" in t.replace(" ", "") for t in texts_in(xr, (top, top + CELL)))
             price = nums[-1] if nums else None
+            expect, floor = expected_price(item, sale), price_floor(item.get("kind"), sale)
             if ocr_engine() != "vision" and not purchased:
-                price = _vote_price(img, x, PRICE_BAND[top], nums, sale=sale)
+                price = _vote_price(img, x, PRICE_BAND[top], nums, sale=sale, expect=expect, floor=floor)
+            elif not purchased and price is not None and floor is not None and price < floor:
+                price = expect  # Vision 也会丢首位（SALE ホットコーヒー 35 读成 5）：饮料取预期价，卡给 None
             shelf.append({"index": row * 4 + col, **item, "price": price, "sale": sale, "purchased": purchased,
                           "center": [x + CELL // 2, top + CELL // 2]})  # fmt: skip
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
@@ -128,10 +130,26 @@ def read_consult(img: MatLike) -> dict:
     unread = [e["index"] for e in shelf if not e["purchased"] and (e["price"] is None or not (e.get("card_id") or e.get("drink_id")))]
     if len(unread) >= SHELF_UNREAD_MAX:
         complete = False
-    return {"shelf": shelf, "services": services, "rerolls_left": int(m.group(1)) if m else None, "complete": complete}
+    rerolls = int(m.group(1)) if m else None
+    if rerolls is None and complete and not _refresh_button(img):
+        rerolls = 0  # 次数用完时「あと N回」和「リフレッシュ」按钮整块消失（DMM 第 12 天相談实拍），不是没读到
+    # 选中货架上的饮料、饮料栏已满时「交換する」上方出红标「Pドリンク所持上限」（Mac p15-main3 11-17：账号 2 只有 3 格，
+    # 选中饮料后 x 272–450、y 1036–1060；没选中饮料时不出）。page_fields.drinks_full（3940a9 8fa7fd5 按它把容量设成持有数）
+    drinks_full = any("所持上限" in t for t in texts_in(DRINKS_FULL_X, DRINKS_FULL_BAND))
+    return {"shelf": shelf, "services": services, "rerolls_left": rerolls, "complete": complete, "drinks_full": drinks_full}
+
+
+DRINKS_FULL_X, DRINKS_FULL_BAND = (200, 520), (1020, 1066)
 
 
 SHELF_UNREAD_MAX = 2
+REFRESH_BOX = (0, 1020, 260, 1110)  # 左下「あと N回」+「リフレッシュ」按钮（x1, y1, x2, y2）
+
+
+def _refresh_button(img: MatLike) -> bool:
+    """左下有没有「リフレッシュ」按钮。RapidOCR 把小写ュ读成ユ，只认前缀。"""
+    x1, y1, x2, y2 = REFRESH_BOX
+    return any("リフレッ" in t.replace(" ", "") or "あと" in t for t, _, _ in ocr_boxes(img[y1:y2, x1:x2], scale=2))
 
 
 # ---------------------------------------------------------------- 本战轮间（HIF_ROUND_INTERVAL）货架
@@ -195,12 +213,18 @@ def read_interval_shelf(img: MatLike) -> dict:
             nums = nums or [n for n in _cell_price(img, x, INTERVAL_PRICE[top]) if n >= INTERVAL_MIN_PRICE]
             purchased = any("交換済" in t.replace(" ", "") for t in texts_in(xr, (top, top + CELL))) or _purchased_mark(img, x, top)
             price = nums[-1] if nums else None
+            d = _drink(img, x, top) if kind == "drink" else None
+            # 饮料按稀有度核对（DMM 单局测试轮间：ミックススムージー 75 读成 15，决策按 15P 判「比继续刷新划算」，实扣 75）。
+            # 轮间有没有 SALE 没见过：预期价按原价，下限取饮料最低价 35（SALE 价），卡在轮间更便宜、不设下限
+            expect = expected_price({"kind": "drink", "drink_id": d["drink_id"]}, False) if d else None
+            floor = PRICE_FLOORS[("drink", True)] if d else None
             if ocr_engine() != "vision" and not purchased:
                 # Windows 第九局轮间 #151：「おしゃれハーブティー」75 读成 15（Mac 同帧 RapidOCR 读对），也用多读法投票
-                price = _vote_price(img, x, INTERVAL_PRICE[top], nums)
+                price = _vote_price(img, x, INTERVAL_PRICE[top], nums, expect=expect, floor=floor)
+            elif not purchased and price is not None and floor is not None and price < floor:
+                price = expect
             entry = {"index": index, "price": price, "purchased": purchased, "center": [x + CELL // 2, top + CELL // 2]}
             if kind == "drink":
-                d = _drink(img, x, top)
                 entry.update(drink_id=d["drink_id"], name=d["name"], confidence=d["confidence"])
                 out["drinks"].append(entry)
             else:
@@ -266,7 +290,27 @@ def _sale_split(nums: list[int]) -> list[int]:
     return [v for v in out if v >= PRICE_MIN]
 
 
-def _vote_price(img: MatLike, x: int, band: tuple[int, int], region_nums: list[int], *, sale: bool = False) -> int | None:
+# 相談货架价格（主数据没有商店价格表，下面取自 83 个实机 trace 的 CONSULT 货架读数，Vision 为主）：
+# 饮料只看稀有度（id 里 pdrink_XX-稀有度-NNN）：50 / 75 / 100，SALE 七折取整 35 / 52 / 70，没有例外。
+# 卡不规整：原价 35（未强化的 R2 卡，如 前途洋々、成長痛）/ 70 / 77 / 105，SALE 有 24 / 40 / 49 / 53 等几种折扣，所以卡只设下限、不给预期价。
+DRINK_PRICES = {1: 50, 2: 75, 3: 100}
+PRICE_FLOORS = {("drink", False): 50, ("drink", True): 35, ("card", False): 35, ("card", True): 20}  # 卡 SALE 实机最低 24
+
+
+def expected_price(item: dict, sale: bool) -> int | None:
+    """这件商品应有的价：只有饮料（按稀有度）；卡、认不出的饮料给 None。"""
+    m = re.match(r"pdrink_\d+-(\d)-", item.get("drink_id") or "") if item.get("kind") == "drink" else None
+    base = DRINK_PRICES.get(int(m.group(1))) if m else None
+    return None if base is None else (int(base * SALE_RATE) if sale else base)
+
+
+def price_floor(kind: str | None, sale: bool) -> int | None:
+    """这一类商品的最低价（PRICE_FLOORS）；读丢首位（75→15、77→17）会低于它。"""
+    return PRICE_FLOORS.get((kind, bool(sale)))
+
+
+def _vote_price_raw(img: MatLike, x: int, band: tuple[int, int], region_nums: list[int], *, sale: bool = False,
+                    expect: int | None = None) -> tuple[int | None, set[int], int | None]:
     """非 Vision 后端的货架价格：单格 4 倍、整块、单格 3 倍、ddddocr 四种读法各取末位数投票，平票按这个顺序。
     RapidOCR 整块读价格 80 格只对 39 格（SALE 的「49」读成「40」、「70」读成「10」，Windows 第六局 #124）；
     加上 SALE 拆分和下限后投票 80/80（win2–win6 + A5b 的 11 帧相談货架，Vision 读数作真值）。"""
@@ -278,37 +322,60 @@ def _vote_price(img: MatLike, x: int, band: tuple[int, int], region_nums: list[i
     dddd = read_dddd(img, (x + 30, y1, x + CELL + 5, y2))
     reads = [_sale_split(r) for r in (_cell_price(img, x, band, 4), region_nums, _cell_price(img, x, band, 3), [dddd] if dddd is not None else [])]
     last = [r[-1] for r in reads if r]
+    seen_all = {v for r in reads for v in r}
     if not last:
-        return None
+        return None, seen_all, dddd
     if sale:
         # SALE 格：任一读法里同时出现原价和约七折的数，取七折的那个（Windows 第七局 #115 记成原价 75，实付 53）
         seen = {v for r in reads for v in r}
         # 两个数都得像价格（≥ SALE_PAID_MIN）：单格 3 倍读出的残片「7 5」也满足 5≈7×0.7（DMM qualifydmm2-00270，实付 53 记成 5）
         paid = sorted(v for v in seen if v >= SALE_PAID_MIN and any(abs(v - o * SALE_RATE) <= 1 for o in seen if o > v))
         if paid:
-            return paid[0]
+            return paid[0], seen_all, dddd
         # 看到了原价，读出的实付价和「原价 × 0.7」只差一位数以内（Windows 第八、十局 70→49 读成 40，几种读法一致地错）：按原价七折取整
         votes0 = Counter(last).most_common(1)[0][0]
         big = [o for o in seen if o >= SALE_PAID_MIN]
         if votes0 < SALE_PAID_MIN and big:
             # 实付价读成了个位数（Windows 第十一局 #103：105→73 读成 5）：按看到的最大原价七折取整
-            return int(max(big) * SALE_RATE)
+            return int(max(big) * SALE_RATE), seen_all, dddd
         if votes0 not in SALE_PRICES_SEEN:
             # 连原价都没读到（Windows 第十四局 #96：70→49 读成 40，几种读法都只有 40）：已知 SALE 价里只差一位数字的唯一一个
             near = [v for v in SALE_PRICES_SEEN if len(str(v)) == len(str(votes0)) and sum(x != y for x, y in zip(str(v), str(votes0))) == 1]
             same_head = [v for v in near if str(v)[0] == str(votes0)[0]]  # 读错多在末位：40 → 49（而不是 70）
             if len(near) == 1 or len(same_head) == 1:
-                return near[0] if len(near) == 1 else same_head[0]
+                return near[0] if len(near) == 1 else same_head[0], seen_all, dddd
         for o in sorted(seen, reverse=True):
             fixed = int(o * SALE_RATE)
             a, b = str(votes0), str(fixed)
             # 只修「同位数、只差一位数字」的读错（40↔49）；杂数（76 之类）算出来差两位的不改
             if o > votes0 and len(a) == len(b) and sum(x != y for x, y in zip(a, b)) == 1:
-                return fixed
+                return fixed, seen_all, dddd
     # 丢首位是最常见的读错（「35」→「5」、「50」→「0」）：某个读数是另一个读数的末尾几位时不算它（consult-r5 格 1：5 / 35 / 5 / 35 平票取了 5）
     # 长的那个本身得像价格（≤ PRICE_MAX）：SALE 格「75 52」粘成「552」时，52 才是对的（consult-r5 格 4）
     whole = [v for v in last if not any(o != v and o <= PRICE_MAX and str(o).endswith(str(v)) for o in last)]
     last = whole or last
     votes = Counter(last)
     top = max(votes.values())
-    return next(v for v in last if votes[v] == top)
+    tied = [v for v in dict.fromkeys(last) if votes[v] == top]
+    if len(tied) > 1 and expect is not None and expect in tied:
+        # 平票先认已知价（DMM 实机：パワフル漢方ドリンク 75 读成单格 4 倍 [15] / 整块 15 / 单格 3 倍 75 / ddddocr 75，取了 15）。
+        # 不偏向 ddddocr：Windows 第六局 #124 SALE 卡 49，三种读法 49 / 1649 / 78 各一票，ddddocr 是读错的 78
+        return expect, seen_all, dddd
+    return tied[0], seen_all, dddd
+
+
+def _vote_price(img: MatLike, x: int, band: tuple[int, int], region_nums: list[int], *, sale: bool = False,
+                expect: int | None = None, floor: int | None = None) -> int | None:
+    """_vote_price_raw 之后按已知价格核对：expect（饮料按稀有度应有的价，SALE 时是七折价）有任一读法读到过、投票结果却不是它 → 取 expect；
+    结果低于这一类的最低价 floor（读丢首位：75→15、77→17）→ 有 expect 取 expect，没有就看别的读法里是否只有一个不低于下限的价，否则 None（不猜）。"""
+    v, seen, _ = _vote_price_raw(img, x, band, region_nums, sale=sale, expect=expect)
+    if v is None:
+        return None
+    if expect is not None and v != expect and any(abs(o - expect) <= (1 if sale else 0) for o in seen):
+        return expect
+    if floor is not None and v < floor:
+        if expect is not None:
+            return expect
+        ok = {o for o in seen if floor <= o <= PRICE_MAX}
+        return ok.pop() if len(ok) == 1 else None  # 别的读法里只有一个像样的价就用它，否则不猜
+    return v

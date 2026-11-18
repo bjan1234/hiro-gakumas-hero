@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_pdrink_offscreen.py（fix_matto_prep_watchdog 5b5adff）
 """D41 第三十三局 18:18 seq 111：饮料溢出页「手持ちのドリンク」第 3 行被视口切掉（未知饮料），决策丢它，执行只看到 2 行报失败，
 随后落到 KAA 默认「残す」= 丢掉新来的 特製ハツボシエキス。现在：视口外的已有饮料标成点不到，只在看得到的里重新决策一次；
 还失败就停下，不交给 KAA。"""
@@ -35,7 +34,7 @@ def _strategy(monkeypatch, state, decide, results):
     monkeypatch.setattr(drink_swap, "resolve_overflow", resolve)
     monkeypatch.setattr(hif, "sleep", lambda s: None)
     monkeypatch.setattr(hif, "device", NS(screenshot=lambda: None))
-    monkeypatch.setattr(hif.HifGrindStrategy, "on_pdrink_max", lambda self, ctx: calls.__setitem__("kaa", calls["kaa"] + 1), raising=False)
+    monkeypatch.setattr("hiro.produce.drink_swap.skip_incoming", lambda **k: calls.__setitem__("kaa", calls["kaa"] + 1) or True)  # 不要新饮料：点離れる
     sess = NS(state=state, observe=lambda **k: NS(fields={}), record=lambda *a, **k: None, recover=lambda *a, **k: None, note=lambda *a: None)
     strat = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
     strat.s, strat.deciders = sess, NS(decide=lambda page, st: decide(sess.state))
@@ -81,3 +80,12 @@ def test_keep_decision_still_uses_kaa_skip(monkeypatch):
     strat, calls = _strategy(monkeypatch, _state(), lambda st: d, [])
     strat.on_pdrink_max(None)
     assert calls["kaa"] == 1 and calls["resolve"] == [] and strat._skip_incoming_drink
+
+
+def test_take_new_without_discarding_goes_to_resolve_not_skip(monkeypatch):
+    """栏里有空格、2 瓶新来只留 1 瓶：决策 discard=[]、receive=True、receive_indexes=[0]。要走 resolve_overflow（勾新饮料、点「残す」），
+    不能当成「不要新饮料」去找「離れる」（这一页没有，Mac 账号 2 11-14 停机）。"""
+    d = Decision(Action(ActionKind.DISCARD_DRINK, {"discard": [], "receive": True, "receive_indexes": [0]}), "收スムージー", "rule", 0.8)
+    strat, calls = _strategy(monkeypatch, _state(), lambda st: d, [True])
+    strat.on_pdrink_max()
+    assert calls["resolve"] == [[]] and calls["kaa"] == 0 and calls["stops"] == []

@@ -1,4 +1,4 @@
-"""轮间货架没有复制 / 爆发饮料时先刷新（开关 HIRO_INTERVAL_REFRESH，默认开，=0 关）。字段取自 Windows 第七局 seq173。"""
+"""轮间货架没有复制 / 爆发饮料时先刷新（用户 2026-11-08 定为一直开）。字段取自 Windows 第七局 seq173。"""
 
 import copy
 
@@ -26,15 +26,7 @@ def _decide(fields, d=None):
 
 
 @pytest.mark.master  # 决策器 / 状态机经 catalog 查主数据 game.db；CI 没有主数据时跳过
-def test_off_buys_drink(monkeypatch):
-    monkeypatch.setattr(dmod, "INTERVAL_REFRESH", False)
-    _, dec = _decide(WIN7)
-    assert dec.action.kind is ActionKind.INTERVAL_BUY and dec.action.args.get("index") in (6, 7)
-
-
-@pytest.mark.master  # 决策器 / 状态机经 catalog 查主数据 game.db；CI 没有主数据时跳过
-def test_on_refreshes_without_copy_or_burst(monkeypatch):
-    monkeypatch.setattr(dmod, "INTERVAL_REFRESH", True)
+def test_on_refreshes_without_copy_or_burst():
     d, dec = _decide(WIN7)
     assert dec.action.kind is ActionKind.REROLL and dec.action.args == {"scope": "interval"}
     # 货架没变（没刷成）：不再刷，照常买
@@ -43,8 +35,7 @@ def test_on_refreshes_without_copy_or_burst(monkeypatch):
 
 
 @pytest.mark.master  # 决策器 / 状态机经 catalog 查主数据 game.db；CI 没有主数据时跳过
-def test_on_stops_after_max(monkeypatch):
-    monkeypatch.setattr(dmod, "INTERVAL_REFRESH", True)
+def test_on_stops_after_max():
     d = ProduceDeciders(CAMPUS_HIRO, None)
     kinds = []
     for i in range(dmod.INTERVAL_REFRESH_MAX + 1):
@@ -62,23 +53,9 @@ def test_on_stops_after_max(monkeypatch):
     lambda f: f["interval"]["drinks"][1].update(drink_id=None),  # 有一格没认出
 ])  # fmt: skip
 @pytest.mark.master  # 决策器 / 状态机经 catalog 查主数据 game.db；CI 没有主数据时跳过
-def test_on_no_refresh(monkeypatch, patch):
-    monkeypatch.setattr(dmod, "INTERVAL_REFRESH", True)
+def test_on_no_refresh(patch):
     f = copy.deepcopy(WIN7)
     patch(f)
     assert _decide(f)[1].action.kind is not ActionKind.REROLL
 
 
-
-@pytest.mark.parametrize("env,expect", [(None, "True"), ("0", "False"), ("1", "True")])
-def test_default_on(env, expect):
-    import os
-    import subprocess
-    import sys
-
-    e = {k: v for k, v in os.environ.items() if k != "HIRO_INTERVAL_REFRESH"}
-    if env is not None:
-        e["HIRO_INTERVAL_REFRESH"] = env
-    out = subprocess.run([sys.executable, "-c", "from hiro.brain import deciders; print(deciders.INTERVAL_REFRESH)"],
-                         env=e, capture_output=True, text=True, check=True).stdout.strip()
-    assert out.splitlines()[-1] == expect

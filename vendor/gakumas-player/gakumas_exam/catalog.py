@@ -12,11 +12,11 @@ ROOT=Path(__file__).resolve().parents[1]
 
 class Catalog:
     def __init__(self):
-        self.pointer=json.loads((ROOT/'data/master/current.json').read_text())
+        self.pointer=json.loads((ROOT/'data/master/current.json').read_text(encoding='utf-8'))
         # 环境变量 GAKUMAS_MASTER_COMMIT 可选用其他已构建的快照（例如用旧版本数据对账旧对局）
         override=os.environ.get('GAKUMAS_MASTER_COMMIT')
         if override and override!=self.pointer['commit']:
-            info=json.loads((ROOT/'data/master'/override/'build.json').read_text())
+            info=json.loads((ROOT/'data/master'/override/'build.json').read_text(encoding='utf-8'))
             self.pointer=dict(commit=override,database=override+'/catalog.sqlite',manifest_sha256=info['manifest_sha256'],
                               database_sha256=info['database_sha256'])
         self.directory=ROOT/'data/master'/self.pointer['commit']
@@ -98,7 +98,7 @@ class Catalog:
                     scope='card play/move triggers, effects, passive enchant, customize and grow-effect references')
 
     def verify(self):
-        manifest_path=self.directory/'manifest.json';manifest=json.loads(manifest_path.read_text());errors=[]
+        manifest_path=self.directory/'manifest.json';manifest=json.loads(manifest_path.read_text(encoding='utf-8'));errors=[]
         def digest(b):return hashlib.sha256(b).hexdigest()
         if digest(self.path.read_bytes())!=self.pointer['database_sha256']:errors.append('catalog database hash')
         if digest(manifest_path.read_bytes())!=self.pointer['manifest_sha256']:errors.append('manifest hash')

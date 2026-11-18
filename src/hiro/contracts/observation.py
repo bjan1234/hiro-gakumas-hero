@@ -20,6 +20,11 @@ class PageObs:
     area: str = "unknown"  # produce / outside / unknown
     confidence: float = 1.0
     stable_frames: int = 1  # 连续多少帧判为同一页面（采集 / 主循环维护；单帧为 1）
+    # 哪一层判出的页面（去 KAA 第 0 步：统计 KAA 出手次数，只记不用）。主循环：quick（快速判页）/ kaa（KAA check_scene）/
+    # 我们的补判 interval_title / exam_ocr / pixel / drink_ocr / pitem_ocr / idle_scene / produce_end_ocr / none（都没认出）；
+    # classify = Session 自己分类；None = 调用方按上下文直接给了页面（钩子里的观测）
+    # 新主循环（hiro.vision.classify）另有：template（自有模板判页，接替 kaa）/ signature / page_ocr / start_ocr / deck_ocr / landscape
+    source: str | None = None
 
 
 @dataclass
@@ -42,10 +47,11 @@ FIELD_CATALOG: dict[str, tuple[str, ...]] = {
     "SELECT_DRINK": ("candidates", "held", "full"),
     "SELECT_PITEM": ("pitems", "selected", "confirm_enabled"),
     "PRODUCE_START_CONFIRM": ("supports", "main_attr"),
-    "CONSULT": ("shelf", "services", "rerolls_left", "complete", "drinks", "drink_capacity", "stamina", "max_stamina", "produce_point"),
+    "CONSULT": ("shelf", "services", "rerolls_left", "complete", "drinks", "drink_capacity", "drinks_full", "stamina", "max_stamina", "produce_point"),
     "HIF_EXAM_RESULT": ("score", "rank", "passed", "exam_no", "rank_line", "participants", "entries", "retry"),
     "STUDY": ("choices", "selected", "effect", "complete"),
     "OUTING": ("choices", "selected", "effect", "complete"),
+    "EVENT_CHOICE": ("choices", "selected", "effect", "complete", "dialogue_only"),
     "DECK_LIST": ("deck", "deck_size", "cards", "complete", "problems"),
     "SKILL_CARD_REMOVAL": ("cards", "selected", "selected_card", "agree", "confirm", "deck_complete", "deck_screens", "cancelable"),
     "SKILL_CARD_ENHANCE": ("cards", "selected", "selected_card", "agree", "confirm", "upgradable", "deck_complete", "deck_screens", "cancelable", "trigger"),
@@ -56,7 +62,7 @@ FIELD_CATALOG: dict[str, tuple[str, ...]] = {
                          "produce_point", "stamina", "max_stamina"),
     # 页面地图（docs/pages-hif.md）：KAA 认不出的 H.I.F 页面
     "DIALOG": ('kind', 'title', 'danger', 'confirm'),
-    "ACQUIRE": ('kind', 'card_id', 'drink_id', 'pitem_id', 'pitem_ids', 'name', 'upgrade', 'agree'),
+    "ACQUIRE": ('kind', 'card_id', 'drink_id', 'pitem_id', 'pitem_ids', 'name', 'upgrade', 'agree', 'memory_effect'),
     "STAR_GAIN": ('gain', 'star', 'star_shown'),
     "HIF_EXAM_BRIEFING": ('exam_no', 'rank_line', 'participants', 'star', 'star_ok', 'params', 'multiplier_pct', 'complete', 'finals'),
     "PITEM_CUSTOMIZE": (),

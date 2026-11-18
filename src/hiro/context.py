@@ -1,4 +1,4 @@
-# 来源：digital-hiro hiro/context.py（c3fc27f）；调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """kotonebot 运行上下文。KAA 的识别函数依赖全局上下文（image/ocr/color 等转发对象）。"""
 
 from kotonebot.backend.context import get_context, init_context

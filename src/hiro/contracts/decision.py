@@ -10,7 +10,7 @@ from typing import Any
 from hiro.contracts.action import Action
 from hiro.contracts.base import VERSION, Contract
 
-SOURCES = ("rule", "plan", "sim", "llm", "fallback", "recommended", "first", "expert")
+SOURCES = ("rule", "plan", "sim", "llm", "fallback", "recommended", "first", "expert", "bench")
 
 
 @dataclass
@@ -44,7 +44,7 @@ class Decision(Contract):
 
     action: Action
     reason: str = ""
-    source: str = "rule"  # rule / plan / sim / llm / fallback / recommended / first / expert（考试预演专家）
+    source: str = "rule"  # rule / plan / sim / llm / fallback / recommended / first / expert（考试预演专家）/ bench（gakumas-bench 算法）
     confidence: float | None = None  # 0–1；规则 1.0，兜底 0.3，LLM 由其自报或缺省 None
     candidates: list[Candidate] = field(default_factory=list)
     plan: list[dict[str, Any]] = field(default_factory=list)  # 本回合后续打算（LLM 给出）

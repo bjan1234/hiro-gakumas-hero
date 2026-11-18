@@ -1,4 +1,3 @@
-# 来源：digital-hiro tests/test_refresh_confirm.py（develop c3fc27f）。读 tests/fixtures 截图的用例在没有样例目录时跳过（见 conftest.py）
 """「リフレッシュ確認」（第十八局本战轮间，总控 2026-11-02）：刷新货架后弹出的确认框，挂了 30 秒没人处理。
 帧：reports/live/m18-refresh/ 00124（弹框前）、00125（确认框）、00132（30 秒后仍在）。"""
 

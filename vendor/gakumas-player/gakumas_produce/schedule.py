@@ -17,7 +17,7 @@ class HIFSchedule:
     def __init__(self,produce_id='produce-007',catalog=None):
         self.catalog=catalog or Catalog()
         self.path=ROOT/'data/schedules/hif.json'
-        self.document=json.loads(self.path.read_text())
+        self.document=json.loads(self.path.read_text(encoding='utf-8'))
         if self.document['master_commit']!=self.catalog.info['commit']:raise Unsupported('Schedule/master version mismatch')
         source=ROOT/'data/community/hif-wiki-tables.json'
         # Windows 上 Git（core.autocrlf=true）会把它检出成 CRLF：行尾统一成 LF 再算，和生成时一致

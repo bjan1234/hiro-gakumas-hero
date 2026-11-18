@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/sim/env.py（develop 864e037）
 """考试引擎（gakumas_exam）对局 ↔ 决策层 BattleState / Decision 的转换，以及搜索用的克隆与推进。
 
 状态转换刻意对齐实机：卡牌文本优先用 KAA 卡面（定制过的卡改用引擎效果渲染），记忆（持续效果剩余、道具次数）
@@ -32,21 +31,17 @@ def fast_apply(env, action: dict) -> None:
 
 
 @lru_cache(maxsize=None)
-def _kaa_cards() -> dict:
-    import hiro  # noqa: F401  KAA 兼容层
-    import hiro.vision  # noqa: F401  开源版：让 KAA 读 HIRO_KAA_GAME_DATA（不在当前目录 resources/ 时）
-    from kaa.db.skill_card import SkillCard
+def _cards() -> dict:
+    from hiro import master
 
-    return {(c._id, c.upgrade_count or 0): c for c in SkillCard.all()}
+    return {(c._id, c.upgrade_count): c for c in master.cards()}
 
 
 @lru_cache(maxsize=None)
-def _kaa_drinks() -> dict:
-    import hiro  # noqa: F401
-    import hiro.vision  # noqa: F401
-    from kaa.db.drink import Drink
+def _drinks() -> dict:
+    from hiro import master
 
-    return {d.id: d for d in Drink.all()}
+    return {d.id: d for d in master.drinks()}
 
 
 def _pct(permil: int) -> str:
@@ -121,9 +116,9 @@ def sim_card_view(slot: int, definition: dict, *, available: bool) -> CardView:
     src = definition.get("provenance") or {}
     card_id, upgrade = src.get("card_id"), src.get("upgrade", 0)
     customized = bool((src.get("customization") or {}).get("customizations"))
-    kaa = _kaa_cards().get((card_id, upgrade))
-    if kaa is not None and not customized:
-        v = card_view(slot, kaa, available=available)
+    card = _cards().get((card_id, upgrade))
+    if card is not None and not customized:
+        v = card_view(slot, card, available=available)
     else:
         name = definition["name"] + ("（定制）" if customized else "")
         text = render_effects(definition["effects"]) + (" / レッスン中1回" if definition.get("once") else "")
@@ -142,9 +137,9 @@ def sim_drink_view(slot: int, definition: dict) -> DrinkView:
     did = src.get("drink_id")
     from hiro.brain.cards import drink_view
 
-    kaa = _kaa_drinks().get(did)
-    if kaa is not None:
-        return drink_view(slot, kaa)
+    drink = _drinks().get(did)
+    if drink is not None:
+        return drink_view(slot, drink)
     return DrinkView(slot, definition["name"], did, render_effects(definition["effects"]))
 
 
@@ -226,7 +221,7 @@ class SimExam:
         from hiro.sim import FIXTURES
 
         path = FIXTURES / f"{fixture}.json"
-        self.observation = json.loads(path.read_text())
+        self.observation = json.loads(path.read_text(encoding="utf-8"))
         self.exam = Exam(self.observation, **kw)
         self.label = exam_label
         self.profile = profile
@@ -238,5 +233,5 @@ class SimExam:
     def restore(self, snapshot: str, seed: int, **kw) -> SimGame:
         from hiro.sim import FIXTURES
 
-        obs = json.loads((FIXTURES / f"{snapshot}.json").read_text())
+        obs = json.loads((FIXTURES / f"{snapshot}.json").read_text(encoding="utf-8"))
         return SimGame(self.exam.restore(obs, seed), self.label, self.profile, **kw)

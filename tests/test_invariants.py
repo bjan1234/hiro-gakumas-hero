@@ -1,5 +1,6 @@
 """状态不变量（docs/state-events.md §4）：规则单测 + 实机 trace 回放验收（trace 不在仓库里时跳过）。"""
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,8 @@ import pytest
 from hiro.contracts import Check, GameState, Observation, PageObs
 from hiro.loop.reduce import reduce
 from hiro.state.invariants import check_invariants, filter_observation
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))  # invariants_replay
 
 TRACES = Path(__file__).resolve().parents[1] / "traces"
 
@@ -136,7 +139,7 @@ CASES: list[tuple[str, str, int, str, int]] = [
 def test_trace_read_errors_caught(run, segment, seq, field, value):
     if not (TRACES / run).exists():
         pytest.skip("trace 不在本机")
-    from hiro.state.invariants_replay import replay
+    from invariants_replay import replay
 
     res = replay(TRACES / run)
     hits = [c for c in res["checks"] if c["segment"] == segment and c["seq"] == seq and c["field"] == field]

@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/state/events.py（develop 864e037）
 """状态推算的预测器（docs/state-events.md §3，H1 任务单「决策：预测器 hiro.state.events」）。
 
 `predict(state, event) -> list[Prediction]`：事件发生后，下一个观测点各字段应该是多少（精确值或区间）。
@@ -525,7 +524,8 @@ def _drink_discard(prod: dict, args: dict, seq: int) -> list[Prediction]:
 
 def _pitem(prod: dict, args: dict, seq: int) -> list[Prediction]:
     """PITEM_ACQUIRE / PITEM_CUSTOMIZE {item_id, replaces?}：items 加入 / 替换（master ProduceItem / ProduceCustomizeItem 的 ID）。"""
-    item = args.get("item_id")
+    # 识别发的 PITEM_ACQUIRE 参数叫 pitem_id（原来只认 item_id，produce.items 从没记上，任务 ② 11-14）；同名分不清时 pitem_ids 取第一个
+    item = args.get("item_id") or args.get("pitem_id") or next(iter(args.get("pitem_ids") or []), None)
     if not item:
         return []
     items = list(prod.get("items") or [])

@@ -1,4 +1,3 @@
-# 来源：digital-hiro hiro/loop/rescue.py（c3fc27f）
 """认不出的画面交给外部 LLM 看图决策（用户 2026-11-03：「遇到了无法识别的弹窗 / 页面，就用外部的 LLM 来决策」）。
 
 每遇到一种新弹窗 / 新页面就卡 3 分钟左右等人发现（第二十一局停机 34 分钟、第二十二局 28 分钟：通信エラー、轮间徽章偏移、
@@ -15,7 +14,7 @@
    考试画面不走这条（主循环先判考试）；
 4. 每次留档：reports/live/rescue/<时间>/{screen.jpg, record.json}，并写进 trace（recover:llm_rescue）；
    同类画面攒多了交识屏补签名。
-开关：环境变量 HIRO_RESCUE_LLM=0 关掉（默认开）；模型 HIRO_RESCUE_LLM_SPEC（缺省 HIRO_LLM / claude:sonnet）。
+开关：环境变量 HIRO_RESCUE_LLM=0 关掉（默认开）；模型同 HIRO_LLM（缺省 claude:sonnet）。
 """
 
 from __future__ import annotations
@@ -28,7 +27,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from hiro.log import logging
+import logging
 from hiro import imgio
 
 logger = logging.getLogger(__name__)
@@ -144,11 +143,10 @@ class Rescuer:
         if self._llm is None:
             from hiro.brain.llm import from_spec
 
-            spec = os.environ.get("HIRO_RESCUE_LLM_SPEC") or None
             try:
-                self._llm = from_spec(spec, timeout=LLM_TIMEOUT)
+                self._llm = from_spec(None, timeout=LLM_TIMEOUT)
             except TypeError:  # mock 不收 timeout
-                self._llm = from_spec(spec)
+                self._llm = from_spec(None)
         return self._llm
 
     def due(self, stuck_s: float, *, dialog: bool = False, img=None) -> bool:
@@ -345,12 +343,12 @@ def _default_ocr(img):
 
 
 def _default_shoot():
-    from kotonebot import device
+    from hiro.devices.active import device
 
     return device.screenshot()
 
 
 def _default_click(x, y):
-    from kotonebot import device
+    from hiro.devices.active import device
 
     device.click(x, y)

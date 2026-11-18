@@ -31,3 +31,24 @@ def test_exam_policy_passes_through():
 
 def test_logs_effective_source():
     assert re.search(r"Write-Host .*HIRO_EXAM_STATE_SOURCE=", PLAY)
+
+
+def test_no_settings_check_passthrough():
+    """-NoSettingsCheck 透传成 play_game 的 --no-settings-check（从本战开始确认页续本战时跳过设置检查）。"""
+    assert re.search(r"\[switch\]\$NoSettingsCheck", PLAY)
+    assert re.search(r'if \(\$NoSettingsCheck\) \{ \$argv \+= "--no-settings-check" \}', PLAY)
+
+
+def test_play_ps1_sets_default_pause_flag():
+    """DMM 版 hiro 以管理员身份跑，普通权限停不了它：play.ps1 缺省设暂停旗标路径（普通用户能写），外面设了就用外面的。"""
+    s = (Path(__file__).resolve().parents[1] / "scripts" / "play.ps1").read_text(encoding="utf-8-sig")
+    assert 'if (-not $env:HIRO_PAUSE_FLAG) { $env:HIRO_PAUSE_FLAG = Join-Path $env:LOCALAPPDATA "hiro\\pause.flag" }' in s
+    i_admin = s.index("IsInRole(")
+    assert s.index("if (-not $env:HIRO_PAUSE_FLAG)") > i_admin  # 在提权重开之后设，管理员进程里也有
+
+
+def test_play_ps1_schedule_probe_switch():
+    """-ScheduleProbe 在提权重开之后设 HIRO_EXAM_SCHEDULE_PROBE（提权重开不一定带上调用方的环境变量）。"""
+    s = (Path(__file__).resolve().parents[1] / "scripts" / "play.ps1").read_text(encoding="utf-8-sig")
+    assert "[switch]$ScheduleProbe" in s
+    assert s.index('if ($ScheduleProbe) { $env:HIRO_EXAM_SCHEDULE_PROBE = "1" }') > s.index("IsInRole(")

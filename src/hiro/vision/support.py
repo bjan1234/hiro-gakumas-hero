@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/vision/support.py（develop c3fc27f）；开源版改：游戏素材经插件 AssetSource（hiro.vision.assets），拿不到时退路见各处注释
 """培育开始前「4.開始確認」页（PRODUCE_START_CONFIRM）：读支援卡编成 → produce.supports。
 
 KAA 开局走 auto_set_support_card，编成只能在现场读；一局读一次即可（主属性按支援卡类型多数定）。
@@ -50,7 +49,7 @@ def _library() -> tuple[list[str], np.ndarray, dict]:
     folder = assets.support_dir()
     if folder is None:
         return [], np.zeros((0, 1), np.float32), {}  # 没有支援卡图：support_card_id 给 None
-    index = json.loads((folder / "index.json").read_text()) if (folder / "index.json").exists() else {}
+    index = json.loads((folder / "index.json").read_text(encoding="utf-8")) if (folder / "index.json").exists() else {}
     keys, rows = [], []
     for png in sorted(folder.glob("*.png")):
         im = cv2.imread(str(png), cv2.IMREAD_UNCHANGED)

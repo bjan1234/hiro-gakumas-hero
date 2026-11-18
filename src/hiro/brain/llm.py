@@ -1,4 +1,3 @@
-# 来源：digital-hiro src/hiro/brain/llm.py @ c3fc27f（GPL-3.0-or-later）
 """LLM 适配层：决策层只依赖 LLMAdapter 协议（ask_json），换模型只改适配器 / 配置。
 
 - ClaudeCLI：本机 Claude Code CLI（claude -p），走用户订阅额度，无需 API key。
