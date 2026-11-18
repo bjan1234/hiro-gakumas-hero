@@ -38,8 +38,8 @@ PREVIEW_BUDGET_S = float(os.environ.get("HIRO_EXAM_SIM_BUDGET_S", "7.5"))
 # 再多多半是认卡认错，宁可退回画面读数（DMM mainverify2 11-17）
 NEW_CARD_LIMIT = 8
 # R2 応援棒补卡按偶像流派的真实卡池（interval.ouenbou_pool）补，画面上露出的基础卡在引擎里没有时换掉一张还没露面的占位卡（不另新建）。
-# 缺省关（协调 11-18 mainz4 R2 复盘③：旧轮换表补的 アピール / 表現 / ファンサ の基本 広 的応援棒根本不会给，露出的 仕草 / アイコンタクト
-# 只能临时新建，引擎山札一直多 2–3 张永远不会来的卡）。
+# 协调 11-18 mainz4 R2 复盘③：旧轮换表补的 アピール / 表現 / ファンサ の基本 広 的応援棒根本不会给，露出的 仕草 / アイコンタクト
+# 只能临时新建，引擎山札一直多 2–3 张永远不会来的卡。缺省开（离线自打 400 局 +29k、约 2.5 个标准误，协调批准）；0 / off 关。
 OUENBOU_POOL_ENV = "HIRO_SIM_OUENBOU_POOL"
 
 
@@ -66,7 +66,7 @@ def unique_item(idol_card_id: str | None) -> str | None:
 
 
 def ouenbou_pool_on() -> bool:
-    return os.environ.get(OUENBOU_POOL_ENV, "").strip().lower() in ("1", "on", "true", "yes")
+    return (os.environ.get(OUENBOU_POOL_ENV) or "1").strip().lower() not in ("0", "off", "false", "no")
 
 
 def _round_label(exam: str | None) -> str | None:

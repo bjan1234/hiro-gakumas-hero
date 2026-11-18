@@ -192,16 +192,16 @@ def test_second_generated_sleepy_keeps_the_first():
 @pytest.mark.parametrize("on", [False, True])
 def test_r2_ouenbou_pool_fill_swaps_placeholder(monkeypatch, on):
     """mainz4 R2 复盘③（协调 11-18）：HIRO_SIM_OUENBOU_POOL=1 时 R2 応援棒按広的真实卡池（やる気流派）补；画面露出的基础卡在引擎里不够时
-    换掉一张还没露面的占位卡，牌组总数保持 22。缺省关：旧轮换补的卡对不上，露出的卡只能新建，引擎牌组越补越多。"""
+    换掉一张还没露面的占位卡，牌组总数保持 22。缺省开；0 关掉是旧轮换：补的卡对不上，露出的卡只能新建，引擎牌组越补越多。"""
     _needs_new_card()
     from hiro.sim import interval as iv
     from hiro.sim import resource as rv
     from hiro.sim.screen_source import SimScreenExamStateSource
 
     if on:
-        monkeypatch.setenv("HIRO_SIM_OUENBOU_POOL", "1")
+        monkeypatch.delenv("HIRO_SIM_OUENBOU_POOL", raising=False)  # 缺省开（协调 11-18）
     else:
-        monkeypatch.delenv("HIRO_SIM_OUENBOU_POOL", raising=False)
+        monkeypatch.setenv("HIRO_SIM_OUENBOU_POOL", "0")
     deck = (list(rv.REFERENCE_DECK) * 2)[:17]
     SHIGUSA = "p_card-02-act-0_038"  # 仕草の基本（卡池里有、旧轮换前 5 张没有；新补法只补 1 张）
     from hiro.brain.battle import BattleBrain
@@ -228,7 +228,7 @@ def test_r2_ouenbou_pool_fill_swaps_placeholder(monkeypatch, on):
     hand = [env.rx.card_info(i)[0] for i in env.zones["hand"]]
     assert hand.count(SHIGUSA) == 2
     assert SHIGUSA not in [c for c, _ in iv.ouenbou_fill(deck)[17:]]  # 旧轮换前 5 张没有 仕草
-    assert total == (22 if on else 24)  # 缺省关：两张都只能新建，22 + 2
+    assert total == (22 if on else 24)  # 关掉时两张都只能新建，22 + 2
 
 
 def test_unique_item_fallback_when_ledger_empty(monkeypatch):
