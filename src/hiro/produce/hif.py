@@ -186,6 +186,7 @@ class HifCore:
         self.deciders.picked_musts |= set(MEMORY_CARDS) | self._picked_cards_from_trace()  # 回忆带的卡算已有
         self._load_finals_context()
         self._seed_produce_from_trace()
+        self._seed_idol_item()
         # 同一进程内崩溃重启（run_hif 的 _supervised_resume）时沿用已完成的场次；跨进程续跑用 run_hif --exams-done，
         # 没给时从之前的 trace 段数（dmmt2：续跑后第 2 场记成 qualify-1）
         if not type(self).exams_done and self.scenario == "qualify":
@@ -823,6 +824,27 @@ class HifCore:
         if top:
             logger.info("续跑：之前的 trace 段已考完 %d 场选拔", top)
         return top
+
+    def _seed_idol_item(self) -> None:
+        """P 道具账本是空的（新开局，或上一段 trace 也没记）：先放偶像固有道具（主数据 IdolCard.beforeProduceItemId，同 bench 中转层
+        Enchants.idol_items）。固有道具开局就有、不弹获得演出，原来账本里一直没有（8a3a1e7 11-18：初 PRO 编成里没有 選びとった熱）。"""
+        idol = getattr(self.profile, "idol_id", None)
+        prod = self.s.state.produce or {}
+        if not idol or prod.get("items"):
+            return
+        try:
+            from hiro.state.modes import master
+
+            item = master().one("IdolCard", idol).get("beforeProduceItemId")
+        except Exception:  # noqa: BLE001  没有主数据 / 偶像卡查不到
+            return
+        if not item:
+            return
+        from hiro.contracts import Source
+
+        self.s.state.produce = {**prod, "items": [item]}
+        self.s.state.sources["produce.items"] = Source("infer", 0)
+        logger.info("P 道具账本：放入偶像固有道具 %s", item)
 
     def _seed_produce_from_trace(self) -> None:
         """续跑：画面还没读到 P / 体力 / 模式（续跑停在相談等不读头部的页面）时，用之前 trace 段最后一个有 produce 的状态打底

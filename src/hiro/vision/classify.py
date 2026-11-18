@@ -108,6 +108,19 @@ def _any(img, *names) -> bool:
     return any(tpl(n).exists(img) for n in names)
 
 
+SELECT_TITLE_BOX = (230, 590, 370, 670)  # 三选一弹窗标题「スキルカード / Pアイテム / Pドリンク」的位置（KAA 模板原位 (247,613) 107x32）
+
+
+def _title(img, name: str) -> bool:
+    """三选一弹窗标题模板只认原位：支援能力横幅「Pアイテム獲得時、…」（y≈460）也会命中同一行字（初 PRO 11-18：中間后判成
+    SELECT_PITEM，读不到候选重读 3 次停机）。"""
+    m = tpl(name).find(img)
+    if m is None:
+        return False
+    x1, y1, x2, y2 = SELECT_TITLE_BOX
+    return x1 <= m.rect.center.x <= x2 and y1 <= m.rect.center.y <= y2
+
+
 def template_scene(img) -> str | None:
     """KAA ProducePage.check_scene 的顺序和模板；返回 SceneType 名或 None。"""
     if loading(img):
@@ -122,11 +135,11 @@ def template_scene(img) -> str | None:
         return "IDLE"  # 引导框：KAA 判页时点 ✓，这里只判（中断层 / 处理器去点）
     if _any(img, "InProduce.ProduceScore.TitleText", "InProduce.End.ButtonGenerate"):
         return "PRODUCE_END"
-    if _any(img, "InProduce.TextSkillCard"):
+    if _title(img, "InProduce.TextSkillCard"):
         return "SELECT_CARD"
-    if _any(img, "InProduce.TextPItem"):
+    if _title(img, "InProduce.TextPItem"):
         return "SELECT_PITEM"
-    if _any(img, "InProduce.TextPDrink"):
+    if _title(img, "InProduce.TextPDrink"):
         return "SELECT_DRINK"
     if _any(img, "InProduce.IconTitleSkillCardEnhance"):
         return "SKILL_CARD_ENHANCE"
