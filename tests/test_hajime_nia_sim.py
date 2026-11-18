@@ -91,6 +91,11 @@ def test_hajime_evaluation_master_live(hn):
     assert hn.hajime_evaluation({"Vo": 902, "Da": 1570, "Vi": 704}, 44250, 1, 1800) == 12903
 
 
+def test_nia_master_evaluation_live(hn):
+    """2026-11-19 N.I.A MASTER（篠澤広）：培育履历 16,342pt，属性 1178 / 1663 / 1354，ファン投票数 84,906。"""
+    assert hn.nia_evaluation({"Vo": 1178, "Da": 1663, "Vi": 1354}, 84906, "produce-005", 2600) == 16342
+
+
 def test_nia_evaluation_tiers(hn):
     assert hn.nia_vote_eval(20000, "produce-004") == 2000
     assert hn.nia_vote_eval(36036, "produce-004") == 3363
