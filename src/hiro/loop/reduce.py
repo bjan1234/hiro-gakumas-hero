@@ -19,7 +19,7 @@ DEBOUNCE = 3  # 不合法跳变需要连续多少帧才接受
 STABLE = 2  # 连续多少帧算稳定
 
 # 页面局部字段：换页清空，不进 produce / exam
-PAGE_LOCAL = {"options", "complete", "advice", "candidates", "recommended", "cards", "problems", "exam_next", "weeks_left"}
+PAGE_LOCAL = {"options", "complete", "advice", "candidates", "recommended", "cards", "problems", "exam_next", "weeks_left", "schedule"}
 # 哪个页面的字段写进哪个分区
 SECTION = {"ACTION_SELECT": "produce", "DECK_LIST": "produce", "HIF_EXAM": "exam", "SELECT_CARD": None, "SELECT_DRINK": None, "HIF_EXAM_RESULT": None}
 # 考试页面里整段替换（不逐项合并）的列表 / 字典字段
@@ -192,6 +192,8 @@ def _reduce_fields(s: GameState, obs: Observation) -> None:
         s.sources[full] = Source(origin, obs.seq)
     if obs.page.name == "ACTION_SELECT":
         _hajime_nia_step(s, obs, origin)
+        if (s.produce or {}).get("schedule"):
+            s.page_fields["schedule"] = s.produce["schedule"]  # 整局日程（选行动页左上点开的日程列表，hiro.produce.schedule_probe）
         _declined(s)
     if obs.page.name == "CONSULT":
         _consult_price(s, obs, origin)
