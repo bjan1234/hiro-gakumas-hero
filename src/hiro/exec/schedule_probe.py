@@ -118,7 +118,7 @@ def probe(
             first = panels[0]
             out["panel"] = {"turn_types": turn_types(panels, total_turns), "turn_effects": turn_effects(panels, total_turns),
                             "permil": first.get("permil"), "pass_rank": first.get("pass_rank"), "pass_score": first.get("pass_score"),
-                            "current_turn": first.get("current_turn")}  # fmt: skip
+                            "pass_text": next((q["pass_text"] for q in panels if q.get("pass_text")), None), "current_turn": first.get("current_turn")}  # fmt: skip
     if not opened:
         # 画面没变：点了没反应（或者不是可点的区域）。没有面板要关，照常继续
         out.update(closed=True, close_by="not_opened", close_ms=0, total_ms=round((clock() - t0) * 1000))
@@ -202,7 +202,7 @@ def _read_panels(img, read_panel, swipe, total_turns, shoot, sleep, log, exam, c
 
 def apply_panel(panel: dict | None, session, memory) -> None:
     """面板读数写进考试局面（来源 screen）：exam.turn_types（下标 0 = 第 1 回合，读不到的回合 None）、exam.attr_permil（三属性倍率，
-    画面真值，8a3a1e7 的搜索用）、exam.pass_line {rank, score}；倍率也记进本场考试记忆（ExamMemory.attr_permil）。"""
+    画面真值，8a3a1e7 的搜索用）、exam.pass_line {rank, score, stage（过线条件原文）}；倍率也记进本场考试记忆（ExamMemory.attr_permil）。"""
     if not panel:
         return
     from hiro.contracts import Source
@@ -223,8 +223,10 @@ def apply_panel(panel: dict | None, session, memory) -> None:
     if panel.get("turn_effects"):
         ex["turn_effects"] = list(panel["turn_effects"])  # 每回合的回合效果文字（gimmick），下标同 turn_types
         st.sources["exam.turn_effects"] = Source("screen", seq)
-    if panel.get("pass_rank") is not None or panel.get("pass_score") is not None:
-        ex["pass_line"] = {"rank": panel.get("pass_rank"), "score": panel.get("pass_score")}
+    if panel.get("pass_rank") is not None or panel.get("pass_score") is not None or panel.get("pass_text"):
+        # stage = 过线条件原文（「3位以上で中間試験突破」/ N.I.A「…オーディション突破」），8a3a1e7 按关键词认场次（11-18）
+        ex["pass_line"] = {"rank": panel.get("pass_rank"), "score": panel.get("pass_score"), "stage": panel.get("pass_text")}
+        st.sources["exam.pass_line"] = Source("screen", seq)
     st.exam = ex
 
 
