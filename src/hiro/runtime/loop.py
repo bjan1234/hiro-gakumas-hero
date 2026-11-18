@@ -276,7 +276,9 @@ class Runtime:
         if out.kind == "stop":
             raise ResumeBlocked(f"{hit.name}：{out.reason}")
         if out.kind != "stay" or (self.landscape is not None and self.landscape.in_live(f.img)):
-            self._mark_acted(f.t)  # LIVE 演出里本来就不点：不算没进展
+            # 按处理器返回时的时刻记（LIVE 演出里本来就不点：不算没进展）。原来记的是进处理器前那帧的时刻：考试处理器跑了 5 分钟，
+            # 出来第一帧是结算后的过场，马上判成「284s 没有任何操作」停机（初 PRO 最終 11-18）
+            self._mark_acted(self.clock() if handler is not None else f.t)
         else:
             self._check_idle(hit, f.t, handler is not None)
         return out

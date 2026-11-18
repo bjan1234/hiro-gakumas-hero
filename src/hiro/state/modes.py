@@ -180,3 +180,13 @@ def auditions(produce_id: str, idol_card_id: str) -> list[Stage]:
         if tiers:
             out.append(Stage(kind, tuple(tiers)))
     return out
+
+
+def audition_turns(produce_id: str, idol_card_id: str, stage: str) -> int | None:
+    """这一场考试（mid1 / mid2 / final）的总回合数（第 1 档的战斗配置 turn）；查不到 None。初：中間 9、最終 11。"""
+    st = next((x for x in auditions(produce_id, idol_card_id) if x.kind == stage), None)
+    if st is None or not st.tiers:
+        return None
+    cid = st.tiers[0].battle_config_id
+    cfg = next((r for r in master().rows("ProduceExamBattleConfig") if r.get("id") == cid), None)
+    return int(cfg["turn"]) if cfg and cfg.get("turn") else None
