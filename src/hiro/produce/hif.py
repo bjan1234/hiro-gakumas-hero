@@ -501,6 +501,8 @@ class HifCore:
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
         return True
 
+    RESIDUAL_PICK_S = 30.0  # 拿卡后这么久内又出现候选完全相同的选卡页：当获得后的残留画面
+    RESIDUAL_TAP = (12, 12)  # 同主循环过渡页点的空白处
     SELECT_RETRIES = 4  # 三选一候选为空时重读几次（每次等 SELECT_RETRY_WAIT 秒，约 2–3 秒）
     SELECT_RETRY_WAIT = 0.5
     CONFIRM_CLOSE_TRIES = 12  # 「報酬スキップ」点キャンセル 后等它关掉几拍（一半时补点一次）
@@ -548,6 +550,15 @@ class HifCore:
                 best = (known(again), again, frame)
         _, raw, img = best
         raw = dict(raw or {})
+        ids = tuple(o.get("card_id") for o in raw.get("options") or [])
+        last = getattr(self, "_last_pick", None)
+        if last and ids and all(ids) and ids == last[0] and time.monotonic() - last[1] < self.RESIDUAL_PICK_S:
+            # 刚拿过卡、候选（按 card_id，不看强化）完全相同：是获得后叠在原选卡页上的动画（「スター性獲得」等），不是又一次选卡
+            #（mainz3 r3 04:20：又「选」了一次，账本多记一张 イメトレ+）。不选，点空白处等它过去
+            self.s.recover("page_misjudged", f"选卡页候选与 {time.monotonic() - last[1]:.0f}s 前刚拿过的那页相同，当获得后的残留画面，不再选")
+            device.click(*self.RESIDUAL_TAP)
+            sleep(1.0)
+            return
         raw["recommended"] = rec_index
         obs = self.s.observe(scene="SELECT_CARD", img=img, fields=raw)
         for _ in range(4):  # 页面切换防抖中字段没进 state（同 on_select_drink）：再观测几次让页面落定（不合法跳转要 DEBOUNCE=3 帧）
@@ -608,6 +619,8 @@ class HifCore:
 
         result = self._act(commit, Action.activate_effect(i), page_before="SELECT_CARD",
                            taps=[[int(choice.rect.center.x), int(choice.rect.center.y)]])  # fmt: skip
+        if result.ok:
+            self._last_pick = (ids, time.monotonic())
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
     def _stage(self) -> str:
