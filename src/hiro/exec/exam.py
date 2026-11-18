@@ -1184,14 +1184,13 @@ def run_exam(
             if stable_wait.waited >= STABLE_WAIT_S and session is not None:
                 session.note(f"画面 {stable_wait.waited:.0f}s 不稳定，用单帧出决策")
             stable_wait.reset()
-            if schedule_probe.enabled() and exam not in SCHEDULE_PROBED and memory.turn <= 1 and restored is None and frame.remaining is not None:
+            if (schedule_probe.enabled() and schedule_probe.should_probe(exam) and exam not in SCHEDULE_PROBED and memory.turn <= 1
+                    and restored is None and frame.remaining is not None):  # fmt: skip
                 # 审查日程探测（默认关）：每场考试第 1 回合出牌前点开一次，存帧、关掉、记耗时，回到考试画面后重新截图再决策
                 SCHEDULE_PROBED.add(exam)
-                from hiro.vision import hif as _hif
-
                 with _phase("schedule_probe"):
                     schedule_probe.probe(frame.img, exam=exam, shoot=device.screenshot, click=lambda x, y: device.click(x, y),
-                                         ocr_boxes=ops.ocr_boxes, is_exam=_hif.is_hif_exam, log=rec.log,
+                                         ocr_boxes=ops.ocr_boxes, is_exam=schedule_probe.back_in_exam, log=rec.log,
                                          note=session.note if session is not None else None)  # fmt: skip
                 animating = True
                 continue

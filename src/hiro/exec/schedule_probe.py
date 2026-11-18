@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from collections.abc import Callable
 
@@ -33,6 +34,27 @@ CHANGED_MIN = 8.0  # 整屏灰度平均差：面板盖上来远大于这个；�
 
 def enabled() -> bool:
     return os.environ.get(ENABLED_ENV) == "1"
+
+
+# 只在有审查日程面板的考试 / 试镜里点（协调 11-18 初 PRO 实机：课程第 1 回合前点开了「残りターン数」框的回合详情，
+# 关闭判定只认 H.I.F 考试画面、认不出课程画面，停机）。课程（hajime-lesson-*）、偶像之路（tower*）不点。
+EXAM_LABEL = re.compile(r"^(qualify-\d|r[12]|hajime-(mid1|final)|nia-(mid1|mid2|final))(#.*)?$")
+
+
+def should_probe(label: str | None) -> bool:
+    return bool(label) and EXAM_LABEL.match(str(label)) is not None
+
+
+def back_in_exam(img) -> bool:
+    """回到考试画面了：H.I.F 考试、初 / N.I.A 考试（判页用偶像之路那套判据认中，TOWER_EXAM）、课程 HUD 任一认得出就算。"""
+    from hiro.vision.hajime import in_lesson
+    from hiro.vision.hif import is_hif_exam
+    from hiro.vision.tower import is_tower_exam
+
+    try:
+        return bool(is_hif_exam(img) or is_tower_exam(img) or in_lesson(img))
+    except Exception:  # noqa: BLE001  识别异常当没回来，交给超时
+        return False
 
 
 def screen_diff(a: np.ndarray, b: np.ndarray) -> float:
