@@ -541,6 +541,8 @@ class BenchAdvisor:
                 if ac["turns"]:
                     self.exam["turns"] = ac["turns"]
         self._calc_pm, self._seen_pm, self._live_wait = {}, {}, None
+        self._label_note = None
+        self._round_checked = str(self.label or "").split("#", 1)[0].lower() not in ("hajime-mid1", "hajime-final")
         base = str(self.label or "").split("#", 1)[0].lower()
         if lo is None and base.startswith(("hajime-", "nia-")) and "-lesson" not in base:
             self._audition_defaults(idol, number)
@@ -704,6 +706,51 @@ class BenchAdvisor:
             return mode if family(mode) == fam else None
         except Exception:  # noqa: BLE001
             return None
+
+    def _check_round(self, obs: dict, state: Any = None, memory: Any = None) -> None:
+        """初的中間 / 最終：标签和画面对不上时以画面为准（协调 11-18：初 PRO 最終续跑后被标成 hajime-mid1，目标按中間取了 1700 封顶、
+        只拿第 2）。依据（先面板、后回合数）：审查日程面板的过线条件（exam.pass_line：中間带分数线「3位以上 or N 分」，
+        最終只有名次「3位以上で最終試験突破」）；回合总数（UIObs limit）和两场 battle config 的回合数（初 中間 9 / 最終 11）比。
+        改了就换标签、重查这场的审查基准 / 回合数 / 粗算倍率，日志和每步理由写明。"""
+        from hiro.bench_bridge import tower as tw
+        from hiro.bench_bridge.screen import exam_fields
+        from hiro.search.exam_env import audition_row
+
+        tag = str(self.label or "")
+        base, _, rest = tag.partition("#")
+        rnd = base.lower().partition("-")[2]
+        ex = getattr(getattr(self._session, "state", None), "exam", None) if self._session is not None else None
+        pl = (ex.get("pass_line") if isinstance(ex, dict) else getattr(ex, "pass_line", None)) or None
+        got, why = None, ""
+        if isinstance(pl, dict) and pl.get("rank"):
+            got = "mid1" if pl.get("score") else "final"
+            why = f"面板过线条件 {pl}"
+        else:
+            # 总回合数按画面的剩余回合推（UIObs 的 limit 可能已经按标签那场的 battle config 固定了）
+            remaining = getattr(state, "remaining_turns", None)
+            limit = int(getattr(memory, "turn", 1) or 1) + int(remaining) - 1 if remaining else 0
+            turns = {}
+            for r in ("mid1", "final"):
+                try:
+                    row = audition_row(self.exam.get("idol"), self.exam.get("produce"), r, 1)
+                    turns[r] = int((tw.master().battle_config(row["produceExamBattleConfigId"]) or {}).get("turn") or 0)
+                except Exception as e:  # noqa: BLE001  查不到：这一场不按回合数判
+                    logger.info("[%s] 核场次时查不到 %s 的回合数：%s: %s", self.label, r, type(e).__name__, e)
+            hit = [r for r, t in turns.items() if t and t == limit]
+            if len(hit) == 1 and limit > 1:
+                got, why = hit[0], f"回合数 {limit}（{turns}）"
+        if got is None or got == rnd:
+            return
+        old = self.label
+        self.label = f"hajime-{got}" + (f"#{rest}" if rest else "")
+        keep = {k: self.exam.get(k) for k in ("idol", "produce", "plan")}
+        self.exam = {**self.exam, **exam_fields(self.label, idol=keep["idol"], plan=keep["plan"], produce=keep["produce"])}
+        self.exam.pop("turns", None)
+        self.exam["crit"] = [0, 0, 0]
+        self._calc_pm = {}
+        self._audition_defaults(keep["idol"], self._number)
+        self._label_note = f"场次按画面改成 {got}（标签 {old}；{why}）"
+        logger.warning("[%s] 标签 %s 和画面对不上，%s", self.label, old, self._label_note)
 
     def _turn_types(self) -> list | None:
         """平台读到的审查日程（考试局面 exam.turn_types：["Vo","Da",…]，下标 0 = 第 1 回合）→ [1 / 2 / 3 / None]；没有 None。"""
@@ -899,6 +946,9 @@ class BenchAdvisor:
         try:
             obs, slot_of, origin = self._obs(state, memory, legal)
             self._seen_pm.update({k: v for k, v in (getattr(state, "attr_permils", None) or {}).items() if v})
+            if not getattr(self, "_round_checked", True):
+                self._round_checked = True
+                self._check_round(obs, state, memory)
             if str(self.label or "").lower().startswith(("hajime", "nia")):
                 self._fix_obs(obs)
             # 每步给算法的 UIObs 记进运行日志（复盘用：实机局能直接看出 UINet 看到的局面和画面差在哪）
@@ -986,5 +1036,7 @@ class BenchAdvisor:
             reason = f"{name}（兜底：{note}；{'引擎局面' if origin == 'engine' else '画面读数'}）：{what}"
         if q:
             reason += f"；终局分预测中位 {q.get('50%')}"
+        if getattr(self, "_label_note", None):
+            reason += f"；{self._label_note}"
         return Decision(action=action, reason=reason, source="bench", confidence=None, candidates=cands,
                         seconds=time.monotonic() - t0, decider="battle")
