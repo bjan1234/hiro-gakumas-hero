@@ -43,6 +43,27 @@ NEW_CARD_LIMIT = 8
 OUENBOU_POOL_ENV = "HIRO_SIM_OUENBOU_POOL"
 
 
+# P 道具账本为空时（mainz4 整局 produce 没有 items、考试画面 pitems 也是空的），run_loadout 给空道具，合成开局把模板的道具全清掉：
+# 引擎里连固有道具（広：えいえいおー HP≥50% 追加行动 / 失血 15%）都没有，搜索推演的主循环是错的。打开后只放偶像卡的固有道具。
+# 1 = 主数据 IdolCard.beforeProduceItemId（未凸；模板 campus-20261019 里也是它）；也可以直接写道具 id（凸后 …-1）。缺省关。
+UNIQUE_ITEM_ENV = "HIRO_SIM_UNIQUE_ITEM"
+
+
+def unique_item(idol_card_id: str | None) -> str | None:
+    v = os.environ.get(UNIQUE_ITEM_ENV, "").strip()
+    if not v or v.lower() in ("0", "off", "false", "no"):
+        return None
+    if v.startswith("pitem_"):
+        return v
+    try:
+        from hiro.bench_bridge.tower import master
+
+        idol = next((r for r in master().rows("IdolCard") if r.get("id") == str(idol_card_id or "").replace("i_card-skin-", "i_card-")), None)
+    except Exception:  # noqa: BLE001  没有主数据
+        return None
+    return (idol or {}).get("beforeProduceItemId") or None
+
+
 def ouenbou_pool_on() -> bool:
     return os.environ.get(OUENBOU_POOL_ENV, "").strip().lower() in ("1", "on", "true", "yes")
 
@@ -207,7 +228,11 @@ class SimScreenExamStateSource(ScreenExamStateSource):
                 plan = load(os.environ.get("HIRO_FORMATION_PLAN") or None)
             except Exception as e:  # noqa: BLE001
                 logger.info("开局编成方案读不了：%s", e)
-        return run_loadout(produce, plan)
+        run, notes = run_loadout(produce, plan)
+        if not run.get("items") and (unique := unique_item(getattr(self.profile, "idol_id", None))):
+            run = {**run, "items": (unique,)}
+            notes = [n for n in notes if "P 道具没记账" not in n] + [f"P 道具没记账：只放固有道具 {unique}（{UNIQUE_ITEM_ENV}）"]
+        return run, notes
 
     def _new_game(self, setup, memory):
         from hiro.sim import interval as iv

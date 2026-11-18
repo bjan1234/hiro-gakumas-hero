@@ -229,3 +229,20 @@ def test_r2_ouenbou_pool_fill_swaps_placeholder(monkeypatch, on):
     assert hand.count(SHIGUSA) == 2
     assert SHIGUSA not in [c for c, _ in iv.ouenbou_fill(deck)[17:]]  # 旧轮换前 5 张没有 仕草
     assert total == (22 if on else 24)  # 缺省关：两张都只能新建，22 + 2
+
+
+def test_unique_item_fallback_when_ledger_empty(monkeypatch):
+    """mainz4（11-18）：P 道具账本为空时合成开局把模板道具全清掉，引擎里没有固有道具。HIRO_SIM_UNIQUE_ITEM=1 时只放偶像卡的固有道具
+    （IdolCard.beforeProduceItemId），也可以直接写道具 id；缺省关照旧。"""
+    from hiro.sim import screen_source as ss
+
+    src = ss.SimScreenExamStateSource()
+    src.begin({"exam": "r2", "profile": CAMPUS_HIRO, "session": _Session([("p_card-02-men-1_031", 0)])})
+    monkeypatch.setenv("HIRO_FORMATION_PLAN", "off")
+    monkeypatch.delenv("HIRO_SIM_UNIQUE_ITEM", raising=False)
+    assert src._run_loadout()[0]["items"] == ()
+    monkeypatch.setenv("HIRO_SIM_UNIQUE_ITEM", "1")
+    run, notes = src._run_loadout()
+    assert run["items"] == ("pitem_02-3-076-0",) and any("固有道具" in n for n in notes)
+    monkeypatch.setenv("HIRO_SIM_UNIQUE_ITEM", "pitem_02-3-076-1")
+    assert src._run_loadout()[0]["items"] == ("pitem_02-3-076-1",)
