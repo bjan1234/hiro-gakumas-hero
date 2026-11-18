@@ -1,5 +1,5 @@
 """审查日程探测（HIRO_EXAM_SCHEDULE_PROBE，默认关）：点开 → 存帧 → 关掉 → 回到考试画面才继续；关不掉就停机。
-面板没有实拍帧：用考试帧压暗代替「盖上来的面板」，OCR 用假的。"""
+假面板：考试帧中间刷白代替「盖上来的面板」，OCR 用假的。"""
 
 from pathlib import Path
 
@@ -14,7 +14,9 @@ FIX = Path(__file__).parent / "fixtures" / "exam" / "status" / "dmmw1q-133-faint
 
 class Screen:
     def __init__(self, exam_img, close_by):
-        self.exam, self.panel = exam_img, (exam_img * 0.3).astype(exam_img.dtype)
+        # 「盖上来的面板」：考试帧中间一大块刷白（打开按白色大面板认，hiro.vision.schedule.panel_open）
+        self.exam, self.panel = exam_img, exam_img.copy()
+        self.panel[300:1100, 40:680] = 255
         self.state, self.close_by, self.taps, self.t, self.logged = "exam", close_by, [], 0.0, []
 
     def shoot(self):
@@ -282,3 +284,19 @@ def test_pass_line_stage_keeps_condition_text():
     sp.apply_panel({"pass_text": "最終オーディション突破"}, NS(state=st), None)
     assert st.exam["pass_line"] == {"rank": None, "score": None, "stage": "最終オーディション突破"}
     assert st.sources["exam.pass_line"].origin == "screen"
+
+
+def test_nia_dancing_idol_is_not_opened():
+    """协调 11-18 N.I.A MASTER nia-mid1#audition-3：点了以后面板没出来，偶像在跳舞、整屏差过阈值，原来判「打开了」，读数全 None，
+    还去点了出牌区下面 ✕ 的位置。现在按白色大面板认：没出来就不点关闭。"""
+    p = Path(__file__).parent / "fixtures" / "pages" / "nia-exam-probe-not-opened.jpg"
+    if not p.exists():
+        pytest.skip("需要实机截图 pages/nia-exam-probe-not-opened.jpg")
+    dancing = cv2.imread(str(p))
+    before = cv2.flip(dancing, 1)  # 和打开前差很多（跳舞）
+    taps, t = [], [0.0]
+    out = sp.probe(before, exam="nia-mid1#audition-3", shoot=lambda: dancing, click=lambda x, y: taps.append((x, y)),
+                   ocr_boxes=lambda img: [], is_exam=lambda im: True, clock=lambda: t[0],
+                   sleep=lambda s: t.__setitem__(0, t[0] + s))  # fmt: skip
+    assert sp.screen_diff(before, dancing) >= sp.CHANGED_MIN
+    assert out["opened"] is False and out["close_by"] == "not_opened" and taps == [sp.BONUS_TAP]

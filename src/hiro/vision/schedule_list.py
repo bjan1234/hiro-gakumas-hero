@@ -24,10 +24,13 @@ ICON_HALF = 30
 ICON_MIN = 0.5  # 图标格里饱和像素占比（实测 0.71–0.84；空格 0；变淡的 < 0.5）
 ROW_H = 145  # 普通行行距（相邻「N週」的 y 差）
 # 图标底色（OpenCV 色相，饱和像素的中位数；实拍）
-KIND_HUE = (("lesson_vo", 155, 175), ("allowance", 10, 19), ("lesson_vi", 20, 30), ("shop", 65, 84), ("outing", 85, 94),
+KIND_HUE = (("present", 0, 9), ("lesson_vo", 155, 175), ("allowance", 10, 19), ("sales", 125, 140), ("lesson_vi", 20, 30), ("shop", 65, 84), ("outing", 85, 94),
             ("lesson_da", 95, 104), ("class", 105, 118))  # fmt: skip
 KIND_OPTION = {"lesson_vo": ("training", "Vo"), "lesson_da": ("training", "Da"), "lesson_vi": ("training", "Vi"), "class": ("class", None),
-               "outing": ("outing", None), "shop": ("shop", None), "allowance": ("allowance", None)}  # fmt: skip
+               "outing": ("outing", None), "shop": ("shop", None), "allowance": ("allowance", None),
+               "sales": ("sales", None), "present": ("present", None)}  # fmt: skip
+# N.I.A（11-18 MASTER 实拍 nia-schedule-list-late.jpg）：営業 紫色文件夹（色相 132）、差し入れ 橙色（7）、相談 绿色（同初）、
+# 自主レッスン 粉 / 蓝 / 黄（同初的课程，这里也记 training）
 CURRENT_X = (40, 130)  # 当前周左边的青色胶囊 + 头像
 
 
