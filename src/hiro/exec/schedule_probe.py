@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 ENABLED_ENV = "HIRO_EXAM_SCHEDULE_PROBE"
 BONUS_TAP = (115, 95)  # BonusButtonArea 中部（720x1280）
+CLOSE_X = (360, 1160)  # 面板底部圆形 ✕
 CLOSE_TEXTS = ("閉じる", "とじる", "✕", "×")
 OPEN_WAIT = 3.0  # 点了以后等面板出来
 CLOSE_WAIT = 3.0  # 每次关闭后等回到考试画面
@@ -88,8 +89,13 @@ def probe(
     note: Callable[[str], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = _sleep,
+    read_panel: Callable[[np.ndarray], dict | None] | None = None,
+    swipe: Callable[..., None] | None = None,
+    total_turns: int | None = None,
 ) -> dict:
-    """点开审查日程、存帧、关掉，返回 {opened, closed, close_by, open_ms, close_ms, total_ms, texts}。关不掉抛 ResumeBlocked。"""
+    """点开审查日程、存帧、读面板（read_panel，hiro.vision.schedule.read_schedule_panel）、关掉，返回
+    {opened, closed, close_by, open_ms, close_ms, total_ms, texts, panel}；panel = {turn_types, permil, pass_rank, pass_score, current_turn}
+    或 None。行数比总回合少时往下滑接着读（最多 SCROLLS 次）。关不掉抛 ResumeBlocked。"""
     from hiro.loop.errors import ResumeBlocked
     from hiro.produce.ops import find_text
 
@@ -103,13 +109,22 @@ def probe(
     texts = [t for t, _, _ in boxes]
     if log:
         log("exam_schedule_probe_open", image=img, exam=exam, opened=opened, texts=texts)
-    out = {"opened": opened, "closed": None, "close_by": None, "open_ms": round((t_open - t0) * 1000), "texts": texts}
+    out = {"opened": opened, "closed": None, "close_by": None, "open_ms": round((t_open - t0) * 1000), "texts": texts, "panel": None}
+    panels = []
+    if opened and read_panel is not None:
+        panels = _read_panels(img, read_panel, swipe, total_turns, shoot, sleep, log, exam)
+        if panels:
+            from hiro.vision.schedule import turn_types
+
+            first = panels[0]
+            out["panel"] = {"turn_types": turn_types(panels, total_turns), "permil": first.get("permil"), "pass_rank": first.get("pass_rank"),
+                            "pass_score": first.get("pass_score"), "current_turn": first.get("current_turn")}  # fmt: skip
     if not opened:
         # 画面没变：点了没反应（或者不是可点的区域）。没有面板要关，照常继续
         out.update(closed=True, close_by="not_opened", close_ms=0, total_ms=round((clock() - t0) * 1000))
         _report(out, exam, note)
         return out
-    attempts = []
+    attempts = [("close_x", CLOSE_X)]  # 面板底部中间的圆形 ✕（实拍 (360,1160)；OCR 读成「X」，原来的关法没点到，协调 11-18 停机）
     hit = find_text(boxes, CLOSE_TEXTS)
     if hit is not None:
         attempts.append(("close_text", hit))
@@ -134,10 +149,62 @@ def probe(
     return out
 
 
+SCROLLS = 3
+SCROLL_FROM, SCROLL_TO = (360, 950), (360, 450)  # 在面板的行区里往上滑
+
+
+def _read_panels(img, read_panel, swipe, total_turns, shoot, sleep, log, exam) -> list[dict]:
+    """读一屏；行没覆盖到最后一回合时往下滑再读（12 回合的 H.I.F R2 一屏放不下）。"""
+    panels = []
+    p = read_panel(img)
+    if p is None:
+        return panels
+    panels.append(p)
+    for _ in range(SCROLLS):
+        cur, rows = p.get("current_turn"), p.get("rows") or {}
+        if swipe is None or not total_turns or cur is None or not rows or cur + max(rows) >= total_turns:
+            break
+        swipe(*SCROLL_FROM, *SCROLL_TO)
+        sleep(0.6)
+        img = shoot()
+        p = read_panel(img)
+        if p is None or not p.get("rows"):
+            break
+        if log:
+            log("exam_schedule_probe_scroll", image=img, exam=exam, rows=p.get("rows"))
+        panels.append(p)
+    return panels
+
+
+def apply_panel(panel: dict | None, session, memory) -> None:
+    """面板读数写进考试局面（来源 screen）：exam.turn_types（下标 0 = 第 1 回合，读不到的回合 None）、exam.attr_permil（三属性倍率，
+    画面真值，8a3a1e7 的搜索用）、exam.pass_line {rank, score}；倍率也记进本场考试记忆（ExamMemory.attr_permil）。"""
+    if not panel:
+        return
+    from hiro.contracts import Source
+
+    if memory is not None and panel.get("permil"):
+        memory.attr_permil.update(panel["permil"])
+    if session is None:
+        return
+    st = session.state
+    ex = dict(st.exam or {})
+    seq = getattr(st, "seq", 0)
+    if panel.get("turn_types"):
+        ex["turn_types"] = list(panel["turn_types"])
+        st.sources["exam.turn_types"] = Source("screen", seq)
+    if panel.get("permil"):
+        ex["attr_permil"] = {**(ex.get("attr_permil") or {}), **panel["permil"]}
+        st.sources["exam.attr_permil"] = Source("screen", seq)
+    if panel.get("pass_rank") is not None or panel.get("pass_score") is not None:
+        ex["pass_line"] = {"rank": panel.get("pass_rank"), "score": panel.get("pass_score")}
+    st.exam = ex
+
+
 def _report(out: dict, exam: str, note) -> None:
     msg = (f"[{exam}] 审查日程探测：{'打开了' if out['opened'] else '点了没打开'}，"
            f"{'关闭方式 ' + str(out['close_by']) if out['closed'] else '没关掉'}；打开 {out['open_ms']}ms，"
-           f"关闭 {out.get('close_ms')}ms，共 {out.get('total_ms')}ms；面板文字 {out['texts'][:12]}")  # fmt: skip
+           f"关闭 {out.get('close_ms')}ms，共 {out.get('total_ms')}ms；读数 {out.get('panel')}；面板文字 {out['texts'][:12]}")  # fmt: skip
     logger.info(msg)
     if note:
         note(msg)
