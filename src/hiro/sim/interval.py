@@ -17,6 +17,7 @@ import copy
 import json
 import logging
 import math
+import os
 import random
 import statistics
 import time
@@ -422,7 +423,8 @@ def options(shelf: dict, setup: R2Setup, p: int, *, wappen_left: int = 2, junk: 
     junk：チェンジ 时换出的牌（按价值从低到高的 [(card_id, upgrade)]）。"""
     out = []
     hp, mx = setup.hp, setup.max_hp
-    targets = sorted({min(mx, t) for t in (mx // 2 + 1, mx // 2 + 3, (mx * 3) // 4, mx)} - {hp})
+    extra = (recover_target(mx),) if INTERVAL_RECOVER_FIRST else ()  # ② 回到约 29 这一档（playbook 17→29）
+    targets = sorted({min(mx, t) for t in (mx // 2 + 1, mx // 2 + 3, (mx * 3) // 4, mx, *extra)} - {hp})
     for t in targets:
         if t <= hp:
             continue
@@ -675,6 +677,37 @@ def plan(shelf: dict, *, hp: int, max_hp: int, p: int, star: int | None, drink_c
 HP_ABOVE_TARGET_TEST = True  # 回体力超过角色目标那段单独过 2 SE（用户「控制在半血以上就好」，协调 2026-11-04 定默认开）
 DEVIATE_SE = 2.0  # 模拟方案比社区默认方案好过几个标准误才偏离（用户更正：建议 > 2 个标准误，跨档也可以）
 
+# 协调 11-18（mainz4 R2 复盘；用户确认「本战轮间还是要补充到 22 张卡」）：
+# ① 买卡补到 22 张（一次性 / 循环件 / 社区评级高的优先，不够拿最不污染的，冲突卡不拿），用户定的方向，缺省开；
+# ② 体力低于 RECOVER_HP 时回到它，排在刷新之前；③ 刷新给前两项让 P。②③ 等离线对比，缺省关
+INTERVAL_FILL_22 = os.environ.get("HIRO_INTERVAL_FILL_22", "1") != "0"
+INTERVAL_RECOVER_FIRST = os.environ.get("HIRO_INTERVAL_RECOVER_FIRST", "0") == "1"
+INTERVAL_REFRESH_YIELD = os.environ.get("HIRO_INTERVAL_REFRESH_YIELD", "0") == "1"
+RECOVER_HP = 29  # playbook「17→29HP 远比 29→36HP 值」
+
+
+def recover_target(max_hp: int) -> int:
+    return min(RECOVER_HP, max_hp - 1)
+
+
+def fill_order(card_ids: list[str], deck: list) -> list[tuple[str, int]]:
+    """补到 22 张时候选卡的顺序（第一个最该买）→ [(card_id, 档)]，冲突卡不在里面。
+    档 0：小牌组本来就收的（核心卡、一次性的卡；按 _card_rule_key：缺的必拿 > 一次性再动 > 社区评级）；
+    档 1：可复用的非核心卡（不够时补，按 _pollution_key 最不污染的先）。
+    不收：冲突 / 好印象系（conflict_like）、主打好印象（对やる気的广）、トラブル。"""
+    from hiro.brain.deciders import _impression_main, _is_trouble_card, _pollution_key, conflict_like, unwanted
+
+    owned = {c[0] for c in deck}
+    count = lambda cid: sum(1 for c in deck if c[0] == cid)  # noqa: E731
+    first, second = [], []
+    for cid in card_ids:
+        if not cid or conflict_like(cid) or _impression_main(cid) or _is_trouble_card(cid):
+            continue
+        (second if unwanted(cid, count(cid)) else first).append(cid)
+    first.sort(key=lambda c: _card_rule_key(c, owned), reverse=True)
+    second.sort(key=lambda c: _pollution_key(c, False))
+    return [(c, 0) for c in first] + [(c, 1) for c in second]
+
 
 def _card_rule_key(card_id: str, owned: set) -> tuple:
     """轮间补卡的社区默认顺序（大的先）：缺的必拿卡 > 一次性的再动 / 加使用数卡（いおん ep08：优先用一次性再动卡补张数）> 社区评级 / 卡牌价值。"""
@@ -717,42 +750,72 @@ def rule_plan(shelf: dict, setup: R2Setup, opts: list[Option], p: int, *, target
     from hiro.brain.deciders import wants_copy
 
     count = lambda cid: sum(1 for c in setup.deck if c[0] == cid)  # noqa: E731
-    cards = [o for o in opts if o.group == "wappen" and o.card_id and not unwanted(o.card_id) and _is_core_card(o.card_id) and wants_copy(o.card_id, count(o.card_id))]
-    cards.sort(key=lambda o: _card_rule_key(o.card_id, owned), reverse=True)
-    limit = len(cards) if wappen_left is None else min(len(cards), max(wappen_left, 0))
-    for o in cards[:limit]:
-        if o.cost <= left:
-            chosen.append(o)
-            left -= o.cost
-    notes.append(f"牌组 {len(setup.deck)} 张：不为凑 22 张买卡（不满由応援棒补基础卡）；核心卡 {'买 ' + '、'.join(o.label for o in chosen) if chosen else '货架上没有'}")
+    if INTERVAL_RECOVER_FIRST and setup.hp < recover_target(setup.max_hp):
+        target_hp = max(target_hp, recover_target(setup.max_hp))  # ② 回到约 29，和其它项一样先留出 P（排在刷新之前）
     hp_opts = sorted((o for o in opts if o.group == "hp"), key=lambda o: int(o.key[2:]))
     to_target = next((o for o in hp_opts if int(o.key[2:]) >= target_hp), None) if setup.hp < target_hp else None
     reserve = to_target.cost if to_target else 0
-    held = list(setup.drinks)
     drink_opts = [o for o in opts if o.key.startswith("drink")]
-    bought = []
-    while len(held) < drink_capacity:
-        cur = dk.holding_key(held, "r2", drink_capacity)
-        best = None
-        for o in drink_opts:
-            if o in bought or o.cost > left:
-                continue
-            new = held + [o.apply(_with(setup, drinks=[])).drinks[-1]]
-            key = dk.holding_key(new, "r2", drink_capacity)
-            if key >= cur:
-                continue
-            urgent = dk.tag(new, "r2")[-1][0] == 0  # 这瓶在新持有里是优先档（复制 / 必要的爆发）
-            if not urgent and o.cost > left - reserve:
-                continue
-            if best is None or key < best[0]:
-                best = (key, o)
-        if best is None:
-            break
-        o = best[1]
-        bought.append(o)
-        chosen.append(o)
-        held = held + [o.apply(_with(setup, drinks=[])).drinks[-1]]
-        left -= o.cost
+
+    def buy_drinks(held: list, left: int, reserve: int) -> tuple[list, list, int]:
+        bought = []
+        while len(held) < drink_capacity:
+            cur = dk.holding_key(held, "r2", drink_capacity)
+            best = None
+            for o in drink_opts:
+                if o in bought or o.cost > left:
+                    continue
+                new = held + [o.apply(_with(setup, drinks=[])).drinks[-1]]
+                key = dk.holding_key(new, "r2", drink_capacity)
+                if key >= cur:
+                    continue
+                urgent = dk.tag(new, "r2")[-1][0] == 0  # 这瓶在新持有里是优先档（复制 / 必要的爆发）
+                if not urgent and o.cost > left - reserve:
+                    continue
+                if best is None or key < best[0]:
+                    best = (key, o)
+            if best is None:
+                break
+            o = best[1]
+            bought.append(o)
+            held = held + [o.apply(_with(setup, drinks=[])).drinks[-1]]
+            left -= o.cost
+        return bought, held, left
+
+    if INTERVAL_FILL_22:
+        # ① 补到 22 张（用户 11-18）。先给 R2 饮料（按下面同一套饮料规则会买的那几瓶）和回体力留出 P，再按 fill_order 买卡：
+        # P 紧时饮料更值（mainz4 离线重放：ホエイ 一瓶 R2 +1.6 万 / 100P，补 3 张卡合计约 +1.0 万 / 130P）。
+        # 推翻 11-02「不为凑 22 张买卡、由応援棒补基础卡」（mainz4 R2 四次都打出了応援棒补的基础卡）
+        drink_cost = sum(o.cost for o in buy_drinks(list(setup.drinks), left, reserve)[0])
+        need = max(0, OUENBOU_SIZE - len(setup.deck))
+        by_card = {}
+        for o in opts:
+            if o.group == "wappen" and o.card_id:
+                by_card.setdefault(o.card_id, []).append(o)
+        order = fill_order([o.card_id for o in opts if o.group == "wappen" and o.card_id], setup.deck)
+        seen, tiers = set(), {}
+        for cid, tier in order:
+            for o in by_card.get(cid, []):
+                if o in seen or len(chosen) >= need or o.cost > left - drink_cost - reserve:
+                    continue
+                seen.add(o)
+                chosen.append(o)
+                tiers[o.key] = tier
+                left -= o.cost
+        skipped = [o.label for o in opts if o.group == "wappen" and o.card_id and o not in seen and all(o.card_id != c for c, _ in order)]
+        notes.append(f"牌组 {len(setup.deck)} 张：补到 {OUENBOU_SIZE} 张，买 {'、'.join(o.label + ('（不够才补的可复用卡）' if tiers[o.key] else '') for o in chosen) or '无'}"
+                     + (f"；不买冲突卡 {'、'.join(skipped)}" if skipped else "") + f"（还差 {max(0, need - len(chosen))} 张）")
+    else:
+        cards = [o for o in opts if o.group == "wappen" and o.card_id and not unwanted(o.card_id) and _is_core_card(o.card_id) and wants_copy(o.card_id, count(o.card_id))]
+        cards.sort(key=lambda o: _card_rule_key(o.card_id, owned), reverse=True)
+        limit = len(cards) if wappen_left is None else min(len(cards), max(wappen_left, 0))
+        for o in cards[:limit]:
+            if o.cost <= left:
+                chosen.append(o)
+                left -= o.cost
+        notes.append(f"牌组 {len(setup.deck)} 张：不为凑 22 张买卡（不满由応援棒补基础卡）；核心卡 {'买 ' + '、'.join(o.label for o in chosen) if chosen else '货架上没有'}")
+    bought, held, left = buy_drinks(list(setup.drinks), left, reserve)
+    chosen += bought
     notes.append(f"R2 饮料：买 {'、'.join(o.label for o in bought) or '无'}，持有 {dk.describe(held, 'r2')}")
     hp_pick = None
     if to_target and to_target.cost <= left:
@@ -838,9 +901,12 @@ def plan_tiered(shelf: dict, *, hp: int, max_hp: int, p: int, star: int | None, 
 
     from hiro.brain.deciders import wants_copy
 
+    all_cards = [o for o in opts if o.group == "wappen"]
     opts = [o for o in opts if not (o.group == "wappen" and not (_is_core_card(o.card_id) and wants_copy(o.card_id, sum(1 for c in deck if c[0] == o.card_id))))]
     exe = [o for o in opts if o.key.startswith(("hp", "drink", "card", "upgrade"))]
-    rule, notes = rule_plan(shelf, setup, exe, p, target_hp=target_hp, drink_capacity=drink_capacity, wappen_left=wappen_left)
+    # ① 补到 22 张：非核心的补卡（一次性等）不进模拟候选，但社区默认方案要用（fill_order 决定买哪几张）
+    rule_exe = exe + [o for o in all_cards if o not in exe] if INTERVAL_FILL_22 else exe
+    rule, notes = rule_plan(shelf, setup, rule_exe, p, target_hp=target_hp, drink_capacity=drink_capacity, wappen_left=wappen_left)
     # 初筛只用来挑候选方案（偏离要过下面的配对检验），48 局够用（协调 2026-11-03 轮间提速：原来 200 局，第二十二局一次方案 105s）
     run = search(setup, opts, p, drink_capacity=drink_capacity, wappen_left=OUENBOU_SIZE if wappen_left is None else wappen_left,
                  seeds=list(seeds)[:SCREEN_SEEDS], policy=policy, workers=workers, log=log, **kw)  # fmt: skip
@@ -915,6 +981,18 @@ def plan_tiered(shelf: dict, *, hp: int, max_hp: int, p: int, star: int | None, 
                 gain, gain_se = pair[1]["gain"], pair[1]["gain_se"]
             elif deviation is not None:
                 deviation = dict(deviation, pick=[o.label for o in pick], gain=round(deviation["gain"] - gh))
+    if INTERVAL_FILL_22 and pick is not rule:
+        # 模拟方案偏离了社区默认：补卡是用户定的方向（11-18），社区方案里的补卡在剩下的 P 内照样买（模拟方案自己的卡算进张数）
+        room, have = p - sum(o.cost for o in pick), len(deck) + sum(1 for o in pick if o.group == "wappen")
+        add = []
+        for o in rule:
+            if o.group == "wappen" and o not in pick and have < OUENBOU_SIZE and o.cost <= room:
+                add.append(o)
+                room -= o.cost
+                have += 1
+        if add:
+            pick = pick + add
+            notes.append(f"模拟方案没补卡：按社区默认补 {'、'.join(o.label for o in add)}（补到 22 张，用户 11-18）")
     target = max([hp] + [int(o.key[2:]) for o in pick if o.group == "hp"])
     buy = [a[1]["index"] for o in pick if o.group != "hp" for a in o.actions if "index" in a[1]]
     # 强化永远最后执行（饮料停了才用剩下的钱，deciders._interval_drink_step）；模拟方案没留强化时用社区默认的强化目标
