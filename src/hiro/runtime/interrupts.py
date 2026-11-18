@@ -359,6 +359,27 @@ def interval_end_confirm(frame, rt) -> str | None:
     return "インターバル終了確認：点「本戦へ」"
 
 
+DRINK_DETAIL_CANCEL = (237, 1162)  # 「Pドリンク詳細」左下「キャンセル」（实拍 tests/fixtures/pages/pdrink-detail-action-select.png）
+
+
+def drink_detail(frame, rt) -> str | None:
+    """「Pドリンク詳細」（捨てる / キャンセル / 使う）留在画面上：只点「キャンセル」，绝不点「捨てる」「使う」（协调 11-18 初 MASTER 20:31：
+    剧情 SKIP 的第二下落在选行动页饮料栏上点开了它，盖住选行动页停机）。考试里用饮料由考试执行器自己开关这个框，不经过主循环中断层。
+    「キャンセル」读不到时按实拍位置点（左下；「捨てる」在右上、「使う」在右下）。"""
+    if not frame.has_dialog:
+        return None
+    title = (frame.dialog or {}).get("title") or ""
+    if "Pドリンク詳細" not in title.replace(" ", "") and not any("Pドリンク詳細" in t.text.replace(" ", "") for t in frame.texts):
+        return None
+    if _recently(rt, "drink_detail"):
+        return "Pドリンク詳細：刚点过キャンセル，等框关"
+    cancel = _cancel(frame)
+    pos = cancel.rect.center if cancel is not None and cancel.rect.center.x < 360 else DRINK_DETAIL_CANCEL
+    rt.device.tap(*pos)
+    _tapped(rt, "drink_detail")
+    return "Pドリンク詳細：点キャンセル（不丢、不用）"
+
+
 REST_CONFIRM_REST, REST_CONFIRM_CANCEL = (498, 1159), (236, 1161)
 
 
@@ -489,7 +510,7 @@ def live_resume(frame, rt) -> str | None:
 
 Interrupt = Callable[[object, object], "str | None"]
 DEFAULT: tuple[Interrupt, ...] = (red_line, comm, stop_notice, date_changed, settings, customize_confirm, tutorial, reroll_confirm,
-                                   achievement_toast, affection_unlock, use_limit, live_setting, consult_end_confirm, interval_end_confirm, rest_confirm,
+                                   achievement_toast, affection_unlock, use_limit, live_setting, consult_end_confirm, interval_end_confirm, drink_detail, rest_confirm,
                                    decision_confirm, tap_next_dialog, live_resume)
 
 
