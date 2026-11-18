@@ -37,6 +37,14 @@ PREVIEW_BUDGET_S = float(os.environ.get("HIRO_EXAM_SIM_BUDGET_S", "7.5"))
 # 手牌里有、引擎各区都没有的卡（考试中生成的 眠気、账本漏记的支援事件卡）在当前局面上新建接住（Rust new_card），一场最多这么多张：
 # 再多多半是认卡认错，宁可退回画面读数（DMM mainverify2 11-17）
 NEW_CARD_LIMIT = 8
+# R2 応援棒补卡按偶像流派的真实卡池（interval.ouenbou_pool）补，画面上露出的基础卡在引擎里没有时换掉一张还没露面的占位卡（不另新建）。
+# 缺省关（协调 11-18 mainz4 R2 复盘③：旧轮换表补的 アピール / 表現 / ファンサ の基本 広 的応援棒根本不会给，露出的 仕草 / アイコンタクト
+# 只能临时新建，引擎山札一直多 2–3 张永远不会来的卡）。
+OUENBOU_POOL_ENV = "HIRO_SIM_OUENBOU_POOL"
+
+
+def ouenbou_pool_on() -> bool:
+    return os.environ.get(OUENBOU_POOL_ENV, "").strip().lower() in ("1", "on", "true", "yes")
 
 
 def _round_label(exam: str | None) -> str | None:
@@ -170,6 +178,13 @@ class SimScreenExamStateSource(ScreenExamStateSource):
         run, run_notes = self._run_loadout()
         setup = iv._with(setup, **run)
         notes = list(notes) + run_notes
+        self._pool_ids = set()
+        if ouenbou_pool_on() and setup.fill and len(deck) < iv.OUENBOU_SIZE:
+            pool = iv.ouenbou_pool(getattr(self.profile, "idol_id", None))
+            if pool:
+                setup = iv._with(setup, ouenbou_pool=pool)
+                self._pool_ids = {cid for cid, _ in pool}
+                notes.append(f"応援棒按真实卡池补 {iv.OUENBOU_SIZE - len(deck)} 张")
         game = self._new_game(setup, copy.deepcopy(memory))
         self.setup = setup
         self.tracker = SimTracker(game, 0, self.meta)
@@ -300,6 +315,16 @@ class SimScreenExamStateSource(ScreenExamStateSource):
                         break
                 if pick is not None:
                     break
+            if pick is None and cid in (getattr(self, "_pool_ids", None) or ()):
+                # 応援棒卡池里的卡露面了、引擎里没有这张：换掉一张还没露面（还在山札）的别的占位卡，牌组总数不变
+                ph = next((i for i in pools["deck"] if def_card_id(env.cards[i]) in self._pool_ids and def_card_id(env.cards[i]) != cid), None)
+                if ph is not None:
+                    pools["deck"].remove(ph)
+                    pick = self._new_card(env, cid, up)
+                    if pick is None:
+                        pools["deck"].append(ph)
+                    else:
+                        notes.append(f"{cid} ← 换掉一张没露面的応援棒占位卡 {def_card_id(env.cards[ph])}")
             if pick is None and (pick := self._new_card(env, cid, up)) is not None:
                 notes.append(f"{cid} ← 新建（考试中生成 / 牌组账本没有）")
             if pick is None:

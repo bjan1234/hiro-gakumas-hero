@@ -187,3 +187,45 @@ def test_second_generated_sleepy_keeps_the_first():
     assert src.game is not None, src.lost
     hand = [src.game.env.rx.card_info(i)[0] for i in src.game.env.zones["hand"]]
     assert hand.count(SLEEPY) == 2, hand
+
+
+@pytest.mark.parametrize("on", [False, True])
+def test_r2_ouenbou_pool_fill_swaps_placeholder(monkeypatch, on):
+    """mainz4 R2 复盘③（协调 11-18）：HIRO_SIM_OUENBOU_POOL=1 时 R2 応援棒按広的真实卡池（やる気流派）补；画面露出的基础卡在引擎里不够时
+    换掉一张还没露面的占位卡，牌组总数保持 22。缺省关：旧轮换补的卡对不上，露出的卡只能新建，引擎牌组越补越多。"""
+    _needs_new_card()
+    from hiro.sim import interval as iv
+    from hiro.sim import resource as rv
+    from hiro.sim.screen_source import SimScreenExamStateSource
+
+    if on:
+        monkeypatch.setenv("HIRO_SIM_OUENBOU_POOL", "1")
+    else:
+        monkeypatch.delenv("HIRO_SIM_OUENBOU_POOL", raising=False)
+    deck = (list(rv.REFERENCE_DECK) * 2)[:17]
+    SHIGUSA = "p_card-02-act-0_038"  # 仕草の基本（卡池里有、旧轮换前 5 张没有；新补法只补 1 张）
+    from hiro.brain.battle import BattleBrain
+    from hiro.sim.env import SimGame
+
+    setup, _ = rv.setup_for("r2", deck=deck, drinks=[], hp=20, max_hp=33, permil=None)
+    truth = SimGame(iv._env(setup, seed=7), "r2", CAMPUS_HIRO)
+    truth.memory = BattleBrain(CAMPUS_HIRO, None).new_memory("r2")
+    src = SimScreenExamStateSource()
+    src.begin({"exam": "r2", "profile": CAMPUS_HIRO, "session": _Session(deck)})
+    mem = copy.deepcopy(truth.memory)
+    state = truth.state()
+    src.screen_drinks = []
+    src._sync(state, mem)
+    assert src.game is not None, src.lost
+    screen = copy.deepcopy(state)
+    for c in screen.hand[:2]:  # 画面上露出两张 仕草の基本
+        c.card_id, c.upgrade = SHIGUSA, 0
+    src.game = None
+    src._sync(screen, mem)
+    assert src.game is not None, src.lost
+    env = src.game.env
+    total = sum(len(env.zones[z]) for z in ("hand", "deck", "grave", "lost"))
+    hand = [env.rx.card_info(i)[0] for i in env.zones["hand"]]
+    assert hand.count(SHIGUSA) == 2
+    assert SHIGUSA not in [c for c, _ in iv.ouenbou_fill(deck)[17:]]  # 旧轮换前 5 张没有 仕草
+    assert total == (22 if on else 24)  # 缺省关：两张都只能新建，22 + 2
