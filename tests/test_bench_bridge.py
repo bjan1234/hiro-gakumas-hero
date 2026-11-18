@@ -1351,3 +1351,43 @@ def test_items_from_screen_enchants():
             ["enchant-p_item_effect_02-3-076-0-enc02", 1, -1], ["enchant-p_item_effect_00-3-330-0-enc01", -1, -1]]  # fmt: skip
     assert A.items_from_enchants(ench) == ["pitem_02-3-076-0", "pitem_00-3-330-0"]
     assert A.items_from_enchants(None) == []
+
+
+# ---------------------------------------------------------------- 初 PRO 最終被标成中間（协调 11-18）
+@pytest.mark.bench_on
+@pytest.mark.parametrize("label, pass_line, limit, want", [
+    ("hajime-mid1", {"rank": 3, "score": None}, 11, "hajime-final"),  # 面板「3位以上で最終試験突破」→ 最終
+    ("hajime-mid1", None, 11, "hajime-final"),  # 没面板：回合数 11 = 最終
+    ("hajime-final", {"rank": 3, "score": 1700}, 9, "hajime-mid1"),  # 面板带分数线 → 中間
+    ("hajime-mid1", None, 9, "hajime-mid1"),  # 对得上：不动
+])  # fmt: skip
+def test_hajime_round_follows_panel_and_turns(monkeypatch, label, pass_line, limit, want):
+    """标签和画面对不上时以面板过线条件 / 回合数为准（初 中間 9 回合、最終 11 回合），理由写明；目标跟着换（最終不封顶）。"""
+    from hiro.bench_bridge import tower as tw
+
+    monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    monkeypatch.setenv("HIRO_EXAM_SEARCH_HAJIME", "0")
+    rows = {"mid1": {"produceExamBattleConfigId": "bc-mid", "forceEndScore": 1700, "rankThreshold": 3, "number": 1},
+            "final": {"produceExamBattleConfigId": "bc-final", "forceEndScore": 0, "rankThreshold": 3, "number": 1}}  # fmt: skip
+    monkeypatch.setattr("hiro.search.exam_env.audition_row", lambda idol, produce, rnd, number=None: rows[rnd])
+    monkeypatch.setattr(tw, "master", lambda: SimpleNamespace(battle_config=lambda cid: {"vocal": 1, "dance": 1, "visual": 1,
+                                                                                          "turn": 9 if cid == "bc-mid" else 11}))  # fmt: skip
+    algo = _Algo(("play", 0))
+    monkeypatch.setattr(A, "load_algo", lambda *a, **k: algo)
+    sess = SimpleNamespace(state=SimpleNamespace(produce={"mode": "produce-002"}, exam={"pass_line": pass_line} if pass_line else {}))
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    adv.on_round_start(1, {"exam": label, "idol": "i_card-x", "deck": [("p_card-a", 0)], "session": sess})
+    st, mem = _state([_card(0, "p_card-a")], remaining=limit, turn=1)
+    d = adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    assert adv.label == want
+    assert adv.exam["step"] == ("AUDITION_FINAL" if want == "hajime-final" else "AUDITION_MID1")
+    assert ("场次按画面改成" in d.reason) == (want != label)
+
+
+def test_hajime_final_objective_prefers_first_place():
+    """初最終：前 3 过线，名次分档 1 > 2 > 3（Rust stars：3 / 2 / 1 档，档内再比分数），不封顶——第 1 名优先、名次稳了接着追分。
+    中間带 forceEndScore 封顶。"""
+    from hiro.search.exam_env import stage_objective
+
+    assert stage_objective({"audition": {"rankThreshold": 3, "forceEndScore": 0}}) == {"pass_rank": 3}
+    assert stage_objective({"audition": {"rankThreshold": 3, "forceEndScore": 1700}}) == {"pass_rank": 3, "score_cap": 1700}
