@@ -909,6 +909,17 @@ class BenchAdvisor:
             lo["lesson"] = {**lo["lesson"], "perfect_score": int(perfect)}
             logger.info("[%s] 课程满分线画面读到：%s", self.label, perfect)
 
+    def not_executed(self, action, why: str) -> None:
+        """执行层说上一个决策没生效（hiro.exec.exam._not_executed）：这一步的历史记录作废，搜索类算法把引擎退回出牌前（undo_last）。"""
+        if getattr(self, "_appended", False) and getattr(self, "_history", None):
+            self._history.pop()
+            self._appended = False
+        algo = self.round_algo if self.round_algo is not None else self.algo
+        undo = getattr(algo, "undo_last", None)
+        if undo is not None:
+            undo()
+        logger.info("[%s] 上一个决策 %s 没生效（%s）：搜索局面退回", self.label, action, why)
+
     def on_round_end(self, result: dict[str, Any] | None) -> None:
         logger.info("[%s] 考试出牌统计：bench %d 步，规则 %d 步", self.label, self.stats["bench"], self.stats["rules"])
         self.rules.on_round_end(result)
@@ -957,6 +968,7 @@ class BenchAdvisor:
         return out
 
     def decide(self, state: Any, memory: Any, previews: list[Preview] | None, legal: list[Action]) -> Decision:
+        self._appended = False  # 这一步的 (UIObs, 动作) 记进了 _history 没有（not_executed 撤销用）
         algo = self.round_algo if self.round_algo is not None else self.algo
         if algo is None:
             self.stats["rules"] += 1
@@ -1036,6 +1048,7 @@ class BenchAdvisor:
         self.stats["bench"] += 1
         if str(self.label or "").lower().startswith(("hajime", "nia")):
             self._history.append((copy.deepcopy(obs), list(act)))
+            self._appended = True
         meta = dict(getattr(d, "meta", None) or {})
         cands = []
         for a, p in (meta.get("top") or [])[:3]:
