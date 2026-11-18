@@ -1045,7 +1045,7 @@ def test_live_lesson_from_screen(monkeypatch, screen, want):
         return
     les = algo.ctx.loadout["lesson"]
     assert (les["limit_turn"], les["clear_score"], les["perfect_score"], les["parameter_type"], les["kind"]) == (*want, 2, "SP")
-    assert algo.ctx.loadout["produce_item_ids"] == ["pitem_k"] and "exam" not in algo.ctx.loadout
+    assert algo.ctx.loadout["produce_item_ids"][0] == "pitem_k" and "exam" not in algo.ctx.loadout
 
 
 @pytest.mark.bench_on
@@ -1207,6 +1207,9 @@ def test_guard_engine_vs_screen_calibration(monkeypatch):
     assert not any(isinstance(x, SearchDistrust) for x in ok)
     noisy = _guarded(monkeypatch, [(0, 20, 900), (40, 60, 900), (100, 120, 900), (160, 170, 900), (200, 230, 900)])  # 0.4 倍：bench 正常局有
     assert not any(isinstance(x, SearchDistrust) for x in noisy)
+    # 画面分数读数晚一步（初 PRO 第一局：引擎出牌那步就 +406，画面下一步才读到）：累计比不误报
+    lag = _guarded(monkeypatch, [(22, 428, 900), (22, 707, 900), (428, 519, 900), (706, 740, 900), (706, 740, 900), (1504, 1600, 900)])
+    assert not any(isinstance(x, SearchDistrust) for x in lag)
     lesson = _guarded(monkeypatch, [(0, 0, 50), (40, 40, 50), (80, 80, 50), (120, 120, 50), (160, 160, 50)], lo={"lesson": {"clear_score": 40}})
     assert not any(isinstance(x, SearchDistrust) for x in lesson)  # 课程不查（追い込み加成等已知缺口会让比值很低）
 
@@ -1247,3 +1250,104 @@ def test_search_distrust_whole_round_switches_to_hif(monkeypatch):
         reasons.append(adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()]).reason)
     assert search.calls == 2 and len(hif.seen) == 2
     assert "兜底" not in reasons[0] and all("不可信" in r for r in reasons[1:])
+
+
+# ---------------------------------------------------------------- 初 PRO 第一局中間（协调 11-18）：模式 / 倍率 / 日程 / 晚拼编成补放
+@pytest.mark.parametrize("label, mode, want", [("hajime-mid1", "produce-002", "produce-002"), ("nia-mid1#audition-2", "produce-005", "produce-005"),
+                                               ("hajime-mid1", "produce-005", "produce-001"), ("hajime-mid1", None, "produce-001")])  # fmt: skip
+def test_exam_produce_from_session_mode(monkeypatch, label, mode, want):
+    """实机一律用 state.produce.mode（同家族才用）：以前按标签缺省 hajime → produce-001，PRO 的 battle config / 封顶全按 REGULAR 取。"""
+    monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    monkeypatch.setattr(A, "load_algo", lambda *a, **k: _Algo(("play", 0)))
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    sess = SimpleNamespace(state=SimpleNamespace(produce={"mode": mode} if mode else {}, exam={}))
+    monkeypatch.setattr(A.BenchAdvisor, "_audition_defaults", lambda self, idol, number: None)
+    adv.on_round_start(1, {"exam": label, "idol": None, "deck": [], "session": sess})
+    assert adv.exam["produce"] == want
+
+
+@pytest.mark.bench_on
+def test_uiobs_uses_schedule_and_panel_permils(monkeypatch):
+    """平台读到审查日程（exam.turn_types）和三项倍率（ExamMemory.attr_permil → BattleState.attr_permils）：UIObs 的回合属性按日程，
+    倍率三项各用各的（以前 T2 起读成 [6440, 6440, 6440]，没见过的回合缺省填 Vo）。"""
+    monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    monkeypatch.setenv("HIRO_EXAM_SEARCH_HAJIME", "0")
+    algo = _Algo(("play", 0))
+    monkeypatch.setattr(A, "load_algo", lambda *a, **k: algo)
+    monkeypatch.setattr(A.BenchAdvisor, "_audition_defaults", lambda self, idol, number: None)
+    sched = ["Vo", "Vi", "Da", "Da", "Vo", "Vo", "Vi", "Da", "Vo"]
+    sess = SimpleNamespace(state=SimpleNamespace(produce={"mode": "produce-002"}, exam={"turn_types": sched}))
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    adv.on_round_start(1, {"exam": "hajime-mid1", "idol": None, "deck": [("p_card-a", 0)], "session": sess})
+    st, mem = _state([_card(0, "p_card-a")], remaining=9, turn=1)
+    st.attr_permils = {"Vo": 6440, "Da": 6800, "Vi": 4280}
+    adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    ex = algo.seen[-1]["exam"]
+    assert ex["types"] == [1, 3, 2, 2, 1, 1, 3, 2, 1] and ex["permil"] == [6440, 6800, 4280] and ex["produce"] == "produce-002"
+
+
+@pytest.mark.bench_on
+def test_late_loadout_passes_history_and_schedule(monkeypatch):
+    """编成晚拼（T1 倍率没读到，uinet 先打）：搜索开局时 ctx.history 带上已经执行过的 (UIObs, 动作)，ctx.loadout.turn_types 带日程。"""
+    from hiro.bench_bridge import tower as tw
+
+    monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_ALGO", raising=False)
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_HAJIME", raising=False)
+    monkeypatch.setenv("HIRO_FORMATION_PLAN", "off")
+    row = {"produceExamBattleConfigId": "bc", "produceExamGimmickEffectGroupId": "", "produceExamBattleNpcGroupId": "npc",
+           "rankThreshold": 3, "baseScore": 0, "forceEndScore": 1700, "voteCount": 0, "isStaticNpcScore": False, "number": 1}  # fmt: skip
+    monkeypatch.setattr("hiro.search.exam_env.audition_row", lambda idol, produce, rnd, number=None: row)
+    monkeypatch.setattr(tw, "master", lambda: SimpleNamespace(battle_config=lambda cid: {"vocal": 30, "dance": 40, "visual": 30, "turn": 9}))
+    monkeypatch.setattr(tw, "score_bonus_permils", lambda cid, p: [2990, 3580, 2330])
+    monkeypatch.setattr("hiro.search.loadout.run_loadout", lambda produce, plan: ({"items": (), "supports": (), "skills": ()}, []))
+
+    class Begin(_Algo):
+        def begin(self, ctx):
+            self.history, self.types = list(ctx.history), ctx.loadout.get("turn_types")
+
+    hif, search = _Algo(("play", 0)), Begin(("play", 0))
+    monkeypatch.setattr(A, "load_algo", lambda s=None, **kw: search if s == A.EXAM_DEFAULT_ALGO else hif)
+    sess = SimpleNamespace(state=SimpleNamespace(produce={"mode": "produce-002", "params": {"Vo": 185, "Da": 445, "Vi": 245}},
+                                                 exam={"turn_types": ["Vo"] * 9}))  # fmt: skip
+    adv = A.BenchAdvisor(CAMPUS_HIRO)
+    adv.on_round_start(1, {"exam": "hajime-mid1", "idol": "i_card-x", "deck": [("p_card-a", 0)], "session": sess})
+    for read in ({}, {"Vo": 6440}):
+        st, mem = _state([_card(0, "p_card-a")], remaining=9, turn=1)
+        st.attr_permils = dict(read)
+        adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    assert len(hif.seen) == 1 and len(search.history) == 1 and search.history[0][1] == ["play", 0]
+    assert search.types == [1] * 9
+
+
+def test_exam_gnrpa_replays_history_before_first_decision(monkeypatch):
+    """ExamGnrpa 开局补放：history 里每一步先按当时的画面对齐、再执行那个动作；补放不了的那一步跳过（记 replay_failed）。"""
+    import collections
+
+    from hiro.search import exam_algo as X
+
+    log = []
+
+    class Rx:
+        def step(self, a):
+            if a == ("drink", 9):
+                raise ValueError("no drink")
+            log.append(("step", a))
+
+        def advance(self):
+            log.append(("advance",))
+
+    g = X.ExamGnrpa.__new__(X.ExamGnrpa)
+    g.rx, g.stats = Rx(), collections.Counter()
+    monkeypatch.setattr(X.ExamGnrpa, "_align", lambda self, o: log.append(("align", o["i"])))
+    g._replay([({"i": 0}, ["drink", 0]), ({"i": 1}, ["drink", 9]), ({"i": 2}, ["play", 1])])
+    assert log == [("align", 0), ("step", ("drink", 0)), ("advance",), ("align", 1), ("align", 2), ("step", ("play", 1)), ("advance",)]
+    assert g.stats["replayed"] == 2 and g.stats["replay_failed"] == 1
+
+
+def test_items_from_screen_enchants():
+    """账本没记的 P 道具从画面附魔补：enchant-p_item_effect_<道具号>-encNN → pitem_<道具号>；卡的附魔、重复的不算。"""
+    ench = [["enchant-p_item_effect_02-3-076-0-enc01", 5, -1], ["enchant-p_card-02-ido-3_105-enc02", -1, -1],
+            ["enchant-p_item_effect_02-3-076-0-enc02", 1, -1], ["enchant-p_item_effect_00-3-330-0-enc01", -1, -1]]  # fmt: skip
+    assert A.items_from_enchants(ench) == ["pitem_02-3-076-0", "pitem_00-3-330-0"]
+    assert A.items_from_enchants(None) == []
