@@ -74,3 +74,42 @@ def test_drink_detail_waits_after_tap_and_fallback_position():
     assert "キャンセル" in interrupts.drink_detail(f, rt)
     assert "等框关" in interrupts.drink_detail(f, rt)  # 刚点过：不连点
     assert rt.raw_device.taps == [interrupts.DRINK_DETAIL_CANCEL]
+
+
+# ---------------------------------------------------------------- 底部「TAPで次へ」（协调 11-18 初 MASTER 最終后「1位」证书页）
+CERT = "hajime-final-rank1-certificate.png"
+
+
+def _rt_img(img):
+    rt = Rt([img])
+    return rt
+
+
+def test_rank_certificate_taps_tap_next():
+    """白色证书框、没有弹窗标题条，判 unknown；连点被 BLOCK_WORDS 的「次へ」拦住 180 秒停机。现在点「TAPで次へ」那行字。"""
+    img = _real(CERT)
+    rt = _rt_img(img)
+    f = Frame(img, 0.0)
+    assert play.advance(rt, f, NS(name="unknown", fields={}))
+    (x, y), = rt.taps
+    assert abs(x - 360) < 40 and abs(y - 1147) < 20
+    rt.t = 0.5
+    assert play.advance(rt, Frame(img, 0.5), NS(name="unknown", fields={})) and len(rt.taps) == 1  # 刚点过：等翻页，不连点
+
+
+def test_tap_next_blocked_by_button_words():
+    from hiro.runtime import scenes
+    from hiro.vision.ocr import Box, Text
+
+    def T(text, x, y):
+        return Text(text, Box(x - 20, y - 10, x + 20, y + 10))
+
+    import numpy as np
+
+    img = np.zeros((1280, 720, 3), np.uint8)
+    for extra in ("購入する", "キャンセル", "ジュエル"):
+        rt = _rt_img(img)
+        f = NS(img=img, texts=[T("TAPで次へ", 360, 1147), T(extra, 300, 600)])
+        assert not scenes.tap_next(rt, f) and rt.taps == []
+    rt = _rt_img(img)
+    assert not scenes.tap_next(rt, NS(img=img, texts=[T("TAPで次へ", 360, 500)]))  # 不在底部

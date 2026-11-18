@@ -64,6 +64,8 @@ def advance(rt, frame, hit) -> bool:
         return True
     if frame.img is not None and frame.img.shape[1] > frame.img.shape[0]:
         return False  # 横屏演出中：不点
+    if hit.name in ADVANCE_PAGES and scenes.tap_next(rt, frame):
+        return True
     if scenes.commu_skip(rt, frame):
         _flag_deck_after_commu(rt)
         return True
