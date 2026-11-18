@@ -342,6 +342,24 @@ def items_from_enchants(ench) -> list[str]:
     return out
 
 
+def stage_round(family: str, stage: str | None) -> str | None:
+    """面板过线条件原文（exam.pass_line.stage）→ 场次：初「…中間試験突破」mid1 /「…最終試験突破」final；N.I.A「1次 / 2次 / 最終
+    オーディション」mid1 / mid2 / final（N.I.A 面板还没有实拍帧，按关键词认，全角数字 / 汉数字都认）。认不出 None。"""
+    t = str(stage or "")
+    if not t:
+        return None
+    if family == "hajime":
+        return "mid1" if "中間" in t else "final" if "最終" in t else None
+    if family == "nia":
+        if "最終" in t:
+            return "final"
+        if any(k in t for k in ("2次", "２次", "二次")):
+            return "mid2"
+        if any(k in t for k in ("1次", "１次", "一次")):
+            return "mid1"
+    return None
+
+
 class _Waiting(Exception):
     """实机拼编成还在等（倍率没读到）：这一步用 H.I.F 的算法，不算搜索开局失败。"""
 
@@ -542,7 +560,7 @@ class BenchAdvisor:
                     self.exam["turns"] = ac["turns"]
         self._calc_pm, self._seen_pm, self._live_wait = {}, {}, None
         self._label_note = None
-        self._round_checked = str(self.label or "").split("#", 1)[0].lower() not in ("hajime-mid1", "hajime-final")
+        self._round_checked = str(self.label or "").split("#", 1)[0].lower() not in ("hajime-mid1", "hajime-final", "nia-mid1", "nia-mid2", "nia-final")
         base = str(self.label or "").split("#", 1)[0].lower()
         if lo is None and base.startswith(("hajime-", "nia-")) and "-lesson" not in base:
             self._audition_defaults(idol, number)
@@ -708,7 +726,7 @@ class BenchAdvisor:
             return None
 
     def _check_round(self, obs: dict, state: Any = None, memory: Any = None) -> None:
-        """初的中間 / 最終：标签和画面对不上时以画面为准（协调 11-18：初 PRO 最終续跑后被标成 hajime-mid1，目标按中間取了 1700 封顶、
+        """初的中間 / 最終、N.I.A 的 1 次 / 2 次 / 最終：标签和画面对不上时以画面为准（协调 11-18：初 PRO 最終续跑后被标成 hajime-mid1，目标按中間取了 1700 封顶、
         只拿第 2）。依据（先面板、后回合数）：审查日程面板过线条件的原文（exam.pass_line.stage：「…中間試験突破」/「…最終試験突破」，
         平台写）；不按有没有分数线判——初 MASTER 中間也只看名次「3位以上で中間試験突破」，485eb03 因此把中間误判成最終（协调 11-18）。
         没有原文就比回合总数（画面剩余回合推）和这个培育两场 battle config 的回合数（按 produce 查主数据，初 中間 9 / 最終 11）。
@@ -719,16 +737,14 @@ class BenchAdvisor:
 
         tag = str(self.label or "")
         base, _, rest = tag.partition("#")
-        rnd = base.lower().partition("-")[2]
+        fam, _, rnd = base.lower().partition("-")
         ex = getattr(getattr(self._session, "state", None), "exam", None) if self._session is not None else None
         pl = (ex.get("pass_line") if isinstance(ex, dict) else getattr(ex, "pass_line", None)) or None
-        got, why = None, ""
         stage = str((pl or {}).get("stage") or (pl or {}).get("text") or "") if isinstance(pl, dict) else ""
-        if "中間" in stage or stage.lower() in ("mid1", "mid"):
-            got, why = "mid1", f"面板过线条件「{stage}」"
-        elif "最終" in stage or stage.lower() == "final":
-            got, why = "final", f"面板过线条件「{stage}」"
-        else:
+        got, why = stage_round(fam, stage), f"面板过线条件「{stage}」"
+        if got is None and fam == "nia":
+            return  # N.I.A：只认面板原文（三场回合数不一定分得开，不按回合数猜）
+        if got is None:
             # 总回合数按画面的剩余回合推（UIObs 的 limit 可能已经按标签那场的 battle config 固定了）
             remaining = getattr(state, "remaining_turns", None)
             limit = int(getattr(memory, "turn", 1) or 1) + int(remaining) - 1 if remaining else 0
@@ -745,7 +761,7 @@ class BenchAdvisor:
         if got is None or got == rnd:
             return
         old = self.label
-        self.label = f"hajime-{got}" + (f"#{rest}" if rest else "")
+        self.label = f"{fam}-{got}" + (f"#{rest}" if rest else "")
         keep = {k: self.exam.get(k) for k in ("idol", "produce", "plan")}
         self.exam = {**self.exam, **exam_fields(self.label, idol=keep["idol"], plan=keep["plan"], produce=keep["produce"])}
         self.exam.pop("turns", None)
