@@ -1148,6 +1148,10 @@ class HifCore:
 
     # ---------------------------------------------------------------- 主动查看牌组（state-events §6）
     _reviewed_at_exam: int | None = None
+    # 牌组为空时读牌失败，下次到选行动页再试，同一考试段最多这么多次（协调 11-18 初 MASTER：续跑后点了两次牌组按钮都没反应，
+    # 一览 20 秒后才弹出，读牌已放弃；原来失败也算「这一考试段读过」，之后几次选行动都没再读，牌组 0 张进课程，GNRPA 开局失败）
+    EMPTY_REVIEW_TRIES = 3
+    _empty_review_fails: tuple[int, int] | None = None  # (考试段, 失败次数)
 
     def _maybe_review_deck(self) -> None:
         """pending_review 含牌组、每场考试之间第一次到选行动页、或调试模式（同一考试段只看一次）时，打开牌组一览读全量，
@@ -1183,6 +1187,12 @@ class HifCore:
         r = review_deck(shoot=device.screenshot, click=device.click,
                         swipe=lambda x1, y1, x2, y2, d: device.swipe(x1, y1, x2, y2, d), ocr_texts=ocr_texts)  # fmt: skip
         self._reviewed_at_exam = self.exam_count
+        if r["deck"] is None and empty and due:
+            ex, n = self._empty_review_fails if (self._empty_review_fails or (None, 0))[0] == self.exam_count else (self.exam_count, 0)
+            self._empty_review_fails = (ex, n + 1)
+            if n + 1 < self.EMPTY_REVIEW_TRIES:
+                self._reviewed_at_exam = None  # 牌组还是空的：下次到选行动页再读（进课程前要有牌组）
+            r["problems"].append(f"牌组为空，第 {n + 1}/{self.EMPTY_REVIEW_TRIES} 次没读到" + ("，下次选行动再读" if n + 1 < self.EMPTY_REVIEW_TRIES else "，这一考试段不再读，照常进课程（协调 11-18 定：不停机；牌组为空 GNRPA 开局失败会退回 uinet）"))
         seq = self.s.trace.next_seq()
         if r["deck"] is not None:
             self.s.emit(Event(seq=seq, kind="DECK_REVIEW", origin="review", args={"deck": r["deck"], "deck_size": r["deck_size"]},
