@@ -552,6 +552,7 @@ def _card_pick(mode, cands, deck=(), rerolls=4, excludes=2):
     return pd.decide("SELECT_CARD", GameState(produce=prod, page_fields={"candidates": [{"card_id": c, "upgrade": 0} for c in cands]}))
 
 
+@pytest.mark.master
 @pytest.mark.sim_master
 @pytest.mark.parametrize("mode", ["produce-004", "produce-001"])
 def test_card_pick_no_fishing_for_hif_musts(mode):
@@ -561,6 +562,7 @@ def test_card_pick_no_fishing_for_hif_musts(mode):
     assert "せのび" not in d.reason and d.source == "rule"
 
 
+@pytest.mark.master
 @pytest.mark.sim_master
 def test_card_pick_prefers_signature_buff_then_value():
     """一次性的卡里：社区 S / A 先；同档时加やる気的先 [g8-試験]。"""
@@ -572,6 +574,7 @@ def test_card_pick_prefers_signature_buff_then_value():
     assert _picked(d) == 0  # 都是一次性、加やる気：SSR 開花 在 R がむしゃら（卡表里只是换卡保留）前（11-17 初实机这一页）
 
 
+@pytest.mark.master
 @pytest.mark.sim_master
 def test_nia_card_pick_prefers_owned_once_copy():
     """N.I.A：同档的一次性卡，牌组里已经有的先 [ww-NIA]；初不看这条。"""
@@ -580,6 +583,7 @@ def test_nia_card_pick_prefers_owned_once_copy():
     assert _picked(d) == 1 and "已有 1 张" in d.reason and "ww-NIA" in d.reason
 
 
+@pytest.mark.master
 @pytest.mark.sim_master
 def test_card_pick_rerolls_when_all_unwanted_then_least_polluting():
     """三张都不该拿（冲突 / 可复用非循环卡）：先刷新；刷新用完拿最不污染的（可复用 > 冲突）。"""
@@ -592,6 +596,7 @@ def test_card_pick_rerolls_when_all_unwanted_then_least_polluting():
     assert _picked(d) == 1 and "不污染" in d.reason
 
 
+@pytest.mark.master
 @pytest.mark.sim_master
 def test_card_pick_loop_part_until_kept():
     """循环卡（きらきら紙吹雪）还没有时拿；牌组里已有 1 张（保留数 1）后算「已够」，不再拿。"""
@@ -604,6 +609,7 @@ def test_card_pick_loop_part_until_kept():
     assert _picked(d) == 0  # えいえいおー（固有 P 道具的触发牌，保留 2 张）还缺：排在一次性的 イメトレ 前（11-17 初实机这一页）
 
 
+@pytest.mark.master
 @pytest.mark.sim_master
 def test_hif_card_pick_unchanged():
     """H.I.F 不走这条路：仍按必拿还缺 せのびの魔法 刷新。"""
@@ -611,6 +617,7 @@ def test_hif_card_pick_unchanged():
     assert "せのび" in d.reason
 
 
+@pytest.mark.master
 @pytest.mark.sim_master
 def test_card_pick_live_produce_without_step_star():
     """实机局面（11-17 N.I.A trace）没有 step / star、多一个 deck_size：仍按 N.I.A 规则选，牌组张数照算。"""
@@ -662,6 +669,7 @@ def test_produce_state_hajime_nia_without_step_star():
     assert GameState(produce=dict(full, star=120)).produce_state().star == 120
 
 
+@pytest.mark.master
 @pytest.mark.sim_master
 def test_hajime_nia_texts_have_no_star():
     """初 / N.I.A 给 LLM 的局面文本、选卡预演、提示词里都没有星星（也没有 H.I.F 的ワッペン / 选拔 / 本战）。"""
@@ -684,6 +692,7 @@ def test_hajime_nia_texts_have_no_star():
         assert "星" not in system and "H.I.F" not in system
 
 
+@pytest.mark.master
 @pytest.mark.sim_master
 def test_hajime_nia_llm_choice_uses_own_prompt(monkeypatch):
     """初 / N.I.A 的 LLM 选择（事件选项等）用 hajime_nia_choice.md + 规则清单，不带 hif_produce.md 和广的 H.I.F 打法。"""
@@ -709,6 +718,7 @@ def test_hajime_nia_llm_choice_uses_own_prompt(monkeypatch):
     assert "星" not in seen["user"]
 
 
+@pytest.mark.master
 @pytest.mark.sim_master
 def test_nia_consult_deletes_basic_card():
     """N.I.A 相談：删「○○の基本」（不走 H.I.F 选拔的 P 点预算）；没有该删的、牌组没识别、P 不够时不买。"""
@@ -736,6 +746,7 @@ KIRAMEKI, KISEKI, FANCY, TEBYOSHI = "p_card-02-act-2_048", "p_card-02-act-3_052"
 PASTEL, SHIAWASE, OTOME, HONBAN, OMOIDASHI = "p_card-02-men-1_033", "p_card-02-men-1_035", "p_card-02-men-2_060", "p_card-02-men-2_054", "p_card-02-men-1_032"
 
 
+@pytest.mark.master
 @pytest.mark.sim_master
 def test_impression_main_cards_detected():
     """卡面「好印象のN%分パラメータ上昇」「好印象がN以上の場合、使用可」「以降…好印象+」算主打好印象；
@@ -746,6 +757,7 @@ def test_impression_main_cards_detected():
     assert not any(_impression_main(c) for c in ("p_card-02-men-2_057", "p_card-02-act-3_045", "p_card-02-men-2_111", "p_card-02-men-2_056", KAIKA))
 
 
+@pytest.mark.master
 @pytest.mark.sim_master
 def test_impression_main_not_taken_even_if_once():
     """打法匹配先于一次性：キラメキ（一次性、主打好印象）不拿；刷新用完先禁用；禁用也用完才在三张里挑，主打好印象的排最后。"""
