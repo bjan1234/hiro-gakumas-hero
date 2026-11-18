@@ -342,6 +342,23 @@ def consult_end_confirm(frame, rt) -> str | None:
     return "相談終了確認：点「決定」"
 
 
+INTERVAL_END_GO = (500, 1160)
+
+
+def interval_end_confirm(frame, rt) -> str | None:
+    """「インターバル終了確認」（使用できるPポイントが残っています。インターバルを終了して本戦へ進みますか？）留在画面上
+    （mainz4 11-18 14:08：轮间还剩 10P，点「終了」后弹出，执行器在等轮间主画面、主循环判 DIALOG 没有处理器，247 秒停机）。
+    这个框只在我们自己点了「終了」后出现（轮间决策已定结束），点「本戦へ」。"""
+    if not frame.has_dialog or (frame.dialog or {}).get("kind") != "interval_end":
+        return None
+    if _recently(rt, "interval_end"):
+        return "インターバル終了確認：刚点过「本戦へ」，等框关"
+    btn = next((t for t in frame.texts if "本戦へ" in t.text and t.rect.center.x > 360 and t.rect.center.y > 1000), None)
+    rt.device.tap(*(btn.rect.center if btn is not None else INTERVAL_END_GO))
+    _tapped(rt, "interval_end")
+    return "インターバル終了確認：点「本戦へ」"
+
+
 REST_CONFIRM_REST, REST_CONFIRM_CANCEL = (498, 1159), (236, 1161)
 
 
@@ -472,7 +489,7 @@ def live_resume(frame, rt) -> str | None:
 
 Interrupt = Callable[[object, object], "str | None"]
 DEFAULT: tuple[Interrupt, ...] = (red_line, comm, stop_notice, date_changed, settings, customize_confirm, tutorial, reroll_confirm,
-                                   achievement_toast, affection_unlock, use_limit, live_setting, consult_end_confirm, rest_confirm,
+                                   achievement_toast, affection_unlock, use_limit, live_setting, consult_end_confirm, interval_end_confirm, rest_confirm,
                                    decision_confirm, tap_next_dialog, live_resume)
 
 
