@@ -2018,6 +2018,14 @@ class HifCore:
         page_key = (label, f.get("score"), f.get("round_score"))
         if page_key == self._retry_declined:
             return False  # 这张结算页已经决定不再挑戦：别再点开确认框，让调用方点「次へ」收尾
+        if (gap := self._gap_to_first(f)) is not None and gap[1] > self._retry_gap_max():
+            # 离第 1 太远：重打 R2 只是在原分数附近波动，追不上，还会把更好的一次覆盖掉、多花券（mainz4 11-18：差 23.4 万 = 本轮分 65%，
+            # 四次 R2 本轮分 33–38 万；用户 11-18「差距很大就不要重打」）
+            need, ratio = gap
+            self.s.note(f"本战第 {f.get('rank')} 名，离第 1 差 {need:,}（本轮分的 {ratio:.0%}，超过 {self._retry_gap_max():.0%}），差距太大，不再挑戦")
+            logger.info("本战离第 1 差 %s（本轮分的 %.0f%%），差距太大，不再挑戦", f"{need:,}", ratio * 100)
+            self._retry_declined = page_key
+            return False
         texts = screen_texts(img)
         btn = next((t for t in texts if button_text(t.text, "再挑戦") and t.rect.center.y > 900), None)
         if btn is None:
@@ -2034,6 +2042,25 @@ class HifCore:
         self.rec.log("exam_retry", exam=label, retry_kind=kind, finals=True)
         self.exam_restarted = True  # 主循环据此重新进入 on_exam_entered（HiroController._rearm_exam）
         return True
+
+    RETRY_GAP_MAX = 0.3  # 离第 1 的差距超过本轮分的这个比例就不重打（HIRO_RETRY_GAP_MAX 覆盖；用户 11-18 定默认开）
+
+    def _retry_gap_max(self) -> float:
+        import os
+
+        try:
+            return float(os.environ.get("HIRO_RETRY_GAP_MAX") or self.RETRY_GAP_MAX)
+        except ValueError:
+            return self.RETRY_GAP_MAX
+
+    @staticmethod
+    def _gap_to_first(f: dict) -> tuple[int, float] | None:
+        """本战最终页：(离第 1 名差多少分, 差距 / 我方本轮分)；读不到第 1 名或本轮分时 None（按原规则处理）。"""
+        mine, rnd = f.get("score") or f.get("my_score"), f.get("round_score")
+        first = next((e.get("score") for e in f.get("entries") or [] if e.get("rank") == 1 and not e.get("me")), None)
+        if not mine or not rnd or not first or first <= mine:
+            return None
+        return first - mine, (first - mine) / rnd
 
     def _record_round_result(self, img, label: str, seen: set) -> None:
         """本战 R1 / R2 打完后的「現在順位」弹窗（HIF_FINALS_RANKING kind=round_result / final）：读全员分数，存帧写进 trace。"""
