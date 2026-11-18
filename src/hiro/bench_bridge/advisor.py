@@ -709,8 +709,9 @@ class BenchAdvisor:
 
     def _check_round(self, obs: dict, state: Any = None, memory: Any = None) -> None:
         """初的中間 / 最終：标签和画面对不上时以画面为准（协调 11-18：初 PRO 最終续跑后被标成 hajime-mid1，目标按中間取了 1700 封顶、
-        只拿第 2）。依据（先面板、后回合数）：审查日程面板的过线条件（exam.pass_line：中間带分数线「3位以上 or N 分」，
-        最終只有名次「3位以上で最終試験突破」）；回合总数（UIObs limit）和两场 battle config 的回合数（初 中間 9 / 最終 11）比。
+        只拿第 2）。依据（先面板、后回合数）：审查日程面板过线条件的原文（exam.pass_line.stage：「…中間試験突破」/「…最終試験突破」，
+        平台写）；不按有没有分数线判——初 MASTER 中間也只看名次「3位以上で中間試験突破」，485eb03 因此把中間误判成最終（协调 11-18）。
+        没有原文就比回合总数（画面剩余回合推）和这个培育两场 battle config 的回合数（按 produce 查主数据，初 中間 9 / 最終 11）。
         改了就换标签、重查这场的审查基准 / 回合数 / 粗算倍率，日志和每步理由写明。"""
         from hiro.bench_bridge import tower as tw
         from hiro.bench_bridge.screen import exam_fields
@@ -722,9 +723,11 @@ class BenchAdvisor:
         ex = getattr(getattr(self._session, "state", None), "exam", None) if self._session is not None else None
         pl = (ex.get("pass_line") if isinstance(ex, dict) else getattr(ex, "pass_line", None)) or None
         got, why = None, ""
-        if isinstance(pl, dict) and pl.get("rank"):
-            got = "mid1" if pl.get("score") else "final"
-            why = f"面板过线条件 {pl}"
+        stage = str((pl or {}).get("stage") or (pl or {}).get("text") or "") if isinstance(pl, dict) else ""
+        if "中間" in stage or stage.lower() in ("mid1", "mid"):
+            got, why = "mid1", f"面板过线条件「{stage}」"
+        elif "最終" in stage or stage.lower() == "final":
+            got, why = "final", f"面板过线条件「{stage}」"
         else:
             # 总回合数按画面的剩余回合推（UIObs 的 limit 可能已经按标签那场的 battle config 固定了）
             remaining = getattr(state, "remaining_turns", None)

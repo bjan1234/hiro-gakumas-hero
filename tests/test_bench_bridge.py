@@ -1356,9 +1356,11 @@ def test_items_from_screen_enchants():
 # ---------------------------------------------------------------- 初 PRO 最終被标成中間（协调 11-18）
 @pytest.mark.bench_on
 @pytest.mark.parametrize("label, pass_line, limit, want", [
-    ("hajime-mid1", {"rank": 3, "score": None}, 11, "hajime-final"),  # 面板「3位以上で最終試験突破」→ 最終
+    ("hajime-mid1", {"rank": 3, "score": None, "stage": "3位以上で最終試験突破"}, 11, "hajime-final"),  # 面板原文 → 最終
+    ("hajime-mid1", {"rank": 3, "score": None, "stage": "3位以上で中間試験突破"}, 11, "hajime-mid1"),  # MASTER 中間只看名次：原文为准
+    ("hajime-mid1", {"rank": 3, "score": None}, 9, "hajime-mid1"),  # 没有原文：不按分数线有无判，按回合数（9 = 中間）
     ("hajime-mid1", None, 11, "hajime-final"),  # 没面板：回合数 11 = 最終
-    ("hajime-final", {"rank": 3, "score": 1700}, 9, "hajime-mid1"),  # 面板带分数线 → 中間
+    ("hajime-final", {"rank": 3, "score": 1700, "stage": "3位以上または1700点以上で中間試験突破"}, 9, "hajime-mid1"),
     ("hajime-mid1", None, 9, "hajime-mid1"),  # 对得上：不动
 ])  # fmt: skip
 def test_hajime_round_follows_panel_and_turns(monkeypatch, label, pass_line, limit, want):
