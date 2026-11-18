@@ -55,8 +55,24 @@ def _row_offset(text: str) -> int | None:
     return int(m.group(1).replace("ろ", "3")) if m else None
 
 
+PERMIL_RATIO_MAX = 5.0  # 一项和另外两项的中位数比超过这个倍数（或不到它的倒数）：OCR 多读 / 少读了一位，丢掉
+
+
+def sane_permil(permil: dict) -> dict | None:
+    """倍率读数合理性校验：和另外两项比差 5 倍以上的丢掉（协调 11-19 N.I.A MASTER 最終：Da 1467% 读成 31467%，图标被认成「3」）。
+    只剩读得对的那几项；一项都不剩 None。不修补（不猜去掉哪一位）。"""
+    if not permil:
+        return None
+    vals = sorted(permil.values())
+    if len(vals) == 2:  # 只读到两项：互相差 5 倍以上分不出哪个错，两项都不要
+        return dict(permil) if vals[0] > 0 and vals[1] / vals[0] <= PERMIL_RATIO_MAX else None
+    ref = vals[len(vals) // 2]  # 三项按中位数比（错的那一项不会是中位数，除非错了两项）
+    out = {a: v for a, v in permil.items() if ref > 0 and 1 / PERMIL_RATIO_MAX <= v / ref <= PERMIL_RATIO_MAX}
+    return out or None
+
+
 def read_schedule_panel(img: np.ndarray, texts=None) -> dict | None:
-    """→ {current_turn, rows: {偏移: Vo/Da/Vi/None}, permil: {Vo, Da, Vi}（千分比，644% → 6440）, pass_rank, pass_score, pass_text（过线条件原文）, close}；
+    """→ {current_turn, rows: {偏移: Vo/Da/Vi/None}, permil: {Vo, Da, Vi}（千分比，644% → 6440；过合理性校验，可能只有其中几项）, pass_rank, pass_score, pass_text（过线条件原文）, close}；
     不是这个面板 None。texts：hiro.vision.ocr.screen_texts 的结果（不给就自己读）。"""
     if img is None or img.shape[:2] != (1280, 720):
         return None
@@ -105,7 +121,7 @@ def read_schedule_panel(img: np.ndarray, texts=None) -> dict | None:
         "current_turn": cur,
         "rows": rows,
         "effects": effects,
-        "permil": permil if len(permil) == 3 else None,
+        "permil": sane_permil(permil),
         "pass_rank": int(rank.group(1)) if rank else None,
         "pass_score": int(score.group(1).replace(",", "")) if score else None,
         "pass_text": cond or None,
