@@ -244,8 +244,50 @@ def hajime_core(scenario_mode: str):
             n = self.exam_count
             self.exam_count += 1
             type(self).exams_done = self.exam_count
-            stage = self.last_exam_next or ("mid1" if n == 0 else "final")
+            stage = self.last_exam_next or self._exam_next_from_trace() or self._stage_by_turns() or ("mid1" if n == 0 else "final")
             return f"hajime-{stage}"
+
+        def _exam_next_from_trace(self) -> str | None:
+            """续跑：本进程还没到过选行动页（last_exam_next 是空的）时，取之前 trace 段里最后一次读到的页头 exam_next
+            （协调 11-18：最終第 1 回合停机后续跑，被按「第几场」标成了 hajime-mid1）。"""
+            import json
+
+            last = None
+            try:
+                dirs = self._prior_trace_dirs()
+            except Exception:  # noqa: BLE001  没有 trace（测试替身）
+                return None
+            for d in dirs:
+                try:
+                    with (d / "steps.jsonl").open(encoding="utf-8") as f:
+                        for line in f:
+                            if '"exam_next"' not in line:
+                                continue
+                            try:
+                                step = json.loads(line)
+                            except ValueError:
+                                continue
+                            v = ((step.get("state_after") or step.get("state") or {}).get("page_fields") or {}).get("exam_next")
+                            last = v or last
+                except OSError:
+                    continue
+            return last if last in ("mid1", "mid2", "final") else None
+
+        def _stage_by_turns(self) -> str | None:
+            """画面上的剩余回合比中間的总回合数多：只能是最終（初：中間 9 回合、最終 11 回合，主数据战斗配置）。读不到 / 分不出 None。"""
+            try:
+                from hiro.vision.hif import read_hif_exam
+
+                remaining = read_hif_exam(active.device.screenshot()).get("remaining_turns")
+                if not remaining:
+                    return None
+                prod = self.s.state.produce or {}
+                idol = prod.get("idol_card_id") or getattr(self.profile, "idol_id", None)
+                turns = {st.kind: modes.audition_turns(prod.get("mode") or scenario_mode, idol, st.kind) for st in modes.auditions(prod.get("mode") or scenario_mode, idol)}
+            except Exception:  # noqa: BLE001  识别 / 主数据不可用
+                return None
+            mid = turns.get("mid1")
+            return "final" if mid and remaining > mid else None
 
         def _retry_if_failed(self, label: str, *, timeout: float = RESULT_WAIT_S) -> bool:
             """结算名次页：名次没进前 pass_rank（初前 3）就再挑戦（_click_retry：免费 / 已有チケット、每场最多 3 次、ジュエル / マニー 取消）。
