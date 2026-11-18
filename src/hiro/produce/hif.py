@@ -1187,7 +1187,7 @@ class HifCore:
             self._empty_review_fails = (ex, n + 1)
             if n + 1 < self.EMPTY_REVIEW_TRIES:
                 self._reviewed_at_exam = None  # 牌组还是空的：下次到选行动页再读（进课程前要有牌组）
-            r["problems"].append(f"牌组为空，第 {n + 1}/{self.EMPTY_REVIEW_TRIES} 次没读到" + ("，下次选行动再读" if n + 1 < self.EMPTY_REVIEW_TRIES else "，这一考试段不再读"))
+            r["problems"].append(f"牌组为空，第 {n + 1}/{self.EMPTY_REVIEW_TRIES} 次没读到" + ("，下次选行动再读" if n + 1 < self.EMPTY_REVIEW_TRIES else "，这一考试段不再读，照常进课程（协调 11-18 定：不停机；牌组为空 GNRPA 开局失败会退回 uinet）"))
         seq = self.s.trace.next_seq()
         if r["deck"] is not None:
             self.s.emit(Event(seq=seq, kind="DECK_REVIEW", origin="review", args={"deck": r["deck"], "deck_size": r["deck_size"]},
