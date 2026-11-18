@@ -86,6 +86,11 @@ def test_hajime_evaluation_second_place_live(hn):
     assert hn.hajime_evaluation({"Vo": 860, "Da": 1250, "Vi": 657}, 5175, 2, 1500) == 8790
 
 
+def test_hajime_evaluation_master_live(hn):
+    """2026-11-18 初 MASTER（篠澤広）：培育履历 12,903pt，属性 932 / 1600 / 734（含第 1 名 +30），最終 44,250 第 1。"""
+    assert hn.hajime_evaluation({"Vo": 902, "Da": 1570, "Vi": 704}, 44250, 1, 1800) == 12903
+
+
 def test_nia_evaluation_tiers(hn):
     assert hn.nia_vote_eval(20000, "produce-004") == 2000
     assert hn.nia_vote_eval(36036, "produce-004") == 3363
