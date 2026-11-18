@@ -1384,6 +1384,10 @@ class HifCore:
 
     CHANGE1_DECIDE_RETRIES = 3  # 换卡阶段 1 拿不到换卡决策时再读几帧（等页面提交进状态），之后才退回第 0 张
     CHANGE1_DECIDE_WAIT = 0.4
+    CHANGE1_STABLE_TRIES = 3  # 换卡阶段 1 候选两帧读数不一致时最多再读几帧
+
+    def _change1_key(self) -> tuple:
+        return tuple((c.get("card_id"), c.get("upgrade")) for c in self.s.state.page_fields.get("candidates") or [])
 
     def on_skill_card_change(self, ctx=None, *, stage: int | None = None):
         """换卡：阶段 1 按决策选换入候选（候选未识别时选第 0 张），阶段 2 按决策的 card_id 换出；决策取消时点キャンセル。
@@ -1404,6 +1408,21 @@ class HifCore:
                 if attempt < self.CHANGE1_DECIDE_RETRIES:
                     self.s.record(obs, decision=d, timings_ms={"total": (time.monotonic() - t0) * 1000})
                     sleep(self.CHANGE1_DECIDE_WAIT)
+            # 候选要连续两帧读得一样才决策（mainz3 r3 04:21：第一帧把 気まぐれハート 读成 全身全霊，存下的帧重读是对的、
+            # 执行时按卡面重读的名字也是 気まぐれハート；决策按错的读数选了第 0 张）。读数变了就按新读数重新决策
+            key = self._change1_key()
+            for _ in range(self.CHANGE1_STABLE_TRIES if d.action.kind is ActionKind.CHANGE_CARD and key else 0):
+                sleep(self.CHANGE1_DECIDE_WAIT)
+                obs2 = self.s.observe(scene="SKILL_CARD_CHANGE_1")
+                key2 = self._change1_key()
+                if key2 == key:
+                    break
+                d2 = self.deciders.decide("SKILL_CARD_CHANGE_1", self.s.state)
+                if d2.action.kind is not ActionKind.CHANGE_CARD:
+                    break  # 新一帧读不出候选：按上一帧的决策（没有更好的读数）
+                d.warnings.append(f"换卡候选两帧读得不一样（{[c for c, _ in key]} → {[c for c, _ in key2]}），按新读数重新决策")
+                self.s.record(obs, decision=d, timings_ms={"total": (time.monotonic() - t0) * 1000})
+                obs, d, key = obs2, d2, key2
             args = d.action.args if d.action.kind is ActionKind.CHANGE_CARD else {}
             cancel = bool(args.get("cancel"))
             pick = int(args.get("pick_index") or 0)

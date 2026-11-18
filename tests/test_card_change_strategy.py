@@ -138,7 +138,7 @@ def test_stage1_rereads_until_candidates_reach_state():
     st.s.observe = observe
     st._stage1_column = lambda pick, d: pick
     st.on_skill_card_change(ctx)
-    assert seen.count("SKILL_CARD_CHANGE_1") == 2  # 第一帧拿不到，重读一帧
+    assert seen.count("SKILL_CARD_CHANGE_1") == 3  # 第一帧拿不到，重读一帧；再读一帧核对候选两帧一致（mainz3 r3 04:21）
     assert ctx.calls[0] == ("s1", 2)  # 按价值选 デイドリーミング，不是第 0 张
 
 
@@ -228,3 +228,42 @@ def test_cancel_stays_cancel_in_record():
         Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7)
     st.on_skill_card_change(StubCtx(stage=2))
     assert st.s.records[-1][1]["decision"].action.args.get("cancel") is True  # 第一次取消：照记取消，不出 CARD_CHANGE
+
+
+def test_stage1_waits_until_candidates_read_twice_the_same(monkeypatch):
+    """mainz3 r3（11-18 04:21）：换卡阶段 1 第一帧把 気まぐれハート 读成 全身全霊（存下的帧重读是对的，读的那一帧在入场动画里），
+    决策按 全身全霊 选了第 0 张。候选要连续两帧读得一样才决策；变了就按新读数重新决策。"""
+    from hiro.contracts import Decision
+    from hiro.produce import hif
+
+    monkeypatch.setattr(hif, "sleep", lambda s: None)
+    ZENSHIN, KIMAGURE, LETTER = "p_card-03-act-3_065", "p_card-02-men-2_100", "p_card-02-act-2_047"
+    reads = [[ZENSHIN, LETTER], [KIMAGURE, LETTER], [KIMAGURE, LETTER]]
+
+    class SeqSession(StubSession):
+        def observe(self, scene, **_):
+            if scene == "SKILL_CARD_CHANGE_1":
+                ids = reads.pop(0) if len(reads) > 1 else reads[0]
+                self.state = GameState(page_fields={"candidates": [{"slot": i, "index": i, "card_id": c, "upgrade": 0} for i, c in enumerate(ids)]})
+                return scene
+            return super().observe(scene)
+
+    st = _strategy({})
+    st.s = SeqSession({"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": BASIC, "upgrade": 0}], "deck_complete": True}})
+    st.CHANGE_OBSERVE_TRIES = 1
+    st.s.recover = lambda *a: None
+    st._stage1_column = lambda pick, d: pick
+    seen = []
+
+    def decide(page, state, **kw):
+        if page == "SKILL_CARD_CHANGE_1":
+            ids = [c["card_id"] for c in state.page_fields["candidates"]]
+            seen.append(ids)
+            return Decision(Action(ActionKind.CHANGE_CARD, {"stage": 1, "pick_index": 0 if ids[0] == ZENSHIN else 1}), "x", "rule", 0.7)
+        return Decision(Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7)
+
+    st.deciders.decide = decide
+    ctx = StubCtx(stage=1)
+    st.on_skill_card_change(ctx)
+    assert ctx.calls[0] == ("s1", 1)  # 按第二、三帧（一致）的读数决策
+    assert seen[-1][0] == KIMAGURE
