@@ -84,3 +84,27 @@ def test_stuck_panel_stops(exam_img):
 def test_tap_far_from_hand():
     x, y = sp.BONUS_TAP
     assert 9 <= x <= 222 and 40 <= y <= 140 and y < 600  # BonusButtonArea 内，远离手牌（y≈860 以下）
+
+
+# ---------------------------------------------------------------- 只在考试 / 试镜点；关闭后认课程 / 初 / N.I.A 考试 HUD（协调 11-18 初 PRO 实机停机）
+@pytest.mark.parametrize(("label", "ok"), [
+    ("qualify-1", True), ("r1", True), ("r2", True), ("hajime-mid1", True), ("hajime-final", True), ("nia-mid1", True),
+    ("nia-final#audition-2", True), ("hajime-lesson-da", False), ("hajime-lesson-vi-hard", False), ("hajime-lesson", False),
+    ("tower", False), ("tower-12", False), (None, False), ("", False),
+])  # fmt: skip
+def test_should_probe_only_exams(label, ok):
+    assert sp.should_probe(label) is ok
+
+
+@pytest.mark.parametrize(("name", "ok"), [
+    ("hajime-lesson-probe-stuck.png", True),  # 课程画面（原来只认 H.I.F 考试，判成没关掉停机）
+    ("hajime-lesson-vo.jpg", True), ("hajime-exam.jpg", True),  # 初的考试判页认成 TOWER_EXAM
+    ("hajime-action-lessons.jpg", False),
+])  # fmt: skip
+def test_back_in_exam_recognizes_lesson_and_hajime_exam(name, ok):
+    p = Path(__file__).parent / "fixtures" / "pages" / name
+    if not p.exists():
+        pytest.skip(f"需要实机截图 pages/{name}")
+    from hiro.vision.offline import load
+
+    assert sp.back_in_exam(load(cv2.imread(str(p)))) is ok
