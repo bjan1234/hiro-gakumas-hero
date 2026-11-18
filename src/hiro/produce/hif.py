@@ -501,6 +501,8 @@ class HifCore:
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
         return True
 
+    RESIDUAL_PICK_S = 30.0  # 拿卡后这么久内又出现候选完全相同的选卡页：当获得后的残留画面
+    RESIDUAL_TAP = (12, 12)  # 同主循环过渡页点的空白处
     SELECT_RETRIES = 4  # 三选一候选为空时重读几次（每次等 SELECT_RETRY_WAIT 秒，约 2–3 秒）
     SELECT_RETRY_WAIT = 0.5
     CONFIRM_CLOSE_TRIES = 12  # 「報酬スキップ」点キャンセル 后等它关掉几拍（一半时补点一次）
@@ -548,6 +550,15 @@ class HifCore:
                 best = (known(again), again, frame)
         _, raw, img = best
         raw = dict(raw or {})
+        ids = tuple(o.get("card_id") for o in raw.get("options") or [])
+        last = getattr(self, "_last_pick", None)
+        if last and ids and all(ids) and ids == last[0] and time.monotonic() - last[1] < self.RESIDUAL_PICK_S:
+            # 刚拿过卡、候选（按 card_id，不看强化）完全相同：是获得后叠在原选卡页上的动画（「スター性獲得」等），不是又一次选卡
+            #（mainz3 r3 04:20：又「选」了一次，账本多记一张 イメトレ+）。不选，点空白处等它过去
+            self.s.recover("page_misjudged", f"选卡页候选与 {time.monotonic() - last[1]:.0f}s 前刚拿过的那页相同，当获得后的残留画面，不再选")
+            device.click(*self.RESIDUAL_TAP)
+            sleep(1.0)
+            return
         raw["recommended"] = rec_index
         obs = self.s.observe(scene="SELECT_CARD", img=img, fields=raw)
         for _ in range(4):  # 页面切换防抖中字段没进 state（同 on_select_drink）：再观测几次让页面落定（不合法跳转要 DEBOUNCE=3 帧）
@@ -608,6 +619,8 @@ class HifCore:
 
         result = self._act(commit, Action.activate_effect(i), page_before="SELECT_CARD",
                            taps=[[int(choice.rect.center.x), int(choice.rect.center.y)]])  # fmt: skip
+        if result.ok:
+            self._last_pick = (ids, time.monotonic())
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
     def _stage(self) -> str:
@@ -1384,6 +1397,10 @@ class HifCore:
 
     CHANGE1_DECIDE_RETRIES = 3  # 换卡阶段 1 拿不到换卡决策时再读几帧（等页面提交进状态），之后才退回第 0 张
     CHANGE1_DECIDE_WAIT = 0.4
+    CHANGE1_STABLE_TRIES = 3  # 换卡阶段 1 候选两帧读数不一致时最多再读几帧
+
+    def _change1_key(self) -> tuple:
+        return tuple((c.get("card_id"), c.get("upgrade")) for c in self.s.state.page_fields.get("candidates") or [])
 
     def on_skill_card_change(self, ctx=None, *, stage: int | None = None):
         """换卡：阶段 1 按决策选换入候选（候选未识别时选第 0 张），阶段 2 按决策的 card_id 换出；决策取消时点キャンセル。
@@ -1404,6 +1421,21 @@ class HifCore:
                 if attempt < self.CHANGE1_DECIDE_RETRIES:
                     self.s.record(obs, decision=d, timings_ms={"total": (time.monotonic() - t0) * 1000})
                     sleep(self.CHANGE1_DECIDE_WAIT)
+            # 候选要连续两帧读得一样才决策（mainz3 r3 04:21：第一帧把 気まぐれハート 读成 全身全霊，存下的帧重读是对的、
+            # 执行时按卡面重读的名字也是 気まぐれハート；决策按错的读数选了第 0 张）。读数变了就按新读数重新决策
+            key = self._change1_key()
+            for _ in range(self.CHANGE1_STABLE_TRIES if d.action.kind is ActionKind.CHANGE_CARD and key else 0):
+                sleep(self.CHANGE1_DECIDE_WAIT)
+                obs2 = self.s.observe(scene="SKILL_CARD_CHANGE_1")
+                key2 = self._change1_key()
+                if key2 == key:
+                    break
+                d2 = self.deciders.decide("SKILL_CARD_CHANGE_1", self.s.state)
+                if d2.action.kind is not ActionKind.CHANGE_CARD:
+                    break  # 新一帧读不出候选：按上一帧的决策（没有更好的读数）
+                d.warnings.append(f"换卡候选两帧读得不一样（{[c for c, _ in key]} → {[c for c, _ in key2]}），按新读数重新决策")
+                self.s.record(obs, decision=d, timings_ms={"total": (time.monotonic() - t0) * 1000})
+                obs, d, key = obs2, d2, key2
             args = d.action.args if d.action.kind is ActionKind.CHANGE_CARD else {}
             cancel = bool(args.get("cancel"))
             pick = int(args.get("pick_index") or 0)
@@ -1495,6 +1527,18 @@ class HifCore:
         # 整副扫描过（多屏）时 remove_index 是牌组序号、不是这一屏的格子号：只按 card_id + 强化次数找（翻屏）
         changed = change_stage2(None, 0, card_id=card_id, cancel=cancel, remove_index=None if cancel or scanned else args.get("remove_index"),
                                     remove_upgrade=None if cancel else args.get("remove_upgrade"))  # 自带确认框处理；取消 / 不符时点キャンセル 返回 False  # fmt: skip
+        if changed and not cancel:
+            # 记账按记录的动作出 CARD_CHANGE：强制换出时决策还是「取消」（mainz3 r3 04:16 换成了、账本没记），改成实际执行的换卡；
+            # 换出卡的强化次数取执行侧实际点到的那张（决策 / 账本给不出时）
+            from hiro.produce import card_ops
+
+            done = card_ops.LAST_CHANGED or {}
+            up = args.get("remove_upgrade")
+            if up is None and done.get("card_id") == card_id:
+                up = done.get("upgrade")
+            act_args = {k: v for k, v in args.items() if k != "cancel"} | {"stage": 2, "remove_card_id": card_id, "remove_upgrade": up}
+            if d.action.kind is not ActionKind.CHANGE_CARD or d.action.args != act_args:
+                d = replace(d, action=Action(ActionKind.CHANGE_CARD, act_args))
         result = self.s.verify(d.action, page_before="SKILL_CARD_CHANGE_2", taps=[], retries=0)
         result = replace(result, ok=bool(changed) or cancel, error=None if changed or cancel else "换卡未完成（见 card_ops 日志与 stage2 帧）")
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
