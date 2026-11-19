@@ -152,6 +152,36 @@ def test_resume_already_on_nia_page(monkeypatch):
     assert finish.resume_produce(rt) == "already" and rt.raw_device.taps == []
 
 
+def test_resume_already_on_hajime_briefing(monkeypatch):
+    """初的考前说明页上 resume（协调 11-20：40 秒超时）：采样器的 OCR 兜底认出 HIF_EXAM_BRIEFING 就算已在培育内。"""
+    monkeypatch.setattr("hiro.vision.quick.quick_page", lambda img: None)
+    monkeypatch.setattr("hiro.vision.classify.classify_scene", lambda img: UNKNOWN)
+    rt, _ = rig(monkeypatch, [frame({})])
+    rt.classify = lambda img: PageHit("HIF_EXAM_BRIEFING", "briefing_ocr", "produce", {})
+    assert finish.resume_produce(rt) == "already" and rt.raw_device.taps == []
+
+
+def test_resume_hajime_briefing_on_real_frame(monkeypatch, tmp_path):
+    """实机帧（ことね 中間考试开场页，pages/hajime-briefing-fktn.png）：初的采样器（nia=False）认出考前说明页，resume 直接开始。"""
+    import os
+    from pathlib import Path
+
+    import cv2
+
+    from hiro.runtime.nia_sample import Sampler
+    from hiro.vision.classify import classify
+
+    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "hajime-briefing-fktn.png"
+    if not path.exists():
+        pytest.skip("需要实机截图 pages/hajime-briefing-fktn.png")
+    img = cv2.imread(str(path))
+    monkeypatch.setattr("hiro.vision.quick.quick_page", lambda img: None)
+    rt, _ = rig(monkeypatch, [frame({}, img=img) if "img" in frame.__code__.co_varnames else frame({})])
+    sampler = Sampler(classify, tmp_path, nia=False)
+    rt.classify = lambda _img: sampler(img)
+    assert finish.resume_produce(rt) == "already"
+
+
 def test_resume_nia_page_on_real_frame(monkeypatch, tmp_path):
     """实机帧（营業话题，左上「営業」+ 三个话题）：采样的判页包装认出 NIA_SALES_EVENT，resume 直接开始。"""
     import os
