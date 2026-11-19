@@ -1267,6 +1267,7 @@ def test_exam_produce_from_session_mode(monkeypatch, label, mode, want):
 
 
 @pytest.mark.bench_on
+@pytest.mark.sim_master  # bench 出招读模拟器主数据 current.json；CI 没构建时跳过
 def test_uiobs_uses_schedule_and_panel_permils(monkeypatch):
     """平台读到审查日程（exam.turn_types）和三项倍率（ExamMemory.attr_permil → BattleState.attr_permils）：UIObs 的回合属性按日程，
     倍率三项各用各的（以前 T2 起读成 [6440, 6440, 6440]，没见过的回合缺省填 Vo）。"""
