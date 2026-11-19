@@ -50,6 +50,23 @@ INTERRUPT_FRAME_GAP_S = 60.0  # 同一句中断说明这么久内只存一帧
 STALL_S = 180.0  # 页面没变、画面也没变（缩略图差 < repeat_guard.SCREEN_DIFF）这么久就停机；认不出的画面同样适用
 
 
+DOWNLOAD_WORDS = ("ダウンロード中",)
+
+
+def download_percent(f) -> float | None:
+    """资源下载页的进度百分比（「データダウンロード中」旁的「27.27%」）；不是下载页返回 None。"""
+    import re
+
+    texts = [t.text.replace(" ", "") for t in f.texts]
+    if not any(w in t for t in texts for w in DOWNLOAD_WORDS):
+        return None
+    for t in texts:
+        m = re.fullmatch(r"(\d{1,3}(?:\.\d+)?)%", t)
+        if m and float(m.group(1)) <= 100:
+            return float(m.group(1))
+    return None
+
+
 class _Flow:
     """给 pause_flag.Watcher 的流控：旗标出现 → 置暂停，消失 → 解除；主线程在检查点等它解除。"""
 
@@ -106,6 +123,7 @@ class Runtime:
         self.screen = Screen(self.raw_device, self.clock)
         self.device = GuardedDevice(self.raw_device, self.screen, self.dialog_words)
         self._unknown_since: float | None = None
+        self._download_pct: float | None = None  # 资源下载页上次读到的百分比
         self._base: tuple[str, object, float] | None = None  # 进展看门狗的基准：(页面, 缩略图, 时刻)
         self._live_since: float | None = None
         self._acted_at: float | None = None  # 最近一次有操作（处理器 DONE / advance 点了 / 中断处理）的时刻
@@ -324,6 +342,13 @@ class Runtime:
             raise ResumeBlocked(f"{hit.name} 页面和画面 {stuck:.0f}s 没变化，停机")
         if hit.name != UNKNOWN.name:
             self._unknown_since = None
+        elif (pct := download_percent(f)) is not None and pct != self._download_pct:
+            # 资源下载页（「データダウンロード中 27.27%」）：百分比在动就是有进展，不按认不出计时（11-20 账号 2：网络不稳，
+            # E209 每 10 秒一次、リトライ 后接着下，180 秒按认不出停机）。百分比不动照常计时
+            self._download_pct, self._unknown_since = pct, f.t
+            self._base = None
+            self._comm_retry = None  # 下载在涨：两次 E209 之间有进展，通信エラー 的连续リトライ 计数重新算
+            logger.info("资源下载中 %.2f%%", pct)
         elif self._unknown_since is None:
             self._unknown_since = f.t
         elif (unknown := f.t - self._unknown_since) >= STALL_S:
