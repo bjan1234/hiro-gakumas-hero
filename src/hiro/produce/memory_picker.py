@@ -53,6 +53,9 @@ CLOSE_TEXTS = ("キャンセル", "閉じる", "戻る")
 ABILITY_GAP = 22  # 同一张能力卡片里相邻两行的间距 ≤ 这个；卡片之间更大
 
 TAP_TIMEOUT = 3.0
+SELECTED_BAND = (2, 14)  # 选中框（橙色四角）在格子外沿外侧这么多像素里
+SELECTED_ARM = 40  # 每个角量横竖各这么长
+SELECTED_MIN = 800  # 四角橙色像素合计 ≥ 这个算选中（11-19 账号 2 实机：选中格 1350–1570，其他格 ≤ 约 380，邻格的框会漏进来一点）
 SCROLL_SETTLE = 0.8
 
 
@@ -212,6 +215,10 @@ class Picker:
         ラブリーウインク），只多等一会儿。"""
         before = self.shoot()
         self.ensure_open(img=before)
+        if cell.get("rect") and cell_selected(before, cell):
+            # 已经是选中格（从空格子打开选择页时第一格默认选中）：再点会被当成「決定」（11-19 账号 2 扫描一开始就关了选择页），只读不点
+            logger.info("回忆选择页：第 %s 格已经选中，不点", cell.get("row", "?"))
+            return True, before
         self.click(*cell["center"])
         changed, img = self._wait_change(before, DETAIL_ROI)
         if not changed:
@@ -269,6 +276,24 @@ class Picker:
         self.click(*pos)
         self.sleep(1.0)
         return not picker_open(self.ocr(self.shoot()))
+
+
+def cell_selected(img: np.ndarray, cell: dict) -> bool:
+    """格子是不是选中格：看格子四角外侧的橙色 L 形选中框（不看格子里面，卡面本身常有橙色）。"""
+    x, y, w, h = cell["rect"]
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    m = (hsv[..., 0] >= 8) & (hsv[..., 0] <= 24) & (hsv[..., 1] > 140) & (hsv[..., 2] > 200)
+    H, W = m.shape
+    near, far = SELECTED_BAND
+    total = 0
+    for cx, cy, sx, sy in ((x, y, 1, 1), (x + w, y, -1, 1), (x, y + h, 1, -1), (x + w, y + h, -1, -1)):
+        y1, y2 = sorted((cy - sy * far, cy - sy * near))
+        x1, x2 = sorted((cx - sx * far, cx - sx * near))
+        ax1, ax2 = sorted((cx, cx + sx * SELECTED_ARM))
+        ay1, ay2 = sorted((cy, cy + sy * SELECTED_ARM))
+        total += int(m[max(0, y1) : max(0, y2), max(0, ax1) : min(W, ax2)].sum())  # 横臂（格子外上 / 下方）
+        total += int(m[max(0, ay1) : min(H, ay2), max(0, x1) : max(0, x2)].sum())  # 竖臂（格子外左 / 右方）
+    return total >= SELECTED_MIN
 
 
 def cell_thumb(img: np.ndarray, cell: dict) -> np.ndarray:
