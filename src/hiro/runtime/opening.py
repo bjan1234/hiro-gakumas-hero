@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 ENTER_TIMEOUT = 40.0
 LOGO_TIMEOUT = 30.0
 MODE_TIMEOUT = 40.0
+START_RETAP_S = 2.5  # 点「プロデュース開始」后还在第 4 步：隔这么久再点
 START_SKIP_S = 5.0  # 点开始后这么久内一直找「跳过交流」单选框 / 确认按钮（同 KAA）
 
 LOGOS = ("Produce.LogoHajime", "Produce.LogoNia", "Produce.LogoHif")
@@ -166,17 +167,24 @@ def choose_mode(rt, mode: str, *, extra_ap: int | None = None, timeout: float = 
 def start(rt, timeout: float = 20.0) -> None:
     """第 4 步点「プロデュース開始」，之后 START_SKIP_S 秒内点「コミュをスキップ」单选框和确认按钮（同 KAA）。"""
 
+    # 点了要看到离开第 4 步（开始按钮不在了：弹出设置框 / 跳过交流 / 进培育）才算点上。z6（11-19 10:51 DMM）：第 3 步刚切到第 4 步就点，
+    # 被切换动画吞了，原来点了就当成功交给主循环，PRODUCE_START_CONFIRM 没处理器 180s 停机。还在第 4 步就隔 START_RETAP_S 再点
+    state = {"last": None}
+
     def press(f):
-        if (m := nav.find(f, "Produce.Step4.ButtonProduceStart")) is not None:
+        m = nav.find(f, "Produce.Step4.ButtonProduceStart")
+        if m is None:
+            return True if state["last"] is not None else None
+        if state["last"] is None or rt.clock() - state["last"] >= START_RETAP_S:
             nav.tap_match(rt, m)
-            return True
+            state["last"] = rt.clock()
         return None
 
     rt.drive(press, timeout, "点プロデュース開始")
     t0 = rt.clock()
     while rt.clock() - t0 < START_SKIP_S:
         f, done = rt.tick()
-        if done is None:
+        if done is None and nav.find(f, "Produce.Step4.ButtonProduceStart") is None:  # 第 4 步页还在时不点（「決定」会误命中开始按钮一带）
             for name in ("Produce.RadioTextSkipCommu", "Common.ButtonConfirmNoIcon"):
                 if (m := nav.find(f, name)) is not None:
                     nav.tap_match(rt, m)

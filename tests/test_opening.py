@@ -507,3 +507,22 @@ def test_idol_selected_rechecks_frames(monkeypatch):
     monkeypatch.setattr("hiro.produce.idol_select.locate", lambda skin, **kw: pytest.fail("不该去开偶像一览"))
     opening.step1(rt, "i_card-skin-shro-3-007")
     assert rt.raw_device.taps == [(500, 1160)]
+
+
+def test_start_retaps_when_still_on_step4(monkeypatch):
+    """z6（11-19 10:51 DMM）：第 3 步刚切到第 4 步就点了「プロデュース開始」，被动画吞了；原来点了就当成功，
+    交给主循环，PRODUCE_START_CONFIRM 没处理器 180s 停机。点了还在第 4 步就隔一会儿再点，直到离开第 4 步。"""
+    step4 = frame({"Produce.Step4.ButtonProduceStart": (500, 1150)})
+    seq = {2: [frame({"Produce.RadioTextSkipCommu": (200, 700)})], 3: [frame({})]}  # 第 1 下没反应，第 2 下才弹出
+    rt, _ = rig(monkeypatch, [step4], on_tap=lambda taps: seq.get(len(taps)))
+    opening.start(rt)
+    assert rt.raw_device.taps[:3] == [(500, 1150), (500, 1150), (200, 700)]
+
+
+def test_start_skip_loop_does_not_tap_confirm_on_step4(monkeypatch):
+    """开始按钮还在（第 4 步页）时，跳过交流那段不去点「Common.ButtonConfirmNoIcon」（第 4 步页上会误命中）。"""
+    step4 = frame({"Produce.Step4.ButtonProduceStart": (500, 1150), "Common.ButtonConfirmNoIcon": (520, 1150)})
+    rt, _ = rig(monkeypatch, [step4])
+    with pytest.raises(ResumeBlocked):
+        opening.start(rt)
+    assert (520, 1150) not in rt.raw_device.taps and rt.raw_device.taps.count((500, 1150)) >= 2
