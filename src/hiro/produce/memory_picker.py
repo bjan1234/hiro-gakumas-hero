@@ -131,6 +131,28 @@ def _name_variants(text: str) -> list[str]:
     return out
 
 
+FUZZY_NAME_MIN = 0.80  # 卡名精确 / 混淆替换都没命中时，和主数据卡名的相似度至少这么高
+FUZZY_NAME_MARGIN = 0.05  # 而且要比第二像的高出这么多（同名不同强化「+」只差一个字，靠这个分开）
+
+
+def fuzzy_card(text: str) -> dict | None:
+    """卡名 OCR 漏字 / 错字时按相似度找主数据卡名（11-19 账号 2：「アイドル宣言」读成「アイドル言」，写编成找不到这份回忆；
+    「嬉しい誤算+」读成「嬌しい誤算＋」）。最像的不够像、或和第二像的分不开就给 None，不猜。"""
+    from difflib import SequenceMatcher
+
+    from hiro.vision.deck import _cards_by_full_name, card_from_name
+
+    name = text.replace("＋", "+").replace(" ", "").strip()
+    if len(name.rstrip("+")) < 3:
+        return None
+    scored = sorted(((SequenceMatcher(None, name, k).ratio(), k) for k in _cards_by_full_name()), reverse=True)
+    if not scored or scored[0][0] < FUZZY_NAME_MIN:
+        return None
+    if len(scored) > 1 and scored[0][0] - scored[1][0] < FUZZY_NAME_MARGIN:
+        return None
+    return card_from_name(scored[0][1])
+
+
 def read_card_page(boxes) -> dict:
     """详情 1/2：{timing: start|mid|None, timing_text, card_text（卡名原文）, card（主数据命中 {card_id, name, upgrade}）, effect}。"""
     from hiro.vision.deck import card_from_name
@@ -139,6 +161,8 @@ def read_card_page(boxes) -> dict:
     timing = next((v for k, v in TIMING.items() if timing_text and k in timing_text), None)
     names = [t for t in _lines(boxes, 222, 260)]
     card = next((c for t in names for v in _name_variants(t) if (c := card_from_name(v))), None)
+    if card is None and names:
+        card = fuzzy_card(names[0])
     return {"timing": timing, "timing_text": timing_text, "card_text": names[0] if names else None, "card": card,
             "effect": _lines(boxes, 270, 510)}  # fmt: skip
 
