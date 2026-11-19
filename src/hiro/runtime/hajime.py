@@ -71,6 +71,9 @@ def lesson_kind(label: str) -> tuple[str | None, str]:
     return attr, kind
 
 
+EXTRA_TURN_MAX = 3  # 追加回合超过这个（或负数）就当回合数读错
+
+
 class LessonInfo:
     """一节初课程的画面读数 + 主数据对照（协调 11-18，配合 8a3a1e7 把课程接到 GNRPA；写进 exam_session.lesson）：
     - turns_total：开课时「残りターン数」（= limitTurn + 追加回合）；clear_target：开课时「CLEARまで」的数（还没得分）；
@@ -86,6 +89,18 @@ class LessonInfo:
                   "param_start": None, "level_ids": None, "exam_extra_turn": None, "lesson_limit_up_score": None}  # fmt: skip
         self._limits = None
         self._pending_perfect = None
+        self._turns_bad = False
+
+    def restore(self, saved: dict) -> None:
+        """续跑时课程已经开始：沿用上一段 trace 里这一节课的读数（回合数 / CLEAR 线 / 开课属性值 / 满分线），不再从画面重读。"""
+        from hiro.state import modes
+
+        for k in self.d:
+            if k not in ("nth",) and saved.get(k) is not None:
+                self.d[k] = saved[k]
+        if self.d["clear_target"] is not None:
+            self._limits = modes.lesson_limits(modes.lesson_levels(self.produce_id, self.idol_card_id, self.d["kind"], self.d["clear_target"]))
+        self._turns_bad = self.d["turns_total"] is None and saved.get("clear_target") is not None  # 上一段已经判过读错：不再读
 
     @property
     def done(self) -> bool:
@@ -96,7 +111,7 @@ class LessonInfo:
         from hiro.state import modes
 
         d, changed = self.d, False
-        if d["turns_total"] is None and turns is not None:
+        if d["turns_total"] is None and turns is not None and not self._turns_bad:
             d["turns_total"], changed = turns, True
         if hud is None:
             return changed
@@ -113,7 +128,13 @@ class LessonInfo:
         if self._limits is not None:
             limit_turn, perfect_limit = self._limits
             if d["turns_total"] is not None:
-                d["exam_extra_turn"] = max(0, d["turns_total"] - limit_turn)
+                extra = d["turns_total"] - limit_turn
+                if not 0 <= extra <= EXTRA_TURN_MAX:
+                    # 追加回合离谱（续跑时 6 回合读成 19 → +13，协调 11-18）：当读错，回合数和追加回合都留空，这节课不再读
+                    logger.warning("初练习课：回合数 %s 比档位 limitTurn %s 多 %+d，当读错留空", d["turns_total"], limit_turn, extra)
+                    d["turns_total"], d["exam_extra_turn"], self._turns_bad, changed = None, None, True, True
+                else:
+                    d["exam_extra_turn"] = extra
             if d["perfect_target"] is not None:
                 d["lesson_limit_up_score"] = max(0, d["perfect_target"] - perfect_limit)
         return changed
@@ -121,7 +142,8 @@ class LessonInfo:
     def needs(self, goal: str | None) -> bool:
         """这一帧要不要 OCR：开课读数还缺，或者刚到 PERFECT 段、满分线还没算。"""
         d = self.d
-        return (goal == "clear" and d["clear_target"] is None) or (goal == "perfect" and d["perfect_target"] is None) or d["turns_total"] is None
+        return ((goal == "clear" and d["clear_target"] is None) or (goal == "perfect" and d["perfect_target"] is None)
+                or (d["turns_total"] is None and not self._turns_bad))  # fmt: skip
 
 
 def hajime_core(scenario_mode: str):
@@ -158,6 +180,9 @@ def hajime_core(scenario_mode: str):
             prod = self.s.state.produce or {}
             info = LessonInfo(label, counts[key], prod.get("mode") or scenario_mode, prod.get("idol_card_id") or getattr(self.profile, "idol_id", None))
             logger.info("初练习课：%s（第 %d 节，同种同属性第 %d 次）", label, self.lesson_count, counts[key])
+            if (saved := self._lesson_from_trace(label)) is not None:
+                info.restore(saved)
+                logger.info("初练习课：续跑，沿用上一段 trace 的课程读数 %s", info.d)
             self.rec.log("exam_enter", image=img, exam=label)
             self.s.state.exam_session.label = label
             self.s.state.exam_session.lesson = dict(info.d)
@@ -183,6 +208,32 @@ def hajime_core(scenario_mode: str):
             self.s.note(f"初练习课 {label}：{info.d}")
             self._lesson_done = True
 
+        def _lesson_from_trace(self, label: str) -> dict | None:
+            """上一段 trace 停在这一节课里（最后一步的 exam_session.label 就是它、带课程读数）：返回那份读数；否则 None。"""
+            import json
+
+            last = None
+            try:
+                dirs = self._prior_trace_dirs()
+            except Exception:  # noqa: BLE001  没有 trace（测试替身）
+                return None
+            for d in dirs:
+                try:
+                    with (d / "steps.jsonl").open(encoding="utf-8") as f:
+                        for line in f:
+                            try:
+                                step = json.loads(line)
+                            except ValueError:
+                                continue
+                            es = (step.get("state_after") or step.get("state") or {}).get("exam_session")
+                            if es is not None:
+                                last = es
+                except OSError:
+                    continue
+            if last and last.get("label") == label and isinstance(last.get("lesson"), dict) and last["lesson"].get("clear_target") is not None:
+                return last["lesson"]
+            return None
+
         def on_practice_exited(self):
             pass
 
@@ -193,8 +244,50 @@ def hajime_core(scenario_mode: str):
             n = self.exam_count
             self.exam_count += 1
             type(self).exams_done = self.exam_count
-            stage = self.last_exam_next or ("mid1" if n == 0 else "final")
+            stage = self.last_exam_next or self._exam_next_from_trace() or self._stage_by_turns() or ("mid1" if n == 0 else "final")
             return f"hajime-{stage}"
+
+        def _exam_next_from_trace(self) -> str | None:
+            """续跑：本进程还没到过选行动页（last_exam_next 是空的）时，取之前 trace 段里最后一次读到的页头 exam_next
+            （协调 11-18：最終第 1 回合停机后续跑，被按「第几场」标成了 hajime-mid1）。"""
+            import json
+
+            last = None
+            try:
+                dirs = self._prior_trace_dirs()
+            except Exception:  # noqa: BLE001  没有 trace（测试替身）
+                return None
+            for d in dirs:
+                try:
+                    with (d / "steps.jsonl").open(encoding="utf-8") as f:
+                        for line in f:
+                            if '"exam_next"' not in line:
+                                continue
+                            try:
+                                step = json.loads(line)
+                            except ValueError:
+                                continue
+                            v = ((step.get("state_after") or step.get("state") or {}).get("page_fields") or {}).get("exam_next")
+                            last = v or last
+                except OSError:
+                    continue
+            return last if last in ("mid1", "mid2", "final") else None
+
+        def _stage_by_turns(self) -> str | None:
+            """画面上的剩余回合比中間的总回合数多：只能是最終（初：中間 9 回合、最終 11 回合，主数据战斗配置）。读不到 / 分不出 None。"""
+            try:
+                from hiro.vision.hif import read_hif_exam
+
+                remaining = read_hif_exam(active.device.screenshot()).get("remaining_turns")
+                if not remaining:
+                    return None
+                prod = self.s.state.produce or {}
+                idol = prod.get("idol_card_id") or getattr(self.profile, "idol_id", None)
+                turns = {st.kind: modes.audition_turns(prod.get("mode") or scenario_mode, idol, st.kind) for st in modes.auditions(prod.get("mode") or scenario_mode, idol)}
+            except Exception:  # noqa: BLE001  识别 / 主数据不可用
+                return None
+            mid = turns.get("mid1")
+            return "final" if mid and remaining > mid else None
 
         def _retry_if_failed(self, label: str, *, timeout: float = RESULT_WAIT_S) -> bool:
             """结算名次页：名次没进前 pass_rank（初前 3）就再挑戦（_click_retry：免费 / 已有チケット、每场最多 3 次、ジュエル / マニー 取消）。

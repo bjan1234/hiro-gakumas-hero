@@ -48,6 +48,7 @@ ROW_TOL = 20  # 同一行字母的 y 容差
 DIM_V_MAX = 160  # 格内平均亮度：正常 200–241，压暗 103–117
 DIM_TARGET_V, DIM_GAIN_MAX = 225, 2.5
 PLUS_BOX = (0.33, 0.66, 0.74, 1.0)  # 「+」在卡格内的相对位置 (y1, y2, x1, x2)
+PLUS_SPECKLE_FRAC = 0.5  # 「看不清」区间里最大红色连通块不到阈值的这个比例：插画零星红点，判没有「+」
 PLUS_MIN_PX_125 = 40  # 125 像素卡格时的最少红色像素（与相談货架同一阈值），按面积缩放；低于 1/4 记为没有
 CUSTOM_BOX = (0.62, 0.86, 0.36, 0.64)  # 定制徽章 (y1, y2, x1, x2)
 CUSTOM_MIN_PX_125 = 120
@@ -157,7 +158,14 @@ def _plus(cell: MatLike) -> int | None:
     need = PLUS_MIN_PX_125 * area
     if red >= need:
         return 1 if plus_shape_ok(mask, cell.shape[0]) else None
-    return 0 if red < need / 4 else None
+    if red < need / 4:
+        return 0
+    # 介于两者之间：零星红点（最大连通块不到阈值一半）是插画里的红色，判 0；成块的才可能是没显示全的「+」，仍然不确定。
+    # 真「+」的红色几乎全连成一块（实测最大块 ≥90，阈值 35–51）；z5（11-19 DMM 1080x1920）がむしゃら 的橙色爆炸插画
+    # 6–12 个零星红点（最大块 ≤8）落在这一段，牌组一览十来次拼接失败、相談删卡没做
+    k, _, st, _ = cv2.connectedComponentsWithStats(mask.astype(np.uint8), 8)
+    biggest = int(st[1:, cv2.CC_STAT_AREA].max()) if k > 1 else 0
+    return 0 if biggest < need * PLUS_SPECKLE_FRAC else None
 
 
 def _customized(cell: MatLike) -> bool:
@@ -221,6 +229,19 @@ def read_card_grid(img: MatLike, region: tuple[int, int, int, int], geometry: st
     return out
 
 
+def _left_filled_rows(cards: list[dict]) -> list[dict]:
+    """一览每行从左往右排满（末行只缺右边）：一行认出的列不是从第 1 列连续排起（如只有第 4 列），是被标签栏挡住、露了一半的行，
+    整行丢掉，滑屏后再读。z5（11-19 01:45 DMM 1080x1920）：首屏最下一行只认出最右的 眠気，当成不满 4 张的末行，第 2 屏判「没有重叠」、拼出 25 张。"""
+    rows: dict[int, list[int]] = {}
+    for c in cards:
+        rows.setdefault(c["row"], []).append(c["col"])
+    bad = {r for r, cols in rows.items() if sorted(cols) != list(range(len(cols)))}
+    if not bad:
+        return cards
+    keep = [c for c in cards if c["row"] not in bad]
+    return [{**c, "index": i} for i, c in enumerate(keep)]
+
+
 def read_deck_list(img: MatLike) -> dict:
     """所持スキルカード一览页（一屏）。
 
@@ -232,7 +253,7 @@ def read_deck_list(img: MatLike) -> dict:
     - problems：deck 为 None 的原因。
     """
     size = read_deck_size(img)
-    cards = read_card_grid(img, LIST_VIEW, "list")  # 一览页固定 list 几何：标签栏 / 卡面图案上的误检字母会把自动推断带偏成 dialog（第二十局实机一屏只认出 4 张）
+    cards = _left_filled_rows(read_card_grid(img, LIST_VIEW, "list"))  # 一览页固定 list 几何：标签栏 / 卡面图案上的误检字母会把自动推断带偏成 dialog（第二十局实机一屏只认出 4 张）
     out = {"deck_size": size, "cards": cards, "rows_visible": (cards[-1]["row"] + 1) if cards else 0}
     out.update(_finish(cards, size, []))
     return out

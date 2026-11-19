@@ -110,6 +110,7 @@ class ProduceDeciders:
         # 授業 遇到换卡档时改选眠気档；lead 接好两步后传 True。
         self.change_controlled = change_controlled
         self.change_target: str | None = None  # 阶段 1 选中的换入卡 card_id（阶段 2 比较价值用）
+        self.consult_used: set[str] = set()  # 初 / N.I.A：这一次相談里已经用过的服务（删除 / 强化各一次，回到选行动页清空）
         self.picked_musts: set[str] = set()  # 本局决策器自己拿到的必拿卡（牌组没识别时用来判断还缺什么）
         self.consult_delete_lean = False  # 选拔相談打开「削除」对话框时：只删 qualify_consult_deletable 的牌（用户 2026-11-03 顺序），没有就取消
         self._page_spend: dict = {}  # 选卡页（page.since_seq）→ 本页已用的刷新 / 禁用次数
@@ -282,6 +283,8 @@ class ProduceDeciders:
     def _action_select_hajime_nia(self, state: GameState) -> Decision:
         """初 / N.I.A：按社区规则的策略表选（hiro.brain.hajime_nia，设计稿第四节），不走 H.I.F 的日程预演和もりし模板。"""
         from hiro.brain.hajime_nia import choose_action
+
+        self.consult_used = set()  # 回到选行动页：上一次相談结束了
 
         prod = dict(state.produce or {})
         # 没有 option 名的项（识别没认出是什么按钮）跳过，不让整个决策器抛异常。
@@ -1714,6 +1717,11 @@ class ProduceDeciders:
         rid = "nia.delete_order" if family(ps.mode) == NIA else "hajime.consult_price"
         if "deck" in unknown or not ps.deck:
             return Decision(Action(ActionKind.SHOP_END), "相談：牌组没识别，不删卡", "rule", 0.5, warnings=["牌组未识别：没有做删卡"], decider="consult")
+        if "delete" in self.consult_used or delete.get("used") or delete.get("exchanged"):
+            # 一次相談每种服务只能用一次（协调 11-18 初 PRO：删完一张按钮变「交換済」，又按 125P 重复删了 3 次停机）。
+            # 画面上的 125P 是下一次相談的删卡价（平台写进 produce.consult_delete_price，选行动时用）
+            return Decision(Action(ActionKind.SHOP_END), f"相談：这次已经删过一张（每种服务一次相談只能用一次；{delete.get('price')}P 是下一次的价），结束",
+                            "rule", 0.8, decider="consult")  # fmt: skip
         if not delete.get("available", True) or not _affordable(delete, p):
             return Decision(Action(ActionKind.SHOP_END), f"相談：删卡用不了或 P 点不够（{p}P），不买", "rule", 0.6, decider="consult")
         cards = [{"index": i, "card_id": c.card_id, "upgrade": c.upgrade, "customized": c.customized} for i, c in enumerate(ps.deck)]
@@ -1723,6 +1731,7 @@ class ProduceDeciders:
             return Decision(Action(ActionKind.SHOP_END), "相談：牌组里没有该删的卡（トラブル / 可复用的非核心卡 / 冲突卡 / 基本卡都没有了），不买", "rule", 0.7,
                             decider="consult")  # fmt: skip
         c = pool[0]
+        self.consult_used.add("delete")
         return Decision(Action(ActionKind.SHOP_BUY, {"service": "delete", "card_index": c["index"]}),
                         f"相談删{CULL_TIERS.get(cull_tier(c['card_id']), '')} {_card_label(c)}（{delete.get('price')}P；{hr.cite(rid)}）", "rule", 0.8,
                         decider="consult")  # fmt: skip
@@ -2714,6 +2723,33 @@ class ProduceDeciders:
 
     INTERVAL_REROLL = True  # 测试 / 兜底开关
 
+    def _interval_fill_card(self, items: dict, ledger: dict, cache: dict, nrr: int, spare: int, p: int, done) -> Decision | None:
+        """刷新后的货架上补卡（牌组不满 22 张时）。HIRO_INTERVAL_FILL_22（缺省开，用户 11-18「本战轮间还是要补充到 22 张卡」）：
+        按 interval.fill_order（一次性 / 循环件 / 社区评级 > 最不污染的可复用卡，冲突卡不拿）；关掉时照旧只买核心卡。"""
+        from hiro.sim import interval as iv
+
+        deck = [tuple(c) for c in iv.CONTEXT.get("deck") or []] + [tuple(c) for c in ledger["cards"]]
+        if len(deck) >= iv.OUENBOU_SIZE:
+            return None
+        avail = [it for it in items.get("cards") or [] if it.get("card_id") and not it.get("purchased")
+                 and (it.get("price") or 0) <= spare and cache["tried"].get(("rc", nrr, it["index"])) is None]  # fmt: skip
+        if iv.INTERVAL_FILL_22:
+            order = iv.fill_order([it["card_id"] for it in avail], deck)
+            it = next((x for cid, _ in order for x in avail if x["card_id"] == cid), None)
+            what = "补到 22 张"
+        else:
+            owned = {c[0] for c in deck}
+            cards = [it for it in avail if not unwanted(it["card_id"]) and _is_core_card(it["card_id"])
+                     and wants_copy(it["card_id"], sum(1 for c in deck if c[0] == it["card_id"]))]  # fmt: skip
+            it = max(cards, key=lambda x: iv._card_rule_key(x["card_id"], owned)) if cards else None
+            what = "核心卡"
+        if it is None:
+            return None
+        cache["tried"][("rc", nrr, it["index"])] = p
+        ledger["pending"] = {"kind": "card", "id": (it["card_id"], it.get("upgrade") or 0), "p": p}
+        return done(Action(ActionKind.INTERVAL_BUY, {"index": it["index"]}),
+                    f"刷新后的货架：{what}，买 {it.get('name')}（{it.get('price')}P；牌组 {len(deck)} 张）")
+
     def _interval_reroll(self, state: GameState, ps: ProduceState, items: dict, cache: dict, res: dict, done) -> Decision | None:
         """轮间刷新货架（用户 2026-11-02：第十六局 R2 只有 漢方、第十七局只有 ハーブティー，剩 435P）。计划里的回体力 / 买卡 / 买饮料做完之后、强化之前：
         1. 刷新过的新货架：先买值得买的饮料（R2 增益 > 1.5 个标准误，空位 / 可花 P 内增益和最大），牌组不满 22 张时按补卡顺序买卡；
@@ -2731,6 +2767,14 @@ class ProduceDeciders:
         price = int(refresh["price"])
         # 不为强化预留 P（用户 2026-11-03：「100P 拿去强化 せのび 没必要啊，强化的收益不如买饮料」）：饮料在强化前面，强化只用剩下的钱
         need = 0
+        if iv.INTERVAL_REFRESH_YIELD:
+            # ③ 刷新给补卡、回体力让 P（协调 11-18，缺省关）：还差的张数 × 货架上最便宜的补卡价 + 回到约 29 的价
+            deck = [tuple(c) for c in iv.CONTEXT.get("deck") or []] + [tuple(c) for c in self._interval_ledger["cards"]]
+            short = max(0, iv.OUENBOU_SIZE - len(deck))
+            fill = [it.get("price") or 0 for it in items.get("cards") or [] if it.get("card_id") and not it.get("purchased")
+                    and iv.fill_order([it["card_id"]], deck)]  # fmt: skip
+            per2 = (items.get("recover") or {}).get("price_per_2hp") or 10
+            need = short * (min(fill) if fill else 0) + iv.recover_cost(ps.stamina, max(ps.stamina, iv.recover_target(ps.max_stamina)), per2)
         spare = p - need
         held = self._interval_held(state, ps)
         ledger = self._interval_ledger
@@ -2785,19 +2829,8 @@ class ProduceDeciders:
                 return done(Action(ActionKind.INTERVAL_BUY, {"index": idx}),
                             f"刷新后的货架：买 {it.get('name')}（{it.get('price')}P，R2 增益 {g:+,} ± {se:,}，> 价格 × 每 P {iv.SPARE_P_VALUE} 分）")  # fmt: skip
             # 牌组不满 22 张：按补卡顺序买卡（cards 也随刷新换了）
-            deck_n = len(iv.CONTEXT.get("deck") or []) + len(ledger["cards"])
-            if deck_n < iv.OUENBOU_SIZE:
-                from hiro.brain.deciders import unwanted as _unwanted
-
-                owned = {c[0] for c in iv.CONTEXT.get("deck") or []}
-                cards = [it for it in items.get("cards") or [] if it.get("card_id") and not it.get("purchased") and not _unwanted(it["card_id"])
-                         and _is_core_card(it["card_id"]) and wants_copy(it["card_id"], sum(1 for c in iv.CONTEXT.get("deck") or [] if c[0] == it["card_id"]))  # 瘦牌组：只买核心卡
-                         and (it.get("price") or 0) <= spare and cache["tried"].get(("rc", nrr, it["index"])) is None]  # fmt: skip
-                if cards:
-                    it = max(cards, key=lambda x: iv._card_rule_key(x["card_id"], owned))
-                    cache["tried"][("rc", nrr, it["index"])] = p
-                    ledger["pending"] = {"kind": "card", "id": (it["card_id"], it.get("upgrade") or 0), "p": p}
-                    return done(Action(ActionKind.INTERVAL_BUY, {"index": it["index"]}), f"刷新后的货架：买核心卡 {it.get('name')}（{it.get('price')}P）")
+            if (d := self._interval_fill_card(items, ledger, cache, nrr, spare, p, done)) is not None:
+                return d
         cur_v, _ = iv.shelf_value(shelf, gains, free, spare)
         r = iv.reroll_ev(gains, free, spare, price, cur_v)
         r["ev"] -= iv.SPARE_P_VALUE * price  # 刷新价格（实际价格：10 → 20 → 30…）按余 P 的机会成本计
@@ -2851,18 +2884,9 @@ class ProduceDeciders:
             d.warnings = d.warnings + warn
             return d
         if cache.get("rerolling"):
-            # 牌组不满 22 张：按补卡顺序买核心卡（cards 也随刷新换了）
-            deck_n = len(iv.CONTEXT.get("deck") or []) + len(ledger["cards"])
-            if deck_n < iv.OUENBOU_SIZE:
-                owned = {c[0] for c in iv.CONTEXT.get("deck") or []}
-                cards = [it for it in items.get("cards") or [] if it.get("card_id") and not it.get("purchased") and not unwanted(it["card_id"])
-                         and _is_core_card(it["card_id"]) and wants_copy(it["card_id"], sum(1 for c in iv.CONTEXT.get("deck") or [] if c[0] == it["card_id"]))
-                         and (it.get("price") or 0) <= spare and cache["tried"].get(("rc", nrr, it["index"])) is None]  # fmt: skip
-                if cards:
-                    it = max(cards, key=lambda x: iv._card_rule_key(x["card_id"], owned))
-                    cache["tried"][("rc", nrr, it["index"])] = p
-                    ledger["pending"] = {"kind": "card", "id": (it["card_id"], it.get("upgrade") or 0), "p": p}
-                    return done(Action(ActionKind.INTERVAL_BUY, {"index": it["index"]}), f"刷新后的货架：买核心卡 {it.get('name')}（{it.get('price')}P）")
+            # 牌组不满 22 张：按补卡顺序买卡（cards 也随刷新换了）
+            if (d := self._interval_fill_card(items, ledger, cache, nrr, spare, p, done)) is not None:
+                return d
         cache["reroll_note"] = f"饮料：{st['why']}{tail}"
         if st["kind"] == "stop":
             return None
@@ -2883,12 +2907,14 @@ class ProduceDeciders:
 
         from hiro.state.knowledge import interval_hp_target
 
+        from hiro.sim import interval as _iv
+
         p, hp, max_hp = ps.produce_point, ps.stamina, ps.max_stamina
         target = interval_hp_target(self.profile.idol_id if self.profile else None, max_hp)
         if _sim_ready():  # HP_TARGET_VALUE（默认关）：回体力目标按价值表每 P 回报逐段往上（主仓库 1b16f1b）
-            from hiro.sim import interval as _iv
-
             target = _iv.value_hp_target(max_hp, target)
+        if _iv.INTERVAL_RECOVER_FIRST and hp < _iv.recover_target(max_hp):
+            target = max(target, _iv.recover_target(max_hp))  # ② 回到约 29（协调 11-18，缺省关）
         shelf = [dict(it, kind=kind) for kind in ("card", "drink") for it in items.get(kind + "s") or []]
         recover = items.get("recover") or {}
         upgrade = items.get("upgrade") or {}
@@ -2934,6 +2960,16 @@ class ProduceDeciders:
             know = YARUKI_CARDS.get(it.get("card_id"))
             if know and know.get("must") and deck_known and it["card_id"] not in owned and _affordable(it, budget):
                 return done(Action(ActionKind.INTERVAL_BUY, {"index": it["index"]}), f"买缺的核心卡 {know['name']}（{it['price']}P）")
+        if _iv.INTERVAL_FILL_22 and deck_known:
+            # ① 补到 22 张（用户 11-18）：牌组用状态机记账，没有时用 R1 记下的
+            deck = [(c.card_id, c.upgrade) for c in ps.deck] if ps.deck and "deck" not in unknown else [tuple(c) for c in _iv.CONTEXT.get("deck") or []]
+            if len(deck) < _iv.OUENBOU_SIZE:
+                avail = [it for it in cards if it.get("card_id") and _affordable(it, budget)]
+                order = _iv.fill_order([it["card_id"] for it in avail], deck)
+                it = next((x for cid, _ in order for x in avail if x["card_id"] == cid), None)
+                if it is not None:
+                    return done(Action(ActionKind.INTERVAL_BUY, {"index": it["index"]}),
+                                f"补到 22 张：买 {_card_label(it)}（{it['price']}P；牌组 {len(deck)} 张，不拿冲突卡）")
         if ps.deck and "deck" not in unknown and upgrade.get("available", True) and _affordable(upgrade, budget):
             up = _upgrade_target(ps)  # 别复用 target：后面的「回体力到目标」要用体力目标（原来写成 target 被覆盖成 None）
             if up is not None:

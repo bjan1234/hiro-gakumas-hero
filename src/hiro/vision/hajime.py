@@ -99,9 +99,14 @@ def lesson_turns(img: np.ndarray) -> int | None:
     text = "".join(t for t, _ in ocr(img[y1:y2, x1:x2], scale=2)).replace(" ", "")
     if m := re.fullmatch(r"(\d{1,2})\+(\d{1,2})", text):
         return int(m.group(1)) + int(m.group(2))
+    tpl_v = _hud_int(img, hif.BOX_TURNS, box("InProduce.InLesson.BoxRemainingTurns"))
     if re.fullmatch(r"\d{2}", text):
-        return int(text)
-    return _hud_int(img, hif.BOX_TURNS, box("InProduce.InLesson.BoxRemainingTurns"))
+        # 模板核对（协调 11-18：续跑时 6 回合的课读成 19）：模板两位数会丢一位，但剩下那位应该是 OCR 两位数里的一位（11 → 1）；
+        # 对不上就信模板（19 vs 6 → 6）。模板读不到时照 OCR
+        if tpl_v is None or str(tpl_v) in text:
+            return int(text)
+        return tpl_v
+    return tpl_v
 
 
 def read_lesson_hud(img: np.ndarray) -> dict | None:

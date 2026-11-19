@@ -81,6 +81,21 @@ def test_nia_evaluation_matches_live_result(hn):
     assert hn.nia_evaluation({"Vo": 1163, "Da": 1475, "Vi": 1107}, 86919, "produce-004", 2000) == 15428
 
 
+def test_hajime_evaluation_second_place_live(hn):
+    """2026-11-18 初 PRO（篠澤広）：培育履历 8,790pt，属性 860 / 1250 / 657（第 2 名不加 +30），最終 5,175 第 2 → 名次分 900。"""
+    assert hn.hajime_evaluation({"Vo": 860, "Da": 1250, "Vi": 657}, 5175, 2, 1500) == 8790
+
+
+def test_hajime_evaluation_master_live(hn):
+    """2026-11-18 初 MASTER（篠澤広）：培育履历 12,903pt，属性 932 / 1600 / 734（含第 1 名 +30），最終 44,250 第 1。"""
+    assert hn.hajime_evaluation({"Vo": 902, "Da": 1570, "Vi": 704}, 44250, 1, 1800) == 12903
+
+
+def test_nia_master_evaluation_live(hn):
+    """2026-11-19 N.I.A MASTER（篠澤広）：培育履历 16,342pt，属性 1178 / 1663 / 1354，ファン投票数 84,906。"""
+    assert hn.nia_evaluation({"Vo": 1178, "Da": 1663, "Vi": 1354}, 84906, "produce-005", 2600) == 16342
+
+
 def test_nia_evaluation_tiers(hn):
     assert hn.nia_vote_eval(20000, "produce-004") == 2000
     assert hn.nia_vote_eval(36036, "produce-004") == 3363

@@ -91,7 +91,8 @@ def _frames(*vals):
     return [np.full((1280, 720, 3), v, np.uint8) for v in vals]
 
 
-def _probe(tmp_path, monkeypatch, shots, at_action, texts=()):
+def _probe(tmp_path, monkeypatch, shots, at_action, reads):
+    """shots：依次截到的帧；reads：read_schedule_list 依次的返回（替身）。"""
     from hiro.produce import schedule_probe as sp
 
     seq = iter(shots)
@@ -101,34 +102,66 @@ def _probe(tmp_path, monkeypatch, shots, at_action, texts=()):
         last["img"] = next(seq, last["img"])
         return last["img"]
 
-    clicks, swipes = [], []
+    rd = iter(reads)
+    clicks, swipes, t = [], [], [0.0]
     monkeypatch.setattr(sp, "_at_action_select", at_action)
-    monkeypatch.setattr("hiro.vision.ocr.screen_texts", lambda img: list(texts))
-    r = sp.probe(tmp_path / "p", shoot=shoot, click=lambda x, y: clicks.append((x, y)), swipe=lambda *a: swipes.append(a), sleep=lambda s: None)
+    r = sp.probe(tmp_path / "p", shoot=shoot, click=lambda x, y: clicks.append((x, y)), swipe=lambda *a: swipes.append(a),
+                 sleep=lambda s: t.__setitem__(0, t[0] + s), clock=lambda: t[0], read=lambda img: next(rd, None))  # fmt: skip
     return r, clicks, swipes
 
 
-def test_probe_entry_wrong_does_nothing(tmp_path, monkeypatch):
-    r, clicks, swipes = _probe(tmp_path, monkeypatch, _frames(100, 100), lambda img: True)
+def test_probe_not_opened_waits_then_does_nothing(tmp_path, monkeypatch):
+    """点了以后至少等 OPEN_MIN_S、停稳了还认不出日程列表：还在选行动页就什么也不做（不点 ✕）。"""
+    r, clicks, swipes = _probe(tmp_path, monkeypatch, _frames(100, 100, 100, 100, 100, 100, 100), lambda img: True, [None])
     assert r["opened"] is False and clicks == [(112, 92)] and swipes == [] and (tmp_path / "p" / "probe.json").exists()
 
 
-def test_probe_saves_list_and_closes(tmp_path, monkeypatch):
-    from hiro.vision.ocr import Box, Text
+def _screen(weeks, cur=None):
+    return {"weeks": {w: {"kind": "normal", "options": [{"option": "class", "attr": None}], "faded": [False]} for w in weeks},
+            "current_week": cur}  # fmt: skip
 
-    close = Text("閉じる", Box(320, 1140, 400, 1180))
-    # 选行动 → 列表第 1 屏 → 第 2 屏 → 到底（不变）→ 关之前一帧（列表）→ 回到选行动
-    shots = _frames(100, 30, 60, 60, 60, 100)
-    r, clicks, swipes = _probe(tmp_path, monkeypatch, shots, lambda img: float(img.mean()) == 100, texts=[close])
-    assert r["opened"] and r["closed"] and r["frames"] == ["01-list.jpg", "02-list.jpg"] and len(swipes) == 2
-    assert clicks == [(112, 92), (360, 1160)]
+
+def test_probe_reads_both_directions_and_closes_with_x(tmp_path, monkeypatch):
+    """先往后面的周滑、再往前面的周滑，拼全整局；点 ✕ (360,1190) 回到选行动页。"""
+    from hiro.produce import schedule_probe as sp
+    from hiro.vision.schedule_list import CLOSE
+
+    reads = iter([_screen([4, 5, 6], 4), _screen([6, 7, 8]), _screen([8, 9]), _screen([8, 9]),  # 往后滑：到 9 不再有新的
+                  _screen([2, 3, 4]), _screen([1, 2])])  # 往前滑：看到第 1 周就停  # fmt: skip
+    img = np.full((1280, 720, 3), 100, np.uint8)
+    clicks, swipes, t = [], [], [0.0]
+    monkeypatch.setattr(sp, "_at_action_select", lambda im: bool(clicks) and clicks[-1] == CLOSE)
+    got = sp.probe(tmp_path / "q", shoot=lambda: img, click=lambda x, y: clicks.append((x, y)), swipe=lambda *a: swipes.append(a),
+                   sleep=lambda s: t.__setitem__(0, t[0] + s), clock=lambda: t[0], read=lambda im: next(reads, None))  # fmt: skip
+    sch = got["schedule"]
+    assert got["opened"] and got["closed"] and clicks == [sp.ENTRY, CLOSE]
+    assert [s_[:4] for s_ in swipes] == [(360, 450, 360, 950)] * 3 + [(360, 950, 360, 450)] * 2
+    assert [e["week"] for e in sch["weeks"]] == list(range(1, 10)) and sch["current_week"] == 4 and sch["total"] == 9
+    assert [e["done"] for e in sch["weeks"]][:4] == [True, True, True, False]
 
 
 def test_probe_cannot_close_stops(tmp_path, monkeypatch):
     from hiro.loop.errors import ResumeBlocked
 
     with pytest.raises(ResumeBlocked):
-        _probe(tmp_path, monkeypatch, _frames(100, 30, 30), lambda img: False)
+        _probe(tmp_path, monkeypatch, _frames(*([100] * 40)), lambda img: False, [_screen([4], 4)])
+
+
+def test_probe_resume_uses_existing_schedule(monkeypatch):
+    """续跑：局面里已经有 produce.schedule（上一段 trace 打底）就不再点开。"""
+    from hiro.produce import schedule_probe
+    from hiro.produce.hif import HifCore
+
+    monkeypatch.setenv("HIRO_SCHEDULE_PROBE", "1")
+    called = []
+    monkeypatch.setattr(schedule_probe, "probe", lambda *a, **k: called.append(1))
+
+    class Core:
+        _schedule_probed = False
+        s = NS(state=NS(produce={"mode": "produce-003", "schedule": {"weeks": []}}))
+
+    HifCore._maybe_probe_schedule(Core())
+    assert called == []
 
 
 def test_probe_off_by_default(monkeypatch):
@@ -148,3 +181,35 @@ def test_probe_off_by_default(monkeypatch):
     Core.s = NS(state=NS(produce={"mode": "produce-007"}))  # H.I.F 不探
     HifCore._maybe_probe_schedule(Core())
     assert called == []
+
+
+def test_probe_waits_for_late_list(tmp_path, monkeypatch):
+    """协调 11-18 N.I.A MASTER：开局后第一次选行动，点了 8 秒后列表才弹出；原来 4 秒就判没打开，列表盖住选行动页。
+    停稳后认不出再盯 LATE_OPEN_S 秒，弹出来照常读、滑、关。"""
+    from hiro.produce import schedule_probe as sp
+    from hiro.vision.schedule_list import CLOSE
+
+    t, clicks = [0.0], []
+    img = np.full((1280, 720, 3), 100, np.uint8)
+
+    def read(im):
+        return _screen([1, 2, 3], 1) if t[0] >= 8.0 else None
+
+    monkeypatch.setattr(sp, "_at_action_select", lambda im: bool(clicks) and clicks[-1] == CLOSE)
+    got = sp.probe(tmp_path / "late", shoot=lambda: img, click=lambda x, y: clicks.append((x, y)), swipe=lambda *a: None,
+                   sleep=lambda s: t.__setitem__(0, t[0] + s), clock=lambda: t[0], read=read)  # fmt: skip
+    assert got["opened"] and got["closed"] and clicks == [sp.ENTRY, CLOSE] and got["schedule"]["current_week"] == 1
+
+
+def test_nia_schedule_list_icons():
+    """N.I.A 实拍（MASTER 第 1 周，列表晚弹出那一帧）：営業 紫、差し入れ 橙、おでかけ、自主レッスン 三色。"""
+    from hiro.vision.schedule_list import read_schedule_list
+
+    p = Path(__file__).parent / "fixtures" / "schedule_list" / "nia-schedule-list-late.jpg"
+    if not p.exists():
+        pytest.skip("需要实机截图 schedule_list/nia-schedule-list-late.jpg")
+    r = read_schedule_list(cv2.imread(str(p)))
+    got = {w: [(o["option"], o["attr"]) for o in e["options"]] for w, e in r["weeks"].items()}
+    lessons = [("training", "Vo"), ("training", "Da"), ("training", "Vi")]
+    assert got == {1: lessons, 2: [("sales", None)], 3: [("outing", None), ("present", None)], 4: lessons, 5: [("sales", None)]}
+    assert r["current_week"] == 1

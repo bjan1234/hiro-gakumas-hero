@@ -41,6 +41,7 @@ def test_hud_hard_lesson():
     assert hv.lesson_turns(_img("hajime-lesson-hard-bonus.jpg")) == 3  # 「2+1」：剩 2 + 追加 1
 
 
+@pytest.mark.sim_master  # 查模拟器主数据（vendor/gakumas-player 的 catalog.sqlite）
 def test_lesson_info_normal_matches_master():
     from hiro.runtime.hajime import LessonInfo
 
@@ -55,6 +56,7 @@ def test_lesson_info_normal_matches_master():
     assert info.d["perfect_target"] == 50 and info.d["lesson_limit_up_score"] == 0 and info.done
 
 
+@pytest.mark.sim_master  # 查模拟器主数据（vendor/gakumas-player 的 catalog.sqlite）
 def test_lesson_info_extra_turn_and_limit_up():
     from hiro.runtime.hajime import LessonInfo
 
@@ -65,6 +67,7 @@ def test_lesson_info_extra_turn_and_limit_up():
     assert (info.d["exam_extra_turn"], info.d["perfect_target"], info.d["lesson_limit_up_score"]) == (2, 70, 20)
 
 
+@pytest.mark.sim_master  # 查模拟器主数据（vendor/gakumas-player 的 catalog.sqlite）
 def test_lesson_info_hard_uses_pro_levels():
     """追い込み：画面 CLEAR 90 / 165，初 REGULAR 主数据 hard 档是 75 / 100 对不上；按 produce-002 的 hard 档（8a3a1e7：实录都是）对上。
     满分线读不到（右上换成追い込みボーナス）留空。"""
@@ -79,6 +82,7 @@ def test_lesson_info_hard_uses_pro_levels():
     assert info.d["perfect_target"] is None and info.d["lesson_limit_up_score"] is None
 
 
+@pytest.mark.sim_master  # 查模拟器主数据（vendor/gakumas-player 的 catalog.sqlite）
 def test_lesson_levels_unmatched_left_empty():
     from hiro.state import modes
 
@@ -191,3 +195,61 @@ def test_lesson_confirm_unchanged():
         pytest.skip("需要实机截图 pages/hajime-lesson-lowhp-confirm.jpg")
     rt = _rt(("ACTION_SELECT", Decision(Action.produce_next("training", attr="Da"), "课程", "rule", 0.8)))
     assert "開始する" in interrupts.check(Frame(cv2.imread(str(p)), 0.0), rt)
+
+
+# ---------------------------------------------------------------- 续跑 / 回合数读错（协调 11-18：续跑时 6 回合的课读成 19，追加回合算成 13）
+@pytest.mark.sim_master
+def test_absurd_extra_turn_left_empty_and_not_reread():
+    from hiro.runtime.hajime import LessonInfo
+
+    info = LessonInfo("hajime-lesson-da", 1, "produce-001", IDOL)
+    info.feed("clear", {"goal": "clear", "left": 25, "param": 196}, 19)
+    assert info.d["turns_total"] is None and info.d["exam_extra_turn"] is None and info.d["clear_target"] == 25
+    assert not info.needs("perfect") or info.d["perfect_target"] is None  # 不再为回合数 OCR
+    info.feed("clear", {"goal": "clear", "left": 20, "param": 201}, 6)
+    assert info.d["turns_total"] is None  # 这节课不再读（中途读到的是剩余回合，不是总数）
+
+
+@pytest.mark.sim_master
+def test_restore_from_trace_reading():
+    from hiro.runtime.hajime import LessonInfo
+
+    saved = {"kind": "normal", "attr": "Da", "nth": 1, "turns_total": 6, "clear_target": 25, "perfect_target": None, "param_start": 196,
+             "level_ids": ["x"], "exam_extra_turn": 0, "lesson_limit_up_score": None}  # fmt: skip
+    info = LessonInfo("hajime-lesson-da", 1, "produce-001", IDOL)
+    info.restore(saved)
+    assert info.d["turns_total"] == 6 and info.d["param_start"] == 196 and not info.needs("clear")
+    for _ in range(2):  # 满分线照常在 PERFECT 段算出来，追加回合 / 满分上调按恢复的档位算
+        info.feed("perfect", {"goal": "perfect", "left": 10, "param": 236}, None)
+    assert info.d["perfect_target"] == 50 and info.d["lesson_limit_up_score"] == 0 and info.d["exam_extra_turn"] == 0
+
+
+def test_lesson_from_trace(tmp_path):
+    import json
+
+    from hiro.runtime import hajime
+
+    Core = hajime.hajime_core("produce-001")
+    core = Core.__new__(Core)
+    prev = tmp_path / "hajime-20261118-170000"
+    prev.mkdir()
+    lesson = {"kind": "normal", "turns_total": 6, "clear_target": 30}
+    rows = [{"seq": 1, "state": {"exam_session": {"label": None}}},
+            {"seq": 2, "state": {"exam_session": {"label": "hajime-lesson-da", "lesson": lesson}}}]  # fmt: skip
+    (prev / "steps.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    core._prior_trace_dirs = lambda: [prev]
+    assert core._lesson_from_trace("hajime-lesson-da") == lesson
+    assert core._lesson_from_trace("hajime-lesson-vo") is None  # 上一段停在别的课：不沿用
+
+
+@pytest.mark.parametrize(("ocr_text", "tpl", "want"), [("11", 1, 11), ("19", 6, 6), ("12", None, 12), ("6", 6, 6), ("2+1", 2, 3)])
+def test_lesson_turns_two_digit_cross_check(monkeypatch, ocr_text, tpl, want):
+    import numpy as np
+
+    import hiro.exec.exam as ex
+    import hiro.vision.ocr as ocr_mod
+    from hiro.vision import hajime as hv
+
+    monkeypatch.setattr(ocr_mod, "ocr", lambda img, scale=2: [(ocr_text, 1.0)])
+    monkeypatch.setattr(ex, "_hud_int", lambda img, a, b: tpl)
+    assert hv.lesson_turns(np.zeros((1280, 720, 3), np.uint8)) == want

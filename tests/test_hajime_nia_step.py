@@ -36,6 +36,7 @@ def test_step_from_header(pid, stage, weeks, step):
     assert modes.step_from_header(pid, stage, weeks) == step
 
 
+@pytest.mark.sim_master  # 查模拟器主数据（vendor/gakumas-player 的 catalog.sqlite）
 def test_final_uses_master_steps():
     assert modes.exam_step("produce-002", "final") == modes.steps("produce-002")
 

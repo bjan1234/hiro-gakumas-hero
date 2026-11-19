@@ -186,6 +186,7 @@ class HifCore:
         self.deciders.picked_musts |= set(MEMORY_CARDS) | self._picked_cards_from_trace()  # 回忆带的卡算已有
         self._load_finals_context()
         self._seed_produce_from_trace()
+        self._seed_idol_item()
         # 同一进程内崩溃重启（run_hif 的 _supervised_resume）时沿用已完成的场次；跨进程续跑用 run_hif --exams-done，
         # 没给时从之前的 trace 段数（dmmt2：续跑后第 2 场记成 qualify-1）
         if not type(self).exams_done and self.scenario == "qualify":
@@ -315,16 +316,21 @@ class HifCore:
     _schedule_probed = False  # 日程列表探针每个进程只跑一次
 
     def _maybe_probe_schedule(self) -> None:
-        """开关 HIRO_SCHEDULE_PROBE=1（默认关）：初 / N.I.A 第一次到选行动页时点开日程列表采样（hiro.produce.schedule_probe）。"""
+        """开关 HIRO_SCHEDULE_PROBE=1（默认关）：初 / N.I.A 第一次到选行动页时点开日程列表读整局日程（hiro.produce.schedule_probe），
+        写进 produce.schedule；局面里已经有了（续跑打底）就不再读。"""
         from hiro.produce import schedule_probe
         from hiro.state.modes import HAJIME, NIA, family
 
-        if type(self)._schedule_probed or not schedule_probe.enabled() or family((self.s.state.produce or {}).get("mode")) not in (HAJIME, NIA):
+        prod = self.s.state.produce or {}
+        if type(self)._schedule_probed or not schedule_probe.enabled() or family(prod.get("mode")) not in (HAJIME, NIA):
             return
         type(self)._schedule_probed = True
+        if prod.get("schedule"):
+            return  # 续跑：上一段 trace 读过（produce 打底带过来了），沿用
         try:
-            schedule_probe.probe(Path(self.s.trace.dir) / "schedule-probe", shoot=device.screenshot, click=device.click, swipe=device.swipe,
-                                 sleep=sleep, note=self.s.note)  # fmt: skip
+            got = schedule_probe.probe(Path(self.s.trace.dir) / "schedule-probe", shoot=device.screenshot, click=device.click, swipe=device.swipe,
+                                       sleep=sleep, note=self.s.note)  # fmt: skip
+            schedule_probe.apply(got.get("schedule"), self.s)
         except ResumeBlocked:
             raise
         except Exception as e:  # noqa: BLE001  采样失败不影响这一局
@@ -501,6 +507,8 @@ class HifCore:
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
         return True
 
+    RESIDUAL_PICK_S = 30.0  # 拿卡后这么久内又出现候选完全相同的选卡页：当获得后的残留画面
+    RESIDUAL_TAP = (12, 12)  # 同主循环过渡页点的空白处
     SELECT_RETRIES = 4  # 三选一候选为空时重读几次（每次等 SELECT_RETRY_WAIT 秒，约 2–3 秒）
     SELECT_RETRY_WAIT = 0.5
     CONFIRM_CLOSE_TRIES = 12  # 「報酬スキップ」点キャンセル 后等它关掉几拍（一半时补点一次）
@@ -548,6 +556,15 @@ class HifCore:
                 best = (known(again), again, frame)
         _, raw, img = best
         raw = dict(raw or {})
+        ids = tuple(o.get("card_id") for o in raw.get("options") or [])
+        last = getattr(self, "_last_pick", None)
+        if last and ids and all(ids) and ids == last[0] and time.monotonic() - last[1] < self.RESIDUAL_PICK_S:
+            # 刚拿过卡、候选（按 card_id，不看强化）完全相同：是获得后叠在原选卡页上的动画（「スター性獲得」等），不是又一次选卡
+            #（mainz3 r3 04:20：又「选」了一次，账本多记一张 イメトレ+）。不选，点空白处等它过去
+            self.s.recover("page_misjudged", f"选卡页候选与 {time.monotonic() - last[1]:.0f}s 前刚拿过的那页相同，当获得后的残留画面，不再选")
+            device.click(*self.RESIDUAL_TAP)
+            sleep(1.0)
+            return
         raw["recommended"] = rec_index
         obs = self.s.observe(scene="SELECT_CARD", img=img, fields=raw)
         for _ in range(4):  # 页面切换防抖中字段没进 state（同 on_select_drink）：再观测几次让页面落定（不合法跳转要 DEBOUNCE=3 帧）
@@ -608,6 +625,8 @@ class HifCore:
 
         result = self._act(commit, Action.activate_effect(i), page_before="SELECT_CARD",
                            taps=[[int(choice.rect.center.x), int(choice.rect.center.y)]])  # fmt: skip
+        if result.ok:
+            self._last_pick = (ids, time.monotonic())
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
     def _stage(self) -> str:
@@ -810,6 +829,27 @@ class HifCore:
         if top:
             logger.info("续跑：之前的 trace 段已考完 %d 场选拔", top)
         return top
+
+    def _seed_idol_item(self) -> None:
+        """P 道具账本是空的（新开局，或上一段 trace 也没记）：先放偶像固有道具（主数据 IdolCard.beforeProduceItemId，同 bench 中转层
+        Enchants.idol_items）。固有道具开局就有、不弹获得演出，原来账本里一直没有（8a3a1e7 11-18：初 PRO 编成里没有 選びとった熱）。"""
+        idol = getattr(self.profile, "idol_id", None)
+        prod = self.s.state.produce or {}
+        if not idol or prod.get("items"):
+            return
+        try:
+            from hiro.state.modes import master
+
+            item = master().one("IdolCard", idol).get("beforeProduceItemId")
+        except Exception:  # noqa: BLE001  没有主数据 / 偶像卡查不到
+            return
+        if not item:
+            return
+        from hiro.contracts import Source
+
+        self.s.state.produce = {**prod, "items": [item]}
+        self.s.state.sources["produce.items"] = Source("infer", 0)
+        logger.info("P 道具账本：放入偶像固有道具 %s", item)
 
     def _seed_produce_from_trace(self) -> None:
         """续跑：画面还没读到 P / 体力 / 模式（续跑停在相談等不读头部的页面）时，用之前 trace 段最后一个有 produce 的状态打底
@@ -1108,6 +1148,10 @@ class HifCore:
 
     # ---------------------------------------------------------------- 主动查看牌组（state-events §6）
     _reviewed_at_exam: int | None = None
+    # 牌组为空时读牌失败，下次到选行动页再试，同一考试段最多这么多次（协调 11-18 初 MASTER：续跑后点了两次牌组按钮都没反应，
+    # 一览 20 秒后才弹出，读牌已放弃；原来失败也算「这一考试段读过」，之后几次选行动都没再读，牌组 0 张进课程，GNRPA 开局失败）
+    EMPTY_REVIEW_TRIES = 3
+    _empty_review_fails: tuple[int, int] | None = None  # (考试段, 失败次数)
 
     def _maybe_review_deck(self) -> None:
         """pending_review 含牌组、每场考试之间第一次到选行动页、或调试模式（同一考试段只看一次）时，打开牌组一览读全量，
@@ -1143,6 +1187,12 @@ class HifCore:
         r = review_deck(shoot=device.screenshot, click=device.click,
                         swipe=lambda x1, y1, x2, y2, d: device.swipe(x1, y1, x2, y2, d), ocr_texts=ocr_texts)  # fmt: skip
         self._reviewed_at_exam = self.exam_count
+        if r["deck"] is None and empty and due:
+            ex, n = self._empty_review_fails if (self._empty_review_fails or (None, 0))[0] == self.exam_count else (self.exam_count, 0)
+            self._empty_review_fails = (ex, n + 1)
+            if n + 1 < self.EMPTY_REVIEW_TRIES:
+                self._reviewed_at_exam = None  # 牌组还是空的：下次到选行动页再读（进课程前要有牌组）
+            r["problems"].append(f"牌组为空，第 {n + 1}/{self.EMPTY_REVIEW_TRIES} 次没读到" + ("，下次选行动再读" if n + 1 < self.EMPTY_REVIEW_TRIES else "，这一考试段不再读，照常进课程（协调 11-18 定：不停机；牌组为空 GNRPA 开局失败会退回 uinet）"))
         seq = self.s.trace.next_seq()
         if r["deck"] is not None:
             self.s.emit(Event(seq=seq, kind="DECK_REVIEW", origin="review", args={"deck": r["deck"], "deck_size": r["deck_size"]},
@@ -1384,6 +1434,10 @@ class HifCore:
 
     CHANGE1_DECIDE_RETRIES = 3  # 换卡阶段 1 拿不到换卡决策时再读几帧（等页面提交进状态），之后才退回第 0 张
     CHANGE1_DECIDE_WAIT = 0.4
+    CHANGE1_STABLE_TRIES = 3  # 换卡阶段 1 候选两帧读数不一致时最多再读几帧
+
+    def _change1_key(self) -> tuple:
+        return tuple((c.get("card_id"), c.get("upgrade")) for c in self.s.state.page_fields.get("candidates") or [])
 
     def on_skill_card_change(self, ctx=None, *, stage: int | None = None):
         """换卡：阶段 1 按决策选换入候选（候选未识别时选第 0 张），阶段 2 按决策的 card_id 换出；决策取消时点キャンセル。
@@ -1404,6 +1458,21 @@ class HifCore:
                 if attempt < self.CHANGE1_DECIDE_RETRIES:
                     self.s.record(obs, decision=d, timings_ms={"total": (time.monotonic() - t0) * 1000})
                     sleep(self.CHANGE1_DECIDE_WAIT)
+            # 候选要连续两帧读得一样才决策（mainz3 r3 04:21：第一帧把 気まぐれハート 读成 全身全霊，存下的帧重读是对的、
+            # 执行时按卡面重读的名字也是 気まぐれハート；决策按错的读数选了第 0 张）。读数变了就按新读数重新决策
+            key = self._change1_key()
+            for _ in range(self.CHANGE1_STABLE_TRIES if d.action.kind is ActionKind.CHANGE_CARD and key else 0):
+                sleep(self.CHANGE1_DECIDE_WAIT)
+                obs2 = self.s.observe(scene="SKILL_CARD_CHANGE_1")
+                key2 = self._change1_key()
+                if key2 == key:
+                    break
+                d2 = self.deciders.decide("SKILL_CARD_CHANGE_1", self.s.state)
+                if d2.action.kind is not ActionKind.CHANGE_CARD:
+                    break  # 新一帧读不出候选：按上一帧的决策（没有更好的读数）
+                d.warnings.append(f"换卡候选两帧读得不一样（{[c for c, _ in key]} → {[c for c, _ in key2]}），按新读数重新决策")
+                self.s.record(obs, decision=d, timings_ms={"total": (time.monotonic() - t0) * 1000})
+                obs, d, key = obs2, d2, key2
             args = d.action.args if d.action.kind is ActionKind.CHANGE_CARD else {}
             cancel = bool(args.get("cancel"))
             pick = int(args.get("pick_index") or 0)
@@ -1495,6 +1564,18 @@ class HifCore:
         # 整副扫描过（多屏）时 remove_index 是牌组序号、不是这一屏的格子号：只按 card_id + 强化次数找（翻屏）
         changed = change_stage2(None, 0, card_id=card_id, cancel=cancel, remove_index=None if cancel or scanned else args.get("remove_index"),
                                     remove_upgrade=None if cancel else args.get("remove_upgrade"))  # 自带确认框处理；取消 / 不符时点キャンセル 返回 False  # fmt: skip
+        if changed and not cancel:
+            # 记账按记录的动作出 CARD_CHANGE：强制换出时决策还是「取消」（mainz3 r3 04:16 换成了、账本没记），改成实际执行的换卡；
+            # 换出卡的强化次数取执行侧实际点到的那张（决策 / 账本给不出时）
+            from hiro.produce import card_ops
+
+            done = card_ops.LAST_CHANGED or {}
+            up = args.get("remove_upgrade")
+            if up is None and done.get("card_id") == card_id:
+                up = done.get("upgrade")
+            act_args = {k: v for k, v in args.items() if k != "cancel"} | {"stage": 2, "remove_card_id": card_id, "remove_upgrade": up}
+            if d.action.kind is not ActionKind.CHANGE_CARD or d.action.args != act_args:
+                d = replace(d, action=Action(ActionKind.CHANGE_CARD, act_args))
         result = self.s.verify(d.action, page_before="SKILL_CARD_CHANGE_2", taps=[], retries=0)
         result = replace(result, ok=bool(changed) or cancel, error=None if changed or cancel else "换卡未完成（见 card_ops 日志与 stage2 帧）")
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
@@ -1974,6 +2055,14 @@ class HifCore:
         page_key = (label, f.get("score"), f.get("round_score"))
         if page_key == self._retry_declined:
             return False  # 这张结算页已经决定不再挑戦：别再点开确认框，让调用方点「次へ」收尾
+        if (gap := self._gap_to_first(f)) is not None and gap[1] > self._retry_gap_max():
+            # 离第 1 太远：重打 R2 只是在原分数附近波动，追不上，还会把更好的一次覆盖掉、多花券（mainz4 11-18：差 23.4 万 = 本轮分 65%，
+            # 四次 R2 本轮分 33–38 万；用户 11-18「差距很大就不要重打」）
+            need, ratio = gap
+            self.s.note(f"本战第 {f.get('rank')} 名，离第 1 差 {need:,}（本轮分的 {ratio:.0%}，超过 {self._retry_gap_max():.0%}），差距太大，不再挑戦")
+            logger.info("本战离第 1 差 %s（本轮分的 %.0f%%），差距太大，不再挑戦", f"{need:,}", ratio * 100)
+            self._retry_declined = page_key
+            return False
         texts = screen_texts(img)
         btn = next((t for t in texts if button_text(t.text, "再挑戦") and t.rect.center.y > 900), None)
         if btn is None:
@@ -1990,6 +2079,25 @@ class HifCore:
         self.rec.log("exam_retry", exam=label, retry_kind=kind, finals=True)
         self.exam_restarted = True  # 主循环据此重新进入 on_exam_entered（HiroController._rearm_exam）
         return True
+
+    RETRY_GAP_MAX = 0.3  # 离第 1 的差距超过本轮分的这个比例就不重打（HIRO_RETRY_GAP_MAX 覆盖；用户 11-18 定默认开）
+
+    def _retry_gap_max(self) -> float:
+        import os
+
+        try:
+            return float(os.environ.get("HIRO_RETRY_GAP_MAX") or self.RETRY_GAP_MAX)
+        except ValueError:
+            return self.RETRY_GAP_MAX
+
+    @staticmethod
+    def _gap_to_first(f: dict) -> tuple[int, float] | None:
+        """本战最终页：(离第 1 名差多少分, 差距 / 我方本轮分)；读不到第 1 名或本轮分时 None（按原规则处理）。"""
+        mine, rnd = f.get("score") or f.get("my_score"), f.get("round_score")
+        first = next((e.get("score") for e in f.get("entries") or [] if e.get("rank") == 1 and not e.get("me")), None)
+        if not mine or not rnd or not first or first <= mine:
+            return None
+        return first - mine, (first - mine) / rnd
 
     def _record_round_result(self, img, label: str, seen: set) -> None:
         """本战 R1 / R2 打完后的「現在順位」弹窗（HIF_FINALS_RANKING kind=round_result / final）：读全员分数，存帧写进 trace。"""
