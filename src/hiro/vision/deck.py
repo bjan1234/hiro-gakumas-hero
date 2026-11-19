@@ -741,6 +741,13 @@ def _stray_fragment(text: str) -> bool:
     return len(t) <= 3 and not _JA.search(t)
 
 
+ACQUIRE_RETRY_SCALE = 1.5
+
+
+def _acquire_bar_boxes(ocr_boxes, crop, x1: int, **kw) -> list[tuple[str, float]]:
+    return [(t, (b[0] + b[2]) / 2 + x1) for t, _, b in ocr_boxes(crop, **kw) if len(t.strip()) >= 2 and not _stray_fragment(t)]
+
+
 def read_acquire_popup(img: MatLike, art: bool = True) -> dict | None:
     """获得演出的名称栏：{kind: card|drink|pitem, card_id/drink_id/pitem_id, name, upgrade?, art_card_id?, agree?, text}。
 
@@ -756,7 +763,11 @@ def read_acquire_popup(img: MatLike, art: bool = True) -> dict | None:
     # 名称前的图标有时被单独切成一个单字框（「と」），不参与判断
     # 很短、不含假名 / 汉字的碎片也不算（DMM qualifyz1 17:35：支援能力横幅盖住获得演出，名称栏右端露出后面横幅的「H.I.F」一角，
     # 读成「ıF」，整页没认成获得页，180 秒停机）。选饮料页、Pドリンク詳細 旁边的字都是日文，照旧排除
-    boxes = [(t, (b[0] + b[2]) / 2 + x1) for t, _, b in ocr_boxes(img[y1:y2, x1:x2]) if len(t.strip()) >= 2 and not _stray_fragment(t)]
+    boxes = _acquire_bar_boxes(ocr_boxes, img[y1:y2, x1:x2], x1)
+    if not boxes:
+        # 放大 3 倍读空时再用 1.5 倍读一次（mainz7 11-19 DMM RapidOCR：P 道具效果拿饮料的演出，名称栏 3 倍一个字都没读出，
+        # 1.5 / 2 倍都读得出「ホットコーヒー」，整页判 unknown、180 秒停机）
+        boxes = _acquire_bar_boxes(ocr_boxes, img[y1:y2, x1:x2], x1, scale=ACQUIRE_RETRY_SCALE)
     if not boxes or any(abs(cx - ACQUIRE_CENTER_X) > ACQUIRE_CENTER_TOL for _, cx in boxes):
         return None
     text = "".join(t for t, _ in boxes)
