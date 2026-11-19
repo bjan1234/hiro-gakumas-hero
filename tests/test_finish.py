@@ -174,3 +174,30 @@ def test_resume_nia_page_on_real_frame(monkeypatch, tmp_path):
 
     rt.classify = ns.Sampler(classify, tmp_path / "frames")
     assert finish.resume_produce(rt) == "already"
+
+
+def test_resume_comm_error_taps_retry_never_to_title(monkeypatch):
+    """11-19 账号 2：续跑入口碰上 E209 通信エラー，判 unknown 9 秒后点了「X タイトルへ」上的 X，游戏回标题。
+    现在先按通信错误处理：只点リトライ；认不出的画面上有「タイトルへ」时也不点关闭按钮。"""
+    monkeypatch.setattr("hiro.vision.quick.quick_page", lambda img: None)
+    monkeypatch.setattr("hiro.vision.classify.classify_scene", lambda img: UNKNOWN)
+    err = frame({"Common.ButtonIconClose": (150, 1160)}, [T("通信エラー", 140, 902), T("通信環境の良い場所でリトライしてください", 299, 1019),
+                                                          T("X タイトルへ", 212, 1160), T("くリトライ", 478, 1160)])  # fmt: skip
+    rt, _ = rig(monkeypatch, [err], on_tap=lambda taps: [frame({})])
+    from hiro.loop.errors import ResumeBlocked
+
+    with pytest.raises(ResumeBlocked):
+        finish.resume_produce(rt, timeout=20)
+    assert rt.raw_device.taps and all(t == (478, 1160) for t in rt.raw_device.taps)
+
+
+def test_resume_unknown_with_to_title_text_does_not_tap_close(monkeypatch):
+    monkeypatch.setattr("hiro.vision.quick.quick_page", lambda img: None)
+    monkeypatch.setattr("hiro.vision.classify.classify_scene", lambda img: UNKNOWN)
+    odd = frame({"Common.ButtonIconClose": (150, 1160)}, [T("X タイトルへ", 212, 1160)])
+    rt, _ = rig(monkeypatch, [odd])
+    from hiro.loop.errors import ResumeBlocked
+
+    with pytest.raises(ResumeBlocked):
+        finish.resume_produce(rt, timeout=20)
+    assert rt.raw_device.taps == []
