@@ -142,3 +142,23 @@ def test_e209_retry_hits_button_not_hint_sentence():
              ("X タイトルへ", 1, (130, 1145, 295, 1178)), ("くリトライ", 1, (410, 1145, 546, 1178))]  # fmt: skip
     got = comm_error(boxes)
     assert got["kind"] == "retry" and got["retry"] == (478, 1161)
+
+
+@pytest.mark.fixtures
+def test_e209_on_orange_loading_screen_is_a_dialog():
+    """11-19 账号 2：资源下载的加载画面整片橙黄，E209 弹窗的标题条和背景连成一片，has_dialog=False，中断层没点リトライ，180 s 停机。"""
+    import os
+    from pathlib import Path
+
+    import cv2
+
+    from hiro.loop.comm_error import comm_error
+    from hiro.runtime.frame import Frame
+
+    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "comm-e209-on-loading-acct2.png"
+    if not path.exists():
+        pytest.skip("需要实机截图 pages/comm-e209-on-loading-acct2.png")
+    f = Frame(cv2.imread(str(path)), 0)
+    assert f.has_dialog and (f.dialog or {}).get("kind") == "comm_error"
+    e = comm_error(f.boxes)
+    assert e["kind"] == "retry" and abs(e["retry"][0] - 475) < 30 and abs(e["retry"][1] - 1161) < 20
