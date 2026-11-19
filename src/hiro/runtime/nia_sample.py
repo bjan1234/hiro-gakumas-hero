@@ -328,7 +328,9 @@ def run(args) -> int:
     from hiro.runtime import finish, play
     from hiro.runtime.loop import Runtime
     from hiro.vision.classify import classify
+    from hiro.brain import guides
 
+    guides.refresh_if_stale()  # 偶像卡攻略包：没有或超过 24 小时就下载，失败不阻塞（协调 11-20）
     kaa_env.apply_formation_plan(args.idol)
     support_set = args.support_set or kaa_env.SUPPORT_SET
     memory_set = args.memory_set or kaa_env.MEMORY_SET

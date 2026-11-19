@@ -104,3 +104,30 @@ def test_no_pack_returns_empty(monkeypatch, tmp_path):
     g._load_pack.cache_clear()
     assert g.lookup(mode="hajime", difficulty="pro", idol_card=FKTN, decision="card_pick") == []
     g._load_pack.cache_clear()
+
+
+def test_refresh_if_stale(monkeypatch, tmp_path):
+    """开局时：缓存没有 / 超过 24 小时才下载；下载失败只写日志、不抛；HIRO_GUIDES_FETCH=0 不联网。"""
+    import os
+    import time
+
+    monkeypatch.setenv("HIRO_GUIDES_DIR", str(tmp_path))
+    monkeypatch.delenv("HIRO_GUIDES_FETCH", raising=False)  # conftest 默认关掉联网，这条要测下载这条路（fetcher 是假的）
+    calls = []
+    ok = lambda: calls.append(1) or {"hajime": "x"}  # noqa: E731
+
+    def boom():
+        raise OSError("network down")
+
+    assert g.refresh_if_stale(fetcher=ok) == "fetched" and calls == [1]  # 没有缓存
+    man = tmp_path / "manifest.json"
+    man.write_text("{}")
+    assert g.refresh_if_stale(fetcher=ok) == "fresh" and calls == [1]  # 刚下过
+    old = time.time() - 25 * 3600
+    os.utime(man, (old, old))
+    assert g.refresh_if_stale(fetcher=boom) == "failed"  # 过期、下载失败：不抛
+    monkeypatch.setenv("HIRO_GUIDES_FETCH", "0")
+    assert g.refresh_if_stale(fetcher=ok) == "off" and calls == [1]
+    monkeypatch.setenv("HIRO_GUIDES", "0")
+    monkeypatch.delenv("HIRO_GUIDES_FETCH")
+    assert g.refresh_if_stale(fetcher=ok) == "off"

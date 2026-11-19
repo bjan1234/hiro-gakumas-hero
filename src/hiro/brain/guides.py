@@ -336,6 +336,33 @@ def fetch(base: str = BASE_URL, modes=("hajime", "nia"), timeout: float = 30.0) 
     return out
 
 
+FRESH_HOURS = 24
+FETCH_TIMEOUT = 10.0  # 开局时自动下载：不让网络问题拖住开局
+
+
+def refresh_if_stale(max_age_h: float = FRESH_HOURS, fetcher=None) -> str:
+    """开局时调（初 / N.I.A / run_hif 的 new 和 resume，协调 11-20）：缓存的 manifest 没有或超过 max_age_h 小时就下载一次。
+    失败只写日志，用旧缓存（没有就退回现在的规则），不抛异常、不阻塞开局。HIRO_GUIDES=0 或 HIRO_GUIDES_FETCH=0 时不联网。
+    返回 off / fresh / fetched / failed。"""
+    import time
+
+    if not enabled() or os.environ.get("HIRO_GUIDES_FETCH", "1") == "0":
+        return "off"
+    man = cache_dir() / "manifest.json"
+    try:
+        if man.exists() and time.time() - man.stat().st_mtime < max_age_h * 3600:
+            return "fresh"
+    except OSError:
+        pass
+    try:
+        got = (fetcher or (lambda: fetch(timeout=FETCH_TIMEOUT)))()
+        logger.info("偶像卡攻略包已更新：%s", got)
+        return "fetched"
+    except Exception as e:  # noqa: BLE001  网络 / 服务器问题：用旧缓存或退回规则
+        logger.warning("偶像卡攻略包下载失败（%s），%s", e, "用旧缓存" if man.exists() else "没有缓存，按现在的规则")
+        return "failed"
+
+
 def _main(argv=None) -> int:
     import argparse
 
