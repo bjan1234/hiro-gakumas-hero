@@ -65,9 +65,10 @@ def resume_produce(rt, timeout: float = RESUME_TIMEOUT) -> str:
                 logger.info("已在培育内（%s），直接开始主循环", hit.name)
                 return "already"
             alt = getattr(rt, "classify", None)
-            if callable(alt) and (h2 := alt(f.img)).name.startswith("NIA_"):
+            if callable(alt) and ((h2 := alt(f.img)).name.startswith("NIA_") or h2.name == "HIF_EXAM_BRIEFING"):
                 # Runtime 自己的判页认出了 N.I.A 特有页（营業场所 / 话题 / 试镜选档 / 加分，hiro.runtime.nia_sample 的判页包装）：
-                # 也是在培育内（协调 11-17：在营業事件页 resume，40 秒「续跑进培育」没完成）
+                # 也是在培育内（协调 11-17：在营業事件页 resume，40 秒「续跑进培育」没完成）。
+                # 初的考前说明页（審査基準 / 合格条件 / タップして次へ）同样靠这层 OCR 兜底才认得出（协调 11-20：停在这一页 resume 40 秒超时）
                 logger.info("已在培育内（%s），直接开始主循环", h2.name)
                 return "already"
             now = rt.clock()
