@@ -776,6 +776,12 @@ class ProduceDeciders:
         idol_flow = flows.flow(ps.idol_card_id)
         other_flow = idol_flow not in (None, "yaruki")  # 广（やる気）照原来的卡表；别的偶像按自己流派（协调 11-19 多偶像）
         loops = flows.loop_parts(ps.idol_card_id) if other_flow else ()
+        # 偶像卡攻略（hiro.brain.guides，协调 11-20）：有条目时，广（HIRO_GUIDES_HIRO=1）从条目读卡表，别的偶像在流派规则上补充
+        from hiro.brain import guides as _guides
+        from hiro.brain.idol_know import card_know
+
+        know = card_know(ps.mode, ps.idol_card_id, ctx=_guides.Ctx(deck=[c.card_id for c in ps.deck] if copies is not None else None,
+                                                                    p_point=ps.produce_point, stamina=ps.stamina))  # fmt: skip
 
         def info_flow(i: int) -> tuple[tuple, str]:
             """广以外的偶像：冲突 = 主打同プラン另一种 buff（flows.conflicts）；循环件 = g8-NIAM 这个流派的；社区评级 = 流派优先表（いおん）。"""
@@ -783,18 +789,23 @@ class ProduceDeciders:
             n = (copies or {}).get(cid, 0)
             once = is_once(cid) is True
             pr = flows.priority(ps.idol_card_id, cid) or {}
-            weight = int(pr.get("weight") or 0)
-            why_bad = flows.conflicts(cid, buff) or ("トラブル" if _is_trouble_card(cid) else None)
+            weight = max(int(pr.get("weight") or 0), know.weight(cid) if know else 0)
+            # 攻略级别高于 flows 的卡面规则（协调 11-20）：条目推荐的卡不按 flows 判冲突，条目避开的卡算冲突
+            recommended = bool(know and cid in know.prefer)
+            why_bad = (None if recommended else flows.conflicts(cid, buff)) or ("トラブル" if _is_trouble_card(cid) else None) \
+                or (f"攻略里避开（{know.source(cid)}）" if know and know.avoided(cid) else None)
             if why_bad:
                 return (0, int(once), weight), why_bad
-            loop_need = cid in loops and (copies is None or n < 1)
+            kk = (know.keep(cid) if know else None) or (1 if cid in loops else None)
+            loop_need = kk is not None and (copies is None or n < kk)
             if not once and not loop_need:
-                return (1, -_makes_sleep(cid), weight), ("循环卡已经有了" if cid in loops else "可复用、不是这个流派的循环卡")
-            strong = weight >= flows.STRONG_WEIGHT
+                return (1, -_makes_sleep(cid), weight), ("循环卡已经有了" if kk is not None else "可复用、不是这个流派的循环卡")
+            strong = weight >= flows.STRONG_WEIGHT or bool(know and know.strong(cid))
             main = bool(buff) and flows.buff_main(cid, buff)  # 主打拿手 buff（手拍子「好印象の150%分」对ことね）也算合拍
             gives = bool(buff) and (_gives_buff(cid, buff) or main)
             dup = fam == NIA and once and n > 0
-            tags = [t for t, on in ((f"社区优先表 {weight}（{'、'.join(pr.get('sources') or [])}）", strong), ("一次性", once), ("还缺的循环卡", loop_need and not once),
+            label = f"攻略 {know.source(cid)}" if know and know.source(cid) else f"社区优先表 {weight}（{'、'.join(pr.get('sources') or [])}）"
+            tags = [t for t, on in ((label, strong), ("一次性", once), ("还缺的循环卡", loop_need and not once),
                                     (f"主打{buff}" if main else f"加{buff}", gives), (f"牌组里已有 {n} 张", dup)) if on]  # fmt: skip
             return (2, strong, loop_need, gives, dup, _card_rarity(cid), weight, up), "、".join(tags)
 
@@ -807,15 +818,19 @@ class ProduceDeciders:
             # 打法匹配先于「一次性」（协调 11-18 N.I.A 第二局拿了 キラメキ / キセキの魔法 / ファンシーチャーム）：
             # 主要得分 / 使用条件挂在好印象上的卡，对不是好印象流派的偶像一律算冲突；同是冲突时，不主打好印象的、一次性的污染小
             reliant = buff != "好印象" and _impression_main(cid)
-            if reliant or conflict_like(cid) or _is_trouble_card(cid):
+            # 卡表：HIRO_GUIDES_HIRO=1 且有条目时从攻略读（hiro.brain.guides_hiro 迁过去的同一份），否则手写表；两者等价
+            conflict = know.conflict(cid) if know else conflict_like(cid)
+            if reliant or conflict or _is_trouble_card(cid):
                 return (0, int(not reliant), int(once), card_value(cid, up)), ("主打好印象" if reliant else "冲突 / 好印象系")
-            loop_need = cid in SMALL_DECK_CORE and (copies is None or n < core_keep(cid))
+            kk = know.keep(cid) if know else (core_keep(cid) if cid in SMALL_DECK_CORE else None)
+            loop_need = kk is not None and (copies is None or n < kk)
             if not once and not loop_need:
-                return (1, -_makes_sleep(cid), card_value(cid, up)), ("循环卡已够张数" if cid in SMALL_DECK_CORE else "可复用、不是循环卡")
-            strong = _tier_rank(cid) >= TIER_RANK["A"]
+                return (1, -_makes_sleep(cid), card_value(cid, up)), ("循环卡已够张数" if kk is not None else "可复用、不是循环卡")
+            strong = know.strong(cid) if know else _tier_rank(cid) >= TIER_RANK["A"]
+            tier = (know.tier(cid) if know else (YARUKI_CARDS.get(cid) or {}).get("tier")) or "必拿"
             gives = bool(buff) and _gives_buff(cid, buff)
             dup = fam == NIA and once and n > 0
-            tags = [t for t, on in (("社区 " + str((YARUKI_CARDS.get(cid) or {}).get("tier") or "必拿"), strong), ("一次性", once), ("还缺的循环卡", loop_need and not once),
+            tags = [t for t, on in (("社区 " + str(tier), strong), ("一次性", once), ("还缺的循环卡", loop_need and not once),
                                     (f"加{buff}", gives), (f"牌组里已有 {n} 张", dup)) if on]  # fmt: skip
             # 同档再看稀有度、价值分：がむしゃら 只因换卡保留进了卡表（value 2），卡效要 トラブル 2 张以上（第七局复盘：几乎是废牌），不该排在 SSR 前
             return (2, strong, loop_need, gives, dup, _card_rarity(cid), card_value(cid, up), up), "、".join(tags)
@@ -1081,9 +1096,14 @@ class ProduceDeciders:
         """特別指導：定制哪张卡、选哪一项（一次一个动作，定制完主循环重新观测再调用）。按社区定制优先表（knowledge.CUSTOMIZE_PRIORITY）。
         page_fields.cards = [{index（牌组下标）, card_id, upgrade, customizations: [{id, price, available}]}]，格式见 docs/llm-context.md；
         缺失时牌组已知就按 master 的定制项与基础价推出（价格未含折扣，执行器以画面为准）。"""
-        from hiro.state.knowledge import CUSTOMIZE_PRIORITY
+        from hiro.brain.idol_know import customize_plan
+        from hiro.state.knowledge import CUSTOMIZE_LEVELS, CUSTOMIZE_PRIORITY
 
         ps = self.produce_state(state)
+        # 初 / N.I.A 有偶像卡攻略的 card_upgrade 条目时按它定制（协调 11-20；广要 HIRO_GUIDES_HIRO=1，迁过去的条目和这两张表一致）；H.I.F 照旧
+        if (plan := customize_plan(ps.mode if ps is not None else (state.produce or {}).get("mode"),
+                                   ps.idol_card_id if ps is not None else (self.profile.idol_id if self.profile else None))) is not None:  # fmt: skip
+            CUSTOMIZE_PRIORITY, CUSTOMIZE_LEVELS = plan  # noqa: N806
         cards, warn = state.page_fields.get("cards"), []
         if cards is None and ps is not None and ps.deck and "deck" not in self.unknown_fields(state, ps):
             cards, warn = _master_customize_offers(ps), ["识别未提供特別指導页的 cards：按 master 定制项与基础价推出"]
@@ -1101,8 +1121,6 @@ class ProduceDeciders:
                                        note=f"{opt['id']}（{opt.get('price')}P）"))  # fmt: skip
         cands.append(Candidate(end, note="结束"))
         done_here = getattr(self, "_customized_here", set())
-        from hiro.state.knowledge import CUSTOMIZE_LEVELS
-
         def levels_for(card_id: str, price, steps=None) -> int | None:
             """这一次要做几级：目标级数，按 P 能付的封顶；必须做满的卡 P 不够做满（且没开始过）就返回 None（不做）。
             steps：逐级价格（识别 / master 的 levels，例如 えいえいおー 40 / 40 / 70）；没有时按每级 price 算。"""
@@ -1760,7 +1778,7 @@ class ProduceDeciders:
         from hiro.brain import flows
 
         if flows.flow(ps.idol_card_id) not in (None, "yaruki"):
-            pool = _flow_delete_pool(cards, ps.idol_card_id)  # 广以外的偶像：按自己的流派判冲突（协调 11-19 多偶像）
+            pool = _flow_delete_pool(cards, ps.idol_card_id, ps.mode)  # 广以外的偶像：按自己的流派判冲突（协调 11-19 多偶像）+ 攻略的删卡条目
         else:
             pool = [c for c in cull_pool(cards, "delete", counts=counts) if qualify_consult_deletable(c["card_id"], c.get("upgrade") or 0)]
         if not pool:
@@ -3123,7 +3141,7 @@ class ProduceDeciders:
             except KeyError:
                 diff = None
             idol = ps.idol_card_id if ps is not None else ((state.produce or {}).get("idol_card_id") or (self.profile.idol_id if self.profile else None))
-            data, calls = self._ask(["hajime_nia_choice.md"], user, extra_system=_idol_section(idol, self.profile) + "\n\n" + hr.guide(_family(mode), diff),
+            data, calls = self._ask(["hajime_nia_choice.md"], user, extra_system=_idol_section(idol, self.profile, mode) + "\n\n" + hr.guide(_family(mode), diff),
                                     extra_version=f"hajime_nia_rules@{hr.load().get('captured_at', '?')}")  # fmt: skip
         else:
             data, calls = self._ask(["produce_choice.md", "hif_produce.md", *self.playbook], user)
@@ -3378,8 +3396,11 @@ def _best_drink(raw: list[dict]) -> int | None:
 
 
 # 偶像拿手 buff（IdolCard.examEffectType → 卡面字样）[g8-試験]；没列的类型不按 buff 加分
+# 主数据：ExamLessonBuff = 集中、ExamConcentration = 強気（アノマリー）、ExamFullPower = 全力（原来把 ExamConcentration 写成了集中、漏了 ExamLessonBuff，
+# 11-20 铺四个流派时发现；只影响广以外的偶像）
 SIGNATURE_BUFF = {"ProduceExamEffectType_ExamCardPlayAggressive": "やる気", "ProduceExamEffectType_ExamReview": "好印象",
-                  "ProduceExamEffectType_ExamConcentration": "集中", "ProduceExamEffectType_ExamParameterBuff": "好調"}  # fmt: skip
+                  "ProduceExamEffectType_ExamParameterBuff": "好調", "ProduceExamEffectType_ExamLessonBuff": "集中",
+                  "ProduceExamEffectType_ExamConcentration": "強気", "ProduceExamEffectType_ExamFullPower": "全力"}  # fmt: skip
 
 
 @lru_cache(maxsize=None)
@@ -3691,45 +3712,62 @@ def lean_deletable(card_id: str | None) -> bool:
     return bool(card_id) and cull_tier(card_id) <= 2
 
 
-def _idol_section(idol_card_id: str | None, profile: IdolProfile | None) -> str:
+def _idol_section(idol_card_id: str | None, profile: IdolProfile | None, mode_id: str | None = None) -> str:
     """初 / N.I.A 提示词里的「偶像」一节：按偶像卡的流派写（协调 11-19 多偶像）。广照原来的说法；别的偶像写拿手 buff 和冲突的 buff，
     社区依据只有流派优先表（いおん）和 g8-NIAM 的循环件，没有更细的就写「暂无」。"""
     from hiro.brain import flows
 
+    from hiro.brain.idol_know import notes as guide_notes
+
     f = flows.flow(idol_card_id)
+    # 偶像卡攻略（协调 11-20）：各决策点排最前的条目的 why + 出处；广要 HIRO_GUIDES_HIRO=1，没包 / 开关关时没有
+    extra = guide_notes(mode_id, idol_card_id)
+    tail = ("\n\n这张卡的攻略要点：\n" + "\n".join(extra)) if extra else ""
     if f in (None, "yaruki"):
-        return "## 偶像\n\n篠澤広（Campus mode!!）是ロジック的やる気流派：能上やる気的卡、用完就除外的卡对她有用；好印象系的卡和她的打法冲突。"
+        return "## 偶像\n\n篠澤広（Campus mode!!）是ロジック的やる気流派：能上やる気的卡、用完就除外的卡对她有用；好印象系的卡和她的打法冲突。" + tail
     buff = _signature_buff(idol_card_id)
     others = "、".join(flows.OTHER_BUFFS.get(buff or "", ())) or "暂无（这个流派的冲突卡没有社区说法）"
     loops = "、".join(_card_label({"card_id": c}) for c in flows.loop_parts(idol_card_id)) or "暂无"
     name = profile.name if profile is not None and profile.idol_id == (idol_card_id or "").replace("i_card-skin-", "i_card-") else (idol_card_id or "未知")
     return (f"## 偶像\n\n{name}：{flows.flow_name(idol_card_id)}，拿手 buff 是{buff or '未知'}。"
             f"主打{buff}、加{buff}的卡和用完就除外的卡对她有用；主打{others}的卡和她的打法冲突。"
-            f"循环件 [g8-NIAM]：{loops}。更细的初 / N.I.A 卡表：暂无（社区篇只有回忆用的流派优先表）。")
+            f"循环件 [g8-NIAM]：{loops}。" + ("" if extra else "更细的初 / N.I.A 卡表：暂无（社区篇只有回忆用的流派优先表）。") + tail)
 
 
 FLOW_CULL = {0: "トラブル", 1: "基本卡", 2: "冲突卡（主打同プラン另一种 buff）", 3: "可复用、不是这个流派循环件的卡"}
 
 
-def _flow_delete_pool(cards: list[dict], idol_card_id: str | None) -> list[dict]:
+def _flow_delete_pool(cards: list[dict], idol_card_id: str | None, mode_id: str | None = None) -> list[dict]:
     """广以外的偶像在初 / N.I.A 相談里能删的卡，按 FLOW_CULL 档位排（第一个最该删）：トラブル > 「○○の基本」[g8-NIAM] >
     冲突卡 > 不带「レッスン中1回」、不是循环件、也不加 / 不主打拿手 buff 的可复用卡 [g8-NIAM]。
-    不删：一次性的卡、循环件、定制过的、偶像固有卡（-ido-）、没认出的格。"""
-    from hiro.brain import flows
+    不删：一次性的卡、循环件、定制过的、偶像固有卡（-ido-）、没认出的格。
+    偶像卡攻略的 card_remove 条目（协调 11-20）：prefer 里的卡保护不删；avoid 里的卡 / 卡类（class:trouble / basic / other_buff / off_plan）
+    按条目进对应的档（卡 id 算冲突卡那一档）。"""
+    from hiro.brain import flows, guides
+    from hiro.brain.idol_know import lookup
     from hiro.state.knowledge import is_once
 
     buff = _signature_buff(idol_card_id)
     loops = set(flows.loop_parts(idol_card_id))
+    merged = guides.merge(lookup(mode_id, idol_card_id, "card_remove"))
+    # 攻略级别高于 flows（协调 11-20）：条目 prefer 里的卡保护不删，哪怕 flows 判它冲突
+    protect = {it.id for it in merged if it.side == "prefer"}
+    drop = {it.id for it in merged if it.side == "avoid"}
+    plan_of = guides.idol_traits(idol_card_id)[0]
 
     def tier(c: dict) -> int | None:
         cid = c.get("card_id")
-        if not cid or c.get("customized") or "-ido-" in cid:
+        if not cid or c.get("customized") or "-ido-" in cid or cid in protect:
             return None
-        if _is_trouble_card(cid):
+        if _is_trouble_card(cid):  # class:trouble / class:basic 本来就是先删的两档，条目里写不写都一样
             return 0
         if _is_basic(cid):
             return 1
-        if flows.conflicts(cid, buff):
+        if flows.conflicts(cid, buff) or cid in drop:  # class:other_buff 就是 flows.conflicts，本来就删
+            return 2
+        if "class:genki_cash" in drop and flows.buff_main(cid, "元気"):  # 靠元気出分的卡（元気のN%分パラメータ上昇），条目点名才删
+            return 2
+        if "class:off_plan" in drop and plan_of and _card_plan(cid) not in (None, "common", plan_of):
             return 2
         fits = bool(buff) and (_gives_buff(cid, buff) or flows.buff_main(cid, buff))
         if is_once(cid) is False and cid not in loops and not fits:
@@ -3739,6 +3777,18 @@ def _flow_delete_pool(cards: list[dict], idol_card_id: str | None) -> list[dict]
     out = [(t, c) for c in cards if (t := tier(c)) is not None]
     out.sort(key=lambda x: (x[0], x[1].get("index", 0)))
     return [dict(c, flow_tier=t) for t, c in out]
+
+
+def _card_plan(card_id: str) -> str | None:
+    """技能卡的プラン（sense / logic / anomaly / common），按主数据 planType；查不到 None。"""
+    from hiro.brain.guides import PLAN_OF
+    from hiro.state.context import catalog
+
+    try:
+        pt = catalog().card(card_id, 0).get("planType")
+    except Exception:  # noqa: BLE001
+        return None
+    return "common" if pt == "ProducePlanType_Common" else PLAN_OF.get(pt)
 
 
 def qualify_consult_deletable(card_id: str | None, upgrade: int = 0) -> bool:
