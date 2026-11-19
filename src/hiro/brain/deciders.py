@@ -117,7 +117,7 @@ class ProduceDeciders:
         self._last_reroll: dict = {}  # 选卡页 → 最近一次刷新前的候选（刷新后没变 = 没生效）
         self._last_left: dict = {}  # 选卡页 → 上一帧读到的剩余次数
         self._zero_waited: set = set()  # 已经为「次数突然变 0」等过一帧的页
-        self.playbook = [f"idols/{profile.playbook}.md"] if profile else []
+        self.playbook = [f"idols/{profile.playbook}.md"] if profile and profile.playbook else []
 
     # ---------------------------------------------------------------- 入口
     def decide(self, page: str, state: GameState, *, n_options: int | None = None, **kw) -> Decision:
@@ -771,7 +771,36 @@ class ProduceDeciders:
             if rid not in used and hr.applies(rid, fam, diff):
                 used.append(rid)
 
+        from hiro.brain import flows
+
+        idol_flow = flows.flow(ps.idol_card_id)
+        other_flow = idol_flow not in (None, "yaruki")  # 广（やる気）照原来的卡表；别的偶像按自己流派（协调 11-19 多偶像）
+        loops = flows.loop_parts(ps.idol_card_id) if other_flow else ()
+
+        def info_flow(i: int) -> tuple[tuple, str]:
+            """广以外的偶像：冲突 = 主打同プラン另一种 buff（flows.conflicts）；循环件 = g8-NIAM 这个流派的；社区评级 = 流派优先表（いおん）。"""
+            cid, up = raw[i]["card_id"], raw[i].get("upgrade") or 0
+            n = (copies or {}).get(cid, 0)
+            once = is_once(cid) is True
+            pr = flows.priority(ps.idol_card_id, cid) or {}
+            weight = int(pr.get("weight") or 0)
+            why_bad = flows.conflicts(cid, buff) or ("トラブル" if _is_trouble_card(cid) else None)
+            if why_bad:
+                return (0, int(once), weight), why_bad
+            loop_need = cid in loops and (copies is None or n < 1)
+            if not once and not loop_need:
+                return (1, -_makes_sleep(cid), weight), ("循环卡已经有了" if cid in loops else "可复用、不是这个流派的循环卡")
+            strong = weight >= flows.STRONG_WEIGHT
+            main = bool(buff) and flows.buff_main(cid, buff)  # 主打拿手 buff（手拍子「好印象の150%分」对ことね）也算合拍
+            gives = bool(buff) and (_gives_buff(cid, buff) or main)
+            dup = fam == NIA and once and n > 0
+            tags = [t for t, on in ((f"社区优先表 {weight}（{'、'.join(pr.get('sources') or [])}）", strong), ("一次性", once), ("还缺的循环卡", loop_need and not once),
+                                    (f"主打{buff}" if main else f"加{buff}", gives), (f"牌组里已有 {n} 张", dup)) if on]  # fmt: skip
+            return (2, strong, loop_need, gives, dup, _card_rarity(cid), weight, up), "、".join(tags)
+
         def info(i: int) -> tuple[tuple, str]:
+            if other_flow:
+                return info_flow(i)
             cid, up = raw[i]["card_id"], raw[i].get("upgrade") or 0
             n = (copies or {}).get(cid, 0)
             once = is_once(cid) is True
@@ -808,6 +837,8 @@ class ProduceDeciders:
             return Decision(Action.exclude_card(worst), f"选卡：没有一次性的卡或还缺的循环卡、刷新用完，禁用 {_card_label(raw[worst])}（{scored[worst][1]}）换一张"
                             f"（{_budget_text(budget)}；{cites}）", "rule", 0.75, cands, decider="select_card")  # fmt: skip
         if key[0] == 2:
+            if other_flow and key[2]:
+                use("nia.card_loop_parts")
             if key[3]:
                 use("hajime.card_signature_buff")
             if key[4]:
@@ -1726,14 +1757,20 @@ class ProduceDeciders:
             return Decision(Action(ActionKind.SHOP_END), f"相談：删卡用不了或 P 点不够（{p}P），不买", "rule", 0.6, decider="consult")
         cards = [{"index": i, "card_id": c.card_id, "upgrade": c.upgrade, "customized": c.customized} for i, c in enumerate(ps.deck)]
         counts, _ = self._deck_counts(state)
-        pool = [c for c in cull_pool(cards, "delete", counts=counts) if qualify_consult_deletable(c["card_id"], c.get("upgrade") or 0)]
+        from hiro.brain import flows
+
+        if flows.flow(ps.idol_card_id) not in (None, "yaruki"):
+            pool = _flow_delete_pool(cards, ps.idol_card_id)  # 广以外的偶像：按自己的流派判冲突（协调 11-19 多偶像）
+        else:
+            pool = [c for c in cull_pool(cards, "delete", counts=counts) if qualify_consult_deletable(c["card_id"], c.get("upgrade") or 0)]
         if not pool:
             return Decision(Action(ActionKind.SHOP_END), "相談：牌组里没有该删的卡（トラブル / 可复用的非核心卡 / 冲突卡 / 基本卡都没有了），不买", "rule", 0.7,
                             decider="consult")  # fmt: skip
         c = pool[0]
         self.consult_used.add("delete")
+        kind = FLOW_CULL[c["flow_tier"]] if "flow_tier" in c else CULL_TIERS.get(cull_tier(c["card_id"]), "")
         return Decision(Action(ActionKind.SHOP_BUY, {"service": "delete", "card_index": c["index"]}),
-                        f"相談删{CULL_TIERS.get(cull_tier(c['card_id']), '')} {_card_label(c)}（{delete.get('price')}P；{hr.cite(rid)}）", "rule", 0.8,
+                        f"相談删{kind} {_card_label(c)}（{delete.get('price')}P；{hr.cite(rid)}）", "rule", 0.8,
                         decider="consult")  # fmt: skip
 
     # ---- 选拔相談：P 点预算 + 选项表（用户 2026-11-02 第十六局复盘）
@@ -3085,7 +3122,8 @@ class ProduceDeciders:
                 diff = _mode(mode).difficulty
             except KeyError:
                 diff = None
-            data, calls = self._ask(["hajime_nia_choice.md"], user, extra_system=hr.guide(_family(mode), diff),
+            idol = ps.idol_card_id if ps is not None else ((state.produce or {}).get("idol_card_id") or (self.profile.idol_id if self.profile else None))
+            data, calls = self._ask(["hajime_nia_choice.md"], user, extra_system=_idol_section(idol, self.profile) + "\n\n" + hr.guide(_family(mode), diff),
                                     extra_version=f"hajime_nia_rules@{hr.load().get('captured_at', '?')}")  # fmt: skip
         else:
             data, calls = self._ask(["produce_choice.md", "hif_produce.md", *self.playbook], user)
@@ -3651,6 +3689,56 @@ def lean_deletable(card_id: str | None) -> bool:
     """本战牌组 ≤ 22 张时能删的：眠気等トラブル、非一次性不带再動的非核心牌、冲突牌 / 纯好印象系（0–2 档，用户 2026-11-03「优先清掉」）。
     基础卡不删——删了 R2 开考时応援棒会再补一张。"""
     return bool(card_id) and cull_tier(card_id) <= 2
+
+
+def _idol_section(idol_card_id: str | None, profile: IdolProfile | None) -> str:
+    """初 / N.I.A 提示词里的「偶像」一节：按偶像卡的流派写（协调 11-19 多偶像）。广照原来的说法；别的偶像写拿手 buff 和冲突的 buff，
+    社区依据只有流派优先表（いおん）和 g8-NIAM 的循环件，没有更细的就写「暂无」。"""
+    from hiro.brain import flows
+
+    f = flows.flow(idol_card_id)
+    if f in (None, "yaruki"):
+        return "## 偶像\n\n篠澤広（Campus mode!!）是ロジック的やる気流派：能上やる気的卡、用完就除外的卡对她有用；好印象系的卡和她的打法冲突。"
+    buff = _signature_buff(idol_card_id)
+    others = "、".join(flows.OTHER_BUFFS.get(buff or "", ())) or "暂无（这个流派的冲突卡没有社区说法）"
+    loops = "、".join(_card_label({"card_id": c}) for c in flows.loop_parts(idol_card_id)) or "暂无"
+    name = profile.name if profile is not None and profile.idol_id == (idol_card_id or "").replace("i_card-skin-", "i_card-") else (idol_card_id or "未知")
+    return (f"## 偶像\n\n{name}：{flows.flow_name(idol_card_id)}，拿手 buff 是{buff or '未知'}。"
+            f"主打{buff}、加{buff}的卡和用完就除外的卡对她有用；主打{others}的卡和她的打法冲突。"
+            f"循环件 [g8-NIAM]：{loops}。更细的初 / N.I.A 卡表：暂无（社区篇只有回忆用的流派优先表）。")
+
+
+FLOW_CULL = {0: "トラブル", 1: "基本卡", 2: "冲突卡（主打同プラン另一种 buff）", 3: "可复用、不是这个流派循环件的卡"}
+
+
+def _flow_delete_pool(cards: list[dict], idol_card_id: str | None) -> list[dict]:
+    """广以外的偶像在初 / N.I.A 相談里能删的卡，按 FLOW_CULL 档位排（第一个最该删）：トラブル > 「○○の基本」[g8-NIAM] >
+    冲突卡 > 不带「レッスン中1回」、不是循环件、也不加 / 不主打拿手 buff 的可复用卡 [g8-NIAM]。
+    不删：一次性的卡、循环件、定制过的、偶像固有卡（-ido-）、没认出的格。"""
+    from hiro.brain import flows
+    from hiro.state.knowledge import is_once
+
+    buff = _signature_buff(idol_card_id)
+    loops = set(flows.loop_parts(idol_card_id))
+
+    def tier(c: dict) -> int | None:
+        cid = c.get("card_id")
+        if not cid or c.get("customized") or "-ido-" in cid:
+            return None
+        if _is_trouble_card(cid):
+            return 0
+        if _is_basic(cid):
+            return 1
+        if flows.conflicts(cid, buff):
+            return 2
+        fits = bool(buff) and (_gives_buff(cid, buff) or flows.buff_main(cid, buff))
+        if is_once(cid) is False and cid not in loops and not fits:
+            return 3
+        return None
+
+    out = [(t, c) for c in cards if (t := tier(c)) is not None]
+    out.sort(key=lambda x: (x[0], x[1].get("index", 0)))
+    return [dict(c, flow_tier=t) for t, c in out]
 
 
 def qualify_consult_deletable(card_id: str | None, upgrade: int = 0) -> bool:

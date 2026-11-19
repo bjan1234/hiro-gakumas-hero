@@ -4011,5 +4011,220 @@
     "excludes_left": 0
    }
   }
+ },
+ {
+  "id": "fktn-card-tebyoshi",
+  "decider": "SELECT_CARD",
+  "source": "实机 trace hajime-20261119-190113 seq 46（协调 11-19 多偶像：ことね 初 PRO）；流派优先表（いおん10）、g8-NIAM 循环件",
+  "note": "初 PRO ことね（好印象）：手拍子（好印象の150%分）合拍，拿它；原来按广的必拿表刷新",
+  "accept": [
+   "pick:0"
+  ],
+  "forbid": [
+   "reroll"
+  ],
+  "state": {
+   "mode": "produce",
+   "page": {
+    "name": "SELECT_CARD",
+    "area": "produce",
+    "since_seq": 45,
+    "stable": true,
+    "frames": 2
+   },
+   "produce": {
+    "mode": "produce-002",
+    "stamina": 36,
+    "max_stamina": 36,
+    "produce_point": 9,
+    "params": {
+     "Vo": 100,
+     "Da": 125,
+     "Vi": 338
+    },
+    "growth_permil": {
+     "Vo": 1122,
+     "Da": 1466,
+     "Vi": 1325
+    },
+    "param_cap": 1500,
+    "drinks": [],
+    "deck": [
+     {
+      "card_id": "p_card-02-act-0_009",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-00-act-0_001",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-00-act-0_001",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-00-act-0_002",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-ido-3_015",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-0_011",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-0_011",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-00-men-0_003",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-00-men-0_003",
+      "upgrade": 0
+     }
+    ],
+    "deck_size": 9,
+    "idol_card_id": "i_card-fktn-3-000"
+   },
+   "page_fields": {
+    "candidates": [
+     {
+      "slot": 0,
+      "card_id": "p_card-02-act-1_003",
+      "upgrade": 0,
+      "name": "手拍子",
+      "recommended": false
+     },
+     {
+      "slot": 1,
+      "card_id": "p_card-02-men-2_008",
+      "upgrade": 1,
+      "name": "イメトレ+",
+      "recommended": false
+     },
+     {
+      "slot": 2,
+      "card_id": "p_card-00-men-1_005",
+      "upgrade": 0,
+      "name": "気合十分！",
+      "recommended": false
+     }
+    ],
+    "rerolls_left": 4,
+    "excludes_left": 2
+   }
+  }
+ },
+ {
+  "id": "fktn-card-lovely",
+  "decider": "SELECT_CARD",
+  "source": "实机 trace hajime-20261119-190113 seq 50（协调 11-19 多偶像：ことね 初 PRO）；流派优先表（いおん10）、g8-NIAM 循环件",
+  "note": "初 PRO ことね（好印象）：ラブリーウインク+ 是好印象的循环件 [g8-NIAM]；原来按广的社区必拿拿了 デイドリーミング",
+  "accept": [
+   "pick:2",
+   "pick:0"
+  ],
+  "forbid": [
+   "pick:1"
+  ],
+  "state": {
+   "mode": "produce",
+   "page": {
+    "name": "SELECT_CARD",
+    "area": "produce",
+    "since_seq": 45,
+    "stable": true,
+    "frames": 6
+   },
+   "produce": {
+    "mode": "produce-002",
+    "stamina": 36,
+    "max_stamina": 36,
+    "produce_point": 9,
+    "params": {
+     "Vo": 100,
+     "Da": 125,
+     "Vi": 338
+    },
+    "growth_permil": {
+     "Vo": 1122,
+     "Da": 1466,
+     "Vi": 1325
+    },
+    "param_cap": 1500,
+    "drinks": [],
+    "deck": [
+     {
+      "card_id": "p_card-02-act-0_009",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-00-act-0_001",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-00-act-0_001",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-00-act-0_002",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-02-ido-3_015",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-0_011",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-02-men-0_011",
+      "upgrade": 0
+     },
+     {
+      "card_id": "p_card-00-men-0_003",
+      "upgrade": 1
+     },
+     {
+      "card_id": "p_card-00-men-0_003",
+      "upgrade": 0
+     }
+    ],
+    "deck_size": 9,
+    "idol_card_id": "i_card-fktn-3-000"
+   },
+   "page_fields": {
+    "candidates": [
+     {
+      "slot": 0,
+      "card_id": "p_card-02-act-1_003",
+      "upgrade": 0,
+      "name": "手拍子",
+      "recommended": false
+     },
+     {
+      "slot": 1,
+      "card_id": "p_card-02-act-1_037",
+      "upgrade": 0,
+      "name": "デイドリーミング",
+      "recommended": false
+     },
+     {
+      "slot": 2,
+      "card_id": "p_card-02-act-2_046",
+      "upgrade": 1,
+      "name": "ラブリーウインク+",
+      "recommended": false
+     }
+    ],
+    "rerolls_left": 2,
+    "excludes_left": 2
+   }
+  }
  }
 ]
