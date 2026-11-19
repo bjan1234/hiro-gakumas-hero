@@ -380,7 +380,8 @@ def read_briefing(texts, img=None) -> dict | None:
     tx = _t(texts)
     if not (any("審査基準" in s for s, _, _ in tx) and any("合格条件" in s for s, _, _ in tx)):
         return None
-    tap = next(((x, y) for s, x, y in tx if "タップして次へ" in s and y > 1100), None)
+    # 「タップして次へ」压在亮色衣装上时 OCR 只读出半截（初 PRO ことね 11-19：「プして次へ」），读到「次へ」就算
+    tap = next(((x, y) for s, x, y in tx if ("タップして次へ" in s or "して次へ" in s or s.endswith("次へ")) and y > 1100), None)
     if tap is None or img is None:
         return None  # 倍率还在跳（ボーナス演出）：没有「タップして次へ」先不认
     from hiro.vision.pages import read_exam_briefing
