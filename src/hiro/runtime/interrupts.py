@@ -64,6 +64,24 @@ def _comm_frame(rt, f) -> str | None:
         return None
 
 
+def _comm_title_y(frame) -> int | None:
+    """「通信エラー」字样在一条弹窗标题条上（字的那几行橙黄占比 ≥ HEADER_MIN_FRAC、字下方紧接白色正文框）时返回字的中线 y。"""
+    import cv2
+
+    from hiro.vision import pages
+
+    for t in frame.texts:
+        if not any(h in t.text.replace(" ", "") for h in comm_error.TITLE_HINTS):
+            continue
+        y1, y2 = int(t.rect.y1), int(t.rect.y2)
+        band = frame.img[max(0, y1) : max(y1 + 1, y2), pages.HEADER_X[0] : pages.HEADER_X[1]]
+        hsv = cv2.cvtColor(band, cv2.COLOR_BGR2HSV)
+        frac = float(((hsv[:, :, 0] >= 8) & (hsv[:, :, 0] <= 30) & (hsv[:, :, 1] >= 110) & (hsv[:, :, 2] >= 190)).mean())
+        if frac >= pages.HEADER_MIN_FRAC and any(pages._white_body(frame.img, y) for y in range(y2, y2 + 40, 4)):
+            return (y1 + y2) // 2
+    return None
+
+
 def comm(frame, rt) -> str | None:
     """通信エラー：只点リトライ；只能回标题时点閉じる并抛 CommErrorToTitle（hiro.loop.comm_error）。
     点之前确认弹窗确实在：标题条读出来是通信エラー、リトライ 在标题条下面，重截一帧还在同一个位置（11-17：リトライ 的位置 (299,1019)
@@ -75,7 +93,12 @@ def comm(frame, rt) -> str | None:
         return None
     d = frame.dialog or {}
     if d.get("kind") != "comm_error" and not any(h in (d.get("title") or "") for h in comm_error.TITLE_HINTS):
-        return None  # 画面上有「通信」字样，但最上层的弹窗标题不是通信エラー：不点
+        # 加载画面整片橙黄时，按钮下方的橙色底也像一条「标题条」，排在真标题条下面被当成最上层弹窗（11-20 账号 2 LOADING 页，
+        # E209 没点リトライ，180 s 停机）。这时直接核对「通信エラー」字样本身在不在一条标题条上：字所在的行是橙黄、正下方是白色正文框
+        y = _comm_title_y(frame)
+        if y is None:
+            return None  # 画面上有「通信」字样，但不在弹窗标题条上：不点
+        d = {"kind": "comm_error", "y": y}
     if e["kind"] == "retry" and d.get("y") is not None and e["retry"][1] <= d["y"]:
         return None  # 「リトライ」不在这个弹窗里（在标题条上面）
     f2 = rt.screen.shot()  # 重截核对：弹窗还在、按钮没挪
