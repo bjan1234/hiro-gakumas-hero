@@ -79,6 +79,29 @@ def _header_bands(img: MatLike) -> list[tuple[int, int]]:
         # 再放宽一级：标题很长、白字占满整条（N.I.A「NEXT IDOL AUDITIONライブ設定」11-17：中间几行橙色只占 0.36–0.53，
         # 标题条被切成几段、每段都不够 HEADER_H，整个框认不出，中断层看不到）。同样要求下方是白色框体
         out = [(y1, y2) for y1, y2 in _bands(frac, HEADER_LONG_TITLE_FRAC) if _white_body(img, y2)]
+    if not any(_title_white(img, y1, y2) for y1, y2 in out):
+        out = _header_on_orange(img, frac)
+    return out
+
+
+ORANGE_BG_MIN = 0.8  # 标题条上方 60 行橙黄占比的平均：加载画面 1.0，获得演出名称栏上方是场景
+HEADER_ON_ORANGE_H = 65  # 整片橙黄背景上的弹窗：从白色框体上沿往上取这么高当标题条（实测标题条 870–936）
+
+
+def _header_on_orange(img: MatLike, frac: np.ndarray) -> list[tuple[int, int]]:
+    """资源下载的加载画面整片橙黄，弹窗标题条和背景连成一片、超高被丢（11-19 账号 2：E209 通信エラー 认不出，中断层没点リトライ，
+    180 s 停机）。改从白色框体的上沿找：上一行还是橙黄、这一行起连续 40 行近白，往上取 HEADER_ON_ORANGE_H 行，要有白色标题字。"""
+    hsv = cv2.cvtColor(img[:, HEADER_X[0] : HEADER_X[1]], cv2.COLOR_BGR2HSV)
+    wh = ((hsv[:, :, 1] < 40) & (hsv[:, :, 2] > 225)).mean(axis=1)
+    out = []
+    for y in range(HEADER_ON_ORANGE_H, len(frac) - 40):
+        # 白框上沿和标题条之间有 1–2 行过渡色（实测 938 行橙白都不是）：上面 4 行里有橙黄行就算紧挨着
+        if wh[y - 1] < 0.3 and float(frac[y - 4 : y].max()) >= HEADER_MIN_FRAC and bool((wh[y : y + 40] >= 0.6).all()):
+            above = frac[max(0, y - HEADER_ON_ORANGE_H - 60) : y - HEADER_ON_ORANGE_H]
+            if above.size == 0 or float(above.mean()) < ORANGE_BG_MIN:
+                continue  # 标题条上方不是整片橙黄（获得演出的金色名称栏上面是场景）：不是这种情况
+            if _title_white(img, y - HEADER_ON_ORANGE_H, y):
+                out.append((y - HEADER_ON_ORANGE_H, y))
     return out
 
 
