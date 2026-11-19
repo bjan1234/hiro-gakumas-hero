@@ -130,3 +130,15 @@ def test_comm_episode_window():
     assert not c._in_comm_error_episode(100.0)  # 90s 没再弹：这一轮结束
     c._note_comm_retry(200.0)  # 新一轮从 200 起算
     assert c._comm_first == 200.0
+
+
+def test_e209_retry_hits_button_not_hint_sentence():
+    """11-19 账号 2：E209「アセット取得に失敗」的说明句含「リトライ」、排在按钮上面；原来点的是说明句 (299,1019)，10 次都没重试。
+    按钮 OCR 读成「くリトライ」也要认。"""
+    from hiro.loop.comm_error import comm_error
+
+    boxes = [("通信エラー", 1, (60, 885, 220, 920)), ("アセット取得に失敗", 1, (60, 965, 280, 1000)),
+             ("通信環境の良い場所でリトライしてください", 1, (60, 1002, 540, 1036)), ("(E209)", 1, (60, 1040, 140, 1072)),
+             ("X タイトルへ", 1, (130, 1145, 295, 1178)), ("くリトライ", 1, (410, 1145, 546, 1178))]  # fmt: skip
+    got = comm_error(boxes)
+    assert got["kind"] == "retry" and got["retry"] == (478, 1161)
