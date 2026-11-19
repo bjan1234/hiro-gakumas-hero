@@ -432,6 +432,16 @@ def test_select_checked_does_not_tap_preselected_cell():
     assert taps == [(360, 645)]
 
 
+@pytest.mark.master
+def test_fuzzy_card_recovers_dropped_or_wrong_kanji():
+    """11-19 账号 2：「アイドル言」（漏「宣」）写编成时认不出；「嬌しい誤算＋」（嬉→嬌）扫描时认不出。分不开的不猜。"""
+    assert mp.fuzzy_card("アイドル言")["card_id"].endswith("men-2_012")
+    got = mp.fuzzy_card("嬌しい誤算＋")
+    assert got["name"] == "嬉しい誤算" and got["upgrade"] == 1
+    assert mp.fuzzy_card("精神統")["name"] == "精神統一"
+    assert mp.fuzzy_card("ア") is None and mp.fuzzy_card("全然ちがうなまえです") is None
+
+
 def test_scroll_splits_big_distance_inside_list_area():
     """11-17 开局第 3 步：一次滑约 16 行，终点 y 成负数，kotonebot swipe 报 argument out of range。拆成每次 ≤ 3 行、起止点都在列表区。"""
     swipes = []
