@@ -155,15 +155,16 @@ def exam_brief(state: ProduceState, mode: str, position: int) -> dict:
         return {"场次": label, "日程位置": position, "说明": "考试要求 / 倍率数据未知（没有接 exam_requirements 插件），不估审查评定和倍率"}
     cfg = prev["source"]["battle_config"]
     req = {"Vo": cfg["vocal"], "Da": cfg["dance"], "Vi": cfg["visual"]}
-    kind, order = idol_trend(state.idol_card_id)
-    split = dict(zip(order, TURN_SPLIT[kind][key]))
+    trend = _trend_or_none(state.idol_card_id)
+    split = dict(zip(trend[1], TURN_SPLIT[trend[0]][key])) if trend else None
     baseline = multiplier.star_baseline(mode, position, state.idol_card_id, catalog())
     factor = multiplier.star_factor(state.star, baseline)
     final = multiplier.exam_bonus(mode, position, state.params, state.star, state.idol_card_id)
     out = {
         "场次": label,
         "日程位置": position,
-        "回合": f"{prev['turns']} 回合（" + " / ".join(f"{a} {split[a]}" for a in order) + "）",
+        "回合": f"{prev['turns']} 回合（" + " / ".join(f"{a} {split[a]}" for a in trend[1]) + "）" if split
+        else f"{prev['turns']} 回合（这名偶像没有流行顺序数据，各属性回合数未知）",
         "三项审查": {a: tier_gap(state.params[a], req[a]) for a in ATTRS},
         "星星": {"当前": state.star, "基准": baseline, "星星倍率": round(factor, 3)},
         "按当前数值的最终倍率": {a: f"{final[a] / 1000:.2f}×" for a in ATTRS},
@@ -379,6 +380,15 @@ def _apply_params(state: ProduceState, gains: dict) -> tuple[dict, dict]:
 R1_TURN_PROXY = __import__("os").environ.get("HIRO_R1_TURN_PROXY") == "1"
 
 
+def _trend_or_none(idol_card_id):
+    """knowledge.IDOL_TREND 只收了 篠澤広；别的偶像（11-20 DMM 有村麻央 標：KeyError 'amao'，选卡、选行动决策器连续崩，
+    选行动没有兜底，停机）返回 None，调用方跳过按流行顺序的估算。"""
+    try:
+        return idol_trend(idol_card_id)
+    except (KeyError, IndexError, AttributeError, TypeError):
+        return None
+
+
 def r1_turn_weighted_gain(state: ProduceState, delta: dict) -> int | None:
     """本战：Σ R1 该属性回合数 × 属性增量（到上限为止）。不是本战、属性读数不全、偶像没有流行顺序数据时 None。"""
     gains = {a: delta[a] for a in ATTRS if delta.get(a)}
@@ -399,7 +409,10 @@ def r1_bonus_gain(state: ProduceState, delta: dict) -> int | None:
     gains = {a: delta[a] for a in ATTRS if delta.get(a)}
     if state.mode != FINALS or not gains or not params_complete(state.params):
         return None
-    kind, order = idol_trend(state.idol_card_id)
+    trend = _trend_or_none(state.idol_card_id)
+    if trend is None:
+        return None
+    kind, order = trend
     turns = dict(zip(order, TURN_SPLIT[kind]["r1"]))
 
     def total(params: dict) -> int:
@@ -477,9 +490,11 @@ def spending_days(state: ProduceState) -> list[int]:
 
 def _likely_sub(state: ProduceState, main: str) -> tuple[str, str]:
     """副属性没提供时，按社区统计取最可能的一项（剩余两项里流行顺序靠前的约 75%）。"""
-    _, order = idol_trend(state.idol_card_id)
-    weights = rules.sub_parameter_weights(main, order)
+    trend = _trend_or_none(state.idol_card_id)
+    weights = rules.sub_parameter_weights(main, trend[1] if trend else tuple(ATTRS))
     sub = max(weights, key=weights.get)
+    if trend is None:
+        return sub, f"副属性未读到，这名偶像没有流行顺序数据，按 Vo / Da / Vi 顺序猜 {sub}（只是猜）"
     return sub, f"副属性未读到，按社区统计最可能是 {sub}（约 {weights[sub]:.0%}）"
 
 
