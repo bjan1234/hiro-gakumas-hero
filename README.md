@@ -8,7 +8,7 @@
 离线评测里「提前知道牌序」的搜索只当参照上限。
 
 > 非官方的个人研究项目，与游戏的开发商和运营方无关。仓库的 `assets/pack/` 带了一套识别用的游戏素材（卡面、图标、字体、
-> 界面图、布局），**权利属于游戏的权利人，不属于本仓库的 GPL**，仅供识别游戏画面的研究用途，详见 [assets/pack/README.md](assets/pack/README.md)；
+> 界面图、布局），**权利属于游戏的权利人，不属于本仓库的开源许可**，仅供识别游戏画面的研究用途，详见 [assets/pack/README.md](assets/pack/README.md)；
 > 主数据不在仓库里，由 `setup.sh` 从公开来源下载。
 
 ## 成绩
@@ -244,8 +244,10 @@ open /tmp/hiro-view/demo-run.html
 ## 致谢与许可
 
 - 识别层的部分逻辑基于 [KAA（kotones-auto-assistant）](https://github.com/XcantloadX/kotones-auto-assistant) 的识别接口、主数据与界面模板；
-  培育的页面流程沿用 KAA 的任务流程，在 `hiro/loop/kaa_patches.py` 里打运行时补丁。KAA 以 GPL-3.0 发布；
-  本仓库随之采用 **GPL-3.0-or-later**。从 KAA 派生的文件在文件头注明。
+  培育的页面流程沿用 KAA 的任务流程，在 `hiro/loop/kaa_patches.py` 里打运行时补丁。KAA 以 GPL-3.0 发布。
+- **许可**：本仓库自己的代码以 **AGPL-3.0-or-later** 发布（[LICENSE](LICENSE)；2026-11-20 起，之前是 GPL-3.0-or-later）。
+  从 KAA 派生的文件保留 GPL-3.0（文件头注明，全文见 [LICENSE.GPL-3.0](LICENSE.GPL-3.0)），按 GPL-3.0 / AGPL-3.0 第 13 条和其余代码合在一起发布。
+  改过的版本分发出去，或者放到网上给别人用，要同样公开源码。
 - 截图和点击默认通过 [hguandl 的 PlayCover 分支](https://github.com/hguandl/PlayCover)（GPL-3.0，派生自 PlayCover）里
   [PlayTools](https://github.com/hguandl/PlayTools)（AGPL-3.0）内置的 MaaTools 服务完成：它在游戏进程内开 TCP 服务，进程内截图、注入触摸，
   不要求游戏在前台，也不动鼠标。本仓库只按它的协议做客户端（`hiro/device.py`），不包含它的代码；macOS 上只支持这一种方式。
