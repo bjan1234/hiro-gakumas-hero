@@ -357,6 +357,27 @@ def test_unknown_stops_even_if_screen_keeps_changing():
         rt.step()
 
 
+def test_download_page_with_moving_percent_is_progress():
+    """11-20 账号 2：网络不稳，资源下载页（データダウンロード中 xx%）认不出，E209 リトライ 后接着下，180 秒按认不出停机。
+    百分比在涨就不停；百分比不动照常按认不出停机。"""
+    def dl(p):
+        return frame([T("データダウンロード中", 123, 1208), T(f"{p}%", 371, 1208)])
+
+    rt, clock = runtime([dl("10.00"), dl("27.27"), dl("55.10"), dl("80.00")])
+    for now in (0.0, 120.0, 240.0, 360.0):
+        clock.now = now
+        rt._comm_retry = (0.0, now, 9)  # 中间一直有 E209 リトライ
+        rt.step()  # 每拍百分比都变了：不停，リトライ 计数清零
+        assert rt._comm_retry is None
+    rt2, clock2 = runtime([dl("27.27")])
+    for now in (0.0, 90.0, 179.0):
+        clock2.now = now
+        rt2.step()
+    clock2.now = 181.0
+    with pytest.raises(ResumeBlocked, match="认不出"):
+        rt2.step()
+
+
 def test_known_page_stuck_stops_but_progress_does_not():
     rt, clock = runtime([frame()], classify=lambda img: PageHit("ACTION_SELECT", "pixel"), handlers={"ACTION_SELECT": lambda rt, f, hit: STAY})
     rt.step()

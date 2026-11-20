@@ -217,6 +217,9 @@ def main():
     if args.debug_recog:
         os.environ["HIRO_DEBUG_RECOG"] = "1"  # Session 读它：全部 Check 写进 trace、页面变化都存帧
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s")
+    from hiro.brain import guides
+
+    guides.refresh_if_stale()  # 偶像卡攻略包：没有或超过 24 小时就下载，失败不阻塞（协调 11-20；H.I.F 这次不接攻略，下好给初 / N.I.A 用）
     if args.command == "resume" and not args.trace:
         prev = last_run_identity(args.mode)
         if prev is not None:

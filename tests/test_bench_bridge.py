@@ -16,10 +16,10 @@ def _card(slot, cid, u=0, available=True, name=None):
     return CardView(slot, name or cid, cid, u, available, "active", 3, 0, None, "パラメータ+10")
 
 
-def _state(hand, drinks=(), remaining=8, turn=1, statuses=None, motivation=5, impression=3):
+def _state(hand, drinks=(), remaining=8, turn=1, statuses=None, motivation=5, impression=3, profile=CAMPUS_HIRO):
     mem = ExamMemory(exam="r1")
     mem.turn = turn
-    st = BattleState.build(mem, CAMPUS_HIRO, source="screen", remaining_turns=remaining, hp=20, genki=10, motivation=motivation,
+    st = BattleState.build(mem, profile, source="screen", remaining_turns=remaining, hp=20, genki=10, motivation=motivation,
                            impression=impression, score=1000, buffs={}, attr="Da", multiplier_permil=None, npc_scores=None,
                            my_rank_index=None, deck_count=None, pitem_charges=None, statuses=statuses, attr_permil={"Da": 30000},
                            hand=list(hand), drinks=list(drinks))  # fmt: skip
@@ -1046,6 +1046,33 @@ def test_live_lesson_from_screen(monkeypatch, screen, want):
     les = algo.ctx.loadout["lesson"]
     assert (les["limit_turn"], les["clear_score"], les["perfect_score"], les["parameter_type"], les["kind"]) == (*want, 2, "SP")
     assert algo.ctx.loadout["produce_item_ids"][0] == "pitem_k" and "exam" not in algo.ctx.loadout
+
+
+@pytest.mark.bench_on
+@pytest.mark.parametrize("produce, want", [({"max_stamina": 36}, 36), ({}, "start")])
+def test_live_loadout_max_stamina_falls_back_for_other_idols(monkeypatch, produce, want):
+    """11-19 ことね：广以外的偶像构筑表没有 max_hp，考试画面只有当前体力，max_stamina=None → ExamGnrpa 开局 int(None)，整场退回 uinet。
+    用培育局面（选行动页「体力 35/36」）的上限；没有就用开考时的体力。"""
+    from hiro.bench_bridge import tower as tw
+    from hiro.brain.state import IdolProfile
+
+    monkeypatch.delenv("HIRO_EXAM_LOADOUT", raising=False)
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_HAJIME", raising=False)
+    monkeypatch.setenv("HIRO_FORMATION_PLAN", "off")
+    monkeypatch.setattr(tw, "master", lambda: SimpleNamespace(rows=lambda t: [{"id": "L", "limitTurn": 7, "successThreshold": 40,
+                                                                               "resultTargetValueLimit": 80}]))  # fmt: skip
+    monkeypatch.setattr("hiro.search.loadout.run_loadout", lambda produce, plan: ({"items": (), "supports": (), "skills": ()}, []))
+    algo = _Algo(("play", 0))
+    monkeypatch.setattr(A, "load_algo", lambda *a, **k: algo)
+    es = SimpleNamespace(lesson={"turns_total": 7, "clear_target": 40, "perfect_target": None, "level_ids": ["L"], "lesson_limit_up_score": 0})
+    sess = SimpleNamespace(state=SimpleNamespace(produce=dict(produce), exam_session=es))
+    other = IdolProfile(idol_id="i_card-x", name="x", playbook=None)
+    adv = A.BenchAdvisor(other)
+    adv.on_round_start(1, {"exam": "hajime-lesson-da-sp", "idol": "i_card-x", "deck": [("p_card-a", 0)], "session": sess})
+    st, mem = _state([_card(0, "p_card-a")], remaining=6, turn=1, profile=other)
+    adv.decide(st, mem, None, [Action.from_legal(a) for a in st.legal_actions()])
+    lo = algo.ctx.loadout
+    assert lo["max_stamina"] == (lo["starting_stamina"] if want == "start" else want) and lo["max_stamina"]
 
 
 @pytest.mark.bench_on

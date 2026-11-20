@@ -99,6 +99,15 @@ class Sampler:
 
     def __call__(self, img):
         hit = self.classify(img)
+        if not self.nia and hit.name == "unknown" and img is not None and img.shape[0] > img.shape[1]:
+            # 初：认不出时只查考前说明页（審査基準 + 合格条件 + 倍率）。广那几局靠「タップして次へ」模板当过场点过去；
+            # ことね（初 PRO 11-19）亮色衣装压住了提示，模板 0.23，判 unknown 180 秒停机
+            from hiro.vision.classify import PageHit
+            from hiro.vision.nia import read_briefing
+            from hiro.vision.ocr import screen_texts
+
+            if (brief := read_briefing(screen_texts(img), img)) is not None:
+                hit = PageHit("HIF_EXAM_BRIEFING", "briefing_ocr", "produce", brief)
         if self.nia and hit.name in self.NIA_RECHECK and img is not None and img.shape[0] > img.shape[1]:
             from hiro.vision.classify import PageHit
             from hiro.vision.nia import read_nia_page
@@ -319,7 +328,9 @@ def run(args) -> int:
     from hiro.runtime import finish, play
     from hiro.runtime.loop import Runtime
     from hiro.vision.classify import classify
+    from hiro.brain import guides
 
+    guides.refresh_if_stale()  # 偶像卡攻略包：没有或超过 24 小时就下载，失败不阻塞（协调 11-20）
     kaa_env.apply_formation_plan(args.idol)
     support_set = args.support_set or kaa_env.SUPPORT_SET
     memory_set = args.memory_set or kaa_env.MEMORY_SET

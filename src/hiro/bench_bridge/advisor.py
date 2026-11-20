@@ -708,7 +708,18 @@ class BenchAdvisor:
         if lo.get("audition"):
             self._npc_permil(lo)
         if not lo["max_stamina"]:
-            logger.info("[%s] 拼编成：最大体力没读到，照样交给算法", self.label)
+            # 考试画面只显示当前体力。广以外的偶像构筑表没有 max_hp（11-19 ことね：max_stamina=None，ExamGnrpa 开局 int(None) 整场退回 uinet）：
+            # 用培育局面里选行动页读到的「体力 35/36」的上限；再没有就用开考时的体力（不会比上限大）
+            ps = (getattr(getattr(self._session, "state", None), "produce", None) or {}) if self._session is not None else {}
+            got = int(ps.get("max_stamina") or 0) or None
+            src = "培育局面"
+            if got is None and lo.get("starting_stamina"):
+                got, src = int(lo["starting_stamina"]), "开考时的体力"
+            if got:
+                lo["max_stamina"] = got
+                logger.info("[%s] 拼编成：考试画面没有最大体力，用%s的 %d", self.label, src, got)
+            else:
+                logger.info("[%s] 拼编成：最大体力没读到，照样交给算法", self.label)
         logger.info("[%s] 现拼编成：牌组 %d 张、P 道具 %d、支援卡 %d、档位 %s", self.label, len(lo["produce_cards"]),
                     len(lo.get("produce_item_ids") or ()), len(lo.get("supports") or ()), row.get("number"))  # fmt: skip
         return lo
