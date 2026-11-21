@@ -10,6 +10,7 @@
   - 剧情框的文字 HIRO_UNREAD_TIMEOUT_S 秒（缺省 60）没变（没人在推进剧情）→ 关游戏 / 模拟器（hiro.loop.close_game，目标按 HIRO_CLOSE_GAME，没开时关模拟器），
     抛 UnreadStoryTimeout（ResumeBlocked 的子类：run_hif 退出码 3）。培育进度在服务器上，下次 `run_hif resume` 接着跑。
   「有没有人在看」只看剧情框文字（OCR）：剧情里人物待机、风吹等画面一直在动，按像素变化判不了（用户 11-20）。
+  剧情里插的过场动画 / LIVE（没有剧情底栏、或横屏）是剧情自己在播，不计空闲（最多 PLAYING_MAX_S）；横屏帧也不算「回到游戏」（用户 11-21）。
   对话文字逐字打出来也算变化，那只在有人点了之后才发生。
 - 等的时间按暂停计（pause_flag.hold），空转看门狗、收尾超时不会把它算成没进展。
 - 进入等待时存一帧到 reports/live/unread/（剧情框位置的校准样本）。
@@ -35,6 +36,9 @@ DIALOG_Y = (760, 1240)  # 剧情框（含名字条）的 y 范围（720×1280）
 BAR_WORDS = ("ログ", "AUTO", "AUT0", "SKIP", "早送", "SKI")
 SAME_TEXT = 0.8  # 剧情框文字相似度达到这个算没变（OCR 同一帧读两次会差一两个字）
 LEFT_POLLS = 5  # 连续这么多次（约 15 秒）不在剧情页、也没有确认框，才算你已经看完 / 手动跳过
+# 剧情里也会插过场动画 / LIVE（没有剧情底栏、可能横屏，用户 11-21）：这时剧情自己在播，不算没人推进；
+# 但一直没有底栏超过这么久（比如你把界面隐藏了走开），照常计时
+PLAYING_MAX_S = 600.0
 ALLOW_SKIP_S = 120.0  # 删等人文件后这么久内的未读确认框按「決定」
 
 
@@ -87,6 +91,21 @@ def dialog_text(items) -> str:
             continue
         out.append(n)
     return "".join(out)
+
+
+class Screen(list):
+    """一帧的 OCR 结果 [(文字, 中心 y)]，带 portrait（竖屏）。"""
+
+    portrait = True
+
+
+def read_screen(img) -> Screen:
+    """截图 → Screen（等人时用）。横屏（LIVE / 部分过场）记 portrait=False。"""
+    from hiro.vision.ocr import screen_texts
+
+    out = Screen((b.text, b.rect.center.y) for b in screen_texts(img))
+    out.portrait = img is None or img.shape[0] >= img.shape[1]
+    return out
 
 
 def _changed(a: str | None, b: str) -> bool:
@@ -233,7 +252,7 @@ def handle(*, cancel: Callable[[], object], confirm: Callable[[], object], texts
     from hiro.loop.pause_flag import hold
 
     with hold():
-        last_change, away, last_text = clock(), 0, None
+        last_change, away, last_text, playing_since = clock(), 0, None, None
         while True:
             sleep(POLL_S)
             if not path.exists():
@@ -246,16 +265,28 @@ def handle(*, cancel: Callable[[], object], confirm: Callable[[], object], texts
                 logger.warning("未读剧情：等人时截图失败：%r", e)
                 cur = None
             if cur is not None:
-                away = away + 1 if (is_game_page(cur) and not is_unread_dialog(cur)) else 0
+                portrait = getattr(cur, "portrait", True)
+                # 横屏（剧情里的 LIVE）不算回到游戏：字幕 / 曲目信息里也有假名
+                away = away + 1 if (portrait and is_game_page(cur) and not is_unread_dialog(cur)) else 0
                 if away >= LEFT_POLLS:
                     path.unlink(missing_ok=True)
                     logger.warning("未读剧情：剧情页已经不在了（看完 / 手动跳过），继续")
                     return "left"
-                text = dialog_text(cur)
-                if _changed(last_text, text):
-                    if last_text is not None:
-                        logger.info("未读剧情：剧情在推进（%s…）", text[:20])
-                    last_change, last_text = clock(), text
+                if not portrait or not is_commu(cur):
+                    # 过场动画 / 剧情里的 LIVE：剧情自己在播，不算没人推进（最多 PLAYING_MAX_S，之后照常计时）
+                    playing_since = clock() if playing_since is None else playing_since
+                    if clock() - playing_since < PLAYING_MAX_S:
+                        if last_text is not None:
+                            logger.info("未读剧情：过场 / LIVE 在播（没有剧情底栏），不计空闲")
+                        last_change, last_text = clock(), None
+                        continue
+                else:
+                    playing_since = None
+                    text = dialog_text(cur)
+                    if _changed(last_text, text):
+                        if last_text is not None:
+                            logger.info("未读剧情：剧情在推进（%s…）", text[:20])
+                        last_change, last_text = clock(), text
             if clock() - last_change >= limit:
                 break
     try:

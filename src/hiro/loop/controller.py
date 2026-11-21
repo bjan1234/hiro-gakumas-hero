@@ -751,7 +751,7 @@ class HiroController(ProduceController):
             return go
 
         got = unread_story.handle(cancel=tap("キャンセル"), confirm=tap("決定"),
-                                  texts=lambda: [(b.text, b.rect.center.y) for b in screen_texts(device.screenshot())],
+                                  texts=lambda: unread_story.read_screen(device.screenshot()),
                                   snap=device.screenshot)  # fmt: skip
         self._unknown_since = None
         if HiroController.session is not None:

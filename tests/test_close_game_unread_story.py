@@ -216,3 +216,31 @@ def test_kana_heavy_page_counts_but_chinese_does_not():
     assert us.is_game_page(["実力は十分ですね。好成績を狙うには"])  # 没有关键词，但假名多、没有简体字
     assert not us.is_game_page(["表送情感的歌曲", "理解得根快", "我根期待"])
     assert not us.is_game_page(COMMU)
+
+
+def _landscape(items):
+    s = us.Screen(items)
+    s.portrait = False
+    return s
+
+
+def test_in_story_live_does_not_time_out_or_resume(tmp_path):
+    """剧情里插的 LIVE（横屏、没有底栏，字幕里一堆假名）：不计空闲、也不当成回到游戏（用户 11-21）。"""
+    live = _landscape(["きらきらひかるステージのうえで", "作詞 なにがし"])
+    r = Rig(tmp_path, [COMMU] + [live] * 60 + [HOME] * us.LEFT_POLLS, timeout="60")
+    assert r.run() == "left" and r.t > 180  # LIVE 播了 3 分钟也没关游戏
+
+
+def test_portrait_cutscene_without_bar_does_not_time_out(tmp_path):
+    cut = ["……"]
+    r = Rig(tmp_path, [COMMU] + [cut] * 40 + [COMMU] * 30, timeout="60")
+    with pytest.raises(us.UnreadStoryTimeout):
+        r.run()
+    assert r.t >= 40 * us.POLL_S + 60  # 过场播完回到剧情页后才开始计 60 秒
+
+
+def test_cutscene_forever_still_times_out(tmp_path):
+    r = Rig(tmp_path, [COMMU] + [_landscape(["…"])], timeout="60")
+    with pytest.raises(us.UnreadStoryTimeout):
+        r.run()
+    assert us.PLAYING_MAX_S + 60 <= r.t <= us.PLAYING_MAX_S + 60 + 2 * us.POLL_S
