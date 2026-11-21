@@ -254,3 +254,28 @@ def test_finals_retry_gap_threshold_env(monkeypatch):
     monkeypatch.setenv("HIRO_RETRY_GAP_MAX", "1.0")  # 放宽到 100%：65% 的差距也重打
     st, notes, calls = _gap_strategy(monkeypatch, _final_page(846075, 362089, 1080506))
     assert st._finals_retry(None, "r2") is True
+
+
+def test_retry_cap_env(tmp_path, monkeypatch):
+    """用户 11-20：考试失败后最多重试 1 次，别把再挑戦用光。HIRO_RETRY_MAX 只收紧我们的上限，画面「あと N回」照游戏的 3 次算已用。"""
+    st = _finals_strategy(tmp_path, {"main-x": []})
+    monkeypatch.delenv("HIRO_RETRY_MAX", raising=False)
+    assert st.retry_cap() == 3
+    for v, want in (("1", 1), ("0", 0), ("9", 3), ("x", 3)):
+        monkeypatch.setenv("HIRO_RETRY_MAX", v)
+        assert st.retry_cap() == want
+
+
+def test_retry_cap_one_blocks_second_retry(tmp_path, monkeypatch):
+    """上限 1：画面「あと 2回」= 已用 1 次 → 不再点再挑戦（不碰按钮、不点确认框）。"""
+    st = _finals_strategy(tmp_path, {"main-x": []})
+    monkeypatch.setenv("HIRO_RETRY_MAX", "1")
+    import hiro.produce.hif as hif
+
+    monkeypatch.setattr(hif, "screen_retries_left", lambda texts: 2)
+    from types import SimpleNamespace as NS
+
+    notes = []
+    st.s = NS(note=notes.append, notes=[], trace=st.s.trace)
+    assert st._click_retry("qualify-2", object(), []) is None
+    assert notes and "上限 1" in notes[0]

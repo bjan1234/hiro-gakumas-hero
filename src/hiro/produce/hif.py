@@ -1912,7 +1912,19 @@ class HifCore:
     RETRY_CONFIRM_TAPS = 3
     retries_used: dict = {}  # {"free": n, "ticket": n}（进程内，复盘统计）
 
-    MAX_RETRIES_PER_EXAM = 3  # 同一场考试最多再挑戦几次（含续跑前的段）：打法 / 引擎没改时重复挑戦只花时间
+    MAX_RETRIES_PER_EXAM = 3  # 游戏规则：同一场考试最多再挑戦 3 次（画面「あと N回」按这个算已用次数）
+    # 我们自己的上限另由 HIRO_RETRY_MAX 定（retry_cap，缺省同游戏 3 次）：打法 / 引擎没改时重复挑戦只花时间
+
+    def retry_cap(self) -> int:
+        """同一场考试最多再挑戦几次：HIRO_RETRY_MAX（0–3，缺省 3）。用户 11-20：失败后最多重试 1 次，别把次数用光。"""
+        import os
+
+        try:
+            n = int(os.environ.get("HIRO_RETRY_MAX") or self.MAX_RETRIES_PER_EXAM)
+        except ValueError:
+            logger.warning("HIRO_RETRY_MAX=%r 不是整数，按 %d", os.environ.get("HIRO_RETRY_MAX"), self.MAX_RETRIES_PER_EXAM)
+            n = self.MAX_RETRIES_PER_EXAM
+        return max(0, min(n, self.MAX_RETRIES_PER_EXAM))
 
     def _retries_so_far(self, label: str) -> int:
         """本局（同一 trace 基名的各段）已对 label 用过几次再挑戦：数 trace 里的「使用再挑戦」说明。"""
@@ -1945,9 +1957,10 @@ class HifCore:
             logger.warning("%s 画面「あと %d回」超过上限 %d，按 trace 记录计数", label, left, self.MAX_RETRIES_PER_EXAM)
             left = None
         used = self.MAX_RETRIES_PER_EXAM - left if left is not None else self._retries_so_far(label)
-        if used >= self.MAX_RETRIES_PER_EXAM:
-            self.s.note(f"{label} 已再挑戦 {used} 次，到上限 {self.MAX_RETRIES_PER_EXAM}，不再挑戦")
-            logger.warning("%s 已再挑戦 %d 次（上限 %d），不再挑戦", label, used, self.MAX_RETRIES_PER_EXAM)
+        cap = self.retry_cap()
+        if used >= cap:
+            self.s.note(f"{label} 已再挑戦 {used} 次，到上限 {cap}，不再挑戦")
+            logger.warning("%s 已再挑戦 %d 次（上限 %d），不再挑戦", label, used, cap)
             return None
         free_hint = any("無料" in t.text for t in texts)
         device.click(*btn.rect.center)
