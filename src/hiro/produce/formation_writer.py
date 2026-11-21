@@ -170,6 +170,22 @@ def _settled_step2(dev: Device, read_formation, view: str = "step2"):
     return page if page is not None and page.get("view") == view else None
 
 
+SLOT_OPEN_TRIES = 3  # 点支援卡格没打开选择列表时再点几次（DMM 后台点击偶尔丢，11-21）
+
+
+def _open_support_list(dev: Device, center, read_formation, read_list, view: str) -> None:
+    """点支援卡格打开选择列表。没打开、而且画面还是编成页（点击丢了）才再点；已经不在编成页就不再点（免得点进列表里）。"""
+    for attempt in range(SLOT_OPEN_TRIES):
+        dev.click(*center)
+        img, r = _wait(dev, read_list, lambda r: True, tries=6, delay=0.5)
+        if r is not None:
+            return
+        page = read_formation(img)
+        if page is None or page.get("view") != view:
+            return  # 不在编成页了：交给 pick_support 再判（读不到列表会报错停下）
+        logger.info("点支援卡格没打开选择列表，再点一次（第 %d 次）", attempt + 2)
+
+
 def fix_support(dev: Device, plan: dict, *, read_formation, read_list, view: str = "step2") -> list[dict]:
     """第 2 步：读 5 格，和方案不一致的格子逐个点开、选方案的卡、決定，再核对。返回改动记录。
     view：read_formation 的页面类型，开局第 2 步是 step2，编成菜单（hiro.produce.formation_menu）是 formation。"""
@@ -185,8 +201,7 @@ def fix_support(dev: Device, plan: dict, *, read_formation, read_list, view: str
     for slot, target in moves:
         tile = page["slots"][slot]
         logger.info("编成修正：支援卡第 %d 格 %s → %s", slot + 1, tile.get("name") or tile.get("support_card_id") or "认不出", target)
-        dev.click(*tile["center"])
-        dev.sleep(1.5)
+        _open_support_list(dev, tile["center"], read_formation, read_list, view)
         pick_support(dev, target, read_list=read_list)
         img, page2 = _wait(dev, read_formation, lambda p: p.get("view") == view)
         if page2 is None:
