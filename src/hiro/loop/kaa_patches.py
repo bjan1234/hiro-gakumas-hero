@@ -19,6 +19,7 @@
 """
 
 import importlib
+import os
 import time
 from collections.abc import Callable
 
@@ -357,6 +358,36 @@ def _relax_step_indicators() -> None:
             prefab.threshold = STEP_INDICATOR_THRESHOLD
 
 
+from hiro.loop.errors import ResumeBlocked as _ResumeBlocked  # noqa: E402
+
+
+class OpeningDryRunDone(_ResumeBlocked):
+    """HIRO_OPENING_DRY_RUN=1：开局走到第 4 步「プロデュース開始」前停下（演练成功）。"""
+
+
+def _dry_run_start_button(orig):
+    """HIRO_OPENING_DRY_RUN=1（调试用，缺省关）：do_produce 最后 R.Produce.Step4.ButtonProduceStart.wait().click()。
+    wait 照常等到按钮出现（证明第 1–4 步都走通了），click 不点、抛 OpeningDryRunDone。不花 AP、不开局。"""
+
+    class _NoClick:
+        def __init__(self, found):
+            self.found = found
+
+        def click(self, *a, **k):
+            logger.warning("开局演练：走到第 4 步「プロデュース開始」（%s），按 HIRO_OPENING_DRY_RUN 不点，停下", self.found)
+            raise OpeningDryRunDone("开局演练完成：第 1–4 步走通，没点プロデュース開始")
+
+    class DryRunStart:
+        @staticmethod
+        def wait(*a, **k):
+            return _NoClick(orig.wait(*a, **k))
+
+        def __getattr__(self, name):
+            return getattr(orig, name)
+
+    return DryRunStart()
+
+
 def apply() -> None:
     import importlib
 
@@ -401,5 +432,10 @@ def apply() -> None:
     from hiro.loop import kaa_usage
 
     _relax_step_indicators()  # 开局步骤条阈值 0.8 → 0.7（DMM 小窗口）
+    if os.environ.get("HIRO_OPENING_DRY_RUN") == "1":
+        from kaa.tasks import R
+
+        R.Produce.Step4.ButtonProduceStart = _dry_run_start_button(R.Produce.Step4.ButtonProduceStart)
+        logger.warning("HIRO_OPENING_DRY_RUN=1：开局只演练到第 4 步，不点プロデュース開始")
     kaa_usage.install()  # 最后挂：数的是补丁之后还在跑的 KAA 代码（去 KAA 第 0 步，只记不改行为）
     logger.info("已启用 KAA 补丁：locate_idol 改为上滑翻页；授業换卡放宽卡片定位、阶段 2 不换保护卡；H.I.F P 道具按实测位置点击；破弃对话框只点キャンセル")

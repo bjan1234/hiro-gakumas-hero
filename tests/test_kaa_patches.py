@@ -709,3 +709,31 @@ def test_step_indicator_threshold_relaxed():
 
     kaa_patches._relax_step_indicators()
     assert all(getattr(R.Produce, n).threshold == kaa_patches.STEP_INDICATOR_THRESHOLD for n in kaa_patches.STEP_INDICATORS)
+
+
+def test_opening_dry_run_waits_then_refuses_click():
+    """HIRO_OPENING_DRY_RUN：等到第 4 步开始按钮（证明前面走通），click 不点、抛 OpeningDryRunDone（ResumeBlocked）。"""
+    from hiro.loop import kaa_patches
+    from hiro.loop.errors import ResumeBlocked
+
+    calls = []
+
+    class Orig:
+        @staticmethod
+        def wait(*a, **k):
+            calls.append("wait")
+            return "match"
+
+    btn = kaa_patches._dry_run_start_button(Orig)
+    got = btn.wait()
+    assert calls == ["wait"]
+    with pytest.raises(ResumeBlocked):
+        got.click()
+
+
+def test_go_home_on_opening_step_taps_toolbar_home_not_next():
+    """11-21：开局停在第 2 步时「先回首页」点了灰色的次へ。开局准备页认出来，只点工具栏首页。"""
+    from hiro.loop.resume import is_opening_step
+
+    assert is_opening_step(["2サポート選択", "3", "4"]) and is_opening_step(["サポートカードを選択してください"])
+    assert not is_opening_step(["プロデュース", "ホーム", "コンテスト"])
