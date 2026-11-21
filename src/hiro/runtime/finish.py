@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 
+from hiro.loop import photo_pick
 from hiro.loop import resume_rules as rr
 from hiro.runtime import nav
 from hiro.runtime.loop import DONE, Outcome
@@ -125,6 +126,9 @@ def finish_produce_end(rt, *, go_home: bool = False, timeout: float = FINISH_TIM
                 nav.tap_match(rt, m)
             else:
                 rt.device.tap(*t["home_icon"])  # 左下角首页图标；绝不点「本戦へ」
+            return None
+        if photo_pick.should_wait(texts):
+            photo_pick.wait(texts=lambda: _texts(rt.screen.shot()))  # HIRO_PHOTO_PICK=stop：停下等人自己选照片（用户 11-21）
             return None
         if any("メモリーにするフォト" in s for s in texts):
             nxt = first(f, ("次へ",))
