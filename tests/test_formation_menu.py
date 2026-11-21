@@ -258,3 +258,10 @@ def test_submenu_item_tolerates_ocr_misread():
     assert _is_submenu_item("プロデュース編成") and _is_submenu_item("プロデュース綿成")
     assert not _is_submenu_item("プロデュース編成・スキルカード") and not _is_submenu_item("プロデュース")
     assert _is_panel("プロデュース編成・スキルカード") and _is_panel("プロデュース綿成・スキルカード") and not _is_panel("プロデュース綿成")
+
+
+def test_texts_fix_hen_misread():
+    from hiro.produce.formation_menu import _texts
+
+    got = _texts(None, lambda img: [("メモリー綿成", 1.0, (0, 0, 1, 1)), ("縞成詳細", 1.0, (0, 0, 1, 1))])
+    assert [t for t, _ in got] == ["メモリー編成", "編成詳細"]

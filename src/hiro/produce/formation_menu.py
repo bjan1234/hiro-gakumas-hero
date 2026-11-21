@@ -42,8 +42,12 @@ WAIT_TRIES, WAIT_GAP = 12, 0.5
 
 
 # ---------------------------------------------------------------- 读页面
+# 窗口小时（DMM 541x961，11-21）OCR 常把「編」读成「綿」「縞」：菜单里只会出现「編」（編成 / 編成詳細），读到就改回来
+OCR_FIX = str.maketrans({"綿": "編", "縞": "編"})
+
+
 def _texts(img, ocr) -> list[tuple[str, tuple]]:
-    return [(t.replace(" ", ""), tuple(b)) for t, _c, b in ocr(img)]
+    return [(t.replace(" ", "").translate(OCR_FIX), tuple(b)) for t, _c, b in ocr(img)]
 
 
 def _find(texts, word: str, *, y_min: int = 0, y_max: int = 1280):
