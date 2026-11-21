@@ -39,6 +39,7 @@ MENU_MARGIN = 6.0  # 大图标认卡：第一名领先这么多也算认出（82
 MENU_SCORE_MAX = 30.0
 SET_MAX_TAPS = 20
 WAIT_TRIES, WAIT_GAP = 12, 0.5
+ARROW_RETRIES = 2  # 翻编号的箭头点了没反应时再点几次
 
 
 # ---------------------------------------------------------------- 读页面
@@ -224,8 +225,18 @@ class Menu:
             cur = m["number"]
             if cur == number:
                 return m
-            self.dev.click(*ARROWS["next" if number > cur else "prev"])
-            _, m = self.wait_menu(lambda x, cur=cur: x["number"] != cur, why=f"编成号从 {cur} 变")
+            for attempt in range(ARROW_RETRIES + 1):
+                # DMM 后台点击偶尔丢一下（11-21：12→18 都翻了，18 这一下没反应）：编号没变就再点，最多 ARROW_RETRIES 次
+                self.dev.click(*ARROWS["next" if number > cur else "prev"])
+                try:
+                    _, m = self.wait_menu(lambda x, cur=cur: x["number"] != cur, why=f"编成号从 {cur} 变")
+                    break
+                except FormationWriteError:
+                    if attempt == ARROW_RETRIES:
+                        raise
+                    _, m = self.wait_menu(why="プロデュース編成页")
+                    if m["number"] != cur:
+                        break
         raise FormationWriteError(f"点了 {SET_MAX_TAPS} 次箭头还没到编成 {number}")
 
 

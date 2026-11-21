@@ -172,6 +172,22 @@ def test_ensure_set_stuck_arrow_stops(game, monkeypatch):
         fm.Menu(dev).ensure_set(21)
 
 
+def test_ensure_set_retaps_dropped_arrow(game, monkeypatch):
+    """11-21 DMM：翻号时有一下点击丢了：编号没变就再点（最多 ARROW_RETRIES 次）。"""
+    g, dev = game
+    monkeypatch.setattr(fm, "WAIT_TRIES", 2)
+    real, dropped = g.click, []
+
+    def flaky(x, y):
+        if (x, y) == fm.ARROWS["next"] and g.number == 2 and not dropped:
+            dropped.append(1)
+            return
+        real(x, y)
+
+    dev.click = flaky
+    assert fm.Menu(dev).ensure_set(4)["number"] == 4 and dropped == [1]
+
+
 # ---------------------------------------------------------------- 写入 + 回读
 PLAN = {"memory": {"set": 20, "chosen": [{"card_id": f"p_card-02-men-2_00{i}", "cell": [i, 0], "key": "k"} for i in range(1, 5)]},
         "support": {"set": 20, "own": [{"support_card_id": f"s_card-{i}"} for i in range(5)]}}  # fmt: skip
