@@ -50,6 +50,19 @@ def _find(texts, word: str, *, y_min: int = 0, y_max: int = 1280):
     return next((b for t, b in texts if word in t and y_min <= b[1] <= y_max), None)
 
 
+def _is_submenu_item(t: str) -> bool:
+    """子菜单里的「プロデュース編成」。OCR 会把「編」读成「綿」（11-21 DMM：「プロデュース綿成」，等了一轮就停下），
+    所以按「プロデュース」开头、两个字结尾、不带スキルカード 认。"""
+    t = t.replace(" ", "")
+    return t.startswith("プロデュース") and len(t) == 8 and t.endswith("成")
+
+
+def _is_panel(t: str) -> bool:
+    """面板按钮「プロデュース編成・スキルカード」（同样容忍「編」读错）。"""
+    t = t.replace(" ", "")
+    return t.startswith("プロデュース") and "スキル" in t
+
+
 def _center(b) -> tuple[int, int]:
     return (b[0] + b[2]) // 2, (b[1] + b[3]) // 2
 
@@ -147,8 +160,8 @@ class Menu:
         for _ in range(WAIT_TRIES * 2):
             if (m := read_menu(img, texts)) is not None:
                 return m
-            item = next((b for t, b in texts if t == "プロデュース編成"), None)  # 子菜单里的那一项（完全等于这几个字）
-            panel = next((b for t, b in texts if "プロデュース編成" in t and t != "プロデュース編成"), None)  # 面板按钮「…・スキルカード」
+            item = next((b for t, b in texts if _is_submenu_item(t)), None)  # 子菜单里的那一项（只有这几个字）
+            panel = next((b for t, b in texts if _is_panel(t)), None)  # 面板按钮「…・スキルカード」
             if item is not None:
                 self.dev.click(*_center(item))
                 return self.wait_menu(why="プロデュース編成页")[1]

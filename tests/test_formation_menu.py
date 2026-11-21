@@ -249,3 +249,12 @@ def test_open_taps_submenu_item_on_device_frame(monkeypatch):
     dev = Device(shoot=lambda: img, click=click, swipe=lambda *a: None, ocr=_ocr, sleep=lambda s: None)
     fm.Menu(dev).open()
     assert len(clicks) == 1 and abs(clicks[0][0] - 198) < 20 and abs(clicks[0][1] - 579) < 20
+
+
+def test_submenu_item_tolerates_ocr_misread():
+    """11-21 DMM：子菜单「プロデュース編成」被读成「プロデュース綿成」。"""
+    from hiro.produce.formation_menu import _is_panel, _is_submenu_item
+
+    assert _is_submenu_item("プロデュース編成") and _is_submenu_item("プロデュース綿成")
+    assert not _is_submenu_item("プロデュース編成・スキルカード") and not _is_submenu_item("プロデュース")
+    assert _is_panel("プロデュース編成・スキルカード") and _is_panel("プロデュース綿成・スキルカード") and not _is_panel("プロデュース綿成")
