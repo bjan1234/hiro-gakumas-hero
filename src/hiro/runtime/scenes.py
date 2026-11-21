@@ -65,12 +65,18 @@ def live_start(rt, frame) -> bool:
     img = frame.img
     if img is None or img.shape[1] <= img.shape[0]:
         return False
-    tap = live_start_tap(img, frame.texts)
-    if tap is None:
-        return False
-    logger.info("横屏 LIVE 曲目页：点 %s 开始演出", tap)
-    rt.device.tap(*tap)
-    return True
+    from hiro.loop import live_mode
+
+    def items(f) -> list:
+        return [(t.text, tuple(t.rect.center)) for t in f.texts]
+
+    def shoot():
+        f = rt.screen.shot()
+        return f.img.shape[1], f.img.shape[0], items(f)
+
+    # 曲目页点开始 / HIRO_LIVE=watch 开始前停下等人 / pick·auto 点 SKIP（hiro.loop.live_mode，用户 11-21）
+    done = live_mode.driver().step(img.shape[1], img.shape[0], items(frame), lambda x, y: rt.device.tap(x, y), shoot)
+    return done is not None and done != "watched"
 
 
 def commu_skip(rt, frame) -> bool:

@@ -30,6 +30,8 @@
 #   -UnreadTimeout  stop 时剧情框文字多少秒没变（没人推进剧情）就关游戏（缺省 60；HIRO_UNREAD_TIMEOUT_S）。等人文件 %LOCALAPPDATA%\hiro\waiting-for-user.txt，删掉就跳过这段继续
 #   -PhotoPick   LIVE 后的选回忆照片页：auto（缺省，用第一张）/ stop（暂停等你自己选，选完自动继续；HIRO_PHOTO_PICK，见 hiro.loop.photo_pick）
 #   -PhotoTimeout  stop 时多少秒没人管就用默认的第一张（缺省 600；HIRO_PHOTO_TIMEOUT_S）
+#   -Live        培育结束后的 LIVE：play（缺省，照旧播完）/ watch（开始前停下等你看，照片自己选，没人点开始就关游戏）/ pick（跳过，照片自己选）/ auto（跳过，照片用默认）；HIRO_LIVE，见 hiro.loop.live_mode
+#   -LiveTimeout watch 时曲目页多少秒没人点开始就关游戏（缺省 60；HIRO_LIVE_TIMEOUT_S）
 #
 # 为什么是这些缺省（Windows 实测，2026-11-07–09，22 局 3 次夺冠）：
 #   HIRO_SCREENSHOT=adb：Windows + MuMu 6 用 nemu_ipc 时截图正常但点击送不到游戏（kaa_env 缺省已是 adb，这里写明）。
@@ -60,7 +62,9 @@ param(
     [ValidateSet("skip", "stop")][string]$UnreadStory = "skip",
     [int]$UnreadTimeout = 60,
     [ValidateSet("auto", "stop")][string]$PhotoPick = "auto",
-    [int]$PhotoTimeout = 600
+    [int]$PhotoTimeout = 600,
+    [ValidateSet("play", "watch", "pick", "auto")][string]$Live = "play",
+    [int]$LiveTimeout = 60
 )
 $ErrorActionPreference = "Stop"
 # DMM 版游戏以管理员身份运行，普通权限的进程截图可以、点击会被系统挡掉（UIPI）：不是管理员就带着同样的参数提权重开
@@ -110,6 +114,8 @@ if ($PSBoundParameters.ContainsKey("UnreadStory") -or -not $env:HIRO_UNREAD_STOR
 if ($PSBoundParameters.ContainsKey("UnreadTimeout") -or -not $env:HIRO_UNREAD_TIMEOUT_S) { $env:HIRO_UNREAD_TIMEOUT_S = "$UnreadTimeout" }
 if ($PSBoundParameters.ContainsKey("PhotoPick") -or -not $env:HIRO_PHOTO_PICK) { $env:HIRO_PHOTO_PICK = $PhotoPick }
 if ($PSBoundParameters.ContainsKey("PhotoTimeout") -or -not $env:HIRO_PHOTO_TIMEOUT_S) { $env:HIRO_PHOTO_TIMEOUT_S = "$PhotoTimeout" }
+if ($PSBoundParameters.ContainsKey("Live") -or -not $env:HIRO_LIVE) { $env:HIRO_LIVE = $Live }
+if ($PSBoundParameters.ContainsKey("LiveTimeout") -or -not $env:HIRO_LIVE_TIMEOUT_S) { $env:HIRO_LIVE_TIMEOUT_S = "$LiveTimeout" }
 if ($NoSim) {
     $env:HIRO_SIM = "0"
     Remove-Item Env:HIRO_EXAM_STATE_SOURCE -ErrorAction SilentlyContinue

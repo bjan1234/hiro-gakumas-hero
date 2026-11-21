@@ -79,6 +79,11 @@ def live_start_tap(img, boxes) -> tuple[int, int] | None:
     return None
 
 
+def _live_items(boxes) -> list:
+    """ocr_boxes 的 (文字, 置信度, (x1, y1, x2, y2)) → live_mode 用的 (文字, 中心)。"""
+    return [(t, ((b[0] + b[2]) // 2, (b[1] + b[3]) // 2)) for t, _, b in boxes]
+
+
 class HiroController(ProduceController):
     session: Session | None = None
     _landscape = None  # LandscapeGuard，首次 _update 时创建  # 由 run_hif 注入（KAA 在 produce.py 里用类名实例化，拿不到实例参数）
@@ -262,14 +267,20 @@ class HiroController(ProduceController):
 
         from hiro.produce.ops import ocr_boxes
 
+        from hiro.loop import live_mode
+
+        def shoot():
+            im = device.screenshot()
+            return im.shape[1], im.shape[0], _live_items(ocr_boxes(im))
+
         try:
-            tap = live_start_tap(img, ocr_boxes(img))
+            items = _live_items(ocr_boxes(img))
         except Exception as e:  # noqa: BLE001  OCR 出错不能打断等待
             logger.debug("横屏 OCR 出错：%r", e)
             return
-        if tap is not None:
-            logger.info("横屏 LIVE 开始前的曲目页：点 %s 开始演出", tap)
-            device.click(*tap)
+        # 曲目页点开始 / HIRO_LIVE=watch 开始前停下等人 / pick·auto 点 SKIP（hiro.loop.live_mode，用户 11-21）
+        done = live_mode.driver().step(img.shape[1], img.shape[0], items, lambda x, y: device.click(x, y), shoot)
+        if done is not None and done != "watched":
             self._count_taps(1)
 
     @staticmethod

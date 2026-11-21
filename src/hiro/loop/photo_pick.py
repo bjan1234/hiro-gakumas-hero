@@ -32,6 +32,11 @@ _auto_until = [0.0]
 
 
 def mode(env: dict | None = None) -> str:
+    """HIRO_LIVE 是 watch / pick / auto 时由它定（hiro.loop.live_mode.photo_override），否则看 HIRO_PHOTO_PICK。"""
+    from hiro.loop import live_mode
+
+    if (forced := live_mode.photo_override(env)) is not None:
+        return forced
     v = ((env if env is not None else os.environ).get("HIRO_PHOTO_PICK") or "auto").strip().lower()
     if v not in ("auto", "stop"):
         logger.warning("HIRO_PHOTO_PICK=%r 不认识（auto / stop），按 auto", v)
