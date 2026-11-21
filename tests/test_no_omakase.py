@@ -67,7 +67,7 @@ def _fake_templates(monkeypatch, next_enabled: bool):
     """第 2 步页面：步骤条在；「次へ」亮不亮由 next_enabled 定。"""
     import hiro.vision.ui_templates as ui
 
-    monkeypatch.setattr(ui, "tpl", lambda name: NS(exists=lambda img: True))
+    monkeypatch.setattr(ui, "tpl", lambda name: NS(exists=lambda img, **kw: True))
     monkeypatch.setattr(ui, "find_enabled", lambda name, img: object() if next_enabled else None)
 
 
