@@ -252,7 +252,7 @@ def _rent_step2(orig):
 
         from hiro.vision.ui_templates import find_enabled, tpl
 
-        if not tpl("Produce.TextStepIndicator2").exists(device.screenshot()):
+        if not tpl("Produce.TextStepIndicator2").exists(device.screenshot(), threshold=STEP_INDICATOR_THRESHOLD):
             return False
         if set_number is not None:
             select_set(set_number)
@@ -342,6 +342,21 @@ def _prep_progress(fn, name: str):
     return wrapped
 
 
+# 开局第 1–4 步左上角的步骤条（「2.サポート選択」等）：DMM 小窗口（541x961 放大）时正确的那个只有 0.77 分，
+# 原阈值 0.8 认不出，KAA 一直等第 2 步（11-21 麻央 卡在第 2 步 5 分钟）；别的步骤条在同一帧上最高 0.56
+STEP_INDICATOR_THRESHOLD = 0.7
+STEP_INDICATORS = ("TextStepIndicator1", "TextStepIndicator2", "TextStepIndicator3", "TextStepIndicator4Or2")
+
+
+def _relax_step_indicators() -> None:
+    from kaa.tasks import R
+
+    for name in STEP_INDICATORS:
+        prefab = getattr(R.Produce, name, None)
+        if prefab is not None:
+            prefab.threshold = STEP_INDICATOR_THRESHOLD
+
+
 def apply() -> None:
     import importlib
 
@@ -385,5 +400,6 @@ def apply() -> None:
     win_desktop.apply()  # DMM 后台点击：桌面暂时不可用（UAC / 锁屏）时等它恢复，不让主循环连崩
     from hiro.loop import kaa_usage
 
+    _relax_step_indicators()  # 开局步骤条阈值 0.8 → 0.7（DMM 小窗口）
     kaa_usage.install()  # 最后挂：数的是补丁之后还在跑的 KAA 代码（去 KAA 第 0 步，只记不改行为）
     logger.info("已启用 KAA 补丁：locate_idol 改为上滑翻页；授業换卡放宽卡片定位、阶段 2 不换保护卡；H.I.F P 道具按实测位置点击；破弃对话框只点キャンセル")
