@@ -16,8 +16,8 @@ def hiro_pack(monkeypatch, tmp_path):
 
     for mode in ("hajime", "nia"):
         pack = {"format": "gkbench.guides.v1", "schema": 1, "mode": mode, "version": "test", "entries": guides_hiro.entries()}
-        (tmp_path / f"{mode}-test.json").write_text(json.dumps(pack, ensure_ascii=False))
-    (tmp_path / "manifest.json").write_text(json.dumps({"schema": 1, "packs": {m: {"name": f"{m}-test"} for m in ("hajime", "nia")}}))
+        (tmp_path / f"{mode}-test.json").write_text(json.dumps(pack, ensure_ascii=False), encoding="utf-8")
+    (tmp_path / "manifest.json").write_text(json.dumps({"schema": 1, "packs": {m: {"name": f"{m}-test"} for m in ("hajime", "nia")}}), encoding="utf-8")
     monkeypatch.setenv("HIRO_GUIDES_DIR", str(tmp_path))
     guides._load_pack.cache_clear()
     yield

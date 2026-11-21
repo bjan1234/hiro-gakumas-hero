@@ -541,6 +541,41 @@ class ProduceDeciders:
         return Decision(Action.produce_next(o["option"], attr=o.get("attr"), sp=sp), "状态不全，按固定顺序兜底", "fallback", 0.3, cands,
                         warnings=["ProduceState 字段不全，没有预演"], decider="action_select")  # fmt: skip
 
+    def _idol(self, state: GameState, ps: ProduceState | None = None) -> str | None:
+        """当前偶像卡 id（去掉 skin 前缀）：ProduceState > state.produce > profile。"""
+        idol = (ps.idol_card_id if ps is not None else None) or (state.produce or {}).get("idol_card_id") \
+            or (self.profile.idol_id if self.profile else None)
+        return idol.replace("i_card-skin-", "i_card-") if idol else None
+
+    def _upgrade_guide(self, state: GameState) -> dict:
+        """偶像卡攻略 card_upgrade 条目 + 流派循环件 → {card_id: 分}（条目的 weight / 100，统计条目用排行榜里的占比；循环件至少 0.5）。"""
+        from hiro.brain import flows, guides
+        from hiro.brain.idol_know import lookup
+
+        idol, out = self._idol(state), {}
+        for it in guides.merge(lookup((state.produce or {}).get("mode"), idol, "card_upgrade")):
+            if it.side == "prefer":
+                f = it.fields
+                out[it.id] = float(f["weight"]) / 100 if f.get("weight") is not None else float((f.get("stat") or {}).get("share") or 0)
+        for cid in flows.loop_parts(idol):
+            out[cid] = max(out.get(cid, 0.0), 0.5)
+        return out
+
+    def _hif_other(self, state: GameState, ps: ProduceState | None = None) -> bool:
+        """H.I.F、开了 HIRO_HIF_GUIDES、偶像不是广（idol_know.hif_other）。"""
+        from hiro.brain.idol_know import hif_other
+
+        mode = (ps.mode if ps is not None else None) or (state.produce or {}).get("mode")
+        return hif_other(mode, self._idol(state, ps))
+
+    def _cull(self, state: GameState, cards: list[dict], op: str, **kw) -> list[dict]:
+        """换 / 删的顺序：广照 cull_pool；H.I.F 里别的偶像（_hif_other）按自己的流派 + 攻略的删卡条目（_flow_delete_pool，同初 / N.I.A），
+        换卡时去掉トラブル（游戏不让换）。"""
+        if not self._hif_other(state):
+            return cull_pool(cards, op, **kw)
+        pool = _flow_delete_pool(cards, self._idol(state), (state.produce or {}).get("mode"))
+        return [c for c in pool if c["flow_tier"] > 0] if op == "change" else pool
+
     # ---------------------------------------------------------------- 三选一
     def select_card(self, state: GameState, *, change: bool = False) -> Decision:
         from hiro.state.context import for_llm, preview_card_pick, situation, to_previews
@@ -585,6 +620,9 @@ class ProduceDeciders:
 
         if HAJIME_NIA_CARD_PICK and not change and _family(ps.mode) in (HAJIME, NIA):
             # 初 / N.I.A 不按 H.I.F 的必拿表刷新 / 禁用、不进 H.I.F 提示词的 LLM（11-17 实机：为 せのびの魔法 把每页刷新 / 禁用用光）
+            return out(self._select_card_hajime_nia(ps, raw, known, copies if counted or seen else None, budget, cands))
+        if self._hif_other(state, ps):
+            # H.I.F 里不是广的偶像（HIRO_HIF_GUIDES=1，用户 11-21）：按自己的流派 + 偶像卡攻略选，不按广的必拿表刷新 / 禁用
             return out(self._select_card_hajime_nia(ps, raw, known, copies if counted or seen else None, budget, cands))
         for i in known:
             know = YARUKI_CARDS.get(raw[i]["card_id"])
@@ -703,6 +741,8 @@ class ProduceDeciders:
         from hiro.state.modes import HAJIME, NIA, family as _family
 
         other = _family(ps.mode) in (HAJIME, NIA)  # 初 / N.I.A：没有 せのびの魔法 倾斜，也没有第 5 天确定强化 / 本战
+        if not finals and not other and self._hif_other(state, ps):
+            other = True  # H.I.F 里不是广的偶像（HIRO_HIF_GUIDES=1）：不为 せのびの魔法 倾斜刷新
         if not finals and not other and SENOBI not in ({c.card_id for c in ps.deck} | self.picked_musts):
             # 总控 2026-11-02（决策-11）：本战牌组来自选拔回忆，せのびの魔法 必须在选拔里拿到（缺它 R1 专家 −11.9 万）。
             # 还没拿到时刷新向它倾斜：每页最多 2 次、不留预留。禁用次数少（整局 3 次），不跟着倾斜：仍每页 1 次、照常留预留，
@@ -1496,9 +1536,12 @@ class ProduceDeciders:
         warn = [f"{sum(1 for c in cards if not c.get('card_id'))} 格没认出，不选"] if any(not c.get("card_id") for c in cards) else []
         finals = (state.produce or {}).get("mode") == FINALS
         counts, size = self._deck_counts(state)
-        pool = cull_pool(cards, "delete", counts=counts, finals=finals, deck_size=size)
+        pool = self._cull(state, cards, "delete", counts=counts, finals=finals, deck_size=size)
         lean = self.consult_delete_lean
-        if lean:
+        if lean and pool and "flow_tier" in pool[0]:
+            self.consult_delete_lean = False  # 流派删卡池本来就只有明确该删的几档
+            lean = False
+        elif lean:
             # 选拔相談（用户 2026-11-03 删牌顺序）：眠気 > 非一次性不带再動 > 初始卡 / 基础卡 > 不好用的其余
             self.consult_delete_lean = False
             pool = [c for c in pool if qualify_consult_deletable(c["card_id"], c.get("upgrade") or 0)]
@@ -1511,6 +1554,10 @@ class ProduceDeciders:
                 why = "卡格里只剩核心 / 保护卡 / 定制卡（或都没认出）"
             return Decision(cancel, f"{why}：取消", "rule", 0.8 if lean else 0.7, warnings=warn, decider="remove_card")
         best = pool[0]
+        if "flow_tier" in best:
+            return Decision(Action(ActionKind.REMOVE_CARD, {"card_id": best["card_id"], "index": best.get("index"), "upgrade": best.get("upgrade")}),
+                            f"删{FLOW_CULL[best['flow_tier']]} {_card_label(best)}（按流派 + 偶像卡攻略）", "rule", 0.85, warnings=warn,
+                            decider="remove_card")  # fmt: skip
         kind = CULL_TIERS.get(cull_tier(best["card_id"]), "价值最低的卡")
         if finals and cull_tier(best["card_id"]) >= 2 and best["card_id"] in FINALS_DELETE:
             kind = "本战模拟删除收益最高的牌"
@@ -1550,9 +1597,14 @@ class ProduceDeciders:
 
         from hiro.state.knowledge import SMALL_DECK_CORE
 
+        # H.I.F 里不是广的偶像（HIRO_HIF_GUIDES=1）：广的强化顺序表对她没用，按偶像卡攻略的 card_upgrade 条目（排行榜里强化过的占比）+ 循环件
+        guided = self._upgrade_guide(state) if self._hif_other(state) else None
+
         def worth(cid: str) -> bool:
             """值得花强化的卡：强化顺序表 / 必拿 / S·A / 小牌组核心 / 偶像固有卡。基础卡、可复用非核心、冲突牌不强化
             （第十二局第 12 天相談：核心卡都已强化或没认出，花 100P 强化了 距離感の基本；小牌组下它应该被删）。"""
+            if guided is not None:
+                return (cid in guided or "-ido-" in cid) and not (_is_basic(cid) or _is_trouble_card(cid))
             k = YARUKI_CARDS.get(cid) or {}
             return (cid in UPGRADE_ORDER or k.get("must") or k.get("tier") in ("S", "A") or cid in SMALL_DECK_CORE or "-ido-" in cid) and not (
                 _is_basic(cid) or unwanted(cid))  # fmt: skip
@@ -1575,12 +1627,14 @@ class ProduceDeciders:
 
         def score(c: dict) -> tuple:
             cid = c["card_id"]
+            if guided is not None:
+                return (guided.get(cid, 1.0 if "-ido-" in cid else 0.0), card_value(cid), -c.get("index", 0))
             order = len(UPGRADE_ORDER) - UPGRADE_ORDER.index(cid) if cid in UPGRADE_ORDER else 0
             return (not is_conflict(cid), order, _card_priority(cid), card_value(cid), -c.get("index", 0))
 
         best = max(pool, key=score)
         args = {"card_id": best["card_id"], "index": best.get("index"), "upgrade": 0}
-        why = "UPGRADE_ORDER" if best["card_id"] in UPGRADE_ORDER else "社区评级 / 卡牌价值"
+        why = "偶像卡攻略的强化占比" if guided is not None else "UPGRADE_ORDER" if best["card_id"] in UPGRADE_ORDER else "社区评级 / 卡牌价值"
         return Decision(Action(ActionKind.ENHANCE_CARD, args), f"强化 {_card_label(best)}（按 {why}）", "rule", 0.9, decider="enhance_card")
 
     @staticmethod
@@ -1719,16 +1773,17 @@ class ProduceDeciders:
         if can_delete:
             cards = [{"index": i, "card_id": c.card_id, "upgrade": c.upgrade, "customized": c.customized} for i, c in enumerate(ps.deck)]
             counts, size = self._deck_counts(state)
-            pool = cull_pool(cards, "delete", counts=counts, finals=True, deck_size=size)
+            pool = self._cull(state, cards, "delete", counts=counts, finals=True, deck_size=size)
 
         def delete_first() -> Decision:
             c = pool[0]
-            tier = cull_tier(c["card_id"])
+            tier = c.get("flow_tier", cull_tier(c["card_id"]))
+            label = FLOW_CULL[tier] if "flow_tier" in c else CULL_TIERS.get(tier, "")
             return done(Action(ActionKind.SHOP_BUY, {"service": "delete", "card_index": c["index"]}),
-                        f"删{CULL_TIERS.get(tier, '')} {_card_label(c)}（{delete['price']}P；换 / 删同序，用户 2026-11-03"
+                        f"删{label} {_card_label(c)}（{delete['price']}P；换 / 删同序，用户 2026-11-03"
                         + (f"；本战牌组 {len(ps.deck)} 张 > {FINALS_DECK_TARGET}，按模拟删除收益（A5）" if tier >= 3 else "") + "）")  # fmt: skip
 
-        if pool and cull_tier(pool[0]["card_id"]) == 0:
+        if pool and pool[0].get("flow_tier", cull_tier(pool[0]["card_id"])) == 0:
             return delete_first()
         owned = {c.card_id for c in ps.deck}
         for it in sorted(_items(shelf, "card"), key=lambda it: -_card_priority(it.get("card_id"))):
@@ -1922,7 +1977,7 @@ class ProduceDeciders:
         if d is not None:
             return d
         # 2'. 刷新（免费、有次数）：当前货架上值得买的已经买完，还有饮料空位 / 还缺必拿卡、预算够一瓶饮料 → 刷新再看
-        missing = [c for c, k in YARUKI_CARDS.items() if k.get("must") and c not in owned] if deck_known else []
+        missing = [c for c, k in YARUKI_CARDS.items() if k.get("must") and c not in owned] if deck_known and not self._hif_other(state, ps) else []
         if budget >= 50 and (self._consult_free_slots(state, ps) > 0 or missing) and self._consult_can_reroll(state, ps, shelf, v):
             v["last"] = None
             why = f"免费刷新（あと {state.page_fields.get('rerolls_left')} 回）：当前货架上没有值得买的饮料 / 核心卡了" + (f"，还缺 {len(missing)} 张必拿卡" if missing else "")
@@ -1934,11 +1989,13 @@ class ProduceDeciders:
             if deck_known:
                 cards = [{"index": i, "card_id": c.card_id, "upgrade": c.upgrade, "customized": c.customized} for i, c in enumerate(ps.deck)]
                 counts, _ = self._deck_counts(state)
-                pool = [c for c in cull_pool(cards, "delete", counts=counts) if qualify_consult_deletable(c["card_id"], c["upgrade"])]
+                pool = self._cull(state, cards, "delete", counts=counts)
+                if pool and "flow_tier" not in pool[0]:
+                    pool = [c for c in pool if qualify_consult_deletable(c["card_id"], c["upgrade"])]
                 # 原来「删初始卡不挤掉核心卡强化」的保护已去掉（用户 2026-11-03：饮料和删牌优先于强化；R2 模拟 せのび 不强化 +0.1 万 ± 1.4 万，不反对）
                 if pool:
                     c = pool[0]
-                    label = f"删{CULL_TIERS[cull_tier(c['card_id'])]} {_card_label(c)}"
+                    label = f"删{FLOW_CULL[c['flow_tier']] if 'flow_tier' in c else CULL_TIERS[cull_tier(c['card_id'])]} {_card_label(c)}"
                     return go(Action(ActionKind.SHOP_BUY, {"service": "delete", "card_index": c["index"]}), label, delete["price"],
                               "删卡（眠気 > 非一次性不带再動 > 初始卡 > 不好用的牌）", service="delete", price_before=delete["price"])  # fmt: skip
             else:
@@ -2272,7 +2329,11 @@ class ProduceDeciders:
         from hiro.state.produce import FINALS
 
         counts, _ = self._deck_counts(state)
-        worst = _removable(cards, counts, finals=(state.produce or {}).get("mode") == FINALS)
+        if self._hif_other(state):
+            flow_pool = self._cull(state, cards, "change")
+            worst = (card_value(flow_pool[0]["card_id"], flow_pool[0].get("upgrade") or 0), flow_pool[0]) if flow_pool else None
+        else:
+            worst = _removable(cards, counts, finals=(state.produce or {}).get("mode") == FINALS)
         if counts is None and any(c.get("card_id") for c in cards):
             warn.append("牌组没记账：保护卡（えいえいおー 等）所有副本都不换（对话框只显示一屏，张数不可信）")
         if worst is None:
@@ -2290,6 +2351,9 @@ class ProduceDeciders:
             return Action(ActionKind.CHANGE_CARD, {"stage": 2, "remove_card_id": c["card_id"], "remove_index": c.get("index"),
                                                    "remove_upgrade": c.get("upgrade")})  # fmt: skip
 
+        if "flow_tier" in card:
+            return Decision(act(card), f"换出{FLOW_CULL[card['flow_tier']]} {_card_label(card)}（按流派 + 偶像卡攻略）", "rule", 0.8, warnings=warn,
+                            decider="card_change")  # fmt: skip
         tier = CULL_TIERS.get(cull_tier(card["card_id"]), "")
         rule = Decision(act(card), f"换出{tier} {_card_label(card)}（价值 {value:g}；换 / 删同序，用户 2026-11-03；保护卡不换）", "rule", 0.8,
                         warnings=warn, decider="card_change")  # fmt: skip
@@ -3412,7 +3476,7 @@ def _signature_buff(idol_card_id: str | None) -> str | None:
     from hiro.state.context import catalog
 
     try:
-        return SIGNATURE_BUFF.get(catalog().one("IdolCard", idol_card_id).get("examEffectType"))
+        return SIGNATURE_BUFF.get(catalog().one("IdolCard", (idol_card_id or "").replace("i_card-skin-", "i_card-")).get("examEffectType"))
     except Exception:
         return None
 

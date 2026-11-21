@@ -305,8 +305,9 @@ def lookup(*, mode: str | None, difficulty: str | None, idol_card: str | None, d
     return select(pool_entries, mode=mode, difficulty=difficulty, idol_card=idol_card, decision=decision, pool=pool, ctx=ctx)
 
 
-def fetch(base: str = BASE_URL, modes=("hajime", "nia"), timeout: float = 30.0) -> dict:
-    """下载 manifest 和各模式的发布包到缓存目录（版本没变就不下）。返回 {mode: version 或错误}。"""
+def fetch(base: str = BASE_URL, modes=("hajime", "nia", "hif"), timeout: float = 30.0) -> dict:
+    """下载 manifest 和各模式的发布包到缓存目录（版本没变就不下）。返回 {mode: version 或错误}。
+    新版下好后删掉这个模式的旧版文件（prune_old）；新版没下成的模式旧版留着。"""
     import urllib.request
 
     d = cache_dir()
@@ -333,7 +334,28 @@ def fetch(base: str = BASE_URL, modes=("hajime", "nia"), timeout: float = 30.0) 
         out[mode] = info["name"]
     (d / "manifest.json").write_bytes(man_raw)
     _load_pack.cache_clear()
+    removed = prune_old(d, {m: (man.get("packs") or {})[m]["name"] for m in modes if out.get(m) == ((man.get("packs") or {}).get(m) or {}).get("name")})
+    if removed:
+        out["removed"] = removed
     return out
+
+
+def prune_old(d: Path, current: dict) -> list[str]:
+    """删掉缓存目录里 current 这些模式的旧版攻略包（文件名 <mode>-<版本>.json，不是 current[mode] 的）。返回删掉的文件名。
+    只删认得出模式前缀、带数字版本号的 json，别的文件不碰（用户 11-21：攻略包每天更新，旧包会一直攒着）。"""
+    import re
+
+    removed = []
+    for mode, name in current.items():
+        pat = re.compile(rf"^{re.escape(mode)}-\d[\d-]*\.json$")
+        for f in d.glob(f"{mode}-*.json"):
+            if f.stem != name and pat.match(f.name):
+                try:
+                    f.unlink()
+                    removed.append(f.name)
+                except OSError as e:
+                    logger.warning("删旧攻略包 %s 失败：%r", f.name, e)
+    return sorted(removed)
 
 
 FRESH_HOURS = 24
