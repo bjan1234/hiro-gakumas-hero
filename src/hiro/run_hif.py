@@ -356,6 +356,7 @@ def main():
                 import time as _time
 
                 HiroController.new_game_at = _time.monotonic()  # 开局过场里看到開始確認页不停（第二十三局：设置框盖在上面被判成开始确认页）
+                kaa_patches.START_CLICKED["clicked"] = False
                 started = produce_module.do_produce(args.idol, scenario)
                 if started is False:
                     # KAA：AP 不足、已点キャンセル退出（use_ap_drink=false）。我们自己喝 APドリンク（绝不用ジュエル）再开一次
@@ -380,7 +381,12 @@ def main():
                 logger.error("%s", e)
                 print(str(e), file=sys.stderr)
                 return 3
-            except Exception:
+            except Exception as e:
+                if not kaa_patches.START_CLICKED["clicked"]:
+                    # 还没点「プロデュース開始」：开局准备里出错，没开局、没花 AP。停下（不转 resume：resume 会把开局页当培育页乱点）
+                    logger.exception("开局准备里出错（还没点プロデュース開始，没开局）：停下")
+                    print(f"开局准备里出错，没开局：{e!r}", file=sys.stderr)
+                    return 3
                 # 培育已经开始后崩溃：记一次恢复，转入 resume 继续这一局
                 logger.exception("培育中异常，转为 resume 继续")
                 session.recover("crash_restart", "new 流程异常，转 resume")

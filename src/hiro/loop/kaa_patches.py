@@ -388,6 +388,35 @@ def _dry_run_start_button(orig):
     return DryRunStart()
 
 
+START_CLICKED = {"clicked": False}  # 这一次 do_produce 有没有点过「プロデュース開始」（run_hif 判异常时开没开局）
+
+
+def _track_start_button(orig):
+    """R.Produce.Step4.ButtonProduceStart：点的时候记一笔（START_CLICKED），行为不变。run_hif new 里 do_produce 抛异常时，
+    没点过开始 = 还在开局准备里，停下；点过才转 resume（11-21：租借列表滑动出错被当成培育中异常，resume 在开局页上乱点 97 下）。"""
+
+    class _Tracked:
+        def __init__(self, found):
+            self.found = found
+
+        def click(self, *a, **k):
+            START_CLICKED["clicked"] = True
+            return self.found.click(*a, **k)
+
+        def __getattr__(self, name):
+            return getattr(self.found, name)
+
+    class TrackedStart:
+        @staticmethod
+        def wait(*a, **k):
+            return _Tracked(orig.wait(*a, **k))
+
+        def __getattr__(self, name):
+            return getattr(orig, name)
+
+    return TrackedStart()
+
+
 def apply() -> None:
     import importlib
 
@@ -437,5 +466,11 @@ def apply() -> None:
 
         R.Produce.Step4.ButtonProduceStart = _dry_run_start_button(R.Produce.Step4.ButtonProduceStart)
         logger.warning("HIRO_OPENING_DRY_RUN=1：开局只演练到第 4 步，不点プロデュース開始")
+    else:
+        from kaa.tasks import R
+
+        if not getattr(R.Produce.Step4.ButtonProduceStart, "_hiro_tracked", False):
+            R.Produce.Step4.ButtonProduceStart = _track_start_button(R.Produce.Step4.ButtonProduceStart)
+            R.Produce.Step4.ButtonProduceStart._hiro_tracked = True
     kaa_usage.install()  # 最后挂：数的是补丁之后还在跑的 KAA 代码（去 KAA 第 0 步，只记不改行为）
     logger.info("已启用 KAA 补丁：locate_idol 改为上滑翻页；授業换卡放宽卡片定位、阶段 2 不换保护卡；H.I.F P 道具按实测位置点击；破弃对话框只点キャンセル")

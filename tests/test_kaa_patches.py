@@ -737,3 +737,26 @@ def test_go_home_on_opening_step_taps_toolbar_home_not_next():
 
     assert is_opening_step(["2サポート選択", "3", "4"]) and is_opening_step(["サポートカードを選択してください"])
     assert not is_opening_step(["プロデュース", "ホーム", "コンテスト"])
+
+
+def test_start_button_click_is_tracked():
+    """点「プロデュース開始」时记 START_CLICKED；run_hif 据此区分开局准备里出错（停下）和培育中出错（转 resume）。"""
+    from hiro.loop import kaa_patches
+
+    clicked = []
+
+    class Found:
+        def click(self):
+            clicked.append(1)
+
+    class Orig:
+        @staticmethod
+        def wait(*a, **k):
+            return Found()
+
+    btn = kaa_patches._track_start_button(Orig)
+    kaa_patches.START_CLICKED["clicked"] = False
+    m = btn.wait()
+    assert kaa_patches.START_CLICKED["clicked"] is False  # 只等到按钮不算
+    m.click()
+    assert kaa_patches.START_CLICKED["clicked"] is True and clicked == [1]
