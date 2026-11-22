@@ -107,12 +107,16 @@ def lookup(ids: list[str], texts: list[str], lang: str = "zh") -> dict:
 
 
 def idol_name(idol: str) -> str:
-    """偶像卡编号（可以是 skin id）→ 卡名（给人看的摘要用）；资料库没下载或查不到时原样返回编号。"""
-    try:
-        row = (load("ja").get("idols") or {}).get(idol.replace("i_card-skin-", "i_card-")) or {}
-    except (CliError, OSError, ValueError):
-        return idol
-    return row.get("name") or idol
+    """偶像卡编号（可以是 skin id）→ 卡名（给人看的摘要用，界面默认中文）：先中文、再日文；资料库没下载或查不到时原样返回编号。"""
+    key = idol.replace("i_card-skin-", "i_card-")
+    for lang in ("zh", "ja"):
+        try:
+            row = (load(lang).get("idols") or {}).get(key) or {}
+        except (CliError, OSError, ValueError):
+            continue
+        if row.get("name"):
+            return row["name"]
+    return idol
 
 
 def _texts(entry: dict) -> list[str]:
