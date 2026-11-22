@@ -108,3 +108,13 @@ def test_sprite_falls_back_to_webp(run_cli, server):
     assert env["data"]["path"] == p
     _, env = run_cli("catalog", "sprite", "nothing-here")
     assert env["ok"] is False
+
+
+def test_idol_name_prefers_chinese(run_cli, server, monkeypatch):
+    """开局待确认卡片里的偶像卡名：界面默认中文，先用中文名；没同步资料库时原样给编号。"""
+    from hiro.cli.catalog import idol_name
+
+    assert idol_name("i_card-skin-shro-3-007") == "i_card-skin-shro-3-007"
+    monkeypatch.setitem(CAT_ZH["idols"]["i_card-shro-3-007"], "name", "【Campus mode!!】筱泽广")
+    run_cli("catalog", "sync")
+    assert idol_name("i_card-skin-shro-3-007") == "【Campus mode!!】筱泽广"
