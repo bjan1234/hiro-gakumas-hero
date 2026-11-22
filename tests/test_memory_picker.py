@@ -498,7 +498,6 @@ def test_picker_really_closed_after_repeated_checks():
     assert len(calls) == 1 + mp.CLOSED_CONFIRM
 
 
-
 def test_detail_page_when_slash_is_dropped():
     """11-19 Windows MuMu：详情栏页码「2/2」被读成「22」，翻不回第 1 页，整次扫描卡名全空。"""
     box = (326, 517, 394, 549)
