@@ -42,7 +42,8 @@ BUTTON_BAND = (840, 1120)  # 行动按钮及其文字、体力消耗
 # 按钮文字 → 行动类型
 ACTIONS = [
     # 「ス」容许读成「ズ」、属性前缀容许读不出（RapidOCR：「Vo.公開レッスン」→「V0公開レッズン」），属性再按文字条颜色补
-    (re.compile(r"(Vo|Da|Vi)?\.?公開レッ[スズ]ン"), "open_lesson"),
+    # 「ッ」也会读成大写「ツ」（11-21 DMM：「Vi公開レツスン」，那一格公开课整个丢了），「公開」只出现在这几个按钮上，认到「公開レ」就算
+    (re.compile(r"(Vo|Da|Vi)?\.?公開レ"), "open_lesson"),
     (re.compile(r"授業"), "class"),
     (re.compile(r"休む"), "rest"),
     (re.compile(r"相談"), "consult"),
@@ -52,8 +53,8 @@ ACTIONS = [
     (re.compile(r"^営業$"), "sales"),  # N.I.A 営業（2次まで 6 週 等只有这一个按钮，11-17 原来读不出、决策 Wait 停）
     (re.compile(r"活動支給"), "allowance"),  # 初 普通周的「活動支給」（领饮料 / 卡），3940a9 的 hajime_nia 决策认 allowance
     # N.I.A「Vo.自主レッスン」：属性前缀和「レッスン」之间夹着「自主」，要先于下面的 lesson（11-17 N.I.A 采样：attr 读成 None）
-    (re.compile(r"(Vo|Da|Vi)?\.?自主レッ[スズ]ン"), "self_lesson"),
-    (re.compile(r"(Vo|Da|Vi)?\.?レッ[スズ]ン"), "lesson"),
+    (re.compile(r"(Vo|Da|Vi)?\.?自主レ[ッツ][スズ]ン"), "self_lesson"),
+    (re.compile(r"(Vo|Da|Vi)?\.?レ[ッツ][スズ]ン"), "lesson"),
 ]
 # 课程按钮左上角的 SP 角标（InProduce.IconSp）相对按钮文字中心的位置：N.I.A 实机 (−67, −146)
 SP_DX, SP_DY = (-110, -20), (-190, -100)
@@ -233,7 +234,33 @@ def _options(img: MatLike, *, hajime: bool = False) -> list[ActionOption]:
                     option.hp_cost = _cost_by_heart(img, cx, ty, option.hp_cost)
             out.append(option)
             break
+    out += _missing_open_lessons(img, out)
     return sorted(out, key=lambda o: (o.center[1] > 950, o.center[0]))
+
+
+OPEN_LESSON_X = (172, 359, 544)  # H.I.F 公开课三张卡的文字中心 x（720x1280）
+
+
+def _missing_open_lessons(img: MatLike, found: list) -> list:
+    """公开课三张卡并排（Vo / Da / Vi）。文字认到了一两张、另一格的字没认出来时（11-21 DMM：主属性 Da 那格连续几天没认出，
+    LLM 只能在 Vo / Vi 里选），按那一格文字条的底色补：底色是一种还没出现的属性才补，其余不补（不凭空造选项）。"""
+    opened = [o for o in found if o.kind == "open_lesson"]
+    if not opened or len(opened) >= 3:
+        return []
+    ty = opened[0].center[1] + 70  # 文字中心（center 是按钮图标处，文字上方 70）
+    have = {o.attr for o in opened}
+    add = []
+    for x in OPEN_LESSON_X:
+        if any(abs(o.center[0] - x) < 60 and abs(o.center[1] - opened[0].center[1]) < 60 for o in found):
+            continue
+        attr = _attr_by_band(img, x, ty)
+        if attr is None or attr in have:
+            continue
+        option = ActionOption("open_lesson", "（文字没认出，按色条补）", attr, (x, ty - 70))
+        option.hp_cost = _cost_by_heart(img, x, ty, None) if ocr_engine() != "vision" else None
+        have.add(attr)
+        add.append(option)
+    return add
 
 
 def _sp_badges(img) -> list[tuple[int, int]]:
