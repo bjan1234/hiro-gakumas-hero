@@ -1,5 +1,6 @@
 // 左侧栏（设计简报 §5）：开局、编成方案、信息、设置；最近的对话；底部账号数值和模型。
 import { BookOpen, ClipboardList, Cog, Heart, IdCard, Images, Layers, MessageSquarePlus, Play, Settings2, Sparkles } from "lucide-react";
+import type { DeviceStatus } from "../lib/device";
 import type { ComponentType } from "react";
 import { threadJob, type PageKind, type Thread } from "../lib/chat";
 import type { Summary } from "../lib/hiro";
@@ -54,7 +55,8 @@ export function Sidebar(p: {
   liveJob: string | null;
   summary: Summary | null;
   model: string;
-  device: string;
+  device: DeviceStatus;
+  onProbe: () => void;
   onNav: (v: View) => void;
   onNew: () => void;
   onPick: (id: string) => void;
@@ -139,9 +141,14 @@ export function Sidebar(p: {
         ) : (
           <span className="text-ink-3">还没读首页数值</span>
         )}
-        <span className="flex items-center gap-1.5">
-          <Dot tone={p.device ? "ok" : "off"} /> {p.device || "游戏未连接"}
-        </span>
+        <button
+          type="button"
+          title={p.device.title || undefined}
+          onClick={p.onProbe}
+          className="flex items-center gap-1.5 text-left hover:text-ink"
+        >
+          <Dot tone={p.device.tone} /> <span className="min-w-0 truncate">{p.device.text}</span>
+        </button>
         <button
           type="button"
           className={cx("flex items-center gap-1.5 text-left hover:text-ink", p.view.name === "settings" && "font-semibold text-ink")}
