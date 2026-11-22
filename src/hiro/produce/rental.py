@@ -92,9 +92,29 @@ def _tap_and_decide(row: dict, ctrl: dict) -> bool:
     logger.info("租借：选 %s（%s Lv%s 突破%s，玩家 %s）", c.get("name"), c.get("attr"), c.get("level"), c.get("breaks"), row.get("player"))
     device.click(*row["center"])
     _sleep(1.0)
-    device.click(*(ctrl.get("decide") or (497, 1157)))
-    _sleep(2.5)
+    decide = ctrl.get("decide") or (497, 1157)
+    for attempt in range(DECIDE_TRIES):
+        device.click(*decide)
+        _sleep(2.5)
+        if not _list_still_open():
+            return True
+        # 11-22 DMM 新主循环：选中了行、点「決定」没反应（列表还开着），第 2 步「次へ」等 20 秒超时。列表还在才再点
+        logger.info("租借：点了「決定」列表还开着，再点一次（第 %d 次）", attempt + 2)
     return True
+
+
+DECIDE_TRIES = 3  # 「決定」最多点几次（列表关了就停）
+
+
+def _list_still_open() -> bool:
+    """租借列表还开着：底部同时有「キャンセル」和「決定」（第 2 步页面底部是「次へ」）。读不出时当成已经关了（不多点）。"""
+    try:
+        from hiro.vision.ocr import screen_texts
+
+        low = [t.text.replace(" ", "") for t in screen_texts(device.screenshot()) if t.rect.center.y > 1080]
+    except Exception:  # noqa: BLE001
+        return False
+    return any("キャンセル" in t for t in low) and any(t == "決定" for t in low)
 
 
 def _ensure_plan_fit():
