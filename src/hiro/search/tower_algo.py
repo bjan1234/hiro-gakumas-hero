@@ -90,7 +90,7 @@ def known_prefix(known: list[str], deck_ids: list[str], start: int = 0) -> tuple
     left = collections.Counter(c for c in deck_ids if c in ids)  # 山札里的编成牌（生成卡不算）
     n = sum(left.values())
     for k in range(max(0, start), len(known)):
-        seg = known[k:k + n]
+        seg = known[k : k + n]
         got = collections.Counter(seg)
         if got - left:
             continue
@@ -107,8 +107,16 @@ class TowerGnrpa:
     needs_gkms = False
     sees_seed = False
 
-    def __init__(self, seconds: float | None = None, worlds: int = 8, threads: int = 0, warm: float = WARM, greedy: float = 0.0,
-                 sync_status: bool = False, **params):
+    def __init__(
+        self,
+        seconds: float | None = None,
+        worlds: int = 8,
+        threads: int = 0,
+        warm: float = WARM,
+        greedy: float = 0.0,
+        sync_status: bool = False,
+        **params,
+    ):
         try:
             import gakumas_exam_rs as rs
         except ImportError as e:
@@ -123,7 +131,15 @@ class TowerGnrpa:
         # sync_status：每步把画面上的数值类 / 回合类状态（集中、好調等）覆盖进引擎。缺省关：手毬 16 层实机画面的集中读数
         # 18 → 1 → 2 → 30 跳动、消耗增减方向和引擎相反，读数待平台对帧核实（协调 11-17）；规则本身和 GKMS 逐步一致
         self.sync_status = str(sync_status).lower() not in ("0", "false", "off", "no", "")
-        self.params = dict(params, seconds=seconds, worlds=worlds, threads=threads, warm=warm, greedy=greedy, sync_status=self.sync_status)
+        self.params = dict(
+            params,
+            seconds=seconds,
+            worlds=worlds,
+            threads=threads,
+            warm=warm,
+            greedy=greedy,
+            sync_status=self.sync_status,
+        )
         self.rx = None
 
     def describe(self) -> dict:
@@ -135,7 +151,7 @@ class TowerGnrpa:
 
         self.lo = complete_loadout(dict(ctx.loadout))
         self.obj = objective(self.lo, self.lo.get("rivals"))
-        seed = random.Random(json.dumps(self.lo.get("produce_cards"), sort_keys=True)).randrange(1, 2 ** 31)
+        seed = random.Random(json.dumps(self.lo.get("produce_cards"), sort_keys=True)).randrange(1, 2**31)
         self.rx = tower_env(self.lo, seed).rx
         self.rx.advance()
         self.prev = None  # 上一步对齐后、执行动作前的局面（引擎跑到画面前面时退回用）
@@ -144,7 +160,7 @@ class TowerGnrpa:
         # 只用第一轮（牌组张数以内）：洗牌后的顺序和当时弃牌堆的内容有关，打法不同就分叉（平台模块 11-14 回放 r1 / r3：前 12 张一样、
         # 第 13 张起不同），洗牌后交给搜索当随机
         known = [(d["id"], int(d.get("u") or 0)) for d in (getattr(ctx, "known_draws", None) or [])]
-        self.known = known[:len(self.lo.get("produce_cards") or [])]
+        self.known = known[: len(self.lo.get("produce_cards") or [])]
         self.drawn = 0  # known_draws 里已经抽过的张数（每步按山札内容重新对位）
         self.stats = collections.Counter()
 
@@ -185,7 +201,10 @@ class TowerGnrpa:
             self.drawn, prefix = known_prefix([c for c, _ in self.known], deck_ids, self.drawn)
         else:
             prefix = []
-        deck = [take(c, "deck", ups.get(c)) for c in prefix] + [take(c, "deck", ups.get(c)) for c in (collections.Counter(deck_ids) - collections.Counter(prefix)).elements()]
+        deck = [take(c, "deck", ups.get(c)) for c in prefix] + [
+            take(c, "deck", ups.get(c))
+            for c in (collections.Counter(deck_ids) - collections.Counter(prefix)).elements()
+        ]
         if None in hand:
             raise RuntimeError(f"手牌对不上引擎牌组：{[c['id'] for c, g in zip(obs['hand'], hand) if g is None]}")
         rx.set_zone("hand", hand)
@@ -251,7 +270,13 @@ class TowerGnrpa:
             extra["greedy"] = self.greedy
         if self.warm and self.policy:
             extra["prior"] = {k: v * self.warm for k, v in self.policy.items()}
-        kw = dict(worlds=self.worlds, seconds=max(0.2, secs - 0.3), threads=self.threads, seed=int(time.time()) & 0xFFFFFFFF, **self.obj)
+        kw = dict(
+            worlds=self.worlds,
+            seconds=max(0.2, secs - 0.3),
+            threads=self.threads,
+            seed=int(time.time()) & 0xFFFFFFFF,
+            **self.obj,
+        )
         try:
             r = rs.search(self.rx.clone(), self.prefix, free, **kw, **extra)
         except TypeError as e:  # 旧 Rust 包不认 prior / greedy 或按场次的目标（pass_rank / score_cap / clear_score）：这一局去掉，照常搜

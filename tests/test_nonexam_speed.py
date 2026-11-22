@@ -39,7 +39,13 @@ def test_fast_acquire_taps_receive_when_lit():
         state["img"] = _lit(base) if (x, y) == (200, 700) else gone
 
     t = [0.0]
-    ok = ops.fast_acquire((200, 700), shoot=lambda: state["img"], click=click, sleep=lambda s: t.__setitem__(0, t[0] + s), clock=lambda: t[0])
+    ok = ops.fast_acquire(
+        (200, 700),
+        shoot=lambda: state["img"],
+        click=click,
+        sleep=lambda s: t.__setitem__(0, t[0] + s),
+        clock=lambda: t[0],
+    )
     assert ok and state["clicks"] == [(200, 700), ops.RECEIVE_TAP]
 
 
@@ -49,7 +55,9 @@ def test_fast_acquire_falls_back_when_never_lit():
     t = [0.0]
     ok = ops.fast_acquire((200, 700), shoot=lambda: base, click=lambda x, y: clicks.append((x, y)), sleep=lambda s: t.__setitem__(0, t[0] + s),
                           clock=lambda: t[0])  # fmt: skip
-    assert not ok and clicks == [(200, 700), (200, 700)] and ops.RECEIVE_TAP not in clicks  # 点两次选项都不亮：不点受け取る，交回 KAA
+    assert (
+        not ok and clicks == [(200, 700), (200, 700)] and ops.RECEIVE_TAP not in clicks
+    )  # 点两次选项都不亮：不点受け取る，交回 KAA
 
 
 def test_verify_left_ok_returns_on_transient(tmp_path):
@@ -87,12 +95,16 @@ def test_action_commit_no_fixed_sleep(monkeypatch):
     slept, clicks, waited = [], [], []
     monkeypatch.setattr(kp.time, "sleep", slept.append)
     btn = NS(click=lambda: clicks.append(1), prefab="P")
-    ctx = NS(fetch_available_actions=lambda: ([ProduceAction.OUTING], [btn]), controller=NS(wait_disappear=waited.append))
+    ctx = NS(
+        fetch_available_actions=lambda: ([ProduceAction.OUTING], [btn]), controller=NS(wait_disappear=waited.append)
+    )
     kp.action_commit(ctx, ProduceAction.OUTING)
     assert clicks == [1, 1, 1] and waited == ["P"] and max(slept) < 1.0
     orig = []
     monkeypatch.setattr(kp, "_ORIG_ACTION_COMMIT", lambda self, a: orig.append(a))
-    rest = NS(fetch_available_actions=lambda: ([ProduceAction.REST], [btn]), controller=NS(wait_disappear=waited.append))
+    rest = NS(
+        fetch_available_actions=lambda: ([ProduceAction.REST], [btn]), controller=NS(wait_disappear=waited.append)
+    )
     kp.action_commit(rest, ProduceAction.REST)
     assert orig == [ProduceAction.REST]
 

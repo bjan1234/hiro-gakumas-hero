@@ -51,8 +51,18 @@ class CardPicker:
         except (KeyError, TypeError, ValueError):
             choice = None
         if choice not in valid:
-            return self._done(PickDecision(default, f"LLM 结果无效（{res.error or res.data}），退回推荐", "recommended", calls=calls), views)
-        d = PickDecision(choice, str(res.data.get("reason", "")), "llm", str(res.data.get("role", "")), str(res.data.get("line", "")), calls)
+            return self._done(
+                PickDecision(default, f"LLM 结果无效（{res.error or res.data}），退回推荐", "recommended", calls=calls),
+                views,
+            )
+        d = PickDecision(
+            choice,
+            str(res.data.get("reason", "")),
+            "llm",
+            str(res.data.get("role", "")),
+            str(res.data.get("line", "")),
+            calls,
+        )
         return self._done(d, views)
 
     def _done(self, d: PickDecision, views) -> PickDecision:

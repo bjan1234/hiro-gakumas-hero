@@ -22,4 +22,6 @@ def test_play_observable(card_id, want):
 def test_unobservable_play_is_never_missed(monkeypatch):
     called = []
     monkeypatch.setattr(ex, "_lite_sig", lambda img: called.append(1) or ((3, 10, 0), None))
-    assert ex._play_missed(object(), confirmed=False, observable=False) is False and not called  # 不读 HUD、不判没打出去
+    assert (
+        ex._play_missed(object(), confirmed=False, observable=False) is False and not called
+    )  # 不读 HUD、不判没打出去

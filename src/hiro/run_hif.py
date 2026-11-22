@@ -109,8 +109,18 @@ def _refill_ap(scenario) -> bool:
     btn = "Produce.ButtonHifMain" if scenario == HifScenario.MAIN else "Produce.ButtonHifQualify"
     mode = "main" if scenario == HifScenario.MAIN else "qualify"
     # 多试几帧，模板没中按 OCR「本戦 / 選抜試験」定位（第二十七局：只截一次、模板没中就失败，按钮其实在）
-    if not ap_refill.open_hif(device.screenshot, lambda x, y: device.click(x, y), ocr_boxes, mode=mode, try_template=lambda: tap(btn, device.screenshot(), device.click)):
-        logger.error("AP 补充：%.0fs 内培育页没找到 H.I.F「%s」按钮，弹不出「AP不足」", ap_refill.OPEN_TIMEOUT, ap_refill.HIF_BUTTON_TEXT[mode])
+    if not ap_refill.open_hif(
+        device.screenshot,
+        lambda x, y: device.click(x, y),
+        ocr_boxes,
+        mode=mode,
+        try_template=lambda: tap(btn, device.screenshot(), device.click),
+    ):
+        logger.error(
+            "AP 补充：%.0fs 内培育页没找到 H.I.F「%s」按钮，弹不出「AP不足」",
+            ap_refill.OPEN_TIMEOUT,
+            ap_refill.HIF_BUTTON_TEXT[mode],
+        )
         return False
     r = ap_refill.refill(device.screenshot, lambda x, y: device.click(x, y), ocr_boxes, extra_ap=0 if scenario == HifScenario.MAIN else 20,
                          log=logger.warning)  # fmt: skip
@@ -131,11 +141,15 @@ def _game_gone(session, err: Exception) -> bool:
         return False
     logger.error("主循环异常时学マス不在前台（进程被杀 / 闪退？）：%r", err)
     if game_app.is_dmm():
-        raise ResumeBlocked("DMM 版学マス的窗口不见了（闪退 / 被关？）。请从 DMM Game Player 重新启动游戏"
-                            "（会弹管理员确认），回到首页后用 resume 续跑") from err
+        raise ResumeBlocked(
+            "DMM 版学マス的窗口不见了（闪退 / 被关？）。请从 DMM Game Player 重新启动游戏"
+            "（会弹管理员确认），回到首页后用 resume 续跑"
+        ) from err
     if not game_app.enabled():
-        raise ResumeBlocked("学マス不在前台（进程被杀 / 闪退？内存吃紧时 MuMu 会杀游戏）。请重新打开游戏后续跑，"
-                            "或设 HIRO_RELAUNCH_GAME=1 让程序自己拉起") from err
+        raise ResumeBlocked(
+            "学マス不在前台（进程被杀 / 闪退？内存吃紧时 MuMu 会杀游戏）。请重新打开游戏后续跑，"
+            "或设 HIRO_RELAUNCH_GAME=1 让程序自己拉起"
+        ) from err
     return True
 
 
@@ -190,7 +204,11 @@ def resume_trace_name(prev_trace: str, root: Path | None = None) -> str:
     from hiro.contracts.trace import TRACES
 
     base = re.sub(r"-r\d+$", "", prev_trace)
-    used = {int(m.group(1)) for d in (root or TRACES).glob(base + "-r*") if (m := re.fullmatch(re.escape(base) + r"-r(\d+)", d.name))}
+    used = {
+        int(m.group(1))
+        for d in (root or TRACES).glob(base + "-r*")
+        if (m := re.fullmatch(re.escape(base) + r"-r(\d+)", d.name))
+    }
     return f"{base}-r{max(used, default=0) + 1}"
 
 
@@ -200,20 +218,38 @@ def main():
     parser.add_argument("--mode", choices=["main", "qualify"], default="main")
     parser.add_argument("--idol", default=None, help="偶像卡 skin id，new 时使用")
     parser.add_argument("--no-llm", action="store_true", help="决策只用规则与兜底，不调用 LLM")
-    parser.add_argument("--llm", default=None, help="LLM 适配器 spec：claude:sonnet（默认）/ openai:<model>；也可用环境变量 HIRO_LLM")
-    parser.add_argument("--main-attr", choices=["Vo", "Da", "Vi"], default=None,
-                        help="主属性（按支援卡编成定）；不给时按识别到的支援卡，再不行按成长率推测")
+    parser.add_argument(
+        "--llm", default=None, help="LLM 适配器 spec：claude:sonnet（默认）/ openai:<model>；也可用环境变量 HIRO_LLM"
+    )
+    parser.add_argument(
+        "--main-attr",
+        choices=["Vo", "Da", "Vi"],
+        default=None,
+        help="主属性（按支援卡编成定）；不给时按识别到的支援卡，再不行按成长率推测",
+    )
     parser.add_argument("--exams-done", type=int, default=0, help="续跑时已完成的考试场数（决定 qualify-N 标签）")
     parser.add_argument("--trace", default=None, help="trace 目录名（默认时间戳）")
     parser.add_argument("--force", action="store_true", help="资源清单有问题（素材包过期等）也继续")
-    parser.add_argument("--debug-recog", action="store_true",
-                        help="调试模式（docs/state-events.md §7）：全部互验写进 trace、页面每次变化都存帧；也可设 HIRO_DEBUG_RECOG=1")
-    parser.add_argument("--strategy", default=None,
-                        help="培育策略类 包.模块:类名（默认 hiro.produce.hif:HiroHifStrategy）；也可设 HIRO_STRATEGY")
-    parser.add_argument("--expect-memory", default="",
-                        help="本战开局前核对选中的选拔回忆：逗号分隔的属性数字（如 1697,1936,815），对不上就不开局")
-    parser.add_argument("--allow-discard", action="store_true",
-                        help="new 时允许破弃其他端末进行中的培育（用户明确同意后才加；KAA 会自动确认「プロデュースデータの破棄」）")
+    parser.add_argument(
+        "--debug-recog",
+        action="store_true",
+        help="调试模式（docs/state-events.md §7）：全部互验写进 trace、页面每次变化都存帧；也可设 HIRO_DEBUG_RECOG=1",
+    )
+    parser.add_argument(
+        "--strategy",
+        default=None,
+        help="培育策略类 包.模块:类名（默认 hiro.produce.hif:HiroHifStrategy）；也可设 HIRO_STRATEGY",
+    )
+    parser.add_argument(
+        "--expect-memory",
+        default="",
+        help="本战开局前核对选中的选拔回忆：逗号分隔的属性数字（如 1697,1936,815），对不上就不开局",
+    )
+    parser.add_argument(
+        "--allow-discard",
+        action="store_true",
+        help="new 时允许破弃其他端末进行中的培育（用户明确同意后才加；KAA 会自动确认「プロデュースデータの破棄」）",
+    )
     args = parser.parse_args()
     if args.debug_recog:
         os.environ["HIRO_DEBUG_RECOG"] = "1"  # Session 读它：全部 Check 写进 trace、页面变化都存帧
@@ -231,11 +267,19 @@ def main():
         if prev is not None:
             args.idol = prev["idol"]
             args.main_attr = args.main_attr or prev.get("main_attr")
-            logger.warning("续跑没给 --idol：沿用最近一次 %s 的 trace %s：偶像 %s、主属性 %s", args.mode, prev["trace"], args.idol, args.main_attr)
+            logger.warning(
+                "续跑没给 --idol：沿用最近一次 %s 的 trace %s：偶像 %s、主属性 %s",
+                args.mode,
+                prev["trace"],
+                args.idol,
+                args.main_attr,
+            )
         else:
             logger.warning("续跑没给 --idol，也找不到同模式带偶像的 trace：考试出牌没有偶像档案（建议加 --idol）")
 
-    own = os.environ.get("HIRO_RUNTIME", "kaa").strip().lower() == "own"  # 新主循环（hiro.runtime，不用 KAA）；缺省仍是 KAA 主循环
+    own = (
+        os.environ.get("HIRO_RUNTIME", "kaa").strip().lower() == "own"
+    )  # 新主循环（hiro.runtime，不用 KAA）；缺省仍是 KAA 主循环
     if not own:
         scenario = HifScenario.MAIN if args.mode == "main" else HifScenario.QUALIFY
         Strategy = load_strategy(args.strategy)
@@ -252,7 +296,9 @@ def main():
         kaa_env.apply_formation_plan(args.idol)
 
     if args.main_attr is None and kaa_env.PLAN_MAIN_ATTR:
-        args.main_attr = kaa_env.PLAN_MAIN_ATTR  # 没给 --main-attr：用开局编成方案的主属性（策略、租借格、trace 都按它）
+        args.main_attr = (
+            kaa_env.PLAN_MAIN_ATTR
+        )  # 没给 --main-attr：用开局编成方案的主属性（策略、租借格、trace 都按它）
 
     manifest = manifest_mod.collect()
     if manifest.problems:
@@ -320,7 +366,12 @@ def main():
     from hiro.produce.exam_policy import policy_from_env
 
     # 实际生效的考试局面来源 / 出招（scripts/play.ps1 外面设了 HIRO_EXAM_STATE_SOURCE / HIRO_EXAM_POLICY 就透传）
-    logger.info("考试局面来源 %s；出招 %s；HIRO_EXAM_POLICY=%s", manifest.exam_state_source, manifest.exam_advisor, policy_from_env())
+    logger.info(
+        "考试局面来源 %s；出招 %s；HIRO_EXAM_POLICY=%s",
+        manifest.exam_state_source,
+        manifest.exam_advisor,
+        policy_from_env(),
+    )
     try:
         if args.command == "resume":
             # KAA 的 resume_produce 只认本战的再開对话框；用自己的入口，遇到「データの破棄」只取消不破弃
@@ -355,7 +406,9 @@ def main():
             try:
                 import time as _time
 
-                HiroController.new_game_at = _time.monotonic()  # 开局过场里看到開始確認页不停（第二十三局：设置框盖在上面被判成开始确认页）
+                HiroController.new_game_at = (
+                    _time.monotonic()
+                )  # 开局过场里看到開始確認页不停（第二十三局：设置框盖在上面被判成开始确认页）
                 started = produce_module.do_produce(args.idol, scenario)
                 if started is False:
                     # KAA：AP 不足、已点キャンセル退出（use_ap_drink=false）。我们自己喝 APドリンク（绝不用ジュエル）再开一次

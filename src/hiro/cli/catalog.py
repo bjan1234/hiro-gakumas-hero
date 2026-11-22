@@ -67,8 +67,15 @@ def _brief(kind: str, eid: str, e: dict) -> dict:
     text = e.get("text")
     if text is None and e.get("up"):
         text = next(iter(e["up"].values())).get("text")
-    return {"kind": kind, "id": eid, "name": e.get("name"), "rarity": e.get("rarity"), "plan": e.get("plan"),
-            "text": text, "asset": e.get("asset")}
+    return {
+        "kind": kind,
+        "id": eid,
+        "name": e.get("name"),
+        "rarity": e.get("rarity"),
+        "plan": e.get("plan"),
+        "text": text,
+        "asset": e.get("asset"),
+    }
 
 
 def search(q: str, kind: str | None = None, lang: str = "ja") -> list[dict]:
@@ -104,17 +111,27 @@ def _sync(a: dict) -> dict:
     return {"langs": list(LANGS), "counts": counts, "dir": str(d)}
 
 
-@command("catalog search", Risk.READ, "按名字或效果文字搜资料库（最多 50 条）。",
-         args=(Arg("query", "要搜的词，例如 エウレカ 或 好調"),
-               Arg("--kind", "只搜这一类", choices=KINDS),
-               Arg("--lang", "名字和效果文字用哪种语言", choices=LANGS, default="ja")))
+@command(
+    "catalog search",
+    Risk.READ,
+    "按名字或效果文字搜资料库（最多 50 条）。",
+    args=(
+        Arg("query", "要搜的词，例如 エウレカ 或 好調"),
+        Arg("--kind", "只搜这一类", choices=KINDS),
+        Arg("--lang", "名字和效果文字用哪种语言", choices=LANGS, default="ja"),
+    ),
+)
 def _search(a: dict) -> dict:
     items = search(a["query"], a["kind"], a["lang"])
     return {"query": a["query"], "items": items, "truncated": len(items) >= SEARCH_LIMIT}
 
 
-@command("catalog get", Risk.READ, "按编号取资料库里的一条完整记录。",
-         args=(Arg("id", "编号，例如 p_card-01-ido-3_105"), Arg("--lang", "语言", choices=LANGS, default="ja")))
+@command(
+    "catalog get",
+    Risk.READ,
+    "按编号取资料库里的一条完整记录。",
+    args=(Arg("id", "编号，例如 p_card-01-ido-3_105"), Arg("--lang", "语言", choices=LANGS, default="ja")),
+)
 def _get(a: dict) -> dict:
     cat = load(a["lang"])
     for k in KINDS + ("enchants",):
@@ -124,8 +141,13 @@ def _get(a: dict) -> dict:
     raise CliError("not_found", f"资料库里没有 {a['id']}", "先用 hiro catalog search 查编号")
 
 
-@command("catalog sprite", Risk.READ, "取一张小图的本机路径（没有就下载）。",
-         args=(Arg("asset", "图名，即记录里的 asset 字段"),), agent=False)
+@command(
+    "catalog sprite",
+    Risk.READ,
+    "取一张小图的本机路径（没有就下载）。",
+    args=(Arg("asset", "图名，即记录里的 asset 字段"),),
+    agent=False,
+)
 def _sprite(a: dict) -> dict:
     asset = a["asset"]
     if not _ASSET.match(asset):

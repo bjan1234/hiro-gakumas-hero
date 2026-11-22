@@ -26,7 +26,10 @@ def test_unknown_mode():
 
 
 @pytest.mark.sim_master
-@pytest.mark.parametrize("pid, steps", [("produce-001", 13), ("produce-002", 16), ("produce-003", 18), ("produce-004", 27), ("produce-005", 26)])
+@pytest.mark.parametrize(
+    "pid, steps",
+    [("produce-001", 13), ("produce-002", 16), ("produce-003", 18), ("produce-004", 27), ("produce-005", 26)],
+)
 def test_steps_from_master(pid, steps):
     assert modes.steps(pid) == steps
 
@@ -62,7 +65,17 @@ def test_produce_state_new_fields_roundtrip():
                       params={"Vo": 100, "Da": 100, "Vi": 100}, growth_permil={}, star=0, votes=4200, rest_left=4)  # fmt: skip
     back = ProduceState.from_dict(ps.to_dict())
     assert back.votes == 4200 and back.rest_left == 4 and back.family == "nia"
-    hif = ProduceState(idol_card_id="x", mode="produce-007", step=1, stamina=1, max_stamina=1, produce_point=0, params={}, growth_permil={}, star=0)
+    hif = ProduceState(
+        idol_card_id="x",
+        mode="produce-007",
+        step=1,
+        stamina=1,
+        max_stamina=1,
+        produce_point=0,
+        params={},
+        growth_permil={},
+        star=0,
+    )
     assert hif.votes is None and hif.rest_left is None and hif.family == "hif"
 
 

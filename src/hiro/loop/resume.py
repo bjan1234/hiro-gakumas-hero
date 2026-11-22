@@ -58,7 +58,9 @@ def guard_new(*, timeout: float = 15.0) -> None:
         img = device.screenshot()
         if _discard_dialog_visible(img):
             device.click(*CANCEL_BUTTON)
-            raise ResumeBlocked(f"游戏提示「{DISCARD_TITLE}」：其他端末有进行中的培育，新开会把它破弃。已点「キャンセル」，不自动新开；是否破弃由用户决定。")
+            raise ResumeBlocked(
+                f"游戏提示「{DISCARD_TITLE}」：其他端末有进行中的培育，新开会把它破弃。已点「キャンセル」，不自动新开；是否破弃由用户决定。"
+            )
         if tpl("Produce.ButtonResume").exists(img):
             raise ResumeBlocked("本机有进行中的培育（看到「再開する」），请用 `run_hif resume` 继续，而不是新开。")
         if any(tpl(f"Produce.{logo}").exists(img) for logo in ("LogoHajime", "LogoNia", "LogoHif")):
@@ -89,7 +91,12 @@ def skip_login_bonus(*, shoot=None, click=None, sleep=time.sleep) -> bool:
     tapped = False
     for _ in range(LOGIN_BONUS_MAX_PAGES):
         q = quick_page(shoot())
-        if not q or q.get("page") != "TRANSITION" or (q.get("fields") or {}).get("kind") != "login_bonus" or not q.get("tap"):
+        if (
+            not q
+            or q.get("page") != "TRANSITION"
+            or (q.get("fields") or {}).get("kind") != "login_bonus"
+            or not q.get("tap")
+        ):
             break
         logger.info("续跑开局：活动登录奖励，点底部空白 %s", q["tap"])
         click(*q["tap"])
@@ -197,7 +204,9 @@ def finish_produce_end(*, timeout: float = 180.0, go_home: bool = False) -> bool
             continue
         if any("開始確認" in t or "本戦へ" in t for t in texts):
             # 选拔赛通关后游戏直接带到「本战开始确认」：到此为止，是否开本战（花 AP）由上层决定，绝不在这里点
-            logger.info("结算后到了培育开始确认页（%s），停止点击", "本战" if any("本戦へ" in t for t in texts) else "新培育")
+            logger.info(
+                "结算后到了培育开始确认页（%s），停止点击", "本战" if any("本戦へ" in t for t in texts) else "新培育"
+            )
             return True
         if any("メモリーにするフォト" in t for t in texts):
             # 选回忆照片页（q14：重新登录后不再自动跳过，180s 没回首页）：默认第一张已选中，点「次へ」
@@ -222,10 +231,15 @@ def finish_produce_end(*, timeout: float = 180.0, go_home: bool = False) -> bool
             logger.info("生成回忆")
         elif tpl("Produce.SaveMemoPic.Title").exists(img):
             tap("Produce.SaveMemoPic.ButtonConfirm", img, dev.click)
-        elif any(tap(n, img, dev.click) for n in ("Common.ButtonIconClose", "InProduce.ButtonNextNoIcon", "Common.ButtonNext")):
+        elif any(
+            tap(n, img, dev.click)
+            for n in ("Common.ButtonIconClose", "InProduce.ButtonNextNoIcon", "Common.ButtonNext")
+        ):
             pass
         else:
-            hit = next((t for t in boxes if t.text.strip() in END_BUTTON_TEXTS and t.rect.center.y > 700), None)  # 同一帧（模板点击不换帧）
+            hit = next(
+                (t for t in boxes if t.text.strip() in END_BUTTON_TEXTS and t.rect.center.y > 700), None
+            )  # 同一帧（模板点击不换帧）
             if hit is not None:
                 dev.click(*hit.rect.center)
             elif (spot := reward_tap(boxes)) is not None:

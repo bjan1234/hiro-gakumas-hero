@@ -18,7 +18,9 @@ def _load():
     d = json.loads(FIX.read_text(encoding="utf-8"))
     state = GameState.from_dict(d["state_219"])
     obs = d["obs_229"]
-    bare = Observation.from_dict({**obs, "seq": 228, "fields": {}, "field_meta": {}})  # 控制器补判后 observe(fields=False)
+    bare = Observation.from_dict(
+        {**obs, "seq": 228, "fields": {}, "field_meta": {}}
+    )  # 控制器补判后 observe(fields=False)
     return state, bare, Observation.from_dict(obs)
 
 

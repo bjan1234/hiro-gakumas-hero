@@ -54,7 +54,10 @@ def test_scan_account_job_and_ingest(run_cli, tmp_path):
     assert k.argv({}, tmp_path)[1:] == ["-m", HOME_READER, "--live", "--out", str(tmp_path / "out.json")]
     assert k.output == "account" and k.pausable is False
     p = tmp_path / "a.json"
-    p.write_text(json.dumps({"scanned_at": "2026-11-17 18:00:00", "plv": 65, "ap": 85, "ap_max": 100, "jewel": 15220}), encoding="utf-8")
+    p.write_text(
+        json.dumps({"scanned_at": "2026-11-17 18:00:00", "plv": 65, "ap": 85, "ap_max": 100, "jewel": 15220}),
+        encoding="utf-8",
+    )
     run_cli("info", "import", "--kind", "account", str(p))
     _, env = run_cli("info", "summary")
     assert env["data"]["account"] == {"plv": 65, "ap": 85, "ap_max": 100, "jewel": 15220}

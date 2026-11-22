@@ -76,7 +76,13 @@ def select_memory(expect: tuple[str, ...], *, shoot, click, swipe, texts_of=None
     img = shoot()
     _memory_snap(img, "sort-dialog")
     boxes = boxes_of(img)
-    click(*(_find_text_center(boxes, MEMORY_SORT_TEXT, exact=True) or _find_text_center(boxes, MEMORY_SORT_TEXT) or MEMORY_SORT_NEWEST))
+    click(
+        *(
+            _find_text_center(boxes, MEMORY_SORT_TEXT, exact=True)
+            or _find_text_center(boxes, MEMORY_SORT_TEXT)
+            or MEMORY_SORT_NEWEST
+        )
+    )
     sleep(0.5)
     img = shoot()
     _memory_snap(img, "sort-picked")
@@ -104,7 +110,15 @@ def select_memory(expect: tuple[str, ...], *, shoot, click, swipe, texts_of=None
     return False
 
 
-_DIGIT_CONFUSION = {"3": "35", "5": "53", "6": "68", "8": "86", "0": "08", "1": "17", "7": "71"}  # 开始确认页粗体数字 OCR 常混淆
+_DIGIT_CONFUSION = {
+    "3": "35",
+    "5": "53",
+    "6": "68",
+    "8": "86",
+    "0": "08",
+    "1": "17",
+    "7": "71",
+}  # 开始确认页粗体数字 OCR 常混淆
 
 
 def memory_value_seen(value: str, texts: str) -> bool:
@@ -136,7 +150,11 @@ def memory_missing_on_page(expect: tuple[str, ...], *, shoot, texts=None, sleep=
         if len(expect) >= 3 and len(missing) == 1 and _one_digit_off(missing[0], tokens):
             # 另外几项都完全对上，只差这一项：同一段文字里有只差 1 位的数（DMM RapidOCR 11-17：Vi「1191」读成「391121」——
             # 图标读成数字、9 读成 2）。几项要同时对上，别的回忆刚好每项都只差 1 位的可能很小
-            logger.info("选拔回忆核对：%s 读成了只差 1 位的数，其余 %s 都对上，算通过", missing[0], [v for v in expect if v != missing[0]])
+            logger.info(
+                "选拔回忆核对：%s 读成了只差 1 位的数，其余 %s 都对上，算通过",
+                missing[0],
+                [v for v in expect if v != missing[0]],
+            )
             return []
         if not missing:
             return []

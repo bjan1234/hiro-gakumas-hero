@@ -18,7 +18,11 @@ def _n(v) -> int:
 
 
 PLAYABLE_ADD = "ProduceExamEffectType_ExamPlayableValueAdd"
-CREATE_TO_DECK = ("ProduceCardMovePositionType_DeckRandom", "ProduceCardMovePositionType_DeckFirst", "ProduceCardMovePositionType_DeckLast")
+CREATE_TO_DECK = (
+    "ProduceCardMovePositionType_DeckRandom",
+    "ProduceCardMovePositionType_DeckFirst",
+    "ProduceCardMovePositionType_DeckLast",
+)
 
 
 class Enchants:
@@ -54,7 +58,14 @@ class Enchants:
         for pe in (row or {}).get("playEffects") or ():
             e = self._get("ProduceExamEffect", pe.get("produceExamEffectId"))
             if e and e.get("effectType") in CARD_ENCHANT_TYPES and e.get("produceExamStatusEnchantId"):
-                out.append((e["produceExamStatusEnchantId"], _n(e.get("effectCount")), _n(e.get("effectTurn")), bool(pe.get("isOncePlayEffect"))))
+                out.append(
+                    (
+                        e["produceExamStatusEnchantId"],
+                        _n(e.get("effectCount")),
+                        _n(e.get("effectTurn")),
+                        bool(pe.get("isOncePlayEffect")),
+                    )
+                )
         return tuple(out)
 
     @cache  # noqa: B019
@@ -63,9 +74,19 @@ class Enchants:
         out = []
         for pe in (self._row(card_id, upgrade) or {}).get("playEffects") or ():
             e = self._get("ProduceExamEffect", pe.get("produceExamEffectId"))
-            if e and e.get("effectType") == "ProduceExamEffectType_ExamCardCreateId" and e.get("targetProduceCardId") \
-                    and e.get("movePositionType") in CREATE_TO_DECK:
-                out.append((e["targetProduceCardId"], int(e.get("targetUpgradeCount") or 0), max(1, int(e.get("effectValue1") or 0))))
+            if (
+                e
+                and e.get("effectType") == "ProduceExamEffectType_ExamCardCreateId"
+                and e.get("targetProduceCardId")
+                and e.get("movePositionType") in CREATE_TO_DECK
+            ):
+                out.append(
+                    (
+                        e["targetProduceCardId"],
+                        int(e.get("targetUpgradeCount") or 0),
+                        max(1, int(e.get("effectValue1") or 0)),
+                    )
+                )
         return tuple(out)
 
     @cache  # noqa: B019
@@ -128,7 +149,11 @@ class Enchants:
         out = []
         for eid in row.get("produceItemEffectIds") or ():
             e = self._get("ProduceItemEffect", eid)
-            if e and e.get("effectType") == "ProduceItemEffectType_ExamStatusEnchant" and e.get("produceExamStatusEnchantId"):
+            if (
+                e
+                and e.get("effectType") == "ProduceItemEffectType_ExamStatusEnchant"
+                and e.get("produceExamStatusEnchantId")
+            ):
                 out.append((e["produceExamStatusEnchantId"], _n(e.get("effectCount")), _n(e.get("effectTurn"))))
         return tuple(out)
 

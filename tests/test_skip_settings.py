@@ -11,7 +11,10 @@ import pytest
 
 def _real(*rel):
     """用实机截图的用例：截图放在 tests/fixtures/…（开源仓库不带，用自己的截图），识别层（hiro.vision.ocr）也要装。"""
-    have = all((_P(__file__).parent / "fixtures" / r).exists() for r in rel) and _iu.find_spec("hiro.vision.ocr") is not None
+    have = (
+        all((_P(__file__).parent / "fixtures" / r).exists() for r in rel)
+        and _iu.find_spec("hiro.vision.ocr") is not None
+    )
     return pytest.mark.skipif(not have, reason="需要实机截图 tests/fixtures/" + ", ".join(rel) + " 和识别层")
 
 
@@ -28,7 +31,7 @@ def _boxes(state: str):
             ("次回以降表示しない", 1.0, (257, 992, 481, 1016)), ("決定", 1.0, (353, 1145, 411, 1177))]  # fmt: skip
 
 
-@_real('settings/skip-settings-off-m23.png')
+@_real("settings/skip-settings-off-m23.png")
 def test_read_real_frame():
     from hiro.produce.ops import ocr_boxes
 
@@ -45,13 +48,25 @@ def test_handle_turns_on_then_decides():
     clicks, frames = [], [_boxes("ON")]
     r = skip_settings.handle(_boxes("OFF"), shoot=lambda: "img", ocr=lambda img: frames.pop(0), click=lambda x, y: clicks.append((x, y)),
                              sleep=lambda s: None)  # fmt: skip
-    assert r == {"kind": "演出スキップ設定", "items": dict.fromkeys(skip_settings.ITEMS, "ON"), "option": False, "clicked": 4, "ok": True}
+    assert r == {
+        "kind": "演出スキップ設定",
+        "items": dict.fromkeys(skip_settings.ITEMS, "ON"),
+        "option": False,
+        "clicked": 4,
+        "ok": True,
+    }
     assert clicks[:4] == [(607, 351), (607, 560), (607, 696), (606, 832)] and clicks[4] == (382, 1161)
 
 
 def test_handle_already_on_only_decides():
     clicks = []
-    r = skip_settings.handle(_boxes("ON"), shoot=lambda: None, ocr=lambda img: [], click=lambda x, y: clicks.append((x, y)), sleep=lambda s: None)
+    r = skip_settings.handle(
+        _boxes("ON"),
+        shoot=lambda: None,
+        ocr=lambda img: [],
+        click=lambda x, y: clicks.append((x, y)),
+        sleep=lambda s: None,
+    )
     assert r["ok"] and r["clicked"] == 0 and clicks == [(382, 1161)]
 
 
@@ -78,7 +93,13 @@ def test_comm_fast_forward_picks_on_and_unread():
     clicks, frames = [], [_ff_boxes("ON")]
     r = skip_settings.handle(_ff_boxes("OFF"), shoot=lambda: "img", ocr=lambda img: frames.pop(0), click=lambda x, y: clicks.append((x, y)),
                              sleep=lambda s: None)  # fmt: skip
-    assert r["kind"] == "早送り設定" and r["option"] and r["clicked"] == 1 and r["ok"] and r["items"] == {"unread_ff": "ON"}
+    assert (
+        r["kind"] == "早送り設定"
+        and r["option"]
+        and r["clicked"] == 1
+        and r["ok"]
+        and r["items"] == {"unread_ff": "ON"}
+    )
     assert clicks == [(260, 457), (607, 617), (382, 1161)]
 
 
@@ -88,7 +109,9 @@ def test_voice_keeps_voice_on():
              ("ボイスなしで再生", 1.0, (120, 520, 400, 555)), ("次回以降表示しない", 1.0, (257, 992, 481, 1016)),
              ("キャンセル", 1.0, (120, 1145, 300, 1177)), ("決定", 1.0, (440, 1145, 500, 1177))]  # fmt: skip
     clicks = []
-    r = skip_settings.handle(boxes, shoot=lambda: None, ocr=lambda img: [], click=lambda x, y: clicks.append((x, y)), sleep=lambda s: None)
+    r = skip_settings.handle(
+        boxes, shoot=lambda: None, ocr=lambda img: [], click=lambda x, y: clicks.append((x, y)), sleep=lambda s: None
+    )
     assert r["kind"] == "ボイス再生確認" and r["ok"] and clicks == [(260, 417), (470, 1161)]
 
 
@@ -101,7 +124,9 @@ def test_acquire_guide_picks_hide_then_decides():
 
     boxes = ocr_boxes(cv2.imread(str(FIX / "acquire-guide-acct2.png")))
     clicks = []
-    r = skip_settings.handle(boxes, shoot=lambda: None, ocr=lambda img: [], click=lambda x, y: clicks.append((x, y)), sleep=lambda s: None)
+    r = skip_settings.handle(
+        boxes, shoot=lambda: None, ocr=lambda img: [], click=lambda x, y: clicks.append((x, y)), sleep=lambda s: None
+    )
     assert r["kind"] == "獲得ガイド表示設定" and r["option"] and r["ok"] and len(clicks) == 2
     (ox, oy), (kx, ky) = clicks
     assert 940 < oy < 990 and ox < 400  # 「表示しない」那行（「表示する」在 y≈890）

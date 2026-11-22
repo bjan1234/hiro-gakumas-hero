@@ -39,6 +39,8 @@ def alt_clear(boxes) -> bool:
         return False
     x1, y1, x2, y2 = ALT_CLEAR
     return not any(x1 <= (b[0] + b[2]) / 2 <= x2 and y1 <= (b[1] + b[3]) / 2 <= y2 for _, _, b in boxes)
+
+
 ADVANCE_EVERY = 0.4
 ADVANCE_BURST = 3  # 每轮末尾最多再点几下（加上 KAA skip() 那一下）
 # 画面上有这些字（按钮 / 购买 / 危险操作）时不点空白：可能是要我们做决定的页面，交给对应流程

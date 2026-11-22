@@ -26,7 +26,9 @@ def test_trace_writer_continues_existing_trace(tmp_path):
     tw2 = TraceWriter(root=tmp_path, name="g", meta={"command": "resume"})
     assert tw2.next_seq() == 6  # 帧文件 00005 也算，不覆盖
     run = json.loads((tw2.dir / "run.json").read_text(encoding="utf-8"))
-    assert run["command"] == "new" and run["segments"][0]["command"] == "resume" and run["segments"][0]["first_seq"] == 6
+    assert (
+        run["command"] == "new" and run["segments"][0]["command"] == "resume" and run["segments"][0]["first_seq"] == 6
+    )
     tw2.close()
 
 
@@ -89,12 +91,19 @@ def test_consult_rereads_when_p_missing(monkeypatch):
     seen = []
     h = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
     h.s = sess
-    h.deciders = NS(decide=lambda page, st: seen.append((st.produce or {}).get("produce_point")) or Decision(Action(ActionKind.SHOP_END), "结束", "rule", 0.9))
+    h.deciders = NS(
+        decide=lambda page, st: (
+            seen.append((st.produce or {}).get("produce_point"))
+            or Decision(Action(ActionKind.SHOP_END), "结束", "rule", 0.9)
+        )
+    )
     h._consult_open_dialog = lambda d, done: d
     h._choose_dialog_card = None
     h._deck_size = lambda: None
     monkeypatch.setattr(hif, "sleep", lambda s: None)
-    monkeypatch.setattr("hiro.produce.shop.execute_shop", lambda *a, **k: NS(ok=True, error=None, page_after="ACTION_SELECT"))
+    monkeypatch.setattr(
+        "hiro.produce.shop.execute_shop", lambda *a, **k: NS(ok=True, error=None, page_after="ACTION_SELECT")
+    )
     try:  # noqa: SIM105
         h.on_consult(None)
     except Exception:  # noqa: BLE001  ShopEnd 之后的收尾依赖实机，这里只看决策前有没有重读

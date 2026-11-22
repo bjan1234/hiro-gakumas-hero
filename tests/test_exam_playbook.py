@@ -11,19 +11,57 @@ WHEY = "pdrink_00-3-001"  # 初星ホエイプロテイン（加行动；drink_c
 
 # 和实机 trace 的手牌字段同一格式（hiro.brain.cards.CardView.to_dict）
 CARDS = {
-    "aisatsu": {"name": "元気な挨拶+", "card_id": "p_card-02-act-1_004", "upgrade": 1, "category": "active", "cost": 0, "hp_cost": 0,
-                    "text": "元気の120%分パラメータ上昇 レッスン中1回", "tags": {"once": True, "genki_score_pct": 120}, "badge_score": 20000},
-    "yumemi": {"name": "ゆめみごこち+", "card_id": "p_card-02-men-2_057", "upgrade": 1, "category": "mental", "cost": 0, "hp_cost": 0,
-                   "text": "やる気+5スキルカード使用数追加+1", "tags": {"extra_actions": 1}, "badge_score": None},
-    "todoite": {"name": "届いて！+", "card_id": "p_card-02-act-3_039", "upgrade": 1, "category": "active", "cost": 0, "hp_cost": 0,
-                    "text": "元気の400%分パラメータ上昇元気を0にする", "tags": {"clears_genki": True, "genki_score_pct": 400}, "badge_score": 90000},
-    "kamifubuki": {"name": "きらきら紙吹雪+", "card_id": "p_card-02-act-2_062", "upgrade": 1, "category": "active", "cost": 0, "hp_cost": 0,
-                       "text": "元気の110%分パラメータ上昇", "tags": {"genki_score_pct": 110}, "badge_score": 18000},
+    "aisatsu": {
+        "name": "元気な挨拶+",
+        "card_id": "p_card-02-act-1_004",
+        "upgrade": 1,
+        "category": "active",
+        "cost": 0,
+        "hp_cost": 0,
+        "text": "元気の120%分パラメータ上昇 レッスン中1回",
+        "tags": {"once": True, "genki_score_pct": 120},
+        "badge_score": 20000,
+    },
+    "yumemi": {
+        "name": "ゆめみごこち+",
+        "card_id": "p_card-02-men-2_057",
+        "upgrade": 1,
+        "category": "mental",
+        "cost": 0,
+        "hp_cost": 0,
+        "text": "やる気+5スキルカード使用数追加+1",
+        "tags": {"extra_actions": 1},
+        "badge_score": None,
+    },
+    "todoite": {
+        "name": "届いて！+",
+        "card_id": "p_card-02-act-3_039",
+        "upgrade": 1,
+        "category": "active",
+        "cost": 0,
+        "hp_cost": 0,
+        "text": "元気の400%分パラメータ上昇元気を0にする",
+        "tags": {"clears_genki": True, "genki_score_pct": 400},
+        "badge_score": 90000,
+    },
+    "kamifubuki": {
+        "name": "きらきら紙吹雪+",
+        "card_id": "p_card-02-act-2_062",
+        "upgrade": 1,
+        "category": "active",
+        "cost": 0,
+        "hp_cost": 0,
+        "text": "元気の110%分パラメータ上昇",
+        "tags": {"genki_score_pct": 110},
+        "badge_score": 18000,
+    },
 }
 
 
 def _state(names, *, remaining=5, genki=300, drinks=()):
-    hand = [CardView.from_dict({"slot": i, "available": True, "extra_cost": None, **CARDS[n]}) for i, n in enumerate(names)]
+    hand = [
+        CardView.from_dict({"slot": i, "available": True, "extra_cost": None, **CARDS[n]}) for i, n in enumerate(names)
+    ]
     st = BattleState.build(ExamMemory(exam="r2"), CAMPUS_HIRO, source="screen", remaining_turns=remaining, hp=18, genki=genki,
                            motivation=20, impression=0, score=1000, buffs={}, attr="Vo", multiplier_permil=3000, npc_scores=None,
                            my_rank_index=None, deck_count=None, pitem_charges=None, statuses=None, attr_permil=None,
@@ -49,7 +87,9 @@ def test_last_turn_drink_after_free_cards():
 
 
 def test_no_takeover_when_nothing_certain():
-    assert rules.playbook_rules(_state(["aisatsu", "todoite"], remaining=5)) is None  # 非末回合、没有不耗行动的牌：交给 LLM
+    assert (
+        rules.playbook_rules(_state(["aisatsu", "todoite"], remaining=5)) is None
+    )  # 非末回合、没有不耗行动的牌：交给 LLM
 
 
 def test_switch_default_off():

@@ -114,7 +114,11 @@ def evaluate_rust(loadouts: list[dict], seeds: list[int], *, budget_s: float | N
                 row.append(int(raw))
                 continue
             first = top is not None and raw > top
-            conds = [{"text": "通关条件", "field": None, "got": None, "ok": (stars >= 3) if first else None}] if has_cond else []
+            conds = (
+                [{"text": "通关条件", "field": None, "got": None, "ok": (stars >= 3) if first else None}]
+                if has_cond
+                else []
+            )
             row.append({"score": int(raw), "first": bool(first), "stars": int(stars), "conditions": conds})
         out.append(row)
     return out

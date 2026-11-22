@@ -28,7 +28,11 @@ def card_letters(img: np.ndarray) -> list[Box]:
     """卡区里的类别字母框，按左上角排序、去掉同一张卡的重复命中。"""
     img = normalize(img)
     region = box("InProduce.SkillCardSelect.CardsBox").xywh
-    hits = [m.rect for name in ("InProduce.A", "InProduce.M") for m in tpl(name).find_all(img, threshold=LETTER_THRESHOLD, region=region)]
+    hits = [
+        m.rect
+        for name in ("InProduce.A", "InProduce.M")
+        for m in tpl(name).find_all(img, threshold=LETTER_THRESHOLD, region=region)
+    ]
     out: list[Box] = []
     for r in sorted(hits, key=lambda r: (r.x1, r.y1)):
         if all(abs(r.center.x - o.center.x) >= SAME_CARD_DX for o in out):

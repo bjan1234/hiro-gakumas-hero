@@ -14,21 +14,31 @@ def _state(step, options):
     produce = {"idol_card_id": "i_card-shro-3-007", "mode": "produce-007", "step": step, "stamina": 30, "max_stamina": 33,
                "produce_point": 100, "params": {"Vo": 200, "Da": 300, "Vi": 150}, "growth_permil": {"Vo": 1100, "Da": 1300, "Vi": 1000},
                "star": 10}  # fmt: skip
-    return GameState.from_dict({"mode": "produce", "page": {"name": "ACTION_SELECT", "area": "produce"}, "produce": produce,
-                                "page_fields": {"options": options}})
+    return GameState.from_dict(
+        {
+            "mode": "produce",
+            "page": {"name": "ACTION_SELECT", "area": "produce"},
+            "produce": produce,
+            "page_fields": {"options": options},
+        }
+    )
 
 
 LESSONS = [{"option": "training", "attr": a, "hp_cost": 6} for a in ("Vo", "Da", "Vi")] + [{"option": "rest"}]
 
 
 def test_stale_step_previews_with_matching_step():
-    d = ProduceDeciders(CAMPUS_HIRO, None).decide("ACTION_SELECT", _state(3, LESSONS))  # 第 3 步是授業，页面是课程（第 4 步）
+    d = ProduceDeciders(CAMPUS_HIRO, None).decide(
+        "ACTION_SELECT", _state(3, LESSONS)
+    )  # 第 3 步是授業，页面是课程（第 4 步）
     assert d.action.kind is ActionKind.PRODUCE_NEXT and d.source == "fallback"
     assert any("按第 4 步预览" in w for w in d.warnings), d.warnings
 
 
 def test_no_matching_step_falls_back_to_page_options():
-    d = ProduceDeciders(CAMPUS_HIRO, None).decide("ACTION_SELECT", _state(3, [{"option": "special_guidance"}, {"option": "rest"}]))
+    d = ProduceDeciders(CAMPUS_HIRO, None).decide(
+        "ACTION_SELECT", _state(3, [{"option": "special_guidance"}, {"option": "rest"}])
+    )
     assert d.source == "fallback" and d.action.kind is ActionKind.PRODUCE_NEXT
     assert any("对不上" in w for w in d.warnings)
 

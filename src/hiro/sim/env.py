@@ -195,7 +195,14 @@ class SimGame:
             lesson = env.turns[env.turn].get("lesson") if env.turn < len(env.turns) else None
             draw = env.turns[env.turn + 1]["draw"] if env.turn + 1 < len(env.turns) else 0
             info = f"本回合属性 {lesson}；山札 {len(deck)} 张（无序）：{'、'.join(deck)}；弃牌 {len(grave)} 张：{'、'.join(grave)}；下回合正常抽 {draw} 张"
-            once = sorted({env.definition(c)["name"] for z in ("deck", "grave") for c in env.zones[z] if env.definition(c).get("once")})
+            once = sorted(
+                {
+                    env.definition(c)["name"]
+                    for z in ("deck", "grave")
+                    for c in env.zones[z]
+                    if env.definition(c).get("once")
+                }
+            )
             piles = {"deck": deck, "grave": grave, "once": once,
                      "draw": draw or (env.turns[env.turn]["draw"] if env.turn < len(env.turns) else 3)}  # fmt: skip
         perm = {"now_turn_permil": env.turns[env.turn].get("bonus_permil") if env.turn < len(env.turns) else None,

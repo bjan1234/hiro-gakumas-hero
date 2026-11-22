@@ -1,6 +1,6 @@
 """离线感知：对截图文件输出结构化状态。
 
-    PYTHONPATH=src .venv/bin/python tools/perceive.py <截图...>
+PYTHONPATH=src .venv/bin/python tools/perceive.py <截图...>
 """
 
 import argparse

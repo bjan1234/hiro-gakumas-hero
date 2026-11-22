@@ -81,7 +81,11 @@ def full_text(card: master.Card) -> str:
         text = re.sub(r"</?nobr>", "", item.get("text") or "")
         effect = item.get("originProduceExamEffectId")
         trigger = item.get("originProduceExamTriggerId")
-        if item.get("produceDescriptionType") == "ProduceDescriptionType_ProduceDescription" and not effect and not trigger:
+        if (
+            item.get("produceDescriptionType") == "ProduceDescriptionType_ProduceDescription"
+            and not effect
+            and not trigger
+        ):
             flush()  # 独立标签：重複不可、レッスン中1回
             lines.append(text)
             continue

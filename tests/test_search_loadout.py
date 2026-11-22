@@ -14,8 +14,13 @@ def test_memory_ability_text_maps_to_hif_skill():
 
 
 def test_run_loadout_from_plan_and_ledger():
-    plan = {"support": {"own": [{"support_card_id": "s_card-3-0029", "level": 60}], "rental": {"support_card_id": "s_card-3-0010", "level": 60}},
-            "memory": {"chosen": [{"card_id": "x", "abilities": ["以降1回まで、デイドリーミング使用後、眠気を除外"]}]}}
+    plan = {
+        "support": {
+            "own": [{"support_card_id": "s_card-3-0029", "level": 60}],
+            "rental": {"support_card_id": "s_card-3-0010", "level": 60},
+        },
+        "memory": {"chosen": [{"card_id": "x", "abilities": ["以降1回まで、デイドリーミング使用後、眠気を除外"]}]},
+    }
     got, notes = lo.run_loadout({"items": ["pitem_02-3-062-0"]}, plan)
     assert got["items"] == ("pitem_02-3-062-0",)
     assert [s["_supportCardId"] for s in got["supports"]] == ["s_card-3-0029", "s_card-3-0010"]

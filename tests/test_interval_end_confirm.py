@@ -29,7 +29,7 @@ def test_interval_end_confirm_dialog_kind():
 def test_interval_end_confirm_taps_honsen():
     rt, _ = runtime([fake_frame()])
     assert "インターバル終了" in interrupts.check(Frame(_real("mainz4-interval-end-confirm.jpg"), 0.0), rt)
-    (x, y), = rt.raw_device.taps
+    ((x, y),) = rt.raw_device.taps
     assert x > 400 and abs(y - 1160) < 20  # 右下「本戦へ」，不是左下キャンセル
 
 

@@ -61,7 +61,17 @@ def option_center(page_fields: dict | None) -> tuple[int, int]:
 
 
 def _runner(action, shoot, click, clock, sleep, ocr, calib) -> Run:
-    return Run(action, PAGE, shoot or device.screenshot, click or device.click, clock, sleep, label="特別指導", ocr=ocr, calib=calib)
+    return Run(
+        action,
+        PAGE,
+        shoot or device.screenshot,
+        click or device.click,
+        clock,
+        sleep,
+        label="特別指導",
+        ocr=ocr,
+        calib=calib,
+    )
 
 
 def enter(
@@ -110,14 +120,21 @@ def sg_grid_center(index: int) -> tuple[int, int]:
 
 
 def on_grid(boxes) -> bool:
-    return find_text(boxes, ("カスタマイズ可能スキルカード",)) is not None or find_text(boxes, ("カスタマイズするスキルカード",)) is not None
+    return (
+        find_text(boxes, ("カスタマイズ可能スキルカード",)) is not None
+        or find_text(boxes, ("カスタマイズするスキルカード",)) is not None
+    )
 
 
 def on_menu(boxes) -> bool:
     return find_text(boxes, ("カスタマイズメニュー",)) is not None and find_text(boxes, ("一覧に戻る",)) is not None
 
 
-TOAST = ("カスタマイズしまし", "をカスタマイズ", "しました")  # OCR 断行不定：q12「…カスタマイズしまし / た」，q13「…をカスタマイズ / しました」
+TOAST = (
+    "カスタマイズしまし",
+    "をカスタマイズ",
+    "しました",
+)  # OCR 断行不定：q12「…カスタマイズしまし / た」，q13「…をカスタマイズ / しました」
 TOAST_REGION = (0, 920, 720, 1130)  # 提示框所在的屏幕下部（菜单色块在 y≈845，「カスタマイズ上限」不含这些词）
 
 
@@ -127,7 +144,9 @@ def has_toast(boxes) -> bool:
 
 def on_page(boxes) -> bool:
     """还在特別指導的定制页（选卡页 / 菜单页 / 菜单页叠着「〜をカスタマイズしました」提示，提示会挡住「一覧に戻る」）。"""
-    return on_grid(boxes) or on_menu(boxes) or has_toast(boxes) or find_text(boxes, ("カスタマイズメニュー",)) is not None
+    return (
+        on_grid(boxes) or on_menu(boxes) or has_toast(boxes) or find_text(boxes, ("カスタマイズメニュー",)) is not None
+    )
 
 
 def _to_grid(r: Run, tries: int = 6) -> bool:
@@ -159,7 +178,9 @@ def menu_items(boxes) -> list[dict]:
         price = next((int(t) for t, y in col if 870 <= y <= 900 and t.isdigit()), None)
         left = next((int(m.group(1)) for t, y in col if 785 <= y <= 812 and (m := re.search(r"あと(\d+)回", t))), None)
         maxed = any("上限" in t for t, y in col if 895 <= y <= 920)
-        out.append({"item_index": i, "name": name, "price": price, "left": left, "maxed": maxed, "center": [x, MENU_BLOCK_Y]})
+        out.append(
+            {"item_index": i, "name": name, "price": price, "left": left, "maxed": maxed, "center": [x, MENU_BLOCK_Y]}
+        )
     return out
 
 
@@ -204,7 +225,11 @@ def _name_in(boxes, name: str, region) -> bool:
     want = name.replace(" ", "").translate(_DASHES)
     for text, _, (x1, y1, x2, y2) in boxes:
         cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
-        if region[0] <= cx <= region[2] and region[1] <= cy <= region[3] and want in text.replace(" ", "").translate(_DASHES):
+        if (
+            region[0] <= cx <= region[2]
+            and region[1] <= cy <= region[3]
+            and want in text.replace(" ", "").translate(_DASHES)
+        ):
             return True
     return False
 
@@ -246,7 +271,12 @@ def _leave(r: Run) -> bool:
             r.tap(TOAST_TAP)
             last[0] = r.clock()
             return False
-        if on_page(bx) and ft(bx, ("終了確認",)) is None and r.clock() - last[0] >= LEAVE_RETAP_S and retaps[0] < LEAVE_RETAPS:  # noqa: SIM102
+        if (  # noqa: SIM102
+            on_page(bx)
+            and ft(bx, ("終了確認",)) is None
+            and r.clock() - last[0] >= LEAVE_RETAP_S
+            and retaps[0] < LEAVE_RETAPS
+        ):
             # 点的时候画面还在切（菜单页「一覧に戻る」后立刻找「終了」，拿到的是菜单页位置 (653,977)，切回一览后那里是卡格，
             # DMM dmm2 点成了选中一张卡）：按当前画面重新找「終了」再点
             if (e := ft(bx, ("終了",), region=(560, 940, 720, 1120))) is not None:
@@ -273,7 +303,9 @@ def leave(
     """离开特別指導（不定制或定制完）。"""
     r = _runner(Action(ActionKind.SHOP_END), shoot, click, clock, sleep, ocr, calib)
     ok = _leave(r)
-    return r.result(ok, None if ok else "没能离开特別指導（没找到「終了」或点了没反应）", page_after=None if ok else PAGE)
+    return r.result(
+        ok, None if ok else "没能离开特別指導（没找到「終了」或点了没反应）", page_after=None if ok else PAGE
+    )
 
 
 def customize(
@@ -296,7 +328,9 @@ def customize(
     card_name：给了（或 cards 里有 name）就核对菜单页上的卡名。某级之前色块已「カスタマイズ上限」/ 没次数就停在已做的级数。
     ok=True 表示 levels 级全做完；部分完成时 ok=False，error 写做了几级。结束时回到选卡页（可继续下一张或 leave）。
     """
-    act = Action(ActionKind.CONTINUE, {"customize": {"card_index": card_index, "item_index": item_index, "levels": levels}})
+    act = Action(
+        ActionKind.CONTINUE, {"customize": {"card_index": card_index, "item_index": item_index, "levels": levels}}
+    )
     r = _runner(act, shoot, click, clock, sleep, ocr, calib)
     img = r.shoot()
     boxes = r.ocr(img)

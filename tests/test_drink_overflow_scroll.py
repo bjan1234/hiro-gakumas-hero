@@ -21,7 +21,15 @@ def test_scrolls_to_cut_off_owned_row():
     cut = frame("overflow_cut")
     frames = {"cut": cut, "scrolled": frame("overflow_3rows"), "scrolled_off2": frame("overflow_3rows_off2"),
               "back": cut, "back_new": _new_checked(cut), "after": frame("overflow_after")}  # fmt: skip
-    fake = Fake(frames, {("scrolled", (630, 946)): "scrolled_off2", ("back", (630, 481)): "back_new", ("back_new", (381, 1160)): "after"}, "cut")
+    fake = Fake(
+        frames,
+        {
+            ("scrolled", (630, 946)): "scrolled_off2",
+            ("back", (630, 481)): "back_new",
+            ("back_new", (381, 1160)): "after",
+        },
+        "cut",
+    )
     swipes = []
 
     def swipe(x1, y1, x2, y2):
@@ -40,7 +48,9 @@ def test_scrolls_to_cut_off_owned_row():
 
 def test_visible_rows_need_no_scroll():
     """三瓶都看得到时不滑。"""
-    fake = Fake({"open": frame("overflow_3rows"), "off2": frame("overflow_3rows_off2")}, {("open", (630, 946)): "off2"}, "open")
+    fake = Fake(
+        {"open": frame("overflow_3rows"), "off2": frame("overflow_3rows_off2")}, {("open", (630, 946)): "off2"}, "open"
+    )
     swipes = []
     drink_swap.resolve_overflow([2], shoot=fake.shoot, click=fake.click, clock=fake.clock, sleep=fake.sleep, ocr=fake.ocr, calib=False,
                                 swipe=lambda *a: swipes.append(a))  # fmt: skip

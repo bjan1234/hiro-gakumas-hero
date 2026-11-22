@@ -188,7 +188,9 @@ def tap(
         before = shoot()
         click(x, y)
         taps.append([x, y])
-        w = wait_change(before, roi=roi, page_before=page_before, done=done, timeout=timeout, shoot=shoot, clock=clock, sleep=sleep)
+        w = wait_change(
+            before, roi=roi, page_before=page_before, done=done, timeout=timeout, shoot=shoot, clock=clock, sleep=sleep
+        )
         waited_total += w.waited_s
         if w.changed:
             break
@@ -235,7 +237,19 @@ def button_text(t: str, text: str) -> bool:
 class Run:
     """一次多步页面操作的记录：点击坐标、等待时长、起止时间；可选把每一步的画面存到 CALIB_DIR/<label>/ 供标定。"""
 
-    def __init__(self, action: Action, page: str | None, shoot, click, clock, sleep, *, label: str = "", ocr=None, calib: bool = False):
+    def __init__(
+        self,
+        action: Action,
+        page: str | None,
+        shoot,
+        click,
+        clock,
+        sleep,
+        *,
+        label: str = "",
+        ocr=None,
+        calib: bool = False,
+    ):
         self.action, self.page, self.label = action, page, label or (page or "")
         self.shoot, self.click_fn, self.clock, self.sleep = shoot, click, clock, sleep
         self.ocr = ocr or ocr_boxes
@@ -366,6 +380,7 @@ def fast_acquire(card_center, *, shoot=None, click=None, sleep=_sleep, clock=tim
         # 亮起没有实拍帧核对过（trace 只在选之前存帧）：绝对阈值或相对点之前的亮度 / 饱和度明显升高都算
         sat, _val = button_sv(img, RECEIVE_ROI)
         return orange_lit(img, RECEIVE_ROI, base_val) or sat - base_sat >= RECEIVE_SAT_GAIN
+
     for _attempt in range(2):
         click(*card_center)
         deadline = clock() + lit_timeout

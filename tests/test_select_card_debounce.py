@@ -52,7 +52,9 @@ def _residual_core(monkeypatch, ids):
     monkeypatch.setattr(hif, "sleep", lambda s: None)
     monkeypatch.setattr(cs, "select_card_options", lambda img: [NS(card=None, rect=NS(center=NS(x=222, y=937)))] * 3)
     monkeypatch.setattr(cs, "recommended_index", lambda img, options: None)
-    monkeypatch.setattr(ex, "extract", lambda page, img: ({"options": [{"card_id": c, "upgrade": 1} for c in ids]}, None))
+    monkeypatch.setattr(
+        ex, "extract", lambda page, img: ({"options": [{"card_id": c, "upgrade": 1} for c in ids]}, None)
+    )
 
     class Stop(Exception):
         pass

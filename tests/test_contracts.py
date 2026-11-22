@@ -33,7 +33,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))  # state_
 
 def test_schema_files_match_code():
     for cls in CONTRACTS:
-        assert (OUT / f"{cls.__name__}.json").read_text(encoding="utf-8") == dump(cls), f"运行 python -m hiro.contracts.schemas 更新 {cls.__name__}"
+        assert (OUT / f"{cls.__name__}.json").read_text(encoding="utf-8") == dump(cls), (
+            f"运行 python -m hiro.contracts.schemas 更新 {cls.__name__}"
+        )
 
 
 def test_action_roundtrip_and_legal_keys():
@@ -50,8 +52,6 @@ def test_action_roundtrip_and_legal_keys():
         Action.from_dict({"kind": "PlayCard", "args": {}, "version": "1.0", "slot": 1})  # 未知字段
 
 
-
-
 def test_game_state_roundtrip_and_produce_state():
     g = GameState(mode="produce", page=PageState("ACTION_SELECT", "produce", 10, True, 3),
                   produce={"stamina": 22, "max_stamina": 33}, sources={"produce.stamina": Source("screen", 10)}, seq=10)  # fmt: skip
@@ -66,16 +66,10 @@ def test_game_state_roundtrip_and_produce_state():
     assert GameState(sources={"x": Source("guess", 1)}).problems()
 
 
-
-
 def test_observation_rejects_bad_source_and_unregistered_field():
     obs = Observation(1, 0.0, PageObs("HIF_EXAM"), fields={"hp": 3, "mana": 1}, source="guess")
     errs = obs.problems(strict=True)
     assert any("mana" in e for e in errs) and any("source" in e for e in errs)
-
-
-
-
 
 
 def test_dataset_samples_validate(tmp_path):

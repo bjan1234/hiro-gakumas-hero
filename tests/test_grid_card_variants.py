@@ -17,7 +17,12 @@ def test_base_asset_strips_any_character_suffix():
 def test_main_consult_shelf_complete():
     r = shop.read_consult(frame("main_consult_hmsz"))
     assert r["complete"] is True
-    assert [c.get("card_id") for c in r["shelf"][:4]] == ["p_card-00-men-2_012", "p_card-00-men-3_003", "p_card-02-men-3_041", "p_card-02-act-1_028"]
+    assert [c.get("card_id") for c in r["shelf"][:4]] == [
+        "p_card-00-men-2_012",
+        "p_card-00-men-3_003",
+        "p_card-02-men-3_041",
+        "p_card-02-act-1_028",
+    ]
     assert [c["price"] for c in r["shelf"]] == [53, 70, 105, 70, 35, 100, 75, 100]
 
 

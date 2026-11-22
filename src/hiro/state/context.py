@@ -17,7 +17,10 @@ from hiro.state.produce import ATTRS, FINALS, SELECTION, LessonOption, ProduceSt
 
 TIER = {"Great": "◎", "Good": "○", "Normal": "△", "Bad": "×"}
 ASSESS_PERMIL = 110  # ProduceSetting p_setting-7/8 produceAuditionTrendAssessmentPermilUpper/Lower
-EXAMS = {SELECTION: {7: ("选拔①", "s1"), 13: ("选拔②", "s2"), 20: ("选拔③", "s3")}, FINALS: {7: ("本战R1", "r1"), 9: ("本战R2", "r2")}}
+EXAMS = {
+    SELECTION: {7: ("选拔①", "s1"), 13: ("选拔②", "s2"), 20: ("选拔③", "s3")},
+    FINALS: {7: ("本战R1", "r1"), 9: ("本战R2", "r2")},
+}
 OPTION_CN = {"training": "公開レッスン", "class": "授業", "outing": "外出", "gift": "差し入れ", "shop": "相談",
              "special_guidance": "特別指導", "exam": "考试", "round1": "R1", "interval": "轮间", "round2": "R2"}  # fmt: skip
 
@@ -147,11 +150,19 @@ def params_complete(params: dict | None) -> bool:
 def exam_brief(state: ProduceState, mode: str, position: int) -> dict:
     label, key = EXAMS[mode][position]
     if not params_complete(state.params):
-        return {"场次": label, "日程位置": position, "说明": f"属性读数不全（{sorted(a for a in ATTRS if a not in (state.params or {}))} 没读到），跳过审查 / 倍率估算"}
+        return {
+            "场次": label,
+            "日程位置": position,
+            "说明": f"属性读数不全（{sorted(a for a in ATTRS if a not in (state.params or {}))} 没读到），跳过审查 / 倍率估算",
+        }
     try:
         prev = hif_preview(mode, position, state.params, idol_card_id=state.idol_card_id, catalog=catalog())
     except ExamRequirementsUnavailable:
-        return {"场次": label, "日程位置": position, "说明": "考试要求 / 倍率数据未知（没有接 exam_requirements 插件），不估审查评定和倍率"}
+        return {
+            "场次": label,
+            "日程位置": position,
+            "说明": "考试要求 / 倍率数据未知（没有接 exam_requirements 插件），不估审查评定和倍率",
+        }
     cfg = prev["source"]["battle_config"]
     req = {"Vo": cfg["vocal"], "Da": cfg["dance"], "Vi": cfg["visual"]}
     kind, order = idol_trend(state.idol_card_id)
@@ -263,8 +274,16 @@ def situation_hajime_nia(state: ProduceState, unknown: set[str] | frozenset = fr
         for c in state.deck:
             label = card_name(c.card_id, c.upgrade) + ("（定制）" if c.customized else "")
             counts[label] = counts.get(label, 0) + 1
-        once = {card_name(c.card_id, c.upgrade) + ("（定制）" if c.customized else ""): is_once(c.card_id) for c in state.deck}
-        deck = {"张数": len(state.deck), "卡": [f"{k}{' ×' + str(n) if n > 1 else ''}（{'一次性' if once[k] else '可复用'}）" for k, n in counts.items()]}
+        once = {
+            card_name(c.card_id, c.upgrade) + ("（定制）" if c.customized else ""): is_once(c.card_id)
+            for c in state.deck
+        }
+        deck = {
+            "张数": len(state.deck),
+            "卡": [
+                f"{k}{' ×' + str(n) if n > 1 else ''}（{'一次性' if once[k] else '可复用'}）" for k, n in counts.items()
+            ],
+        }
     res = {"体力": UNKNOWN if "stamina" in unknown else f"{state.stamina}/{state.max_stamina}", "P点": val("produce_point"),
            "饮料": val("drinks", [_drink_entry(d) for d in state.drinks] + [f"空位 {state.drink_capacity - len(state.drinks)}"]),
            "禁用剩余": val("excludes_left"), "刷新剩余": val("rerolls_left")}  # fmt: skip
@@ -279,7 +298,18 @@ def situation_hajime_nia(state: ProduceState, unknown: set[str] | frozenset = fr
         "牌组": deck,
     }  # fmt: skip
     shown = {"drinks", "excludes_left", "rerolls_left", "deck", "step", "stamina", "produce_point"}
-    hidden = {"lessons", "items", "excluded", "upgrades_done", "deletes_done", "drink_capacity", "star", "star_permil", "wappen_left", "param_cap"}
+    hidden = {
+        "lessons",
+        "items",
+        "excluded",
+        "upgrades_done",
+        "deletes_done",
+        "drink_capacity",
+        "star",
+        "star_permil",
+        "wappen_left",
+        "param_cap",
+    }
     if rest := sorted(set(unknown) - shown - hidden):
         out["未识别字段"] = rest
     return out
@@ -316,7 +346,9 @@ def situation(state: ProduceState, unknown: set[str] | frozenset = frozenset()) 
         "牌组": deck_summary(state),
     }  # fmt: skip
     shown = {"drinks", "wappen_left", "excludes_left", "rerolls_left", "param_cap", "star_permil", "deck"}
-    if rest := sorted(set(unknown) - shown - {"lessons", "items", "excluded", "upgrades_done", "deletes_done", "drink_capacity"}):
+    if rest := sorted(
+        set(unknown) - shown - {"lessons", "items", "excluded", "upgrades_done", "deletes_done", "drink_capacity"}
+    ):
         out["未识别字段"] = rest
     return out
 
@@ -425,7 +457,9 @@ def _tier_changes(state: ProduceState, after: dict) -> list[str]:
         return out
     for mode, pos in upcoming_exams(state)[:1] + ([(FINALS, 7)] if state.mode == SELECTION else []):
         label = EXAMS[mode][pos][0]
-        cfg = hif_preview(mode, pos, state.params, idol_card_id=state.idol_card_id, catalog=catalog())["source"]["battle_config"]
+        cfg = hif_preview(mode, pos, state.params, idol_card_id=state.idol_card_id, catalog=catalog())["source"][
+            "battle_config"
+        ]
         req = {"Vo": cfg["vocal"], "Da": cfg["dance"], "Vi": cfg["visual"]}
         for a in ATTRS:
             t0 = TIER[assessment(state.params[a], req[a], ASSESS_PERMIL, ASSESS_PERMIL)]
@@ -484,13 +518,15 @@ def _likely_sub(state: ProduceState, main: str) -> tuple[str, str]:
     return sub, f"副属性未读到，按社区统计最可能是 {sub}（约 {weights[sub]:.0%}）"
 
 
-def preview_lessons(state: ProduceState, lessons: list[LessonOption], unknown: set[str] | frozenset = frozenset()) -> list[dict]:
+def preview_lessons(
+    state: ProduceState, lessons: list[LessonOption], unknown: set[str] | frozenset = frozenset()
+) -> list[dict]:
     st = schedule(state.mode).stage(state.step)
     rows = [catalog().one("ProduceStepOpenLesson", k) for k in st["open_lesson_ids"]]
     out = []
     for o in lessons:
         sub, sub_note = (o.sub, None) if o.sub else _likely_sub(state, o.main)
-        for sp in ([o.sp] if o.sp is not None else [True, False]):
+        for sp in [o.sp] if o.sp is not None else [True, False]:
             row = next(r for r in rows if r["subParameterType"].endswith(_ENUM[sub]) and ("-sp-" in r["id"]) == sp)
             gains = {o.main: _scale(row["mainParameter"], state.growth_permil[o.main]),
                      sub: _scale(row["subParameter"], state.growth_permil[sub])}  # fmt: skip
@@ -510,8 +546,11 @@ def preview_lessons(state: ProduceState, lessons: list[LessonOption], unknown: s
             if sub_note:
                 entry["副属性"] = sub_note
             if any(real[a] < gains[a] for a in real):
-                entry["注意"] = ("可能撞到上限（属性上限未识别，按 3000 算）" if "param_cap" in unknown
-                                 else "有属性撞到上限，溢出部分浪费")
+                entry["注意"] = (
+                    "可能撞到上限（属性上限未识别，按 3000 算）"
+                    if "param_cap" in unknown
+                    else "有属性撞到上限，溢出部分浪费"
+                )
             if changes := _tier_changes(state, after):
                 entry["评定变化"] = changes
             out.append(entry)
@@ -548,7 +587,10 @@ def _wappen_note(state: ProduceState, unknown: set[str] | frozenset) -> tuple[in
 
 def _simple_entry(state: ProduceState, opt: str, unknown: set[str] | frozenset = frozenset()) -> dict:
     if opt == "outing":
-        rec = min(state.max_stamina, state.stamina + _scale(state.max_stamina, rules.OUTING_RECOVER_PERMIL)) - state.stamina
+        rec = (
+            min(state.max_stamina, state.stamina + _scale(state.max_stamina, rules.OUTING_RECOVER_PERMIL))
+            - state.stamina
+        )
         star, note = _wappen_note(state, unknown)
         return {"option": "outing", "选项": "外出", "体力": f"+{rec}", "获得": f"选一瓶饮料 + 选一张主效果卡（{note}）",
                 "加码": f"付 50P 或加 1 张眠気：再选一张强化过的主效果卡（再 +{star} 星星）",
@@ -565,7 +607,13 @@ def _simple_entry(state: ProduceState, opt: str, unknown: set[str] | frozenset =
         return {"option": "special_guidance", "选项": "特別指導", "说明": "定制卡牌，价格以画面为准", "delta": {}}
     if opt == "rest":
         rec, no_rest, rest = rest_real_gain(state)
-        row = {"option": "rest", "选项": "休息", "体力": f"+{rec}", "代价": "这一天不获得任何属性、星星、卡", "delta": {"stamina": rec}}
+        row = {
+            "option": "rest",
+            "选项": "休息",
+            "体力": f"+{rec}",
+            "代价": "这一天不获得任何属性、星星、卡",
+            "delta": {"stamina": rec},
+        }
         if exam_tomorrow(state):
             row["实际收益"] = (f"明天考试开考时自动回复 50%：不休息开考体力 {no_rest}，休息开考体力 {rest}，实际只多 {rest - no_rest}"
                              + ("（零收益）" if rest == no_rest else ""))  # fmt: skip
@@ -573,7 +621,9 @@ def _simple_entry(state: ProduceState, opt: str, unknown: set[str] | frozenset =
     return {"option": opt, "选项": OPTION_CN.get(opt, opt), "delta": {}}
 
 
-def preview_action_select(state: ProduceState, available: list[dict] | None = None, unknown: set[str] | frozenset = frozenset()) -> list[dict]:
+def preview_action_select(
+    state: ProduceState, available: list[dict] | None = None, unknown: set[str] | frozenset = frozenset()
+) -> list[dict]:
     """选行动页：每个可选行动的即时结果，带 index（LLM 按它回答）与 option/attr/sp（转 Action.produce_next）。
 
     available：画面上的选项（GameState.page_fields["options"]：{option, attr, hp_cost, ...}）；None 时按日程表列出当天的选项。
@@ -600,9 +650,16 @@ def preview_action_select(state: ProduceState, available: list[dict] | None = No
         else:
             out.append(_simple_entry(state, opt, unknown))
     for row in out:
-        if row.get("option") in ("training", "class") and (g := r1_bonus_gain(state, row.get("delta") or {})) is not None:
+        if (
+            row.get("option") in ("training", "class")
+            and (g := r1_bonus_gain(state, row.get("delta") or {})) is not None
+        ):
             row["R1倍率增量"] = g  # Σ 每回合倍率(‰) × 回合数 的增量，越大越好（本战课程 / 授業补哪项看它）
-        elif R1_TURN_PROXY and row.get("option") in ("training", "class") and (g := r1_turn_weighted_gain(state, row.get("delta") or {})) is not None:
+        elif (
+            R1_TURN_PROXY
+            and row.get("option") in ("training", "class")
+            and (g := r1_turn_weighted_gain(state, row.get("delta") or {})) is not None
+        ):
             row["R1倍率增量"] = g
             row["R1倍率增量说明"] = "近似：R1 各属性回合数 × 属性增量（缺倍率换算数据；只用于和同一步其他选项比大小）"
     for i, row in enumerate(out):
@@ -619,7 +676,11 @@ def preview_card_pick(state: ProduceState, candidates: list[dict], *, change: bo
     from hiro.brain.cards import card_view
 
     other = _is_hajime_nia(state.mode)  # 初 / N.I.A：没有 H.I.F ワッペン、没有星星
-    wappen = _scale(10, state.star_permil) if (not other and ("wappen_left" in unknown or state.wappen_left) and not change) else 0
+    wappen = (
+        _scale(10, state.star_permil)
+        if (not other and ("wappen_left" in unknown or state.wappen_left) and not change)
+        else 0
+    )
     owned = [c.card_id for c in state.deck]
     rows = []
     for i, c in enumerate(candidates):
@@ -631,8 +692,11 @@ def preview_card_pick(state: ProduceState, candidates: list[dict], *, change: bo
             "index": i,
             "卡": card_name(c["card_id"], c.get("upgrade", 0)),
             "效果": v.text if v else "",
-            "费用": f"{row['stamina']}（先扣元气，不够扣体力）" + (f"，另直接扣体力 {row['forceStamina']}" if row.get("forceStamina") else ""),
-            "社区评级": (f"{know['tier'] or '—'}{'·必拿' if know.get('must') else ''}：{know['note']}" if know else "攻略未提及"),
+            "费用": f"{row['stamina']}（先扣元气，不够扣体力）"
+            + (f"，另直接扣体力 {row['forceStamina']}" if row.get("forceStamina") else ""),
+            "社区评级": (
+                f"{know['tier'] or '—'}{'·必拿' if know.get('must') else ''}：{know['note']}" if know else "攻略未提及"
+            ),
         }
         if v and v.tags.extra_actions:
             entry["压缩"] = "带使用数追加（社区：R1 前牌组只留这类卡和得分必需卡）"

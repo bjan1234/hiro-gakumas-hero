@@ -9,9 +9,13 @@ CALLS = []
 def act_cmd():
     import hiro.cli.main  # noqa: F401
 
-    @registry.command("test poke", registry.Risk.ACT, "测试用：会动游戏的命令",
-                      args=(registry.Arg("--times", "次数", type="int", default=1),),
-                      confirm_summary=lambda a: f"戳 {a['times']} 下")
+    @registry.command(
+        "test poke",
+        registry.Risk.ACT,
+        "测试用：会动游戏的命令",
+        args=(registry.Arg("--times", "次数", type="int", default=1),),
+        confirm_summary=lambda a: f"戳 {a['times']} 下",
+    )
     def _poke(a):
         CALLS.append(a["times"])
         return {"poked": a["times"]}
@@ -44,7 +48,7 @@ def test_expired_pending_is_refused(run_cli, act_cmd, monkeypatch):
 
     _, env = run_cli("test", "poke")
     pid = env["data"]["pending"]["id"]
-    monkeypatch.setattr(pending, "_now", lambda: 10 ** 12)
+    monkeypatch.setattr(pending, "_now", lambda: 10**12)
     _code, env = run_cli("confirm", pid)
     assert env["error"]["code"] == "pending_expired" and CALLS == []
 

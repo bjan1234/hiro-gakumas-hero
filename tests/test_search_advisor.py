@@ -40,7 +40,9 @@ def _game():
 
     from gakumas_exam.native_battle import maybe_native
 
-    env = maybe_native(iv._env(iv.R2Setup(deck=DECK, drinks=[], hp=20, max_hp=33, permil={"Vo": 37490, "Da": 36100, "Vi": 22860}), 7))
+    env = maybe_native(
+        iv._env(iv.R2Setup(deck=DECK, drinks=[], hp=20, max_hp=33, permil={"Vo": 37490, "Da": 36100, "Vi": 22860}), 7)
+    )
     env.rx.advance()
     return SimpleNamespace(env=env)
 

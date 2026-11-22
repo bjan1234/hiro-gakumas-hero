@@ -12,7 +12,10 @@ def test_reroll_blocked_redecides(monkeypatch):
     pytest.importorskip("kaa")
     import hiro.produce.hif as hif
 
-    cands = [{"index": i, "card_id": c} for i, c in enumerate(("p_card-02-men-2_054", "p_card-02-men-1_006", "p_card-02-act-1_071"))]
+    cands = [
+        {"index": i, "card_id": c}
+        for i, c in enumerate(("p_card-02-men-2_054", "p_card-02-men-1_006", "p_card-02-act-1_071"))
+    ]
     state = GameState(page_fields={"candidates": cands, "rerolls_left": 1, "excludes_left": 3})
     seen, acted = [], []
 
@@ -91,13 +94,19 @@ def test_reroll_confirm_taps_reroll_button_with_arrow(monkeypatch):
 
     import cv2
 
-    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "settings" / "reroll-confirm-acct2.png"
+    path = (
+        Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures"))
+        / "settings"
+        / "reroll-confirm-acct2.png"
+    )
     if not path.exists():
         pytest.skip("需要实机截图 settings/reroll-confirm-acct2.png")
     texts = screen_texts(cv2.imread(str(path)))
     hif, fake, d, clicks = _confirm_env(monkeypatch, texts)
     assert hif.HifCore._reroll_confirm(fake, d) is True
-    assert len(clicks) == 1 and clicks[0][0] > 380 and abs(clicks[0][1] - 1160) < 15  # 右边的「再抽選する」，不是キャンセル
+    assert (
+        len(clicks) == 1 and clicks[0][0] > 380 and abs(clicks[0][1] - 1160) < 15
+    )  # 右边的「再抽選する」，不是キャンセル
 
 
 def test_reroll_confirm_with_jewel_cancels(monkeypatch):

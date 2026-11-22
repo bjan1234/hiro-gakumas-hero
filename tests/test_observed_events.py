@@ -13,7 +13,6 @@ import pytest
 FIX = Path(__file__).with_name("fixtures")
 
 
-
 def _obs(rel: str, seq: int = 1):
     from hiro.vision.extract import extract
     from hiro.vision.observe import observation
@@ -32,16 +31,28 @@ def _one(rel: str):
     evs = observed_events(obs)
     assert len(evs) == 1 and isinstance(evs[0], Event) and evs[0].problems() == []
     ev = evs[0].to_dict()
-    assert ev["seq"] == 1 and ev["basis"] == "observe_only" and ev["ref"] == {"observation_seq": 1, "screenshot": rel, "page": obs.page.name}
+    assert (
+        ev["seq"] == 1
+        and ev["basis"] == "observe_only"
+        and ev["ref"] == {"observation_seq": 1, "screenshot": rel, "page": obs.page.name}
+    )
     return ev
 
 
 @pytest.mark.parametrize(
     ("rel", "kind", "args"),
     [
-        ("events/acquire-memory-00028.jpg", "CARD_ACQUIRE", {"card_id": "p_card-02-men-1_035", "upgrade": 1, "memory_effect": True}),
+        (
+            "events/acquire-memory-00028.jpg",
+            "CARD_ACQUIRE",
+            {"card_id": "p_card-02-men-1_035", "upgrade": 1, "memory_effect": True},
+        ),
         # 相談买卡的演出背景压暗（没有培育 HUD）也带 memory_effect；它总和 ShopBuy 动作配对，不单独改牌组
-        ("events/acquire-shop-00128.jpg", "CARD_ACQUIRE", {"card_id": "p_card-02-act-1_037", "upgrade": 1, "memory_effect": True}),
+        (
+            "events/acquire-shop-00128.jpg",
+            "CARD_ACQUIRE",
+            {"card_id": "p_card-02-act-1_037", "upgrade": 1, "memory_effect": True},
+        ),
         ("events/acquire-study-00224.jpg", "CARD_ACQUIRE", {"card_id": "p_card-02-men-2_101", "upgrade": 0}),
         ("events/acquire-upgraded-00303.jpg", "CARD_ACQUIRE", {"card_id": "p_card-02-men-2_111", "upgrade": 1}),
         ("events/acquire-sleepy-00263.jpg", "CARD_ACQUIRE", {"card_id": "p_card-00-acc-0_002", "upgrade": 0}),
@@ -52,7 +63,13 @@ def _one(rel: str):
 )
 def test_acquire_events(rel, kind, args):
     ev = _one(rel)
-    assert (ev["kind"], ev["args"], ev["origin"], ev["confirmed"], ev["confidence"]) == (kind, args, "observed", True, 1.0)
+    assert (ev["kind"], ev["args"], ev["origin"], ev["confirmed"], ev["confidence"]) == (
+        kind,
+        args,
+        "observed",
+        True,
+        1.0,
+    )
 
 
 @pytest.mark.parametrize(
@@ -74,7 +91,11 @@ def test_confirm_events(rel, kind, args):
 
 def test_upgrade_result_event():
     ev = _one("pages/upgrade_result.jpg")
-    assert (ev["kind"], ev["args"], ev["confirmed"]) == ("CARD_UPGRADE", {"card_id": "p_card-02-men-1_031", "upgrade": 1}, True)
+    assert (ev["kind"], ev["args"], ev["confirmed"]) == (
+        "CARD_UPGRADE",
+        {"card_id": "p_card-02-men-1_031", "upgrade": 1},
+        True,
+    )
 
 
 @pytest.mark.parametrize(("rel", "gain"), [("pages/star_gain-00178.jpg", 45), ("pages/star_gain-00320.jpg", 15)])
@@ -107,7 +128,11 @@ def test_popup_held_over_frames_emits_once():
 
 
 def test_selection_args():
-    assert selection_args(_obs("events/removal-sel6-00146.jpg")) == {"card_id": "p_card-02-men-0_039", "upgrade": 0, "deck_index": 6}
+    assert selection_args(_obs("events/removal-sel6-00146.jpg")) == {
+        "card_id": "p_card-02-men-0_039",
+        "upgrade": 0,
+        "deck_index": 6,
+    }
     assert selection_args(_obs("events/removal-none-00141.jpg")) is None
     assert selection_args(_obs("events/acquire-memory-00028.jpg")) is None
 
@@ -126,7 +151,13 @@ def test_deck_review_event():
 def test_deck_diff():
     _raw, merged = _merged()
     expected = [{"card_id": c["card_id"], "upgrade": c["upgrade"]} for c in merged["deck"]]
-    assert deck.deck_diff(expected, merged["cards"]) == {"same": True, "missing": [], "extra": [], "upgraded": [], "unknown": 0}
+    assert deck.deck_diff(expected, merged["cards"]) == {
+        "same": True,
+        "missing": [],
+        "extra": [],
+        "upgraded": [],
+        "unknown": 0,
+    }
 
     # 推算漏了一次强化（第 1 张开花实际 +1）、多算了一张眠気
     seen = [dict(c) for c in merged["cards"]]

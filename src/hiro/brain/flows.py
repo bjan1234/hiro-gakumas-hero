@@ -18,11 +18,26 @@ OTHER_BUFFS = {"やる気": ("好印象",), "好印象": ("やる気",), "好調
 
 # 循环件 [g8-NIAM]「効果別のループパーツ例」：examEffectType → 卡 id
 LOOP_PARTS = {
-    "ProduceExamEffectType_ExamCardPlayAggressive": ("p_card-02-men-2_057", "p_card-02-act-2_062"),  # ゆめみごこち、きらきら紙吹雪
-    "ProduceExamEffectType_ExamReview": ("p_card-02-act-2_049", "p_card-02-men-2_060", "p_card-02-act-2_046"),  # みんな大好き、オトメゴコロ、ラブリーウインク
-    "ProduceExamEffectType_ExamParameterBuff": ("p_card-01-men-2_037", "p_card-01-act-2_001", "p_card-01-act-3_185"),  # 存在感、シュプレヒコール、脚光
+    "ProduceExamEffectType_ExamCardPlayAggressive": (
+        "p_card-02-men-2_057",
+        "p_card-02-act-2_062",
+    ),  # ゆめみごこち、きらきら紙吹雪
+    "ProduceExamEffectType_ExamReview": (
+        "p_card-02-act-2_049",
+        "p_card-02-men-2_060",
+        "p_card-02-act-2_046",
+    ),  # みんな大好き、オトメゴコロ、ラブリーウインク
+    "ProduceExamEffectType_ExamParameterBuff": (
+        "p_card-01-men-2_037",
+        "p_card-01-act-2_001",
+        "p_card-01-act-3_185",
+    ),  # 存在感、シュプレヒコール、脚光
     "ProduceExamEffectType_ExamLessonBuff": ("p_card-01-men-2_037", "p_card-01-act-2_001", "p_card-01-act-3_185"),
-    "ProduceExamEffectType_ExamConcentration": ("p_card-03-men-1_050", "p_card-03-act-2_102", "p_card-03-act-3_188"),  # 巻き返し、オーバードライブ、エンターテイナー
+    "ProduceExamEffectType_ExamConcentration": (
+        "p_card-03-men-1_050",
+        "p_card-03-act-2_102",
+        "p_card-03-act-3_188",
+    ),  # 巻き返し、オーバードライブ、エンターテイナー
     "ProduceExamEffectType_ExamFullPower": ("p_card-03-act-3_053", "p_card-03-act-3_189"),  # 輝け！、羽ばたけ！
 }
 STRONG_WEIGHT = 80  # 流派优先表里权重 ≥ 它的算「社区强卡」

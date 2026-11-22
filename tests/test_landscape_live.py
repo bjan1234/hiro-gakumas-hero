@@ -99,8 +99,16 @@ def test_guard_enters_then_exits_fullscreen(monkeypatch):
     monkeypatch.setattr(landscape.time, "monotonic", lambda: t["now"])
     calls = []
     g = landscape.LandscapeGuard(active=True)
-    monkeypatch.setattr(g, "_enter", lambda: calls.append("enter") or g.__dict__.update(fullscreen=True, entered_at=t["now"], black_since=None) or True)
-    monkeypatch.setattr(g, "_exit", lambda: calls.append("exit") or g.__dict__.update(fullscreen=False, black_since=None) or True)
+    monkeypatch.setattr(
+        g,
+        "_enter",
+        lambda: (
+            calls.append("enter") or g.__dict__.update(fullscreen=True, entered_at=t["now"], black_since=None) or True
+        ),
+    )
+    monkeypatch.setattr(
+        g, "_exit", lambda: calls.append("exit") or g.__dict__.update(fullscreen=False, black_since=None) or True
+    )
     black = np.zeros((1280, 720, 3), np.uint8)
     for _ in range(25):
         g.tick(black)

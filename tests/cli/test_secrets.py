@@ -11,7 +11,9 @@ VALUE = "p@ss-WORD-1234"
 @pytest.fixture
 def clip(monkeypatch):
     calls = []
-    monkeypatch.setattr(sec, "write_clipboard", lambda value, concealed, clear_after: calls.append((value, concealed, clear_after)))
+    monkeypatch.setattr(
+        sec, "write_clipboard", lambda value, concealed, clear_after: calls.append((value, concealed, clear_after))
+    )
     return calls
 
 
@@ -19,6 +21,7 @@ def clip(monkeypatch):
 def stdin(monkeypatch):
     def feed(text):
         monkeypatch.setattr("sys.stdin", io.StringIO(text))
+
     return feed
 
 
@@ -91,8 +94,17 @@ class _Lib:
 
 
 def _fake_win(log, *, lock=0x7FF000001000, set_data=1):
-    u = _Lib(log, CreateWindowExW=0x1234, DestroyWindow=1, OpenClipboard=1, EmptyClipboard=1, SetClipboardData=set_data,
-             CloseClipboard=1, RegisterClipboardFormatW=0xC100, GetClipboardSequenceNumber=7)
+    u = _Lib(
+        log,
+        CreateWindowExW=0x1234,
+        DestroyWindow=1,
+        OpenClipboard=1,
+        EmptyClipboard=1,
+        SetClipboardData=set_data,
+        CloseClipboard=1,
+        RegisterClipboardFormatW=0xC100,
+        GetClipboardSequenceNumber=7,
+    )
     k = _Lib(log, GlobalAlloc=0x7FF000000F00, GlobalLock=lock, GlobalUnlock=1, GlobalFree=0)
     return u, k
 

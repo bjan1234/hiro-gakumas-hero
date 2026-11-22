@@ -36,7 +36,9 @@ def test_event_choices(name: str):
 @pytest.mark.parametrize("name", sorted(TRUTH))
 def test_choices_reach_decider(name: str):
     scene = "STUDY" if name.startswith("study") else "OUTING"
-    obs = observation(1, 0.0, scene, read_event_choices(cv2.imread(str(FIX / f"{name}.jpg"))), area="produce", stable_frames=3)
+    obs = observation(
+        1, 0.0, scene, read_event_choices(cv2.imread(str(FIX / f"{name}.jpg"))), area="produce", stable_frames=3
+    )
     assert obs.problems() == []
     state = GameState()
     for _ in range(3):

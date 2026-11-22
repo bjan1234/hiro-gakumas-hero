@@ -16,13 +16,20 @@ def _kaa_hooks() -> set[str]:
     from kaa.tasks.produce.new.strategies.base import ProduceStrategy
     from kaa.tasks.produce.new.strategies.hif_grind import HifGrindStrategy
 
-    return {n for cls in (ProduceStrategy, HifGrindStrategy) for n, _ in inspect.getmembers(cls, inspect.isfunction) if n.startswith("on_")}
+    return {
+        n
+        for cls in (ProduceStrategy, HifGrindStrategy)
+        for n, _ in inspect.getmembers(cls, inspect.isfunction)
+        if n.startswith("on_")
+    }
 
 
 def test_every_kaa_hook_is_overridden():
     from hiro.produce.hif import HifCore
 
-    missing = sorted(h for h in _kaa_hooks() if getattr(HiroHifStrategy, h).__qualname__.split(".")[0] != HifCore.__name__)
+    missing = sorted(
+        h for h in _kaa_hooks() if getattr(HiroHifStrategy, h).__qualname__.split(".")[0] != HifCore.__name__
+    )
     assert not missing, f"这些 KAA 钩子还会走 KAA 默认：{missing}"
 
 
@@ -81,7 +88,11 @@ def test_reward_skip_without_decision_cancels_then_stops(monkeypatch):
     import hiro.produce.hif as hif
 
     clicks = []
-    monkeypatch.setattr(hif, "device", type("D", (), {"click": staticmethod(lambda *a: clicks.append(a)), "screenshot": staticmethod(lambda: None)}))
+    monkeypatch.setattr(
+        hif,
+        "device",
+        type("D", (), {"click": staticmethod(lambda *a: clicks.append(a)), "screenshot": staticmethod(lambda: None)}),
+    )
     st = _strategy()
     st.on_pdrink_max_confirm(object())
     assert clicks == [hif.REWARD_SKIP_CANCEL] and st.s.recovers[-1][0] == "dialog"
@@ -98,7 +109,9 @@ def test_reward_skip_confirmed_after_own_full_skip(monkeypatch):
     clicked = []
     monkeypatch.setattr(hif, "tpl", lambda name: NS(exists=lambda img: True))  # 确认框标题两帧都在
     monkeypatch.setattr(hif, "tap", lambda name, img, click: clicked.append(name) or True)
-    monkeypatch.setattr(hif, "device", type("D", (), {"screenshot": staticmethod(lambda: None), "click": staticmethod(lambda *a: None)}))
+    monkeypatch.setattr(
+        hif, "device", type("D", (), {"screenshot": staticmethod(lambda: None), "click": staticmethod(lambda *a: None)})
+    )
     st = _strategy()
     st._skip_incoming_drink = True
     st.on_pdrink_max_confirm(object())
@@ -162,7 +175,11 @@ def test_retry_cancels_when_jewel(monkeypatch):
         return Text(text, Box(300 - 10, y - 10, 300 + 10, y + 10))
 
     clicks = []
-    monkeypatch.setattr(hif, "device", type("D", (), {"click": staticmethod(lambda *a: clicks.append(a)), "screenshot": staticmethod(lambda: None)}))
+    monkeypatch.setattr(
+        hif,
+        "device",
+        type("D", (), {"click": staticmethod(lambda *a: clicks.append(a)), "screenshot": staticmethod(lambda: None)}),
+    )
     monkeypatch.setattr(hif, "sleep", lambda s: None)
     st = _strategy()
     st._retries_so_far = lambda label: 0
@@ -184,17 +201,25 @@ def test_retry_confirm_reclicks_until_closed(monkeypatch):
 
     t = {"now": 0.0}
     clicks = []
-    monkeypatch.setattr(hif, "device", type("D", (), {"click": staticmethod(lambda *a: clicks.append(a)), "screenshot": staticmethod(lambda: None)}))
+    monkeypatch.setattr(
+        hif,
+        "device",
+        type("D", (), {"click": staticmethod(lambda *a: clicks.append(a)), "screenshot": staticmethod(lambda: None)}),
+    )
     monkeypatch.setattr(hif, "sleep", lambda s: t.__setitem__("now", t["now"] + s))
     monkeypatch.setattr(hif.time, "monotonic", lambda: t["now"])
-    dialog = [T("再挑戦確認", 400), T("再挑戦チケットを消費して、試験に再挑戦しますか？", 650), T("メキャンセル"), T("く決定")]
+    dialog = [
+        T("再挑戦確認", 400),
+        T("再挑戦チケットを消費して、試験に再挑戦しますか？", 650),
+        T("メキャンセル"),
+        T("く決定"),
+    ]
     # 第 1 次点「決定」没响应（淡入中），第 2 次才关
     monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: dialog if len(clicks) < 3 else [])
     st = _strategy()
     st._retries_so_far = lambda label: 0
     assert st._click_retry("r2", T("再挑戦", 1000), []) in ("free", "ticket")
     assert len(clicks) == 3 and t["now"] < hif.HiroHifStrategy.RETRY_CONFIRM_WAIT  # 再挑戦 + 決定 ×2，没等满 15s
-
 
 
 def test_retry_capped():
@@ -210,9 +235,22 @@ def test_retry_cost_from_owned_tickets():
     def T(text, x, y):
         return type("T", (), {"text": text, "rect": type("R", (), {"center": type("C", (), {"x": x, "y": y})()})()})()
 
-    used = [T("所持", 134, 995), T("260", 323, 992), T("→", 421, 990), T("259", 509, 992), T("残り再挑戦回数", 166, 1048), T("3/3", 465, 1048)]
+    used = [
+        T("所持", 134, 995),
+        T("260", 323, 992),
+        T("→", 421, 990),
+        T("259", 509, 992),
+        T("残り再挑戦回数", 166, 1048),
+        T("3/3", 465, 1048),
+    ]
     assert retry_cost(used) == "ticket"
-    free = [T("所持", 134, 995), T("267", 323, 992), T("→", 421, 990), T("267", 509, 992), T("本日あと1回無料", 430, 950)]
+    free = [
+        T("所持", 134, 995),
+        T("267", 323, 992),
+        T("→", 421, 990),
+        T("267", 509, 992),
+        T("本日あと1回無料", 430, 950),
+    ]
     assert retry_cost(free) == "free"
     assert retry_cost([T("所持", 134, 995), T("267→267", 420, 992)]) == "free"  # 读成一个框
     assert retry_cost([T("再挑戦確認", 200, 400)]) is None
@@ -230,10 +268,21 @@ def test_retry_records_ticket_use_and_left(monkeypatch):
 
     t = {"now": 0.0}
     clicks = []
-    monkeypatch.setattr(hif, "device", type("D", (), {"click": staticmethod(lambda *a: clicks.append(a)), "screenshot": staticmethod(lambda: None)}))
+    monkeypatch.setattr(
+        hif,
+        "device",
+        type("D", (), {"click": staticmethod(lambda *a: clicks.append(a)), "screenshot": staticmethod(lambda: None)}),
+    )
     monkeypatch.setattr(hif, "sleep", lambda s: t.__setitem__("now", t["now"] + s))
     monkeypatch.setattr(hif.time, "monotonic", lambda: t["now"])
-    dialog = [T("再挑戦確認", 200, 400), T("所持", 134, 995), T("260", 323, 992), T("→", 421, 990), T("259", 509, 992), T("決定", 500, 1160)]
+    dialog = [
+        T("再挑戦確認", 200, 400),
+        T("所持", 134, 995),
+        T("260", 323, 992),
+        T("→", 421, 990),
+        T("259", 509, 992),
+        T("決定", 500, 1160),
+    ]
     monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: dialog if len(clicks) < 2 else [])
     st = _strategy()
     st._retries_so_far = lambda label: 0
@@ -344,7 +393,9 @@ def test_finals_retry_restarts_exam(monkeypatch):
 
     st = _strategy()
     st.rec = NS(log=lambda *a, **k: None)
-    monkeypatch.setattr(pages, "classify_page", lambda img: ("HIF_FINALS_RANKING", {"kind": "final", "rank": 2, "outcome": "敗退"}))
+    monkeypatch.setattr(
+        pages, "classify_page", lambda img: ("HIF_FINALS_RANKING", {"kind": "final", "rank": 2, "outcome": "敗退"})
+    )
     btn = NS(text="再挑戦", rect=NS(center=NS(y=1100)))
     monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [btn])
     st._click_retry = lambda label, b, texts: "free"

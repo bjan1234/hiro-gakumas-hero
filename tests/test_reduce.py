@@ -19,7 +19,11 @@ def test_transitions():
     assert allowed("unknown", "ACTION_SELECT") and allowed("ACTION_SELECT", "CONSULT") and allowed("HIF_EXAM", "commu")
     assert allowed("HIF_EXAM", "IDLE") and allowed("IDLE", "SELECT_CARD")
     assert not allowed("HIF_EXAM", "ACTION_SELECT") and not allowed("ACTION_SELECT", "HIF_EXAM_RESULT")
-    assert "HIF_EXAM_RESULT" in successors("HIF_EXAM") and mode_of("ACTION_SELECT") == "produce" and mode_of("home") == "home"
+    assert (
+        "HIF_EXAM_RESULT" in successors("HIF_EXAM")
+        and mode_of("ACTION_SELECT") == "produce"
+        and mode_of("home") == "home"
+    )
     assert mode_of("commu", "produce") == "produce" and mode_of("commu") == "unknown"
 
 
@@ -95,5 +99,3 @@ def test_weak_idle_does_not_flap_dialog():
     assert s.page.name == "SELECT_CARD" and s.page_fields["candidates"] and s.pending_page.name == "IDLE"
     s = reduce(s, obs(4, "SELECT_CARD", {"candidates": [{"slot": 1}]}))
     assert s.page.name == "SELECT_CARD" and s.pending_page is None and s.page_fields["candidates"] == [{"slot": 1}]
-
-

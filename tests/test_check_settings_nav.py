@@ -7,7 +7,9 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-BOXES = json.loads((Path(__file__).parent / "data" / "g33-ocr-boxes.json").read_text(encoding="utf-8"))  # 菜单 / 设置页实机帧的 OCR 框（随仓库发布）
+BOXES = json.loads(
+    (Path(__file__).parent / "data" / "g33-ocr-boxes.json").read_text(encoding="utf-8")
+)  # 菜单 / 设置页实机帧的 OCR 框（随仓库发布）
 
 
 def _boxes(key):

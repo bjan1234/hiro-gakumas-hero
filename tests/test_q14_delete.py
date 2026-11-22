@@ -34,7 +34,9 @@ def decks():
 
 def _choose(cards):
     grid = [dict(c, index=i) for i, c in enumerate(cards)]
-    d = ProduceDeciders(CAMPUS_HIRO, None).decide("SKILL_CARD_REMOVAL", GameState(page_fields={"cards": grid}, produce={"mode": "produce-007"}))
+    d = ProduceDeciders(CAMPUS_HIRO, None).decide(
+        "SKILL_CARD_REMOVAL", GameState(page_fields={"cards": grid}, produce={"mode": "produce-007"})
+    )
     return d.action.args.get("card_id"), d
 
 

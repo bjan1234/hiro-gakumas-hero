@@ -175,7 +175,9 @@ def main(argv: list[str] | None = None) -> int:
         out = Path(a.json)
         out.parent.mkdir(parents=True, exist_ok=True)
         items = {k: v for k, v in res.items() if not k.startswith("_")}
-        out.write_text(json.dumps({"items": items, "verdict": verdict(res), "ok": ok}, ensure_ascii=False), encoding="utf-8")
+        out.write_text(
+            json.dumps({"items": items, "verdict": verdict(res), "ok": ok}, ensure_ascii=False), encoding="utf-8"
+        )
     return 0 if ok else 1
 
 

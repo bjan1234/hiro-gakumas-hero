@@ -39,4 +39,3 @@ def test_main28_plan_drinks_go_through_drink_step(env):
     dec = ProduceDeciders(CAMPUS_HIRO, None)
     d = dec.decide("HIF_ROUND_INTERVAL", st(75))
     assert d.action.kind is ActionKind.REROLL, d.reason  # 实机：按方案买了 7 号格 ミックススムージー
-

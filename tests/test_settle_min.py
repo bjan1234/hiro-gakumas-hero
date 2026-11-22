@@ -6,7 +6,9 @@ import importlib.util as _iu
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.skipif(_iu.find_spec("kotonebot") is None or _iu.find_spec("kaa") is None, reason="要装 KAA / kotonebot")
+pytestmark = pytest.mark.skipif(
+    _iu.find_spec("kotonebot") is None or _iu.find_spec("kaa") is None, reason="要装 KAA / kotonebot"
+)
 
 
 def _run(monkeypatch, min_s, shot_s=0.19):

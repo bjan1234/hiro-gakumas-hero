@@ -58,7 +58,11 @@ def drink_info(asset_id: str | None) -> dict | None:
     d = master.drink_by_asset(asset_id)
     if d is None:
         return {"asset_id": asset_id}
-    return {"asset_id": asset_id, "name": d.name, "effect": getattr(d, "description", None) or getattr(d, "effect_display_text", None)}
+    return {
+        "asset_id": asset_id,
+        "name": d.name,
+        "effect": getattr(d, "description", None) or getattr(d, "effect_display_text", None),
+    }
 
 
 DIALOG_SLOTS_X = (222, 360, 498)

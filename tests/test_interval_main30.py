@@ -59,4 +59,6 @@ def test_value_table_buys_blend(env, monkeypatch):
     monkeypatch.setattr(iv, "VALUE_TABLE_SCALE", True)
     iv.value_table_scale.cache_clear()
     d = run(198)
-    assert d.action.kind is ActionKind.INTERVAL_BUY and d.action.args == {"index": 7} and "ブレンド" in d.reason, d.reason
+    assert d.action.kind is ActionKind.INTERVAL_BUY and d.action.args == {"index": 7} and "ブレンド" in d.reason, (
+        d.reason
+    )

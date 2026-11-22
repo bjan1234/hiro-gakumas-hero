@@ -4,7 +4,9 @@ from hiro.brain.llm import MockLLM as _Mock
 
 import pytest
 
-NEED_IMAGE = pytest.mark.skipif(not hasattr(_Mock, "ask_json_image"), reason="开源 hiro.brain.llm 还没有看图接口 ask_json_image，等策略层同步")
+NEED_IMAGE = pytest.mark.skipif(
+    not hasattr(_Mock, "ask_json_image"), reason="开源 hiro.brain.llm 还没有看图接口 ask_json_image，等策略层同步"
+)
 
 from hiro.brain.llm import MockLLM  # noqa: E402
 from hiro.loop import rescue  # noqa: E402
@@ -22,7 +24,9 @@ def _img(v=40):
 
 def test_quick_page_tap_first():
     clicks = []
-    a = Assist("回首页", click=lambda x, y: clicks.append((x, y)), quick=lambda img: {"page": "GIFT", "tap": (360, 1180)})
+    a = Assist(
+        "回首页", click=lambda x, y: clicks.append((x, y)), quick=lambda img: {"page": "GIFT", "tap": (360, 1180)}
+    )
     assert a.step(_img(), BONUS) is True and clicks == [(360, 1180)]
 
 

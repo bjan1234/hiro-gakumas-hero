@@ -12,14 +12,18 @@ from hiro.loop.date_change import DateChanged
 import cv2
 import pytest
 
-NEED_KAA = pytest.mark.skipif(_kiu.find_spec("kotonebot") is None or _kiu.find_spec("kaa") is None,
-                              reason="操作层：要装 KAA / kotonebot（pip install -e \".[play]\"）")
-
+NEED_KAA = pytest.mark.skipif(
+    _kiu.find_spec("kotonebot") is None or _kiu.find_spec("kaa") is None,
+    reason='操作层：要装 KAA / kotonebot（pip install -e ".[play]"）',
+)
 
 
 def _real(*rel):
     """用实机截图的用例：截图放在 tests/fixtures/…（开源仓库不带，用自己的截图），识别层（hiro.vision.ocr）也要装。"""
-    have = all((_P(__file__).parent / "fixtures" / r).exists() for r in rel) and _iu.find_spec("hiro.vision.ocr") is not None
+    have = (
+        all((_P(__file__).parent / "fixtures" / r).exists() for r in rel)
+        and _iu.find_spec("hiro.vision.ocr") is not None
+    )
     return pytest.mark.skipif(not have, reason="需要实机截图 tests/fixtures/" + ", ".join(rel) + " 和识别层")
 
 
@@ -30,7 +34,7 @@ def _boxes(*items):
     return [(t, 1.0, (x - 30, y - 12, x + 30, y + 12)) for t, (x, y) in items]
 
 
-@_real('comm_error/m22-retry.png')
+@_real("comm_error/m22-retry.png")
 def test_real_frame_retry():
     from hiro.produce.ops import ocr_boxes
 
@@ -40,14 +44,21 @@ def test_real_frame_retry():
 
 def test_retry_never_taps_to_title():
     clicks = []
-    b = _boxes(("通信エラー", (140, 973)), ("通信中にエラーが発生しました", (228, 1055)), ("タイトルへ", (238, 1160)), ("リトライ", (486, 1160)))
+    b = _boxes(
+        ("通信エラー", (140, 973)),
+        ("通信中にエラーが発生しました", (228, 1055)),
+        ("タイトルへ", (238, 1160)),
+        ("リトライ", (486, 1160)),
+    )
     assert ce.handle(b, lambda x, y: clicks.append((x, y)), sleep=lambda s: None) == "retry"
     assert clicks == [(486, 1160)]
 
 
 def test_forced_title_closes_and_raises():
     clicks = []
-    b = _boxes(("通信工ラー", (140, 973)), ("時間が経っているのでタイトルに戻します", (300, 1055)), ("閉じる", (360, 1160)))
+    b = _boxes(
+        ("通信工ラー", (140, 973)), ("時間が経っているのでタイトルに戻します", (300, 1055)), ("閉じる", (360, 1160))
+    )
     with pytest.raises(ce.CommErrorToTitle) as ex:
         ce.handle(b, lambda x, y: clicks.append((x, y)), sleep=lambda s: None)
     assert clicks == [(360, 1160)] and isinstance(ex.value, DateChanged)  # run_hif 按日期切换同一条路回首页续跑
@@ -69,7 +80,9 @@ def test_loop_callback_handles_comm_error(monkeypatch):
     clicks = []
     monkeypatch.setattr(kotonebot, "device", NS(click=lambda x, y: clicks.append((x, y))))
     monkeypatch.setattr(ce, "RETRY_SETTLE", 0)
-    cb = date_change.loop_callback(lambda img: [("通信エラー", 1.0, (100, 80, 180, 105)), ("リトライ", 1.0, (450, 270, 520, 290))])
+    cb = date_change.loop_callback(
+        lambda img: [("通信エラー", 1.0, (100, 80, 180, 105)), ("リトライ", 1.0, (450, 270, 520, 290))]
+    )
     import numpy as np
 
     cb(NS(screenshot=np.zeros((1280, 720, 3), np.uint8)))
@@ -153,7 +166,11 @@ def test_e209_on_orange_loading_screen_is_a_dialog():
 
     import cv2
 
-    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "comm-e209-on-loading-acct2.png"
+    path = (
+        Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures"))
+        / "pages"
+        / "comm-e209-on-loading-acct2.png"
+    )
     if not path.exists():
         pytest.skip("需要实机截图 pages/comm-e209-on-loading-acct2.png")
     f = Frame(cv2.imread(str(path)), 0)
@@ -175,7 +192,11 @@ def test_e209_on_loading_with_orange_bottom_still_retries():
 
     import cv2
 
-    path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "comm-e209-on-loading-move-acct2.png"
+    path = (
+        Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures"))
+        / "pages"
+        / "comm-e209-on-loading-move-acct2.png"
+    )
     if not path.exists():
         pytest.skip("需要实机截图 pages/comm-e209-on-loading-move-acct2.png")
     img = cv2.imread(str(path))

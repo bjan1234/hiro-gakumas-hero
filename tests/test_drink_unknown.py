@@ -9,18 +9,32 @@ from hiro.state.knowledge import drink_class
 
 import pytest
 
-WHEY, SENBURI, BOOST, TOKUSEI, ROOIBOS = "pdrink_00-3-001", "pdrink_00-2-010", "pdrink_00-2-008", "pdrink_02-3-010", "pdrink_02-1-006"
+WHEY, SENBURI, BOOST, TOKUSEI, ROOIBOS = (
+    "pdrink_00-3-001",
+    "pdrink_00-2-010",
+    "pdrink_00-2-008",
+    "pdrink_02-3-010",
+    "pdrink_02-1-006",
+)
 
 
 def _decide(held_ids, incoming):
     held = [{"index": i, "drink_id": d, "name": None} for i, d in enumerate(held_ids)]
-    st = GameState(page={"name": "PDRINK_MAX"}, page_fields={"held": held, "incoming": {"drink_id": incoming}}, produce={"mode": "produce-007", "drink_capacity": 4})
+    st = GameState(
+        page={"name": "PDRINK_MAX"},
+        page_fields={"held": held, "incoming": {"drink_id": incoming}},
+        produce={"mode": "produce-007", "drink_capacity": 4},
+    )
     return ProduceDeciders(CAMPUS_HIRO, None).decide("PDRINK_MAX", st)
 
 
 @pytest.mark.master
 def test_unknown_held_drink_no_crash():
-    assert drink_name(None) == "未知饮料" and drink_name("pdrink_xx") .startswith("未知饮料") and drink_class(None) == "unknown"
+    assert (
+        drink_name(None) == "未知饮料"
+        and drink_name("pdrink_xx").startswith("未知饮料")
+        and drink_class(None) == "unknown"
+    )
     d = _decide([None, WHEY, SENBURI, BOOST], TOKUSEI)
     assert d.source != "fallback" and d.action.kind is ActionKind.DISCARD_DRINK, d.reason
     assert d.action.args["receive"] is True  # 特製（复制，持有里第一瓶 → 优先）要收
@@ -51,7 +65,9 @@ def test_hif_pdrink_max_rereads_on_wait(monkeypatch):
                 return Decision(Action.ui(ActionKind.WAIT, why="x"), "", "fallback", 0.1)
             return Decision(Action(ActionKind.DISCARD_DRINK, {"discard": [], "receive": False}), "不收", "rule", 0.8)
 
-    sess = NS(state=GameState(), observe=lambda **k: NS(fields={}), record=lambda *a, **k: None, recover=lambda *a, **k: None)
+    sess = NS(
+        state=GameState(), observe=lambda **k: NS(fields={}), record=lambda *a, **k: None, recover=lambda *a, **k: None
+    )
     strat = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
     strat.s, strat.deciders = sess, Deciders()
     monkeypatch.setattr(hif, "sleep", lambda s: None)

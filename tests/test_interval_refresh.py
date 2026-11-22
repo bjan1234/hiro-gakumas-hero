@@ -17,7 +17,12 @@ WIN7 = {"stamina": 17, "max_stamina": 33, "produce_point": 580, "complete": True
     "refresh": {"price": 10, "available": True}}}  # fmt: skip
 
 
-ROTATE = ["p_card-02-men-2_056", "p_card-02-men-2_008", "p_card-02-men-2_054", "p_card-00-men-3_012"]  # 第七局轮间货架上的卡
+ROTATE = [
+    "p_card-02-men-2_056",
+    "p_card-02-men-2_008",
+    "p_card-02-men-2_054",
+    "p_card-00-men-3_012",
+]  # 第七局轮间货架上的卡
 
 
 def _decide(fields, d=None):
@@ -57,5 +62,3 @@ def test_on_no_refresh(patch):
     f = copy.deepcopy(WIN7)
     patch(f)
     assert _decide(f)[1].action.kind is not ActionKind.REROLL
-
-

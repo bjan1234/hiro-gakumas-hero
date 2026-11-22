@@ -51,7 +51,9 @@ def skills_from_abilities(texts: list[str]) -> list[str]:
             if m and m.group(1) in t and len(m.group(1)) > best:
                 hit, best = sid, len(m.group(1))
         if hit is None:
-            scored = max(skills.items(), key=lambda kv: difflib.SequenceMatcher(None, _norm(kv[1]), t).ratio(), default=None)
+            scored = max(
+                skills.items(), key=lambda kv: difflib.SequenceMatcher(None, _norm(kv[1]), t).ratio(), default=None
+            )
             if scored and difflib.SequenceMatcher(None, _norm(scored[1]), t).ratio() >= 0.85:
                 hit = scored[0]
         if hit and hit not in out:
@@ -83,7 +85,9 @@ def parse_deck_entry(s: str) -> tuple:
         cz = {}
         for c in s.get("customizes") or []:
             cz[c["id"]] = cz.get(c["id"], 0) + int(c.get("customize_count") or 1)
-        if "produce_card_id" in s:  # bench 模板展开后的 GKMS 写法（初 / N.I.A 题）：{produce_card_id, current_upgrade_count, customizes}
+        if (
+            "produce_card_id" in s
+        ):  # bench 模板展开后的 GKMS 写法（初 / N.I.A 题）：{produce_card_id, current_upgrade_count, customizes}
             up = s.get("current_upgrade_count", s.get("base_upgrade_count"))
             return s["produce_card_id"], int(up or 0), cz
         return s["id"], int(s.get("upgrade_count") or 0), cz

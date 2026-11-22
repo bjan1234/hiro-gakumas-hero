@@ -53,7 +53,12 @@ def _hook(monkeypatch, *, cancel_btn, decision):
     monkeypatch.setattr(hif, "device", NS(click=lambda *r: clicks.append(r), screenshot=lambda: None))
     monkeypatch.setattr("hiro.produce.card_ops.CARD_OP_REGION", {"enhance": None, "remove": None})
     st = GameState(page_fields={"cards": [{"card_id": "x"}]})
-    s = NS(state=st, observe=lambda **k: "obs", verify=lambda a, **k: ExecutionResult(action=a, ok=True), record=lambda *a, **k: records.append(k))
+    s = NS(
+        state=st,
+        observe=lambda **k: "obs",
+        verify=lambda a, **k: ExecutionResult(action=a, ok=True),
+        record=lambda *a, **k: records.append(k),
+    )
     seen = {}
 
     decisions = list(decision) if isinstance(decision, list) else [decision]

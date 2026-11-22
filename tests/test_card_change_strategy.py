@@ -64,13 +64,24 @@ def _strategy(fields):
 
 
 def test_change_removes_decided_card_not_slot0():
-    grid = [{"index": 0, "card_id": DAYDREAM, "upgrade": 1}, {"index": 1, "card_id": HIGH, "upgrade": 0}, {"index": 2, "card_id": BASIC, "upgrade": 0}]
+    grid = [
+        {"index": 0, "card_id": DAYDREAM, "upgrade": 1},
+        {"index": 1, "card_id": HIGH, "upgrade": 0},
+        {"index": 2, "card_id": BASIC, "upgrade": 0},
+    ]
     st, ctx = _strategy({"SKILL_CARD_CHANGE_2": {"cards": grid}}), StubCtx(stage=1)
     st.CHANGE1_DECIDE_RETRIES = 0  # 本用例测「一直读不到候选」：不重读
     st.on_skill_card_change(ctx)
     assert ctx.calls[0] == ("s1", 0)  # 阶段 1 候选未识别 → 第 0 张
-    assert ctx.calls[1] == ("s2", HIGH, False)  # 冲突卡先换出（用户 2026-11-03：冲突牌 > 初始卡），デイドリーミング 不动
-    assert ctx.stage2_args == (1, 0)  # 决策的格子序号 / 强化次数一起交给阶段 2（第十九局：同名卡多张时只按 card_id 点错了）
+    assert ctx.calls[1] == (
+        "s2",
+        HIGH,
+        False,
+    )  # 冲突卡先换出（用户 2026-11-03：冲突牌 > 初始卡），デイドリーミング 不动
+    assert ctx.stage2_args == (
+        1,
+        0,
+    )  # 决策的格子序号 / 强化次数一起交给阶段 2（第十九局：同名卡多张时只按 card_id 点错了）
     assert len(st.s.records) == 2 and all(kw["execution"].ok for _, kw in st.s.records)
 
 
@@ -93,7 +104,11 @@ def test_change_cancel_then_return_forces_lowest_value():
     st.CHANGE_OBSERVE_TRIES = 1
     st.s.recover = lambda *a: None
     st.deciders.decide = lambda page, state, **kw: __import__("hiro.contracts", fromlist=["Decision"]).Decision(
-        __import__("hiro.contracts", fromlist=["Action"]).Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7)
+        __import__("hiro.contracts", fromlist=["Action"]).Action(ActionKind.CHANGE_CARD, {"cancel": True}),
+        "不换",
+        "rule",
+        0.7,
+    )
     ctx = StubCtx(stage=2)
     st.on_skill_card_change(ctx)
     st.on_skill_card_change(ctx)
@@ -132,7 +147,9 @@ def test_stage1_rereads_until_candidates_reach_state():
     def observe(scene, **_):
         seen.append(scene)
         first_frame = scene == "SKILL_CARD_CHANGE_1" and seen.count(scene) == 1
-        st.s.state = GameState(page_fields={} if first_frame else ({"candidates": cands} if scene == "SKILL_CARD_CHANGE_1" else {}))
+        st.s.state = GameState(
+            page_fields={} if first_frame else ({"candidates": cands} if scene == "SKILL_CARD_CHANGE_1" else {})
+        )
         return scene
 
     st.s.observe = observe
@@ -154,6 +171,7 @@ def test_change_pick_by_cull():
     keys = {c["index"]: D.cull_key(c["card_id"], 0, finals=True) for c in cands}
     assert on == max(keys, key=keys.get) and on != 1  # 最晚才会被删的；不挑冲突牌 トキメキ
 
+
 def test_forced_change_falls_back_to_ledger_when_screen_all_protected():
     """DMM mainz3（11-18 03:34，窗口 559x993）：牌组 22 张，换卡对话框整副拼接不可信只留第一屏 12 张，全是核心 / 保护卡；
     取消后绕回换卡页，「没有可换出的非保护卡」停机。一屏里挑不出时按牌组账本挑价值最低的非保护卡，执行按 card_id 翻屏找。"""
@@ -165,11 +183,14 @@ def test_forced_change_falls_back_to_ledger_when_screen_all_protected():
             return scene
 
     st = _strategy({})
-    st.s = LedgerSession({"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": DAYDREAM, "upgrade": 1}], "deck_complete": False}})
+    st.s = LedgerSession(
+        {"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": DAYDREAM, "upgrade": 1}], "deck_complete": False}}
+    )
     st.CHANGE_OBSERVE_TRIES = 1
     st.s.recover = lambda *a: None
     st.deciders.decide = lambda page, state, **kw: __import__("hiro.contracts", fromlist=["Decision"]).Decision(
-        Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7)
+        Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7
+    )
     st._change_cancels = 1
     ctx = StubCtx(stage=2)
     st.on_skill_card_change(ctx)
@@ -183,11 +204,14 @@ def test_forced_change_gives_up_after_repeated_failures():
     import pytest
 
     st = _strategy({})
-    st.s = StubSession({"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": BASIC, "upgrade": 0}], "deck_complete": True}})
+    st.s = StubSession(
+        {"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": BASIC, "upgrade": 0}], "deck_complete": True}}
+    )
     st.CHANGE_OBSERVE_TRIES = 1
     st.s.recover = lambda *a: None
     st.deciders.decide = lambda page, state, **kw: __import__("hiro.contracts", fromlist=["Decision"]).Decision(
-        Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7)
+        Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7
+    )
     st._change_cancels = 1 + st.CHANGE_FORCED_MAX
     with pytest.raises(UnhandledPage, match="强制换出"):
         st.on_skill_card_change(StubCtx(stage=2))
@@ -199,11 +223,14 @@ def test_forced_change_is_recorded_as_change_for_ledger(monkeypatch):
     from hiro.produce import card_ops
 
     st = _strategy({})
-    st.s = StubSession({"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": BASIC, "upgrade": 0}], "deck_complete": True}})
+    st.s = StubSession(
+        {"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": BASIC, "upgrade": 0}], "deck_complete": True}}
+    )
     st.CHANGE_OBSERVE_TRIES = 1
     st.s.recover = lambda *a: None
     st.deciders.decide = lambda page, state, **kw: __import__("hiro.contracts", fromlist=["Decision"]).Decision(
-        Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7)
+        Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7
+    )
     st._change_cancels = 1
     ctx = StubCtx(stage=2)
     real = ctx.commit_stage2
@@ -221,11 +248,14 @@ def test_forced_change_is_recorded_as_change_for_ledger(monkeypatch):
 
 def test_cancel_stays_cancel_in_record():
     st = _strategy({})
-    st.s = StubSession({"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": BASIC, "upgrade": 0}], "deck_complete": True}})
+    st.s = StubSession(
+        {"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": BASIC, "upgrade": 0}], "deck_complete": True}}
+    )
     st.CHANGE_OBSERVE_TRIES = 1
     st.s.recover = lambda *a: None
     st.deciders.decide = lambda page, state, **kw: __import__("hiro.contracts", fromlist=["Decision"]).Decision(
-        Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7)
+        Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7
+    )
     st.on_skill_card_change(StubCtx(stage=2))
     assert st.s.records[-1][1]["decision"].action.args.get("cancel") is True  # 第一次取消：照记取消，不出 CARD_CHANGE
 
@@ -244,12 +274,18 @@ def test_stage1_waits_until_candidates_read_twice_the_same(monkeypatch):
         def observe(self, scene, **_):
             if scene == "SKILL_CARD_CHANGE_1":
                 ids = reads.pop(0) if len(reads) > 1 else reads[0]
-                self.state = GameState(page_fields={"candidates": [{"slot": i, "index": i, "card_id": c, "upgrade": 0} for i, c in enumerate(ids)]})
+                self.state = GameState(
+                    page_fields={
+                        "candidates": [{"slot": i, "index": i, "card_id": c, "upgrade": 0} for i, c in enumerate(ids)]
+                    }
+                )
                 return scene
             return super().observe(scene)
 
     st = _strategy({})
-    st.s = SeqSession({"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": BASIC, "upgrade": 0}], "deck_complete": True}})
+    st.s = SeqSession(
+        {"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": BASIC, "upgrade": 0}], "deck_complete": True}}
+    )
     st.CHANGE_OBSERVE_TRIES = 1
     st.s.recover = lambda *a: None
     st._stage1_column = lambda pick, d: pick
@@ -259,7 +295,12 @@ def test_stage1_waits_until_candidates_read_twice_the_same(monkeypatch):
         if page == "SKILL_CARD_CHANGE_1":
             ids = [c["card_id"] for c in state.page_fields["candidates"]]
             seen.append(ids)
-            return Decision(Action(ActionKind.CHANGE_CARD, {"stage": 1, "pick_index": 0 if ids[0] == ZENSHIN else 1}), "x", "rule", 0.7)
+            return Decision(
+                Action(ActionKind.CHANGE_CARD, {"stage": 1, "pick_index": 0 if ids[0] == ZENSHIN else 1}),
+                "x",
+                "rule",
+                0.7,
+            )
         return Decision(Action(ActionKind.CHANGE_CARD, {"cancel": True}), "不换", "rule", 0.7)
 
     st.deciders.decide = decide

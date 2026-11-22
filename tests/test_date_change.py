@@ -19,7 +19,10 @@ import pytest
 
 def _real(*rel):
     """用实机截图的用例：截图放在 tests/fixtures/…（开源仓库不带，用自己的截图），识别层（hiro.vision.ocr）也要装。"""
-    have = all((_P(__file__).parent / "fixtures" / r).exists() for r in rel) and _iu.find_spec("hiro.vision.ocr") is not None
+    have = (
+        all((_P(__file__).parent / "fixtures" / r).exists() for r in rel)
+        and _iu.find_spec("hiro.vision.ocr") is not None
+    )
     return pytest.mark.skipif(not have, reason="需要实机截图 tests/fixtures/" + ", ".join(rel) + " 和识别层")
 
 
@@ -30,7 +33,7 @@ def box(t, x, y):
     return (t, 1.0, (x - 40, y - 15, x + 40, y + 15))
 
 
-@_real('date_change/date-change-20261030.png')
+@_real("date_change/date-change-20261030.png")
 def test_real_frame_detected_with_strip_ocr():
     img = cv2.imread(str(FIX / "date-change-20261030.png"))
     pos = dc.date_change_button(dc.strip_boxes(img, ops.ocr_boxes))
@@ -129,7 +132,7 @@ def test_landscape_frame_skipped_no_crash():
     assert cb(type("L", (), {"screenshot": np.zeros((1280, 720, 3), np.uint8)})()) is False
 
 
-@_real('date_change/data-update-win4-206.jpg')
+@_real("date_change/data-update-win4-206.jpg")
 def test_data_update_dialog_detected():
     """Windows 第四局 R2 最后一回合：游戏弹「データ更新 / データ更新があります。」只有「タイトルへ」，看门狗空转 183s 停机。
     和日期切换走同一条路：认出来、点タイトルへ、回首页续跑。"""
@@ -167,7 +170,12 @@ def test_recover_accepts_download_and_never_cancels():
 def test_recover_download_dialog_kettei():
     """「データダウンロード / ゲームデータのダウンロードを行います 214.6 MB」按钮是 キャンセル / 決定：点決定（Windows 第十七局只认 OK，等了 15 分钟）。"""
     seq = [
-        [box("データダウンロード", 200, 820), box("ゲームデータのダウンロードを行います", 280, 900), box("キャンセル", 240, 1160), box("決定", 520, 1160)],
+        [
+            box("データダウンロード", 200, 820),
+            box("ゲームデータのダウンロードを行います", 280, 900),
+            box("キャンセル", 240, 1160),
+            box("決定", 520, 1160),
+        ],
         "home",
     ]
     i = {"n": 0}
@@ -184,7 +192,7 @@ def test_recover_download_dialog_kettei():
     assert ok and clicks == [(520, 1160)]
 
 
-@_real('date_change/data-download-win17.png')
+@_real("date_change/data-download-win17.png")
 def test_real_download_dialog_button():
     img = cv2.imread(str(FIX / "data-download-win17.png"))
     texts = [(dc._norm(t), b) for t, _, b in ops.ocr_boxes(img)]

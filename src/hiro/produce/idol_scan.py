@@ -41,15 +41,26 @@ def _at(boxes, pred) -> list[str]:
 def read_header(boxes) -> dict | None:
     """一览页 / 详情页顶部的选中卡：{title, character, rarity, plan, effect}；卡名或角色名读不到时 None（不猜）。
     boxes：[(文字, (x1, y1, x2, y2))]，720x1280 坐标。"""
-    names = sorted(((b[1], t.strip()) for t, b in boxes if (b[1] + b[3]) // 2 < 90 and (b[0] + b[2]) // 2 > 120 and t.strip()), key=lambda x: x[0])
+    names = sorted(
+        ((b[1], t.strip()) for t, b in boxes if (b[1] + b[3]) // 2 < 90 and (b[0] + b[2]) // 2 > 120 and t.strip()),
+        key=lambda x: x[0],
+    )
     names = [t for _, t in names if t not in RARITIES and not any(p in t for p in PLANS)]
     names = [t for t in names if len(t.replace(" ", "")) >= 2]  # 详情页右上角的「L」等单字图标不是卡名
     if len(names) < 2:
         return None
-    rarity = next((r for t in _at(boxes, lambda x, y: x < 130 and y < 90) for r in RARITIES if t.replace(" ", "") == r), None)
+    rarity = next(
+        (r for t in _at(boxes, lambda x, y: x < 130 and y < 90) for r in RARITIES if t.replace(" ", "") == r), None
+    )
     plan = next((v for t in _at(boxes, lambda x, y: x > 560 and y < 110) for k, v in PLANS.items() if k in t), None)
     effect = next((t.strip() for t in _at(boxes, lambda x, y: x > 480 and 145 < y < 185) if t.strip()), None)
-    return {"title": names[0], "character": names[1].replace(" ", "").replace("　", ""), "rarity": rarity, "plan": plan, "effect": effect}
+    return {
+        "title": names[0],
+        "character": names[1].replace(" ", "").replace("　", ""),
+        "rarity": rarity,
+        "plan": plan,
+        "effect": effect,
+    }
 
 
 def card_key(c: dict) -> tuple[str, str]:
@@ -72,7 +83,15 @@ def scan(shoot, tap, swipe, ocr, sleep=_sleep, *, max_screens: int = MAX_SCREENS
                 if card_key(head) not in seen:
                     seen[card_key(head)] = head
                     new += 1
-                    logger.info("偶像卡 %d：【%s】%s %s %s %s", len(seen), head["title"], head["character"], head["rarity"], head["plan"], head["effect"])
+                    logger.info(
+                        "偶像卡 %d：【%s】%s %s %s %s",
+                        len(seen),
+                        head["title"],
+                        head["character"],
+                        head["rarity"],
+                        head["plan"],
+                        head["effect"],
+                    )
         idle = idle + 1 if new == 0 else 0
         if idle >= 2:
             complete = True

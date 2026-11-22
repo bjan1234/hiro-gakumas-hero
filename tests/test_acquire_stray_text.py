@@ -15,7 +15,9 @@ def _fake_boxes(monkeypatch, boxes):
     import hiro.vision.ocr as ocr
 
     x1 = deck.ACQUIRE_BAR[0]
-    monkeypatch.setattr(ocr, "ocr_boxes", lambda img, **k: [(t, 0.9, (cx - x1 - 20, 5, cx - x1 + 20, 30)) for t, cx in boxes])
+    monkeypatch.setattr(
+        ocr, "ocr_boxes", lambda img, **k: [(t, 0.9, (cx - x1 - 20, 5, cx - x1 + 20, 30)) for t, cx in boxes]
+    )
 
 
 @pytest.mark.master
@@ -62,6 +64,8 @@ def test_acquire_bar_retries_smaller_scale_when_empty(monkeypatch):
     if not p.exists():
         pytest.skip("没有 mainz7 获得演出帧")
     real = ocr_mod.ocr_boxes
-    monkeypatch.setattr(ocr_mod, "ocr_boxes", lambda img, *, scale=3.0, **kw: [] if scale == 3.0 else real(img, scale=scale, **kw))
+    monkeypatch.setattr(
+        ocr_mod, "ocr_boxes", lambda img, *, scale=3.0, **kw: [] if scale == 3.0 else real(img, scale=scale, **kw)
+    )
     got = deck.read_acquire_popup(cv2.imread(str(p)), art=False)
     assert got is not None and got["name"] == "ホットコーヒー" and got["kind"] == "drink"

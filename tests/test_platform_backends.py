@@ -122,7 +122,9 @@ def test_kaa_backend_adb_address_and_instance(kaa_config):
     d = kaa_env.kaa_backend("mumu", platform="win32")
     assert d.lifecycle.instance_id == "0"  # 单开缺省 0（KAA 不设会报错）
     assert d.lifecycle.mumu_background_mode is True  # MuMu 6 不开后台模式，nemu_ipc 截到的是桌面
-    assert kaa_env.kaa_backend("mumu", platform="win32", screenshot="nemu_ipc").screenshot_impl == "nemu_ipc"  # 显式指定仍可用
+    assert (
+        kaa_env.kaa_backend("mumu", platform="win32", screenshot="nemu_ipc").screenshot_impl == "nemu_ipc"
+    )  # 显式指定仍可用
     assert kaa_env.kaa_backend("mumu", platform="win32", mumu_background=False).lifecycle.mumu_background_mode is False
     with pytest.raises(ValueError, match="ip:port"):
         kaa_env.kaa_backend("adb", adb="127.0.0.1")
@@ -155,7 +157,9 @@ def test_rapidocr_boxes_scaled_back(monkeypatch):
         def run(img):
             calls.append((tag, img.shape[:2]))
             ox, oy = (631 - 300) // 2, (631 - 120) // 2  # 300×120 的放大图补到 631×631 的偏移
-            return [[[[ox + 30, oy + 60], [ox + 120, oy + 60], [ox + 120, oy + 90], [ox + 30, oy + 90]], "１２３", 0.9]], None
+            return [
+                [[[ox + 30, oy + 60], [ox + 120, oy + 60], [ox + 120, oy + 90], [ox + 30, oy + 90]], "１２３", 0.9]
+            ], None
 
         return run
 
@@ -322,14 +326,18 @@ def test_r1_turn_weighted_gain_prefers_heavier_r1_attr():
     from hiro.state import context as C
     from hiro.state.produce import FINALS
 
-    st = SimpleNamespace(mode=FINALS, params={"Vo": 1710, "Da": 2268, "Vi": 913}, param_cap=3200, idol_card_id="i_card-shro-3-007")
+    st = SimpleNamespace(
+        mode=FINALS, params={"Vo": 1710, "Da": 2268, "Vi": 913}, param_cap=3200, idol_card_id="i_card-shro-3-007"
+    )
     vo = C.r1_turn_weighted_gain(st, {"Vo": 180})
     vi = C.r1_turn_weighted_gain(st, {"Vi": 180})
     da = C.r1_turn_weighted_gain(st, {"Da": 180})
     assert vo > da > vi  # 篠澤広 均衡型 R1 回合 Vo 4 / Da 3 / Vi 2
     capped = SimpleNamespace(**{**st.__dict__, "params": {"Vo": 3150, "Da": 2268, "Vi": 913}})
     assert C.r1_turn_weighted_gain(capped, {"Vo": 180}) == 4 * 50  # 到上限为止
-    assert C.r1_turn_weighted_gain(SimpleNamespace(**{**st.__dict__, "mode": "produce-007"}), {"Vo": 180}) is None  # 选拔不算
+    assert (
+        C.r1_turn_weighted_gain(SimpleNamespace(**{**st.__dict__, "mode": "produce-007"}), {"Vo": 180}) is None
+    )  # 选拔不算
 
 
 def test_emulator_swipe_keeps_duration():
@@ -402,9 +410,13 @@ def test_finals_npc_score_with_dropped_digit_is_rejected(monkeypatch):
     import cv2
 
     img = cv2.imread(str(Path(__file__).parent / "fixtures" / "finals" / "exam-r2-t12.jpg"))
-    monkeypatch.setattr(hif, "ocr_engine", lambda: "vision")  # 测的是 Vision 读法下掉首位的作废；非 Vision 后端走 ddddocr
+    monkeypatch.setattr(
+        hif, "ocr_engine", lambda: "vision"
+    )  # 测的是 Vision 读法下掉首位的作废；非 Vision 后端走 ddddocr
     reads = iter([598516, 60505])
-    monkeypatch.setattr(hif, "_ocr_int", lambda im, box: next(reads) if box[2] - box[0] == hif.FINALS_NPC_W + 1 else None)
+    monkeypatch.setattr(
+        hif, "_ocr_int", lambda im, box: next(reads) if box[2] - box[0] == hif.FINALS_NPC_W + 1 else None
+    )
     assert hif.read_finals_ranking(img)["npc_scores"] == [598516, None]
 
 
@@ -417,7 +429,9 @@ def test_imwrite_handles_non_ascii_path(tmp_path):
 
     p = tmp_path / "20261107-063238-换卡" / "01-阶段1.jpg"
     p.parent.mkdir()
-    assert imwrite(p, np.full((8, 8, 3), 200, np.uint8)) and cv2.imdecode(np.frombuffer(p.read_bytes(), np.uint8), 1).shape == (8, 8, 3)
+    assert imwrite(p, np.full((8, 8, 3), 200, np.uint8)) and cv2.imdecode(
+        np.frombuffer(p.read_bytes(), np.uint8), 1
+    ).shape == (8, 8, 3)
 
 
 def test_finals_round_needs_both_npc_in_one_round():
@@ -450,7 +464,11 @@ def test_merge_dialog_screens_tolerates_one_misread_cell():
     from hiro.vision.deck import merge_dialog_screens
 
     def screen(rows):
-        return [{"row": r, "col": c, "card_id": cid, "name": cid, "upgrade": 1} for r, row in enumerate(rows) for c, cid in enumerate(row)]
+        return [
+            {"row": r, "col": c, "card_id": cid, "name": cid, "upgrade": 1}
+            for r, row in enumerate(rows)
+            for c, cid in enumerate(row)
+        ]
 
     a = [["a1", "a2", "a3", "a4"], ["b1", "b2", "b3", "b4"], ["c1", "c2", "c3", "c4"]]
     b = [["b1", "b2", "b3", "b4"], ["c1", "XX", "c3", "c4"], ["d1", "d2", "d3"]]
@@ -471,7 +489,9 @@ def test_result_score_over_max_is_dropped(monkeypatch):
     import cv2
 
     real = hif._result_score
-    monkeypatch.setattr(hif, "_result_score", lambda img, digits, b: (36350791, None) if digits == "479574" else real(img, digits, b))
+    monkeypatch.setattr(
+        hif, "_result_score", lambda img, digits, b: (36350791, None) if digits == "479574" else real(img, digits, b)
+    )
     img = load(cv2.imread(str(Path(__file__).parent / "fixtures" / "finals" / "round1-result.jpg")))
     r = read_finals_ranking_page(img, _texts(img))
     assert [(e["rank"], e["score"]) for e in r["entries"]] == [(1, None), (2, 365868), (3, 117846)] and r["rank"] == 3
@@ -506,7 +526,9 @@ def test_enhance_dialog_scan_win5_stitches():
     d = Path(__file__).parent / "fixtures" / "deck_scan" / "win5-enhance"
     if not d.is_dir():
         pytest.skip("需要样例 tests/fixtures/deck_scan/win5-enhance")
-    screens = [read_card_dialog(load(cv2.imread(str(d / f"screen{i:02d}.png"))), ENHANCE_GRID)["cards"] for i in range(4)]
+    screens = [
+        read_card_dialog(load(cv2.imread(str(d / f"screen{i:02d}.png"))), ENHANCE_GRID)["cards"] for i in range(4)
+    ]
     m = merge_dialog_screens(screens, expected=20)
     assert m["complete"] and m["new_rows"] == [3, 1, 2, 0]
     names = [c["name"] for c in m["cards"]]
@@ -517,7 +539,12 @@ def test_sale_split_and_floor():
     """原价和 SALE 价读成一个数：按「SALE = 原价 × 0.7 取整」拆开取 SALE 价；小于 5 的残读（「50」读成「0」）去掉。"""
     from hiro.vision.shop import _sale_split
 
-    assert _sale_split([7049]) == [49] and _sale_split([10573]) == [73] and _sale_split([7553]) == [53] and _sale_split([75, 52]) == [75, 52]
+    assert (
+        _sale_split([7049]) == [49]
+        and _sale_split([10573]) == [73]
+        and _sale_split([7553]) == [53]
+        and _sale_split([75, 52]) == [75, 52]
+    )
     assert _sale_split([0]) == [] and _sale_split([1234]) == [1234]
 
 
@@ -564,7 +591,9 @@ def test_r1_done_in_trace(tmp_path):
 
     d = tmp_path / "mainwin10-20261108-032030"
     d.mkdir()
-    page = lambda kind: json.dumps({"observation": {"page": {"name": "HIF_FINALS_RANKING"}, "fields": {"kind": kind, "round_result": None}}})  # noqa: E731
+    page = lambda kind: json.dumps(  # noqa: E731
+        {"observation": {"page": {"name": "HIF_FINALS_RANKING"}, "fields": {"kind": kind, "round_result": None}}}
+    )
     (d / "steps.jsonl").write_text(page("standings") + "\n", encoding="utf-8")
     st = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
     st.s = NS(trace=NS(dir=str(d)))

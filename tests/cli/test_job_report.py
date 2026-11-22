@@ -27,7 +27,11 @@ def test_report_counts_across_segments(run_cli, hiro_home, monkeypatch):
     from hiro.cli import report
 
     _trace(hiro_home, "J1", [step(1, "HOME"), step(2, "ACTION_SELECT", "rule"), step(3, "HIF_EXAM", "bench")])
-    _trace(hiro_home, "J1-r1", [step(1, "HIF_EXAM", "llm", llm=2, notes=["recover:page_misjudged: x"]), step(2, "RESULT", "rule")])
+    _trace(
+        hiro_home,
+        "J1-r1",
+        [step(1, "HIF_EXAM", "llm", llm=2, notes=["recover:page_misjudged: x"]), step(2, "RESULT", "rule")],
+    )
     _trace(hiro_home, "J10", [step(1, "OTHER", "rule")])  # 别的任务，不能算进来
     monkeypatch.setattr(report, "exam_scores", lambda base, traces: [{"label": "final", "score": 87121}])
     _code, env = run_cli("run", "report", "--job", "J1")
@@ -65,7 +69,9 @@ def test_finished_produce_job_emits_report_event(hiro_home, monkeypatch):
     from hiro.cli.jobs import KINDS, Job
     from hiro.cli.service import Manager
 
-    monkeypatch.setattr(report, "exam_scores", lambda base, traces: [{"label": "r1", "score": 343538}, {"label": "r2", "score": 644347}])
+    monkeypatch.setattr(
+        report, "exam_scores", lambda base, traces: [{"label": "r1", "score": 343538}, {"label": "r2", "score": 644347}]
+    )
     mgr = Manager(hiro_home)
     job = Job(hiro_home, KINDS["hif"], {})
     _trace(hiro_home, job.id, [step(1, "HIF_EXAM", "bench")])

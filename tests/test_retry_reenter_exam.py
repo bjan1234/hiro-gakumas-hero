@@ -68,7 +68,9 @@ def test_strategy_sets_flag_on_finals_retry(monkeypatch):
     st = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
     st.s = NS(note=lambda *a: None)
     st.rec = NS(log=lambda *a, **k: None)
-    monkeypatch.setattr(pages, "classify_page", lambda img: ("HIF_FINALS_RANKING", {"kind": "final", "rank": 2, "outcome": "敗退"}))
+    monkeypatch.setattr(
+        pages, "classify_page", lambda img: ("HIF_FINALS_RANKING", {"kind": "final", "rank": 2, "outcome": "敗退"})
+    )
     from hiro.vision.ocr import Box, Text
 
     btn = Text("再挑戦", Box(290, 1090, 310, 1110))
@@ -124,7 +126,9 @@ def test_comm_error_after_retry_not_counted(monkeypatch):
     st._retries_so_far = lambda label: 0
     monkeypatch.setattr(hif, "device", NS(click=lambda *a: None, screenshot=lambda: None))
     monkeypatch.setattr(hif, "sleep", lambda s: None)
-    monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [NS(text="通信エラー"), NS(text="リトライしますか?"), NS(text="はい")])
+    monkeypatch.setattr(
+        hif, "screen_texts", lambda *a, **k: [NS(text="通信エラー"), NS(text="リトライしますか?"), NS(text="はい")]
+    )
     from hiro.vision.ocr import Box, Text
 
     btn = Text("再挑戦", Box(290, 1090, 310, 1110))

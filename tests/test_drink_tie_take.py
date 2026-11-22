@@ -9,7 +9,14 @@ from hiro.contracts import GameState
 
 import pytest
 
-BOOST, RECOVERY, OOLONG, SENBURI, HERB, PARAM = "pdrink_00-2-008", "pdrink_00-2-003", "pdrink_00-1-004", "pdrink_00-2-010", "pdrink_02-2-006", "pdrink_00-1-001"
+BOOST, RECOVERY, OOLONG, SENBURI, HERB, PARAM = (
+    "pdrink_00-2-008",
+    "pdrink_00-2-003",
+    "pdrink_00-1-004",
+    "pdrink_00-2-010",
+    "pdrink_02-2-006",
+    "pdrink_00-1-001",
+)
 
 
 def _overflow(held_ids, incoming):

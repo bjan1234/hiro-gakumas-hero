@@ -26,9 +26,14 @@ def test_rapidocr_noise_one_value_one_digit_off_passes():
     assert _missing(TRUE, _rapid()) == []
 
 
-@pytest.mark.parametrize("expect", [("1472", "2236", "2181"),  # 这一项差 2 位
-                                    ("1500", "2236", "1191"),  # 两项对不上
-                                    ("1472", "2136", "1191")])  # 对上的那项其实差 1 位、另一项也差：不止一项缺
+@pytest.mark.parametrize(
+    "expect",
+    [
+        ("1472", "2236", "2181"),  # 这一项差 2 位
+        ("1500", "2236", "1191"),  # 两项对不上
+        ("1472", "2136", "1191"),
+    ],
+)  # 对上的那项其实差 1 位、另一项也差：不止一项缺
 def test_other_memory_still_rejected(expect):
     assert _missing(expect, _rapid()) != []
 

@@ -8,11 +8,28 @@ pytestmark = pytest.mark.synthetic  # 不读截图样例（只有假的 PNG 字�
 
 CAT = {
     "schema": 18,
-    "cards": {"p_card-01-ido-3_105": {"name": "エウレカ！", "rarity": "SSR", "plan": "PLAN2", "category": "ACTIVE",
-                                      "asset": "img_general_skillcard_ido-3_105",
-                                      "up": {"0": {"name": "エウレカ！", "text": "好調3ターン"}}}},
-    "items": {"pitem_3-076": {"name": "選びとった熱", "rarity": "SSR", "plan": "PLAN2", "text": "試験開始時", "asset": "img_general_pitem_3-076"}},
-    "drinks": {}, "enchants": {}, "idols": {"i_card-shro-3-007": {"name": "【Campus mode!!】篠澤広", "rarity": "SSR", "plan": "PLAN2"}},
+    "cards": {
+        "p_card-01-ido-3_105": {
+            "name": "エウレカ！",
+            "rarity": "SSR",
+            "plan": "PLAN2",
+            "category": "ACTIVE",
+            "asset": "img_general_skillcard_ido-3_105",
+            "up": {"0": {"name": "エウレカ！", "text": "好調3ターン"}},
+        }
+    },
+    "items": {
+        "pitem_3-076": {
+            "name": "選びとった熱",
+            "rarity": "SSR",
+            "plan": "PLAN2",
+            "text": "試験開始時",
+            "asset": "img_general_pitem_3-076",
+        }
+    },
+    "drinks": {},
+    "enchants": {},
+    "idols": {"i_card-shro-3-007": {"name": "【Campus mode!!】篠澤広", "rarity": "SSR", "plan": "PLAN2"}},
     "memories": {},
 }
 CAT_ZH = json.loads(json.dumps(CAT))

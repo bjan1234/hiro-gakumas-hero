@@ -39,7 +39,12 @@ logger = logging.getLogger(__name__)
 
 
 PLAYCOVER_BACKENDS = ("maatools",)
-KAA_BACKENDS = {"adb": "custom", "mumu": "mumu12v5", "leidian": "leidian", "dmm": "dmm"}  # HIRO_DEVICE → KAA lifecycle.type
+KAA_BACKENDS = {
+    "adb": "custom",
+    "mumu": "mumu12v5",
+    "leidian": "leidian",
+    "dmm": "dmm",
+}  # HIRO_DEVICE → KAA lifecycle.type
 BACKENDS = ("auto", *PLAYCOVER_BACKENDS, *KAA_BACKENDS)
 BACKEND: str | None = None  # connect() 实际选中的后端；PlayCover 专用的退路（横屏全屏、真实鼠标点击）看它决定开不开
 DEVICE = None  # connect() 建的设备（hiro.loop.game_app 从里面取 adb shell 查前台应用 / 拉起游戏）
@@ -174,8 +179,10 @@ def connect(backend: str | None = None) -> Device:
     except Exception as e:  # kotonebot 把连不上包成它自己的 DeviceConnectRefusedError
         if name != "maatools":
             raise
-        raise RuntimeError(f"连不上 MaaTools（127.0.0.1:{MAATOOLS_PORT}）：Mac 只支持 hguandl 分支的 PlayCover，"
-                           "要在游戏的 PlayCover 设置里打开 maaTools，并且第一次从 PlayCover 界面启动游戏。"
-                           f"原版 PlayCover 不支持（{e}）") from e
+        raise RuntimeError(
+            f"连不上 MaaTools（127.0.0.1:{MAATOOLS_PORT}）：Mac 只支持 hguandl 分支的 PlayCover，"
+            "要在游戏的 PlayCover 设置里打开 maaTools，并且第一次从 PlayCover 界面启动游戏。"
+            f"原版 PlayCover 不支持（{e}）"
+        ) from e
     device.screenshot()  # 缩放器要靠首张截图确定物理分辨率，之后才能换算点击坐标
     return device

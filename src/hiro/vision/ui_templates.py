@@ -40,7 +40,11 @@ def normalize(img: np.ndarray) -> np.ndarray:
     """截图统一到 720x1280（竖屏）；已经是就原样返回。"""
     import cv2
 
-    return img if img.shape[1] == SIZE[0] and img.shape[0] == SIZE[1] else cv2.resize(img, SIZE, interpolation=cv2.INTER_AREA)
+    return (
+        img
+        if img.shape[1] == SIZE[0] and img.shape[0] == SIZE[1]
+        else cv2.resize(img, SIZE, interpolation=cv2.INTER_AREA)
+    )
 
 
 def _gray(img: np.ndarray) -> np.ndarray:
@@ -110,7 +114,9 @@ class Template:
 def _pixels(file: str) -> np.ndarray:
     import cv2
 
-    img = cv2.imread(str(PACK / file), cv2.IMREAD_COLOR)  # 彩色读再转灰度（同 KAA；直接按灰度读分数差在千分位，并列时选点会不同）
+    img = cv2.imread(
+        str(PACK / file), cv2.IMREAD_COLOR
+    )  # 彩色读再转灰度（同 KAA；直接按灰度读分数差在千分位，并列时选点会不同）
     if img is None:
         raise FileNotFoundError(PACK / file)
     return _gray(img)

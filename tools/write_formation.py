@@ -62,7 +62,11 @@ def main() -> int:
                  calib=calib)  # fmt: skip
 
     def make_picker():  # 回忆列表慢滑 + 终点停住，不带惯性（同开局第 3 步、hiro.memory_scan）
-        return Picker(d.screenshot, d.tap, lambda x1, y1, x2, y2: d.swipe(x1, y1, x2, y2, duration=SWIPE_DURATION, hold=SWIPE_HOLD))
+        return Picker(
+            d.screenshot,
+            d.tap,
+            lambda x1, y1, x2, y2: d.swipe(x1, y1, x2, y2, duration=SWIPE_DURATION, hold=SWIPE_HOLD),
+        )
 
     try:
         out = formation_menu.run(dev, plan, args.mode, what=what, make_picker=make_picker, read_formation=read_support_formation,

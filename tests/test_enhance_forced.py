@@ -37,10 +37,17 @@ def test_forced_picks_non_core_never_cancel():
     for extra in ({"cancelable": False}, {"trigger": "pitem"}):
         d = decide(**extra)
         assert d.action.kind is ActionKind.ENHANCE_CARD and not d.action.args.get("cancel"), d.reason
-        assert d.action.args["card_id"] in {"p_card-02-act-1_004", "p_card-02-act-1_028", "p_card-02-men-2_008", "p_card-02-men-2_052"}
+        assert d.action.args["card_id"] in {
+            "p_card-02-act-1_004",
+            "p_card-02-act-1_028",
+            "p_card-02-men-2_008",
+            "p_card-02-men-2_052",
+        }
         assert "必选强化页" in d.reason
 
 
 def test_forced_without_cards_waits():
-    d = ProduceDeciders(CAMPUS_HIRO, None).decide("SKILL_CARD_ENHANCE", GameState(page_fields={"cards": [], "cancelable": False}, produce=FIX["produce"]))
+    d = ProduceDeciders(CAMPUS_HIRO, None).decide(
+        "SKILL_CARD_ENHANCE", GameState(page_fields={"cards": [], "cancelable": False}, produce=FIX["produce"])
+    )
     assert d.action.kind is ActionKind.WAIT

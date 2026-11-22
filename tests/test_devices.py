@@ -502,7 +502,11 @@ def test_settled_frame_shared_by_all_devices():
     frames = iter([bgr(540, 572), bgr(540, 572), bgr(961, 541)])
     out = settled_frame(lambda: next(frames), LogicalScreen(), sleep=sleep, clock=lambda: t["now"])
     assert out.shape == (720, 1280, 3) and len(slept) == 2
-    assert settled_frame(lambda: bgr(541, 961), LogicalScreen(), sleep=sleep, clock=lambda: t["now"]).shape == (1280, 720, 3)
+    assert settled_frame(lambda: bgr(541, 961), LogicalScreen(), sleep=sleep, clock=lambda: t["now"]).shape == (
+        1280,
+        720,
+        3,
+    )
     with pytest.raises(DeviceUnavailable):
         settled_frame(lambda: bgr(540, 572), LogicalScreen(), settle_s=1.0, sleep=sleep, clock=lambda: t["now"])
 

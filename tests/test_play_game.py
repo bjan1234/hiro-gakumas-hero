@@ -9,7 +9,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
 
-@pytest.mark.lowres_sample("开始确认页样例 start-confirm-q16 是 540x960 截图；DMM 实机同一页（start-confirm-dmm1，1081x1921）在 DMM 回归集里两种 OCR 都过")
+@pytest.mark.lowres_sample(
+    "开始确认页样例 start-confirm-q16 是 540x960 截图；DMM 实机同一页（start-confirm-dmm1，1081x1921）在 DMM 回归集里两种 OCR 都过"
+)
 def test_parse_memory_real_frame():
     from hiro.produce.ops import ocr_boxes
 

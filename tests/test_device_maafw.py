@@ -1,4 +1,5 @@
 """hiro.device_maafw：DMM 版的 MaaFramework 截图 / 点击（用假的 maa 包测，不需要 Windows）。"""
+
 import sys
 import types
 from enum import IntEnum
@@ -94,8 +95,12 @@ class FakeToolkit:
 @pytest.fixture
 def fake_maa(monkeypatch, tmp_path):
     pkg = types.ModuleType("maa")
-    mods = {"maa": pkg, "maa.controller": types.ModuleType("maa.controller"), "maa.define": types.ModuleType("maa.define"),
-            "maa.toolkit": types.ModuleType("maa.toolkit")}
+    mods = {
+        "maa": pkg,
+        "maa.controller": types.ModuleType("maa.controller"),
+        "maa.define": types.ModuleType("maa.define"),
+        "maa.toolkit": types.ModuleType("maa.toolkit"),
+    }
     mods["maa.controller"].Win32Controller = FakeCtrl
     mods["maa.define"].MaaWin32ScreencapMethodEnum = S
     mods["maa.define"].MaaWin32InputMethodEnum = I
@@ -214,8 +219,9 @@ def test_connect_picks_maafw(fake_maa, monkeypatch):
     monkeypatch.setenv("HIRO_DEVICE", "dmm")
     monkeypatch.setenv("HIRO_DMM_DRIVER", "maafw")
     kaa_called = []
-    monkeypatch.setitem(sys.modules, "kaa.main.kaa", types.SimpleNamespace(
-        KaaDeviceFactory=lambda: kaa_called.append(1)))
+    monkeypatch.setitem(
+        sys.modules, "kaa.main.kaa", types.SimpleNamespace(KaaDeviceFactory=lambda: kaa_called.append(1))
+    )
     dev = d.connect()
     assert not kaa_called and d.BACKEND == "dmm"
     dev.click(360, 640)  # 逻辑坐标 720x1280 → 截图坐标 720x1279，经 MaaFramework 点出去

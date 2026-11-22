@@ -33,7 +33,11 @@ def _opts(fields):
 
 def test_lesson_week_options():
     f = _action("hajime-action-lessons.jpg")
-    assert _opts(f) == [("training", "Vo", False, None), ("training", "Da", False, None), ("training", "Vi", False, None)]
+    assert _opts(f) == [
+        ("training", "Vo", False, None),
+        ("training", "Da", False, None),
+        ("training", "Vi", False, None),
+    ]
     assert f["exam_next"] == "mid1" and f["complete"]
     f = _action("hajime-action-lessons-sp.jpg")
     assert [o for o in _opts(f) if o[0] == "training"] == [("training", "Vo", False, None), ("training", "Da", True, None),
@@ -156,7 +160,12 @@ def test_retry_when_rank_below_three(monkeypatch):
     monkeypatch.setattr(hv, "exam_rank", lambda img: {"rank": 3, "score": 500, "retry": None})
     assert core._retry_if_failed("hajime-mid1") is False and not clicked
     monkeypatch.setattr(hv, "exam_rank", lambda img: {"rank": 4, "score": 300, "retry": {"left": 1, "free": True}})
-    assert core._retry_if_failed("hajime-mid1") is True and clicked == ["再挑戦"] and core.exam_restarted and core.exam_count == 0
+    assert (
+        core._retry_if_failed("hajime-mid1") is True
+        and clicked == ["再挑戦"]
+        and core.exam_restarted
+        and core.exam_count == 0
+    )
     assert "マニー" in Core.RETRY_JEWEL and "ジュエル" in Core.RETRY_JEWEL
 
 

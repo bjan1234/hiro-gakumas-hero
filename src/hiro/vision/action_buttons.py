@@ -51,7 +51,11 @@ def _first(img, names) -> tuple[str, object] | None:
 
 def available_actions(img: np.ndarray) -> list[ActionButton]:
     img = normalize(img)
-    out = [ActionButton(option, attr, None, m.rect, name) for name, option, attr in SINGLE if (m := tpl(name).find(img)) is not None]
+    out = [
+        ActionButton(option, attr, None, m.rect, name)
+        for name, option, attr in SINGLE
+        if (m := tpl(name).find(img)) is not None
+    ]
     vo = _first(img, LESSONS["Vo"])
     if vo is None:
         return out

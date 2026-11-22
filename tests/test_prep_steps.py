@@ -15,7 +15,12 @@ def rig(monkeypatch, start, *, moves=True, readable=True):
             state["n"] += 1 if (x, y) == nxt else -1
 
     monkeypatch.setattr(prep_steps, "set_number", lambda img: state["n"] if readable else None)
-    kw = {"shoot": lambda: None, "tap": tap, "sleep": lambda s: state.__setitem__("now", state["now"] + s), "clock": lambda: state["now"]}
+    kw = {
+        "shoot": lambda: None,
+        "tap": tap,
+        "sleep": lambda s: state.__setitem__("now", state["now"] + s),
+        "clock": lambda: state["now"],
+    }
     return kw, taps, nxt, prv
 
 

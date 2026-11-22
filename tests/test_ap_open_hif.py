@@ -17,7 +17,10 @@ import cv2
 
 def _real(*rel):
     """用实机截图的用例：截图放在 tests/fixtures/…（开源仓库不带，用自己的截图），识别层（hiro.vision.ocr）也要装。"""
-    have = all((_P(__file__).parent / "fixtures" / r).exists() for r in rel) and _iu.find_spec("hiro.vision.ocr") is not None
+    have = (
+        all((_P(__file__).parent / "fixtures" / r).exists() for r in rel)
+        and _iu.find_spec("hiro.vision.ocr") is not None
+    )
     return pytest.mark.skipif(not have, reason="需要实机截图 tests/fixtures/" + ", ".join(rel) + " 和识别层")
 
 
@@ -29,7 +32,7 @@ def _clock():
     return t, (lambda: t[0]), (lambda s: t.__setitem__(0, t[0] + s))
 
 
-@_real('ap_refill/g27-hif-page.png')
+@_real("ap_refill/g27-hif-page.png")
 def test_real_page_ocr_finds_main_button():
     img = cv2.imread(str(PAGE))
     _t, clock, sleep = _clock()
@@ -39,7 +42,7 @@ def test_real_page_ocr_finds_main_button():
     assert ok and len(clicks) == 1 and abs(clicks[0][0] - 570) < 40 and abs(clicks[0][1] - 890) < 30
 
 
-@_real('ap_refill/g27-hif-page.png')
+@_real("ap_refill/g27-hif-page.png")
 def test_real_page_qualify_button():
     img = cv2.imread(str(PAGE))
     _t, clock, sleep = _clock()
@@ -61,7 +64,15 @@ def test_waits_for_page_then_finds_button():
 
 def test_template_first():
     _t, clock, sleep = _clock()
-    ok = ap_refill.open_hif(lambda: None, lambda x, y: None, lambda img: [], mode="main", try_template=lambda: True, sleep=sleep, clock=clock)
+    ok = ap_refill.open_hif(
+        lambda: None,
+        lambda x, y: None,
+        lambda img: [],
+        mode="main",
+        try_template=lambda: True,
+        sleep=sleep,
+        clock=clock,
+    )
     assert ok
 
 

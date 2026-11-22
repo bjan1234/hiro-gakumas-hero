@@ -33,12 +33,16 @@ def test_same_shelf_is_not_a_reroll():
 def test_done_bubble_is_tapped_away():
     bubble, idle = frame("enhance_bubble"), frame("reroll_after")
     fake = Fake({"bubble": bubble, "idle": idle}, {("bubble", (300, 990)): "idle"}, "bubble")
-    r = shop._Run(Action(ActionKind.SHOP_UPGRADE_CARD), fake.shoot, fake.click, fake.clock, fake.sleep, ocr=fake.ocr, calib=False)
+    r = shop._Run(
+        Action(ActionKind.SHOP_UPGRADE_CARD), fake.shoot, fake.click, fake.clock, fake.sleep, ocr=fake.ocr, calib=False
+    )
     back, _ = shop.settle_after_op(r)
     assert back and fake.state == "idle" and len(fake.clicks) == 1, fake.clicks
 
 
 def test_no_tap_when_no_bubble():
     fake = Fake({"idle": frame("reroll_after")}, {}, "idle")
-    r = shop._Run(Action(ActionKind.SHOP_UPGRADE_CARD), fake.shoot, fake.click, fake.clock, fake.sleep, ocr=fake.ocr, calib=False)
+    r = shop._Run(
+        Action(ActionKind.SHOP_UPGRADE_CARD), fake.shoot, fake.click, fake.clock, fake.sleep, ocr=fake.ocr, calib=False
+    )
     assert shop.settle_after_op(r)[0] and fake.clicks == []

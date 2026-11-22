@@ -90,7 +90,9 @@ def test_resume_enters_and_runs_kaa_controller(monkeypatch):
         def run(self):
             calls.append("run")
 
-    pm = NS(resolve_deck=lambda idol, deck_id: f"{idol}/{deck_id}", ProduceController=Controller, StandardStrategy="std")
+    pm = NS(
+        resolve_deck=lambda idol, deck_id: f"{idol}/{deck_id}", ProduceController=Controller, StandardStrategy="std"
+    )
     m.resume(pm, "REGULAR", "i_card-x")
     assert calls == ["enter", ("session", {"idol_card": "i_card-x", "scenario": "REGULAR", "is_resumed": True, "deck": "i_card-x/deck-1"}),
                      ("controller", "REGULAR", "std"), "run", "clear"]  # fmt: skip
