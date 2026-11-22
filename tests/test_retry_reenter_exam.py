@@ -74,6 +74,7 @@ def test_strategy_sets_flag_on_finals_retry(monkeypatch):
     btn = Text("再挑戦", Box(290, 1090, 310, 1110))
     monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [btn])
     st._click_retry = lambda label, b, texts, **kw: "free"
+    st._retry_took_effect = lambda label, **kw: True  # 考试重开的核对另有测试（test_produce_over_detection）
     assert st._finals_retry(None, "r2") is True and st.exam_restarted is True
 
 
@@ -227,6 +228,7 @@ def _gap_strategy(monkeypatch, page):
     monkeypatch.setattr(pages, "classify_page", lambda img: ("HIF_FINALS_RANKING", page))
     monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [Text("再挑戦", Box(290, 1090, 310, 1110))])
     st._click_retry = lambda label, b, texts: calls.append(label) or "ticket"
+    st._retry_took_effect = lambda label, **kw: True
     return st, notes, calls
 
 

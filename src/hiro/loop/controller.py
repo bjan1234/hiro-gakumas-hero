@@ -175,6 +175,16 @@ class HiroController(ProduceController):
             finish_produce_end()
             self.abort()
             return
+        elif scene.type is SceneType.UNKNOWN and self._home_mid_produce():
+            # 培育中回到了首页（11-20 麻央：考试没过、结算被 LLM 兜底点掉，培育已结束；程序不知道，在首页一直点）：这一段结束
+            logger.warning("培育中回到了首页：培育已经结束（考试没过 / 结算被点掉），结束这一段")
+            if HiroController.session is not None:
+                HiroController.session.observe(scene="PRODUCE_END", area="produce", img=None, fields=False, save_frame=True,
+                                               page_source="home")  # fmt: skip
+                HiroController.session.note("培育中回到了首页，按培育结束处理")
+                HiroController.session.record()
+            self.abort()
+            return
         elif scene.type is SceneType.UNKNOWN and self._is_drink_offer():
             # 差し入れ等的饮料三选一（带「受け取らない」勾选框、饮料满时「Pドリンク所持上限」）：KAA 的 TextPDrink 模板认不出
             scene, src = Scene(SceneType.SELECT_DRINK), "drink_ocr"
@@ -579,6 +589,28 @@ class HiroController(ProduceController):
         if getattr(self, "_texts", None) is None:
             self._texts = [t.text for t in self._ocr_boxes()]
         return self._texts
+
+    HOME_TOOLBAR = ("ホーム", "コンテスト", "ガシャ", "アイドル", "コミュ")
+    HOME_CONFIRM_S = 8.0  # 首页要连续认到这么久才算（过场里一闪而过的不算）
+
+    def _home_mid_produce(self) -> bool:
+        """画面是首页：底部工具栏（ホーム / コンテスト / ガシャ / アイドル / コミュ）至少 3 个 + 中间「プロデュース」大按钮，
+        没有「再開」（日期变更后首页弹的「プロデュース再開」不算：那是还在培育里），连续 HOME_CONFIRM_S 秒。"""
+        from hiro.vision.textnorm import contains
+
+        boxes = self._ocr_boxes()
+        low = [b.text for b in boxes if b.rect.center.y > 1050]
+        tools = sum(1 for w in self.HOME_TOOLBAR if any(contains(t, w) for t in low))
+        home = tools >= 3 and any(contains(b.text, "プロデュース") and 900 < b.rect.center.y < 1120 for b in boxes)             and not any("再開" in b.text for b in boxes)
+        now = time.monotonic()
+        if not home:
+            self._home_since = None
+            return False
+        since = getattr(self, "_home_since", None)
+        if since is None:
+            self._home_since = now
+            return False
+        return now - since >= self.HOME_CONFIRM_S
 
     def _is_date_changed(self) -> bool:
         from hiro.loop.date_change import FORCED_TITLES

@@ -1895,6 +1895,8 @@ class HifCore:
         kind = self._click_retry(label, btn, texts)
         if kind is None:
             return False
+        if not self._retry_took_effect(label):
+            return False  # 点了再挑戦但考试没重开（还停在结算页）：照没过线收尾，不留给主循环当认不出的页面
         logger.info("%s 敗退（%s Pt），使用再挑戦（%s）", label, res.get("score"), kind)
         self.s.note(f"{label} 敗退（{res.get('score')} Pt），使用再挑戦（{kind}）")
         # 再挑戦同一场考试：场次不加
@@ -1903,6 +1905,25 @@ class HifCore:
         type(self).exams_done = self.exam_count
         self.rec.log("exam_retry", exam=label, retry_kind=kind)
         return True
+
+    RETRY_EFFECT_WAIT = 15.0  # 点了再挑戦之后最多等这么久看考试有没有重开
+
+    def _retry_took_effect(self, label: str, *, wait: float | None = None) -> bool:
+        """点了再挑戦、确认框也点了之后，看考试是不是真的重开了：「再挑戦」按钮消失（进了读取 / 考试画面）就算；
+        RETRY_EFFECT_WAIT 秒后结算页的「再挑戦」还在 = 没生效。
+        11-20 麻央：第 3 次「免费再挑戦」没生效，结算页一直在，主循环当成认不出的页面，LLM 兜底点了「次へ」，培育结束回到首页，
+        程序却不知道，在首页一直点。"""
+        deadline = time.monotonic() + (self.RETRY_EFFECT_WAIT if wait is None else wait)
+        gone = 0
+        while time.monotonic() < deadline:
+            sleep(1.0)
+            on_result = any(button_text(t.text, "再挑戦") and t.rect.center.y > 900 for t in screen_texts(device.screenshot()))
+            gone = 0 if on_result else gone + 1
+            if gone >= 2:
+                return True
+        self.s.note(f"{label} 点了再挑戦但考试没重开（结算页还在），按没过线收尾")
+        logger.warning("%s 点了再挑戦但 %.0f 秒后结算页还在：再挑戦没生效，按没过线收尾", label, self.RETRY_EFFECT_WAIT if wait is None else wait)
+        return False
 
     exam_restarted = False  # 刚点了再挑戦、同一场考试要重新进入（见 HiroController._rearm_exam）
     _retry_comm_error = False  # 上一次点再挑戦遇到通信エラー（不算决定不再挑戦）
@@ -2069,6 +2090,9 @@ class HifCore:
             return False
         self._retry_comm_error = False
         kind = self._click_retry(label, btn, texts)
+        if kind is not None and not self._retry_took_effect(label):
+            self._retry_declined = page_key
+            return False
         if kind is None:
             # 取消了再挑戦（要花ジュエル / 到上限）后，收尾循环不要每轮又点开确认框再取消（Windows 第七局空转 187s 停机，一直没点「次へ」）
             if not self._retry_comm_error:

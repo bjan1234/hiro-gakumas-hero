@@ -348,4 +348,5 @@ def test_finals_retry_restarts_exam(monkeypatch):
     btn = NS(text="再挑戦", rect=NS(center=NS(y=1100)))
     monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [btn])
     st._click_retry = lambda label, b, texts: "free"
+    st._retry_took_effect = lambda label, **kw: True  # 考试重开的核对另有测试
     assert st._finals_retry(None, "r2") is True and st.exam_restarted is True

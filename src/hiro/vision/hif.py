@@ -32,6 +32,12 @@ ATTRS = {"ボーカル": "vocal", "ダンス": "dance", "ビジュアル": "visu
 
 # 720x1280 逻辑坐标 (x1, y1, x2, y2)。HUD 数值取自客户端布局 + 截图校准（hiro.vision.layout），其余仍为实测
 BOX_TURNS = layout.box(layout.EXAM, "ExamAuditionTurnView/txt/TurnValue")
+# 剩余回合圆盘下面的「+n」小胶囊（白底蓝字）：加回合卡 / P 道具给的额外回合，不算在圆盘的数字里（11-19 实测：圆盘 12 + 「+1」= 13 回合）。
+# 最后一个普通回合结束后，圆盘直接变成 n、胶囊消失（用户 11-21：是「恢复」n 个回合，不是 +3 → +2 这样一个个减）。
+# 所以真实剩余 = 圆盘数字 + n，n 可以是 1–4，按 OCR 读数，不定死。
+EXTRA_PILL = (100, 120, 146, 152)  # 白底的位置（720x1280）：有胶囊时白色占比 ≥ 0.74，没有时 ≤ 0.62（5 局 343 帧）
+EXTRA_TEXT = (88, 112, 165, 162)  # OCR 的范围（比白底大一圈，「+4」也在里面）
+EXTRA_WHITE_MIN = 0.68
 BOX_ATTR = (105, 55, 230, 120)
 BOX_MY_SCORE = (222, 128, 262, 166)
 _GENKI_LAYOUT = layout.box(layout.EXAM, "GaugeRoot/GenkiGauge/IconRoot/Icon/GenkiValue")
@@ -954,11 +960,36 @@ def is_final_exam(img: MatLike) -> bool:
 EXAM_CACHE = RegionCache()  # 考试循环逐帧调用时复用不变区域的结果；离线评测传 cache=None
 
 
+def read_extra_turns(img: MatLike, cache: RegionCache | None = None) -> int | None:
+    """「+n」额外回合：没有胶囊 0；读出「+n」就是 n；有白色胶囊但读不出数字 None（不能猜：猜错会让剩余回合忽大忽小，被当成换回合）。"""
+    x1, y1, x2, y2 = EXTRA_PILL
+    hsv = cv2.cvtColor(img[y1:y2, x1:x2], cv2.COLOR_BGR2HSV)
+    white = float(((hsv[:, :, 1] < 40) & (hsv[:, :, 2] > 220)).mean())
+    tx1, ty1, tx2, ty2 = EXTRA_TEXT
+    crop = img[ty1:ty2, tx1:tx2]
+
+    def ocr_text() -> str:
+        from hiro.vision.ocr import ocr_boxes
+
+        return "".join(t for t, _c, _b in ocr_boxes(crop, scale=3))
+
+    if white < EXTRA_WHITE_MIN:
+        return 0  # 没有胶囊：不跑 OCR（稳定帧判断每帧都调）
+    text = cached(cache, "extra_turns", crop, ocr_text) if cache is not None else ocr_text()
+    m = re.search(r"\+\s*([1-9])", text)
+    return int(m.group(1)) if m else None
+
+
+def _with_extra(base: int | None, extra: int | None) -> int | None:
+    """圆盘数字 + 额外回合；任一读不出就 None。"""
+    return None if base is None or extra is None else base + extra
+
+
 def read_hif_hud(img: MatLike, *, fallback: bool = False) -> dict:
     """考试 HUD 三个数：剩余回合、体力、元气。只用游戏字体比对（约 10–30ms），用于稳定帧判断。
     字体比对没把握（被特效遮住）时为 None；fallback=True 时退回 ddddocr（每个约 200ms）。"""
     read = read_number if fallback else read_int
-    return {"remaining_turns": read(img, BOX_TURNS, align=True), "hp": read(img, BOX_HP, align=True),
+    return {"remaining_turns": _with_extra(read(img, BOX_TURNS, align=True), read_extra_turns(img, EXAM_CACHE)), "hp": read(img, BOX_HP, align=True),
             "genki": read_genki(img) if fallback else read_int(img, BOX_GENKI, align=True)}  # fmt: skip
 
 
@@ -1007,7 +1038,7 @@ def _read_hif_exam(img: MatLike, cache: RegionCache | None) -> dict:
     x1, y1, x2, y2 = RANK_STRIP
     drink_slots = read_drink_slots(img, cache=cache)
     out = {
-        "remaining_turns": num("turns", BOX_TURNS),
+        "remaining_turns": _with_extra(num("turns", BOX_TURNS), read_extra_turns(img, cache)),  # 含「+n」额外回合
         **_parse_attr(texts["attr"]),
         "finals_round": None,  # 本战时由 read_finals_ranking 覆盖为 1 / 2
         **cached(cache, "ranking", img[y1:y2, x1:x2], lambda: read_ranking(img)),
