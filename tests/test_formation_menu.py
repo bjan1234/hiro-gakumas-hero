@@ -253,22 +253,22 @@ def test_open_taps_submenu_item_on_device_frame(monkeypatch):
 
 
 def test_set_number_reread_when_digit_dropped(monkeypatch):
-    """11-20 Windows MuMu：整帧 OCR 把「9/20」读成「/20」，认不出编成页、翻号卡住。裁下来放大重读能认出编号。"""
-    import types
-
+    """11-20 Windows MuMu：整帧 OCR 把「9/20」读成「/20」，认不出编成页、翻号卡住。裁下来按 2 倍重读能认出编号
+    （不手动放大：review #11，RapidOCR 4 倍以上会多读杂字）。"""
     import hiro.vision.ocr as ocr
 
     seen = []
 
-    def fake(img):
-        seen.append(img.shape)
-        return [types.SimpleNamespace(text="9/20", rect=(0, 0, 1, 1))]
+    def fake(img, scale=3.0, **kw):
+        seen.append((img.shape, scale))
+        return [("9/20", 0.9, (0, 0, 1, 1))]
 
-    monkeypatch.setattr(ocr, "screen_texts", fake)
+    monkeypatch.setattr(ocr, "ocr_boxes", fake)
     img = np.zeros((1280, 720, 3), np.uint8)
     texts = [("/20", (82, 948, 139, 975)), ("おまかせ", (573, 950, 655, 973))]
     assert fm._set_number(img, texts) == 9
-    assert seen and seen[0][1] == (139 + 10 - (82 - fm.SET_NUMBER_LEFT)) * 3  # 只裁「/20」左边一小块，放大 3 倍
+    (shape, scale), = seen
+    assert shape[1] == 139 + 10 - (82 - fm.SET_NUMBER_LEFT) and scale == 2  # 只裁「/20」左边一小块，原尺寸交给 OCR 按 2 倍读
     assert fm._set_number(img, [("8/20", (60, 948, 139, 975))]) == 8 and len(seen) == 1  # 读全了不重读
-    monkeypatch.setattr(ocr, "screen_texts", lambda img: [types.SimpleNamespace(text="/20", rect=(0, 0, 1, 1))])
+    monkeypatch.setattr(ocr, "ocr_boxes", lambda img, scale=3.0, **kw: [("/20", 0.9, (0, 0, 1, 1))])
     assert fm._set_number(img, texts) is None  # 重读也没有编号：不猜

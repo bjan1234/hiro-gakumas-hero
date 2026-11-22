@@ -78,7 +78,8 @@ def _orange_ratio(img, b) -> float:
 
 def _set_number(img, texts) -> int | None:
     """左侧「N/20」的 N。整帧 OCR 有时只读出「/20」、把编号漏掉（11-20 Windows MuMu：编成 9 读成「/20」，翻号停在 8 → 9），
-    这时把「/20」左边连同它裁下来放大 3 倍再读一次。"""
+    这时把「/20」左边连同它裁下来再读一次（ocr_boxes 按 2 倍读；不先手动放大：screen_texts 自己还会再放大 1.5 倍，
+    RapidOCR 对放大倍数敏感，4 倍以上会多读出杂字，review #11）。"""
     for t, b in texts:
         if b[0] < 250 and 900 <= b[1] <= 1000 and (m := re.search(r"(\d+)/20$", t)):
             return int(m.group(1))
@@ -87,11 +88,10 @@ def _set_number(img, texts) -> int | None:
         return None
     x1, y1, x2, y2 = (int(v) for v in slash)
     crop = img[max(0, y1 - 15) : y2 + 15, max(0, x1 - SET_NUMBER_LEFT) : x2 + 10]
-    crop = cv2.resize(crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
-    from hiro.vision.ocr import screen_texts
+    from hiro.vision.ocr import ocr_boxes
 
-    for t in screen_texts(crop):
-        if m := re.search(r"(\d+)/20$", t.text.replace(" ", "")):
+    for t, _c, _b in ocr_boxes(crop, scale=2):
+        if m := re.search(r"(\d+)/20$", t.replace(" ", "")):
             n = int(m.group(1))
             return n if 1 <= n <= 20 else None
     return None
