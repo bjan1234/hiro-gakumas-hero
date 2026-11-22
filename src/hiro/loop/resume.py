@@ -29,6 +29,7 @@ from hiro.loop.resume_rules import (  # noqa: E402,F401  纯判据挪到 resume_
 from hiro import imgio
 from hiro.vision.ocr import find_text, screen_texts
 from hiro.vision.ui_templates import box, tap, tpl
+from hiro.vision.textnorm import contains_any  # OCR 容错匹配（用户 11-21）
 
 
 def _discard_dialog_visible(img) -> bool:
@@ -162,8 +163,7 @@ OPENING_STEP_WORDS = ("アイドル選択", "サポート選択", "メモリー�
 
 def is_opening_step(texts) -> bool:
     """开局准备页（第 1–4 步）：左上步骤条「N.xxx選択」或页面提示文字。"""
-    flat = [t.replace(" ", "") for t in texts]
-    return any(w in t for t in flat for w in OPENING_STEP_WORDS)
+    return any(contains_any(t, OPENING_STEP_WORDS) for t in texts)
 
 
 def finish_produce_end(*, timeout: float = 180.0, go_home: bool = False) -> bool:

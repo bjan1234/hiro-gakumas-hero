@@ -15,6 +15,7 @@
 from functools import lru_cache
 
 from hiro.state.knowledge import MEMORY_WANT, SUPPORT_MAIN_TARGET
+from hiro.vision.textnorm import contains  # OCR 容错匹配（用户 11-21）
 
 ATTR_OF = {"SupportCardType_Vocal": "Vo", "SupportCardType_Dance": "Da", "SupportCardType_Visual": "Vi"}
 EFFECT_ATTR = {"Vo": "Vocal", "Da": "Dance", "Vi": "Visual"}
@@ -475,7 +476,7 @@ SPEND_FORBIDDEN = ("ジュエル", "jewel")
 def cost_allowed(cost) -> bool:
     """cost：识屏读到的消耗提示（如「必要マニー 1500」/ {"item": "マニー", "amount": 1500}）。只有白名单资源、且不含禁用字样才放行。"""
     text = cost if isinstance(cost, str) else " ".join(str(v) for v in (cost.values() if isinstance(cost, dict) else [cost]))
-    if any(f in text for f in SPEND_FORBIDDEN):
+    if any(contains(text, f) for f in SPEND_FORBIDDEN):
         return False
     return any(a in text for a in SPEND_ALLOWED)
 

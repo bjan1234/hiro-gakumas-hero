@@ -32,6 +32,7 @@ from hiro.vision.hif import is_final_exam
 from hiro.vision.ui_templates import box, tap, tpl
 from hiro.exec.exam import run_exam
 from hiro.recorder import Recorder
+from hiro.vision.textnorm import contains  # OCR 容错匹配（用户 11-21）
 
 if TYPE_CHECKING:
     from kaa.tasks.produce.new.controller import ProduceController
@@ -1986,7 +1987,7 @@ class HifCore:
                 logger.warning("%s 点再挑戦后出现通信エラー，这次不算再挑戦", label)
                 self._retry_comm_error = True  # 不是「决定不再挑戦」：恢复后同一页还要再判断
                 return None
-            if any(j in words for j in self.RETRY_JEWEL):
+            if any(contains(words, j) for j in self.RETRY_JEWEL):
                 cancel = next((t for t in boxes if "キャンセル" in t.text), None)
                 if cancel is not None:
                     device.click(*cancel.rect.center)

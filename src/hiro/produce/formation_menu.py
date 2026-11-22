@@ -22,6 +22,7 @@ from typing import Callable
 import cv2
 
 from hiro.produce.formation_writer import Device, FormationWriteError, fix_memory, fix_plan, fix_support
+from hiro.vision.textnorm import contains, same  # OCR 容错匹配（用户 11-21）
 
 logger = logging.getLogger(__name__)
 
@@ -43,29 +44,22 @@ ARROW_RETRIES = 2  # 翻编号的箭头点了没反应时再点几次
 
 
 # ---------------------------------------------------------------- 读页面
-# 窗口小时（DMM 541x961，11-21）OCR 常把「編」读成「綿」「縞」：菜单里只会出现「編」（編成 / 編成詳細），读到就改回来
-OCR_FIX = str.maketrans({"綿": "編", "縞": "編"})
-
-
 def _texts(img, ocr) -> list[tuple[str, tuple]]:
-    return [(t.replace(" ", "").translate(OCR_FIX), tuple(b)) for t, _c, b in ocr(img)]
+    return [(t.replace(" ", ""), tuple(b)) for t, _c, b in ocr(img)]
 
 
 def _find(texts, word: str, *, y_min: int = 0, y_max: int = 1280):
-    return next((b for t, b in texts if word in t and y_min <= b[1] <= y_max), None)
+    return next((b for t, b in texts if contains(t, word) and y_min <= b[1] <= y_max), None)  # 容错：「メモリー綿成」也认（11-21）
 
 
 def _is_submenu_item(t: str) -> bool:
-    """子菜单里的「プロデュース編成」。OCR 会把「編」读成「綿」（11-21 DMM：「プロデュース綿成」，等了一轮就停下），
-    所以按「プロデュース」开头、两个字结尾、不带スキルカード 认。"""
-    t = t.replace(" ", "")
-    return t.startswith("プロデュース") and len(t) == 8 and t.endswith("成")
+    """子菜单里的「プロデュース編成」（整个框就是这几个字，容错：11-21 DMM 读成「プロデュース綿成」）。"""
+    return same(t, "プロデュース編成")
 
 
 def _is_panel(t: str) -> bool:
-    """面板按钮「プロデュース編成・スキルカード」（同样容忍「編」读错）。"""
-    t = t.replace(" ", "")
-    return t.startswith("プロデュース") and "スキル" in t
+    """面板按钮「プロデュース編成・スキルカード」。"""
+    return contains(t, "プロデュース") and contains(t, "スキルカード")
 
 
 def _center(b) -> tuple[int, int]:

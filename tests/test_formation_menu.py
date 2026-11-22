@@ -276,8 +276,10 @@ def test_submenu_item_tolerates_ocr_misread():
     assert _is_panel("プロデュース編成・スキルカード") and _is_panel("プロデュース綿成・スキルカード") and not _is_panel("プロデュース綿成")
 
 
-def test_texts_fix_hen_misread():
-    from hiro.produce.formation_menu import _texts
+def test_find_tolerates_hen_misread():
+    """11-21 DMM 小窗口：「編成」读成「綿成 / 縞成」（textnorm 容错，不再列易混字）。"""
+    from hiro.produce.formation_menu import _find
 
-    got = _texts(None, lambda img: [("メモリー綿成", 1.0, (0, 0, 1, 1)), ("縞成詳細", 1.0, (0, 0, 1, 1))])
-    assert [t for t, _ in got] == ["メモリー編成", "編成詳細"]
+    texts = [("サポート編成", (70, 1080, 189, 1104)), ("メモリー綿成", (276, 1081, 394, 1103)), ("縞成詳細", (566, 1078, 665, 1107))]
+    assert _find(texts, "メモリー編成", y_min=1040) == (276, 1081, 394, 1103)
+    assert _find(texts, "サポート編成", y_min=1040) == (70, 1080, 189, 1104)  # 不会认成「メモリー綿成」

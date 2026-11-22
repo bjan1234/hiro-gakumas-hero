@@ -20,6 +20,7 @@ from __future__ import annotations
 from hiro.loop.errors import ResumeBlocked
 from hiro.runtime.frame import Frame, Screen
 from hiro.vision.ocr import screen_texts
+from hiro.vision.textnorm import contains  # OCR 容错匹配（用户 11-21）
 
 HARD_WORDS = ("ジュエル", "購入", "課金", "有償", "破棄", "リタイア")
 SAFE_ON_DANGER = ("キャンセル", "閉じる")
@@ -56,7 +57,7 @@ def check_tap(screen: Screen, x: int, y: int, dialog_words: tuple[str, ...] = ()
             raise DangerBlocked(f"危险弹窗「{d['title']}」开着，只能点キャンセル：拦下 ({x}, {y}) {word or '（空白处）'}")
         if hit := next((w for w in dialog_words if w in d["title"] or w in d.get("body", "")), None):
             raise DangerBlocked(f"弹窗「{d['title']}」含「{hit}」，只能点キャンセル：拦下 ({x}, {y}) {word or '（空白处）'}")
-    if word and (hit := next((w for w in HARD_WORDS if w in word), None)):
+    if word and (hit := next((w for w in HARD_WORDS if contains(word, w)), None)):
         raise DangerBlocked(f"要点的「{word}」含「{hit}」：拦下 ({x}, {y})")
 
 
