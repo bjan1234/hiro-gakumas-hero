@@ -760,3 +760,11 @@ def test_start_button_click_is_tracked():
     assert kaa_patches.START_CLICKED["clicked"] is False  # 只等到按钮不算
     m.click()
     assert kaa_patches.START_CLICKED["clicked"] is True and clicked == [1]
+
+
+def test_step_indicator_threshold_also_in_hiro_templates():
+    """新主循环（nav.find → ui_templates.tpl）也要放宽：11-22 DMM 新主循环同样卡在「等第 2 步」。"""
+    from hiro.vision.ui_templates import tpl
+
+    assert all(tpl(n).threshold == 0.7 for n in ("Produce.TextStepIndicator1", "Produce.TextStepIndicator2", "Produce.TextStepIndicator3",
+                                                  "Produce.TextStepIndicator4Or2"))  # fmt: skip
