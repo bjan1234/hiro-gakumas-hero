@@ -1907,9 +1907,9 @@ class HifCore:
         return True
 
     def _handoff_retry(self, label: str) -> bool:
-        """HIRO_RETRY_HANDOFF=1：没过线时把再挑戦交给人（hiro.loop.retry_handoff）。返回 True = 人处理过了，程序不再挑戦；
+        """HIRO_RETRY_HANDOFF=1：没过线时把再挑戦交给人（hiro.runtime.retry_handoff）。返回 True = 人处理过了，程序不再挑戦；
         False = 开关没开 / 交回程序按规则决定。"""
-        from hiro.loop import retry_handoff
+        from hiro.runtime import retry_handoff
 
         if not retry_handoff.enabled():
             return False

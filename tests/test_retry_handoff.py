@@ -1,7 +1,7 @@
-"""考试没过线时把再挑戦交给人：HIRO_RETRY_HANDOFF=1（hiro.loop.retry_handoff）。看画面判断，不用人删文件（用户 11-21）。"""
+"""考试没过线时把再挑戦交给人：HIRO_RETRY_HANDOFF=1（hiro.runtime.retry_handoff）。看画面判断，不用人删文件（用户 11-21）。"""
 
 from hiro.loop import pause_flag
-from hiro.loop import retry_handoff as rh
+from hiro.runtime import retry_handoff as rh
 
 
 class Rig:

@@ -41,7 +41,7 @@ def wait(label: str, *, look: Callable[[], str], sleep: Callable[[float], None] 
          env: dict | None = None) -> str:  # fmt: skip
     """结算页上、要不要再挑戦之前调。look() 返回当前画面："result"（带再挑戦的结算页）/ "exam"（考试中）/ "other"。
     返回 "user"（你处理过了，程序从当前画面接着走）/ "auto"（交回程序按规则决定再挑戦）。"""
-    from hiro.loop import unread_story
+    from hiro.runtime import unread_story
     from hiro.loop.pause_flag import hold
 
     env = env if env is not None else os.environ
