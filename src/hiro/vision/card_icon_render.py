@@ -22,7 +22,7 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
+from functools import cache, lru_cache  # noqa: F401
 from pathlib import Path
 
 import cv2
@@ -46,7 +46,7 @@ ILUST_SCALE = 0.31
 OVERLAY_BOXES = ((0, 0, 37, 96), (59, 28, 96, 68), (59, 66, 96, 96), (59, 0, 96, 34), (0, 0, 70, 30), (20, 68, 76, 96))
 
 
-@lru_cache(maxsize=None)
+@cache
 def _sprite(sprites_dir: str, name: str) -> np.ndarray:
     """素材包 sprites/<图集>/<名>.png → RGBA float32（0–1）。"""
     d = Path(sprites_dir)
@@ -64,7 +64,7 @@ def _sprite(sprites_dir: str, name: str) -> np.ndarray:
 def _sliced(sprites_dir: str, name: str, w: int, h: int, unit: float) -> np.ndarray:
     """九宫格拉伸到 w×h 像素；边距按所在层「每设计单位多少像素」unit 换算。中间格宽 0 时拉伸边缘那一列（同 Unity）。"""
     im = _sprite(sprites_dir, name)
-    l, b, r, t = BORDERS.get(name, (0, 0, 0, 0))
+    l, b, r, t = BORDERS.get(name, (0, 0, 0, 0))  # noqa: E741
     H, W = im.shape[:2]
     if not any((l, b, r, t)):
         return cv2.resize(im, (w, h), interpolation=cv2.INTER_LINEAR)

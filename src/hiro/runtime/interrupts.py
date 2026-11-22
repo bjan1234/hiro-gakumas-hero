@@ -66,9 +66,9 @@ def _comm_frame(rt, f) -> str | None:
 
 def _comm_title_y(frame) -> int | None:
     """「通信エラー」字样在一条弹窗标题条上（字的那几行橙黄占比 ≥ HEADER_MIN_FRAC、字下方紧接白色正文框）时返回字的中线 y。"""
-    import cv2
-
     from hiro.vision import pages
+
+    import cv2
 
     for t in frame.texts:
         if not any(h in t.text.replace(" ", "") for h in comm_error.TITLE_HINTS):

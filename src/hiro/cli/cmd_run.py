@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 
 from hiro.cli import client
-import os
-
 from hiro.cli.jobs import KINDS, LIVE, LLM_VARS
 from hiro.cli.registry import Arg, CliError, Risk, command
 

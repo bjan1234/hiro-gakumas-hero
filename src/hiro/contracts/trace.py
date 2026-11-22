@@ -10,11 +10,13 @@
 
 import json
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
+from hiro import imgio
 from hiro.contracts.base import VERSION, Contract
 from hiro.contracts.decision import Decision
 from hiro.contracts.events import Check, Event, Prediction
@@ -22,7 +24,6 @@ from hiro.contracts.execution import ExecutionResult
 from hiro.contracts.game_state import GameState
 from hiro.contracts.observation import Observation
 from hiro.contracts.preview import Preview
-from hiro import imgio
 
 TRACES = Path("traces")
 

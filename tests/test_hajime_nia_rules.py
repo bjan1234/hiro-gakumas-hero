@@ -3,9 +3,9 @@
 import os
 from pathlib import Path
 
-import pytest
-
 from hiro.brain import hajime_nia_rules as hr
+
+import pytest
 
 SOURCES_DIR = Path(os.environ.get("HIRO_HAJIME_NIA_SOURCES", "")) if os.environ.get("HIRO_HAJIME_NIA_SOURCES") else None  # 攻略原文目录（本机才有）
 

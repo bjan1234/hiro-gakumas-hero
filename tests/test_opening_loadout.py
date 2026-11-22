@@ -26,10 +26,10 @@ def test_template_loadout_kept_when_not_given():
 
 
 def test_run_loadout_replaces_template():
+    from hiro.sim.engine import master_commit
+
     from gakumas_exam.loadout import support_entry
     from gakumas_exam.master import shared
-
-    from hiro.sim.engine import master_commit
 
     m = shared(master_commit())
     sup = (support_entry(m, "s_card-3-0029", 60),)

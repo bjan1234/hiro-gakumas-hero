@@ -7,10 +7,11 @@ KAA 的 match_first_drinks 用颜色直方图，在选饮料弹窗里三个格�
 import os
 from functools import lru_cache
 
+from hiro import master
+
 import cv2
 import numpy as np
 from cv2.typing import MatLike
-from hiro import master
 
 SCALES = (1.05, 1.15, 1.25, 1.35)
 

@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import numpy as np
-
 from hiro.vision.ocr import Box
 from hiro.vision.ui_templates import box, normalize, tpl
+
+import numpy as np
 
 LETTER_THRESHOLD = 0.65
 SAME_CARD_DX = 30

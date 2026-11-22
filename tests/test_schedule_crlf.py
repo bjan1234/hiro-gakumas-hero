@@ -4,9 +4,9 @@
 
 import shutil
 
-import pytest
-
 import hiro.sim  # noqa: F401  把 vendor/gakumas-player 放进 sys.path
+
+import pytest
 
 
 @pytest.mark.sim_master

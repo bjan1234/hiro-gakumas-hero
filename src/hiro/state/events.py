@@ -225,7 +225,7 @@ def support_bonus(prod: dict, phase: str, context: dict | None = None) -> dict |
 
     c = catalog()
     plan = c.one("IdolCard", prod["idol_card_id"])["planType"]
-    out = {a: 0 for a in ATTRS}
+    out = dict.fromkeys(ATTRS, 0)
     for s in sups:
         try:
             card = gs.compile_card(c, _get(s, "card_id"), _get(s, "level"), _get(s, "limit_rank"), plan)

@@ -3,12 +3,12 @@
 
 from pathlib import Path
 
+from hiro.exec import schedule_probe as sp
+from hiro.loop.errors import ResumeBlocked
+
 import cv2
 import numpy as np
 import pytest
-
-from hiro.exec import schedule_probe as sp
-from hiro.loop.errors import ResumeBlocked
 
 FIX = Path(__file__).parent / "fixtures" / "exam" / "status" / "dmmw1q-133-faint-slot.jpg"
 
@@ -144,7 +144,7 @@ def test_panel_rows_by_icon_not_text():
 def test_turn_types_merges_scrolled_screens_and_marks_missing():
     from hiro.vision.schedule import turn_types
 
-    first = {"current_turn": 1, "rows": {i: "Vo" for i in range(9)}}
+    first = {"current_turn": 1, "rows": dict.fromkeys(range(9), "Vo")}
     second = {"current_turn": 1, "rows": {8: "Vo", 9: "Da", 10: None, 11: "Vi"}}
     assert turn_types([first, second], 12) == ["Vo"] * 9 + ["Da", None, "Vi"]
     assert turn_types([{"current_turn": 3, "rows": {0: "Da", 1: "Vi"}}], 5) == [None, None, "Da", "Vi", None]  # 第 3 回合才点开
@@ -268,10 +268,10 @@ def test_pass_line_stage_keeps_condition_text():
     只有原文、没读出名次 / 分数也写（N.I.A「…オーディション突破」）。"""
     from types import SimpleNamespace as NS
 
-    import numpy as np
-
     from hiro.contracts import GameState
     from hiro.vision.schedule import read_schedule_panel
+
+    import numpy as np
 
     def box(text, x, y):
         return NS(text=text, rect=NS(center=NS(x=x, y=y)))

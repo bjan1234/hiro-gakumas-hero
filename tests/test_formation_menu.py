@@ -3,10 +3,10 @@
 from pathlib import Path
 from types import SimpleNamespace as NS
 
-import pytest
-
 from hiro.produce import formation_menu as fm
 from hiro.produce.formation_writer import Device, FormationWriteError
+
+import pytest
 
 FIX = Path(__file__).parent / "fixtures" / "formation_menu"
 
@@ -163,7 +163,7 @@ def test_ensure_mode_noop_when_already_there(game):
 
 def test_ensure_set_stuck_arrow_stops(game, monkeypatch):
     """点了箭头编号不变（翻不动 / 点没生效）：等一会儿就停，不乱点。"""
-    g, dev = game
+    _g, dev = game
     monkeypatch.setattr(fm, "WAIT_TRIES", 2)
     dev.click = lambda x, y: None
     with pytest.raises(FormationWriteError, match="编成号从 1 变"):
@@ -225,7 +225,7 @@ def test_run_order_and_sets(game, monkeypatch):
     monkeypatch.setattr(fm, "write_memory", lambda dev, plan, mp, **kw: done.append(("memory", g.mode, g.tab, g.number)) or [])
     out = fm.run(dev, {"support": {"set": 4}, "memory": {"set": 6}}, "nia")
     assert done == [("support", "nia", "support", 4), ("memory", "nia", "memory", 6)] and out == {"support": [], "memory": []}
-    with pytest.raises(FormationWriteError, match="memory.set"):
+    with pytest.raises(FormationWriteError, match="memory.set"):  # noqa: RUF043
         fm.run(dev, {"support": {"set": 4}, "memory": {}}, "nia", what=("memory",))
 
 

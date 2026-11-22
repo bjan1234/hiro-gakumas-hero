@@ -10,6 +10,10 @@ from __future__ import annotations
 import logging
 import subprocess
 import time
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from AppKit import NSRunningApplication  # pyobjc，只在 macOS 上有
 
 BUNDLE_ID = "jp.co.bandainamcoent.BNEI0421"
 MENU_VIEW = "显示"  # 系统语言为中文；英文 / 日文系统按下面的候选找

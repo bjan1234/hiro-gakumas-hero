@@ -1,8 +1,8 @@
 """任务 ②：这一局的编成 → 合成开局的 P 道具 / 支援卡 / 回忆附魔。"""
 
-import pytest
-
 from hiro.search import loadout as lo
+
+import pytest
 
 pytestmark = pytest.mark.sim_master
 

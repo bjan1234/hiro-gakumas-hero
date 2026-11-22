@@ -2,11 +2,11 @@
 1. 免费刷新真的换了货架（按钮也没了），新旧货架长得像，货架差 11.2 < 12，判成「没换」；
 2. 强化 ゆめみごこち 后「ゆめみごこちを強化しました」消息框一直挂着（DMM 上不会自己退），相談循环 3 次读不出货架只好结束。"""
 
-from test_shop_exec import frame
-
 from hiro.contracts import Action, ActionKind
 from hiro.produce import shop
 from tests.test_interval import Fake
+
+from test_shop_exec import frame
 
 REFRESH = (100, 1085)
 

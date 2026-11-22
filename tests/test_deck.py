@@ -9,11 +9,11 @@
 
 from pathlib import Path
 
-import cv2
-import pytest
-
 import hiro  # noqa: F401
 from hiro.vision import deck
+
+import cv2
+import pytest
 
 FIX = Path(__file__).with_name("fixtures")
 DIALOG = (0, 380, 720, 1080)
@@ -123,7 +123,7 @@ def test_deck_list_observation():
     assert obs.problems(strict=True) == []
     f = obs.fields
     assert f["deck"] is None and f["deck_size"] == 16 and f["complete"] is False and len(f["cards"]) == 12
-    assert set(f["cards"][0]) == set(("index", "row", "col", "card_id", "name", "upgrade", "customized", "center", "dimmed"))
+    assert set(f["cards"][0]) == {"index", "row", "col", "card_id", "name", "upgrade", "customized", "center", "dimmed"}
     assert obs.field_meta["complete"].note == "只看到 12 / 16 张（要滑动再读）"
 
     # 拼接后的完整牌组：deck 为 ProduceState.deck 格式
@@ -316,7 +316,7 @@ def _cell_with_red(blobs, size=141):
     import numpy as np
 
     img = np.full((size, size, 3), 255, np.uint8)
-    y1, x1 = int(round(deck.PLUS_BOX[0] * size)), int(round(deck.PLUS_BOX[2] * size))
+    y1, x1 = int(round(deck.PLUS_BOX[0] * size)), int(round(deck.PLUS_BOX[2] * size))  # noqa: RUF046
     for x, y, w, h in blobs:
         img[y1 + y : y1 + y + h, x1 + x : x1 + x + w] = (0, 0, 230)  # BGR 纯红
     return img

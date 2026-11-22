@@ -4,11 +4,11 @@
 from pathlib import Path
 from types import SimpleNamespace as NS
 
+from hiro.contracts import Action, Decision
+
 import cv2
 import numpy as np
 import pytest
-
-from hiro.contracts import Action, Decision
 
 FIXP = Path(__file__).with_name("fixtures") / "pages"
 
@@ -88,10 +88,10 @@ class _Guard:
 
 def test_drive_taps_tap_to_start_and_does_not_pass_live_to_step():
     """drive 的步骤（结算收尾等竖屏流程）看不到横屏 LIVE 帧：曲目页点 TAP TO START，演出中、黑屏都不交给步骤。"""
+    from hiro.runtime.frame import Frame
+
     from test_runtime import frame as fake_frame
     from test_runtime import runtime
-
-    from hiro.runtime.frame import Frame
 
     live = _real("hajime-live-tap-to-start.png")
     black = np.zeros((1280, 720, 3), np.uint8)
@@ -114,10 +114,10 @@ def test_drive_taps_tap_to_start_and_does_not_pass_live_to_step():
 
 def test_drive_without_guard_passes_portrait_black_to_step():
     """没有 LandscapeGuard（或没开）的设备：竖屏黑屏照旧交给步骤（不改原行为）。"""
+    from hiro.runtime.frame import Frame
+
     from test_runtime import frame as fake_frame
     from test_runtime import runtime
-
-    from hiro.runtime.frame import Frame
 
     rt, _ = runtime([fake_frame()])
     rt.screen = NS(shot=lambda: Frame(np.zeros((1280, 720, 3), np.uint8), 0.0), frame=None)

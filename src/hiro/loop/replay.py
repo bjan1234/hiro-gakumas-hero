@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from hiro.contracts import GameState, Observation, Step
-from hiro.loop.reduce import DEBOUNCE, reduce
+from hiro.loop.reduce import DEBOUNCE, reduce  # noqa: F401
 
 
 def load_observations(path: Path) -> tuple[list[list[Observation]], list[GameState | None]]:
@@ -108,7 +108,7 @@ def main() -> int:
     ap.add_argument("path", type=Path)
     ap.add_argument("--out", type=Path)
     args = ap.parse_args()
-    out = args.out or Path("reports/replay") / (args.path.parent.name if args.path.name == "steps.jsonl" else args.path.stem).replace("-observations", "") 
+    out = args.out or Path("reports/replay") / (args.path.parent.name if args.path.name == "steps.jsonl" else args.path.stem).replace("-observations", "")
     out = out.with_suffix(".jsonl")
     r = report(args.path, out)
     print(json.dumps(r, ensure_ascii=False, indent=1, default=str))

@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Callable
-
-import cv2
+from collections.abc import Callable
 
 from hiro.produce.formation_writer import Device, FormationWriteError, fix_memory, fix_plan, fix_support
+
+import cv2
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,7 @@ class Menu:
 
     def wait_menu(self, ok: Callable[[dict], bool] = lambda m: True, why: str = "编成菜单"):
         for _ in range(WAIT_TRIES):
-            img, texts, m = self.look()
+            img, texts, m = self.look()  # noqa: RUF059
             if m is not None and ok(m):
                 return img, m
             self.dev.sleep(WAIT_GAP)
@@ -298,7 +298,7 @@ def run(dev: Device, plan: dict, mode: str, *, what: tuple[str, ...] = ("support
     return out
 
 
-__all__ = ["Menu", "read_menu", "read_mode", "read_memory_icons", "memory_diff", "support_diff", "write_memory", "write_support", "run"]
+__all__ = ["Menu", "memory_diff", "read_memory_icons", "read_menu", "read_mode", "run", "support_diff", "write_memory", "write_support"]
 
 
 PICKER_TRIES = 4  # 点格子后最多看几次列表开没开（每次 1.5 秒，第一次和中途各点一次）

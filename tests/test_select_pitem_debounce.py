@@ -5,11 +5,11 @@ on_select_pitem 带 pitems 的 observe 是第 2 帧，reduce 还停在 STAR_GAIN
 import json
 from pathlib import Path
 
-import pytest
-
 from hiro.contracts import GameState, Observation
 from hiro.loop import transitions
 from hiro.loop.reduce import reduce
+
+import pytest  # noqa: F401
 
 FIX = Path(__file__).parent / "data" / "g33-seq229-select-pitem.json"  # 实机状态（page_fields 文本），随仓库发布
 

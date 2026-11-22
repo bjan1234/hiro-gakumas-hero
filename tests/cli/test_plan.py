@@ -25,7 +25,7 @@ def test_inventory_raw_is_kept(run_cli, hiro_home):
 
 
 def test_plan_without_inventory_says_scan_first(run_cli):
-    code, env = run_cli("plan", "formation", "--idol", "i_card-skin-shro-3-007")
+    _code, env = run_cli("plan", "formation", "--idol", "i_card-skin-shro-3-007")
     assert env["ok"] is False and env["error"]["code"] == "no_inventory" and "扫描" in env["error"]["hint"]
 
 
@@ -58,5 +58,5 @@ def test_plan_uses_latest_inventories_and_writes_the_plan_file(run_cli, hiro_hom
 
 
 def test_show_without_plan(run_cli):
-    code, env = run_cli("plan", "show")
+    _code, env = run_cli("plan", "show")
     assert env["ok"] is False and env["error"]["code"] == "no_plan"

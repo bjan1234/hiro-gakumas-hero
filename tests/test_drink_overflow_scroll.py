@@ -2,11 +2,11 @@
 DMM 单局测试 dmmt2 选拔：新饮料 センブリソーダ 说明四行，已有饮料只完整露出 2 瓶，决策要丢第 [2] 瓶（初星スペシャル青汁），
 「只看到 2 瓶」失败两次后停机。滑动后的画面没有实拍：用第一次溢出页（三瓶都露出）代替，它的第 2 瓶取消勾选后的帧是实拍。"""
 
-from test_shop_exec import frame
-
 from hiro.contracts import Action, ActionKind
 from hiro.produce import drink_swap
 from tests.test_interval import Fake
+
+from test_shop_exec import frame
 
 
 def _new_checked(img):

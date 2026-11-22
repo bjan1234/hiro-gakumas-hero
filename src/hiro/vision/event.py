@@ -10,11 +10,11 @@
 import re
 import unicodedata
 
+from hiro.vision.ocr import ocr_boxes
+
 import cv2
 import numpy as np
 from cv2.typing import MatLike
-
-from hiro.vision.ocr import ocr_boxes
 
 REGION = (75, 470, 720, 950)  # 左边界避开行首图标（会被读成「2」并吃掉首字）
 ROW_Y = (698, 799, 901)

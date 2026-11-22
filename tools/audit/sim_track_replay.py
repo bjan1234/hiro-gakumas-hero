@@ -91,7 +91,7 @@ def replay(paths: list[Path], *, only: str | None = None, limit: int | None = No
                 if row["expert"] is not None and not isinstance(row["expert"], str):
                     row["expert"] = Action.from_legal(row["expert"]).legal_key() if isinstance(row["expert"], dict) else str(row["expert"])
             rows.append(row)
-            try:
+            try:  # noqa: SIM105
                 brain.commit(state, memory, rec.to_battle())
             except Exception:  # noqa: BLE001
                 pass

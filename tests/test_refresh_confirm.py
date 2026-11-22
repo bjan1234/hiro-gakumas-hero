@@ -3,12 +3,12 @@
 
 from pathlib import Path
 
-import cv2
-import pytest
-
 import hiro  # noqa: F401
 from hiro.vision.pages import classify_page, read_interval, read_refresh_confirm
 from hiro.vision.quick import quick_page
+
+import cv2
+import pytest
 
 # 「キャンセル」按钮宽约 270（中心 x≈215）：RapidOCR 给的文字框比 Vision 窄、中心 x≈240，点下去仍在按钮里
 CANCEL_TOL_X = 40

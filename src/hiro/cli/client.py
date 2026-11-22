@@ -103,7 +103,7 @@ def data(path: str, body: dict | None = None) -> dict:
 def shutdown() -> None:
     info = _info()
     if _alive(info):
-        try:
+        try:  # noqa: SIM105
             _post(info, "shutdown", {}, timeout=5)
         except (urllib.error.URLError, OSError, http.client.HTTPException):
             pass

@@ -12,10 +12,10 @@
 
 from __future__ import annotations
 
+from hiro.vision.digits import read_number
+
 import cv2
 import numpy as np
-
-from hiro.vision.digits import read_number
 
 RIGHT, NPC_W, ME_W, GAP, DIVIDER = 710, 69, 127, 2, 13
 SCORE_Y = (126, 168)

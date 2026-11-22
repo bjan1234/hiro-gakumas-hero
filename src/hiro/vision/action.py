@@ -13,13 +13,13 @@
 import re
 from dataclasses import asdict, dataclass, field
 
-import cv2
-import numpy as np
-from cv2.typing import MatLike
-
 from hiro.vision.digits import read_number
 from hiro.vision.ocr import engine as ocr_engine
 from hiro.vision.ocr import ocr, ocr_boxes
+
+import cv2
+import numpy as np
+from cv2.typing import MatLike
 
 ATTRS = ("vo", "da", "vi")
 STAT_BOXES = {"vo": (200, 684, 275, 719), "da": (345, 682, 420, 720), "vi": (478, 684, 558, 718)}  # 避开左侧属性小图标
@@ -188,7 +188,7 @@ def _oikomi_params(img: MatLike) -> dict:
     y1, y2 = OIKOMI_STAT_BAND
     # 左边的属性图标常被读成一个字（「込260」）：取末尾的数字
     nums = sorted(((b[0] + b[2]) / 2, int(m.group(1))) for t, _, b in ocr_boxes(img[y1:y2], scale=2) if (m := re.search(r"(\d{2,4})$", t.strip())))
-    return dict(zip(ATTRS, (v for _, v in nums))) if len(nums) == 3 else {a: None for a in ATTRS}
+    return dict(zip(ATTRS, (v for _, v in nums))) if len(nums) == 3 else dict.fromkeys(ATTRS)
 
 
 def _options(img: MatLike, *, hajime: bool = False) -> list[ActionOption]:
@@ -250,7 +250,7 @@ def parse_stamina(text: str) -> tuple[int, int] | None:
     text = re.sub(r"[lI|／\\]", "/", text.replace(" ", ""))
     if m := re.fullmatch(r"\D*(\d{1,3})/(\d{2,3})\D*", text):
         cur, cap = int(m.group(1)), int(m.group(2))
-        return (cur, cap) if 0 < cap and cur <= cap else None
+        return (cur, cap) if cap > 0 and cur <= cap else None
     if "/" in text:
         return None  # 看得到斜杠却对不上（如 12/9），不猜
     digits = re.sub(r"\D", "", text)
@@ -356,7 +356,7 @@ def _icon_span(hsv: np.ndarray, attr: str) -> tuple[int, int] | None:
     lo, hi = STAT_ICON_HUE[attr]
     x1, x2 = STAT_ICON_SEARCH[attr]
     h, sat, v = hsv[:, x1:x2, 0], hsv[:, x1:x2, 1], hsv[:, x1:x2, 2]
-    cols = np.nonzero((((h >= lo) & (h <= hi) & (sat >= 120) & (v >= 150)).mean(axis=0) >= 0.3))[0]
+    cols = np.nonzero(((h >= lo) & (h <= hi) & (sat >= 120) & (v >= 150)).mean(axis=0) >= 0.3)[0]
     if len(cols) == 0:
         return None
     start = end = int(cols[0])

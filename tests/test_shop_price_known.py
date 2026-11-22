@@ -2,9 +2,9 @@
 RapidOCR 四种读法 2:2 平票（[15] / 15 / 75 / ddddocr 75），以前取了 15、预算按 15 算，买下实扣 75。
 同一帧第 0 格是 SALE 卡 24P（原价 35），卡价不规整，只设下限、不给预期价。"""
 
-from test_shop_exec import frame
-
 from hiro.vision import shop
+
+from test_shop_exec import frame
 
 
 def test_known_price_helpers():

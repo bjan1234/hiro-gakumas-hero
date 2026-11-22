@@ -3,10 +3,10 @@
 from pathlib import Path
 from types import SimpleNamespace as NS
 
+from hiro.contracts import Action, ActionKind, Decision  # noqa: F401
+
 import cv2
 import pytest
-
-from hiro.contracts import Action, ActionKind, Decision
 
 FIX = Path(__file__).with_name("fixtures") / "pages" / "nia-sales-reward-select-card.png"
 
@@ -71,12 +71,12 @@ def _residual_core(monkeypatch, ids):
 def test_select_card_residual_overlay_is_not_picked_again(monkeypatch):
     """mainz3 r3（11-18 04:20）：拿了 イメトレ、获得页过后，「スター性獲得」动画叠在原选卡页上，判成又一次选卡，
     同样三张候选（イメトレ 读成 イメトレ+）又「选」了一次，账本多记一张 イメトレ+。刚拿过、候选完全相同 → 当残留画面，不再选。"""
-    core, clicks, notes, Stop = _residual_core(monkeypatch, ["a", "b", "c"])
+    core, clicks, notes, _Stop = _residual_core(monkeypatch, ["a", "b", "c"])
     core.on_select_card()
     assert clicks == [core.RESIDUAL_TAP] and notes and notes[0][0] == "page_misjudged"
 
 
 def test_select_card_different_candidates_still_decides(monkeypatch):
-    core, clicks, notes, Stop = _residual_core(monkeypatch, ["a", "b", "d"])
+    core, _clicks, _notes, Stop = _residual_core(monkeypatch, ["a", "b", "d"])
     with pytest.raises(Stop):
         core.on_select_card()  # 候选不同：正常决策

@@ -86,7 +86,7 @@ class GuardedDevice:
 
     def _notify(self, x: int, y: int) -> None:
         if self.on_tap is not None:
-            try:
+            try:  # noqa: SIM105
                 self.on_tap(x, y)
             except Exception:  # noqa: BLE001  存帧之类的旁路出错不影响点击
                 pass

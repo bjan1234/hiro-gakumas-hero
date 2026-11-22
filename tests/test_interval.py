@@ -7,14 +7,14 @@
 
 from pathlib import Path
 
-import cv2
-import pytest
-
 import hiro  # noqa: F401
-import kaa.tasks
 from hiro.contracts import Action, ActionKind
 from hiro.produce import interval, ops, shop
 from hiro.produce.special_guidance import grid_center
+
+import cv2
+import kaa.tasks
+import pytest
 
 FIX = Path(__file__).parent / "fixtures"
 REFS = Path(kaa.tasks.__file__).parents[2] / "kotonebot-resource" / "sprites" / "jp" / "in_produce"
@@ -254,11 +254,12 @@ def test_unsupported_action():
 
 # ---------------------------------------------------------------- 整个轮间循环（第八局复盘 B1，main8 -r2 #95–101 离线复现）
 
-import json as _json
+import json as _json  # noqa: E402
 
-from hiro.brain.deciders import ProduceDeciders
-from hiro.brain.state import CAMPUS_HIRO
-from hiro.contracts import ExecutionResult, GameState
+from hiro.brain.deciders import ProduceDeciders  # noqa: E402
+from hiro.brain.state import CAMPUS_HIRO  # noqa: E402
+from hiro.contracts import ExecutionResult, GameState  # noqa: E402
+
 
 class _Main8(dict):
     """第八局本战 R2 轮间页的实机状态（tests/fixtures，仓库不带）：用到时才读，没有就跳过这条用例。"""
@@ -365,7 +366,7 @@ def test_wait_decisions_are_not_executed():
 
     game = Shop(hp=29, p=100)
     wait = Decision(Action.ui(ActionKind.WAIT, why="测试"), "等", "fallback", 0.1)
-    assert interval.interval_loop(lambda: {}, lambda pf: wait, execute=game.execute, status=game.status) is True
+    assert interval.interval_loop(dict, lambda pf: wait, execute=game.execute, status=game.status) is True
     assert ("Wait", None) not in game.log and game.hp == 33 and game.log[-1] == ("IntervalEnd", None)
 
 

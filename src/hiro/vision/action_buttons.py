@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import numpy as np
-
 from hiro.vision.ocr import Box
 from hiro.vision.ui_templates import normalize, tpl
+
+import numpy as np
 
 
 @dataclass(frozen=True)

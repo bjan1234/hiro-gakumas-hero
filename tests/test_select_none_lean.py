@@ -2,14 +2,14 @@
 选卡页没有「不拿」按钮（画面只有「受け取る」，课程页另有「カード除去」/ 再抽選）。SELECT_NONE_LEAN（默认关）：不想拿 / 无效且必拿已齐、
 候选都是社区没提到的卡 → 能刷新先刷新，否则拿最不污染的。"""
 
-import pytest
-
 import hiro.brain.deciders as D
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.llm import MockLLM
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import ActionKind, GameState
 from hiro.state.knowledge import YARUKI_CARDS
+
+import pytest
 
 pytestmark = pytest.mark.master  # 决策器要查主数据（game.db），没有就跳过
 

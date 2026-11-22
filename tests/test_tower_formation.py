@@ -1,12 +1,12 @@
 """偶像之路编成决策（TOWER_FORMATION / TOWER_RETRY）：考试 × 主回忆用模拟评估排序，副回忆按倍率公式贪心挑；接近交 LLM；失败重试按差距。
 层设置、倍率公式、评估函数都换成假的（只验证决策逻辑；真跑 bench 的对照在离线脚本里）。"""
 
-import pytest
-
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.llm import MockLLM
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import ActionKind, GameState
+
+import pytest
 
 LEX = {"tower_id": "tower_001-hmsz", "layer": 26, "mechanic": "exam_lesson_buff", "turns": 16, "border": 500000,
        "exam": {"produce_exam_battle_config_id": "cfg", "produce_exam_gimmick_effect_group_id": "g-0001",
@@ -18,8 +18,8 @@ def _fake_tower(monkeypatch):
     from hiro.bench_bridge import tower as tw
 
     monkeypatch.setenv("HIRO_PRODUCE_LLM", "off")
-    monkeypatch.setattr(tw, "layer_mechanics", lambda t, l: ["exam_lesson_buff"])
-    monkeypatch.setattr(tw, "layer_exam", lambda t, l, m=None: dict(LEX))
+    monkeypatch.setattr(tw, "layer_mechanics", lambda t, l: ["exam_lesson_buff"])  # noqa: E741
+    monkeypatch.setattr(tw, "layer_exam", lambda t, l, m=None: dict(LEX))  # noqa: E741
     monkeypatch.setattr(tw, "score_bonus_permils", lambda cfg, params: [1000 + p for p in params])
 
 
@@ -43,7 +43,7 @@ def _eval(table, noise=1000, star_line=530000):
         out = []
         for lo in loadouts:
             row = []
-            for i, sd in enumerate(seeds):
+            for _i, sd in enumerate(seeds):
                 sc = table[lo["produce_cards"][0][-1]] + ((sd * 7) % 5 - 2) * noise
                 row.append({"score": sc, "first": sc >= LEX["border"], "stars": 3 if sc >= star_line else 2 if sc >= LEX["border"] else 1} if detail else sc)
             out.append(row)
@@ -68,7 +68,7 @@ def test_three_star_rate_beats_higher_mean(monkeypatch):
         for lo in loadouts:
             m = lo["produce_cards"][0][-1]
             row = []
-            for i, sd in enumerate(seeds):
+            for _i, sd in enumerate(seeds):
                 sc = {"1": 900000 if sd % 2 else 300000, "2": 545000}.get(m, 100000)
                 row.append({"score": sc, "first": sc >= LEX["border"], "stars": 3 if sc >= 540000 else 1})
             out.append(row)
@@ -133,7 +133,7 @@ def test_condition_rate_breaks_tie_when_uinet_never_gets_three_stars(monkeypatch
     from hiro.bench_bridge import tower as tw
 
     lex = dict(LEX, star_conditions=[{"text": "除外 SSR ≤ 5", "field": "lost_ssr", "op": "<=", "value": 5}])
-    monkeypatch.setattr(tw, "layer_exam", lambda t, l, m=None: dict(lex))
+    monkeypatch.setattr(tw, "layer_exam", lambda t, l, m=None: dict(lex))  # noqa: E741
 
     def run(loadouts, seeds, detail=False, workers=1, **kw):
         out = []
@@ -161,7 +161,7 @@ def test_lost_ssr_is_soft_penalty_not_filter(monkeypatch):
     from hiro.brain import tower as tf
 
     lex = dict(LEX, star_conditions=[{"text": "除外 SSR ≤ 5", "field": "lost_ssr", "op": "<=", "value": 5}])
-    monkeypatch.setattr(tw, "layer_exam", lambda t, l, m=None: dict(lex))
+    monkeypatch.setattr(tw, "layer_exam", lambda t, l, m=None: dict(lex))  # noqa: E741
     monkeypatch.setattr(tf, "lost_ssr_count", lambda deck: 8 if deck[0].endswith("1") else 3)  # 1 号牌组 8 张
     monkeypatch.setattr(ProduceDeciders, "TOWER_EVAL", staticmethod(_eval({"0": 300000, "1": 900000, "2": 450000, "3": 200000})))
     d = ProduceDeciders(CAMPUS_HIRO, None).decide("TOWER_FORMATION", _state())

@@ -5,14 +5,13 @@
 - 执行后核对：KAA commit 已返回时一离开原页面就算生效（选行动后课程动画全是过渡帧，每步空等到 8s 超时）；
 - 差し入れ光效 1s 就点角落（以前等 15s）。"""
 
-import pytest
-
 from pathlib import Path
+
+from hiro.produce import ops
 
 import cv2
 import numpy as np
-
-from hiro.produce import ops
+import pytest
 
 FIX = Path(__file__).parent / "fixtures/nonexam"
 
@@ -81,9 +80,9 @@ def test_action_commit_no_fixed_sleep(monkeypatch):
     """选行动提交：点 3 下后直接等按钮消失，不再固定 sleep(2)；休息走 KAA 原版。"""
     from types import SimpleNamespace as NS
 
-    from kaa.tasks.produce.new.consts import ProduceAction
-
     import hiro.loop.kaa_patches as kp
+
+    from kaa.tasks.produce.new.consts import ProduceAction
 
     slept, clicks, waited = [], [], []
     monkeypatch.setattr(kp.time, "sleep", slept.append)

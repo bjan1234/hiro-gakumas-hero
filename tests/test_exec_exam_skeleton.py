@@ -10,8 +10,9 @@ pytest.importorskip("hiro.brain.battle")  # 记忆管理在策略层（brain）
 pytest.importorskip("hiro.perception.lesson")  # HUD 数字读法在识别层
 
 import hiro.exec.exam as ex  # noqa: E402
-from hiro.brain.rules import Decision  # noqa: E402
-from hiro.contracts import Action, Decision as DC  # noqa: E402
+from hiro.brain.rules import Decision  # noqa: E402, F401
+from hiro.contracts import Action  # noqa: E402
+from hiro.contracts import Decision as DC
 
 
 class Rec:

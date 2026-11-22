@@ -3,16 +3,16 @@
 
 from pathlib import Path
 
-import cv2
-import numpy as np
-import pytest
-
 import hiro  # noqa: F401
-import kaa.tasks
 from hiro.loop import kaa_patches
 from hiro.produce import card_ops
 from hiro.produce import memory_select as ms
 from hiro.vision.offline import load
+
+import cv2
+import kaa.tasks
+import numpy as np
+import pytest
 
 REFS = Path(kaa.tasks.__file__).parents[2] / "kotonebot-resource" / "sprites" / "jp" / "in_produce"  # 已安装的 KAA（vendor/kaa）
 STAGE1 = REFS / "dialog_card_change_1.png"
@@ -208,7 +208,7 @@ def test_pitem_centers_inside_bag_frames():
         x1, x2, y1, y2 = np.percentile(xs, 0.5), np.percentile(xs, 99.5), np.percentile(ys, 0.5) + 740, np.percentile(ys, 99.5) + 740
         assert x1 + 20 < cx < x2 - 20 and y1 + 20 < cy < y2 - 20
     red_x2 = np.percentile(np.nonzero(masks[0])[1], 99.5)
-    assert 157 + 64 > red_x2  # KAA PITEM_POSTIONS[0] 中心 x=221
+    assert red_x2 < 157 + 64  # KAA PITEM_POSTIONS[0] 中心 x=221
 
 
 @pytest.mark.fixtures
@@ -258,10 +258,10 @@ def test_pitem_patch_installed():
 
 def test_discard_dialog_never_confirmed(monkeypatch):
     """KAA do_produce 的「プロデュースデータの破棄」确认被替换：点キャンセル 并抛 ResumeBlocked，绝不点開始する。"""
-    import pytest
-
     import hiro.loop.kaa_patches as kp
     from hiro.loop.resume import CANCEL_BUTTON, ResumeBlocked
+
+    import pytest
 
     clicks = []
     monkeypatch.setattr(kp, "device", type("D", (), {"click": staticmethod(lambda *a: clicks.append(a))}))
@@ -279,9 +279,9 @@ def test_blind_double_click_is_blocked():
     import importlib
 
     pg = importlib.import_module("kaa.tasks.produce.new.page")
-    from kaa.tasks.produce.new.consts import SceneType
-
     import hiro.loop.kaa_patches as kp
+
+    from kaa.tasks.produce.new.consts import SceneType
 
     real = pg.device
     guarded = kp._guard_action_like(lambda self: pg.device.double_click((1, 2)))
@@ -471,7 +471,7 @@ def test_card_op_scrolls_to_collect_deck_and_back_to_target(monkeypatch):
         return "c121"
 
     page_done = {"t": 0.0}
-    ok = card_ops._card_op("enhance", None, shoot=lambda: img, click=click, clock=lambda: page_done["t"],
+    ok = card_ops._card_op("enhance", None, shoot=lambda: img, click=click, clock=lambda: page_done["t"],  # noqa: F841
                               sleep=lambda s: page_done.__setitem__("t", page_done["t"] + s), ocr=lambda im: [], calib=False,
                               choose=choose, swipe=swipe)  # fmt: skip
     assert seen["n"] == 3 * 4 + 2 * 4 * 2  # 第 1 屏 3 行 + 后两屏各 2 行新行（每屏首行与上一屏末行重叠）
@@ -522,8 +522,8 @@ def _given_id_env(monkeypatch, screens, start=0):
         state["screen"] = min(len(screens) - 1, state["screen"] + 1) if y2 < y1 else max(0, state["screen"] - 1)
 
     t = {"t": 0.0}
-    kw = dict(shoot=lambda: np.zeros((1280, 720, 3), np.uint8), click=lambda x, y: state["taps"].append((x, y)), clock=lambda: t["t"],
-              sleep=lambda s: t.__setitem__("t", t["t"] + s), ocr=lambda im: [], calib=False, swipe=swipe)  # fmt: skip
+    kw = {"shoot": lambda: np.zeros((1280, 720, 3), np.uint8), "click": lambda x, y: state["taps"].append((x, y)), "clock": lambda: t["t"],
+              "sleep": lambda s: t.__setitem__("t", t["t"] + s), "ocr": lambda im: [], "calib": False, "swipe": swipe}  # fmt: skip
     return state, kw
 
 
@@ -605,9 +605,9 @@ def test_stage2_screen_is_not_a_confirm_dialog(dev):
 
 def test_select_memory_sort_by_ocr_and_fast_scan(monkeypatch):
     """第二十二局：排序选项按固定坐标点、列表按「タグ」排，翻完 12 页 5 分半没找到。现在按 OCR 找「入手」点，每格等 0.6s。"""
-    import numpy as np
-
     import hiro.loop.kaa_patches as kp
+
+    import numpy as np
 
     monkeypatch.setattr(ms, "_memory_snap", lambda img, tag: None)
     clicks, t = [], [0.0]
@@ -660,9 +660,9 @@ DECK_DIALOG = Path(__file__).parent / "fixtures" / "deck_dialog"
 def test_read_loaded_waits_for_card_art():
     """DMM 版 dmm1m 相談删 眠気：对话框刚打开时下面几行卡面是白色占位（19 格认不出 18 格），拼接对不上；
     read_loaded 隔一会儿重读，拿到卡图加载好的那一帧（20 格全认出）。"""
-    import cv2
+    from hiro.loop import kaa_patches as kp  # noqa: F401
 
-    from hiro.loop import kaa_patches as kp
+    import cv2
 
     loading = cv2.imread(str(DECK_DIALOG / "dmm-remove-art-loading.jpg"))
     loaded = cv2.imread(str(DECK_DIALOG / "dmm-remove-art-loaded.jpg"))
@@ -675,9 +675,9 @@ def test_read_loaded_waits_for_card_art():
 
 def test_read_loaded_gives_up_when_no_progress():
     """真认不出的卡（素材没有）：连续几次没变好就停，不等满 timeout。"""
-    import numpy as np
+    from hiro.loop import kaa_patches as kp  # noqa: F401
 
-    from hiro.loop import kaa_patches as kp
+    import numpy as np
 
     blank = np.zeros((1280, 720, 3), np.uint8)
     calls = {"n": 0}

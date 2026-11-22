@@ -3,13 +3,13 @@
 
 from types import SimpleNamespace as NS
 
-import cv2
-import numpy as np
-import pytest
-
 import hiro.produce.hif as hif
 from hiro.contracts import Action, ActionKind, Decision
 from hiro.vision import pitem_custom as pc
+
+import cv2
+import numpy as np
+import pytest
 
 
 def _blue_slots():

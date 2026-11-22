@@ -18,18 +18,23 @@
 没有实机帧的步骤都存帧到 ops.CALIB_DIR（open / pick / confirm / back / end）。所有等待按时间封顶。
 """
 
+import logging
 import re
 import time
 from collections.abc import Callable
-
-import numpy as np
-import logging
-from hiro.devices.active import device, sleep as _sleep
+from typing import TYPE_CHECKING
 
 from hiro.contracts import Action, ActionKind, ExecutionResult
+from hiro.devices.active import device
+from hiro.devices.active import sleep as _sleep
 from hiro.produce import shop
 from hiro.produce.ops import Run, find_text, orange_lit
 from hiro.produce.special_guidance import grid_center
+
+import numpy as np
+
+if TYPE_CHECKING:
+    from hiro.contracts.decision import Decision
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +75,7 @@ def read_hp(img: np.ndarray, ocr) -> tuple[int, int] | None:
     misread = False
     for t, _, (x1, y1, x2, y2) in ocr(img):
         cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
-        if HP_BAND[0] <= cx <= HP_BAND[2] and HP_BAND[1] <= cy <= HP_BAND[3]:
+        if HP_BAND[0] <= cx <= HP_BAND[2] and HP_BAND[1] <= cy <= HP_BAND[3]:  # noqa: SIM102
             if m := re.search(r"(\d+)/(\d+)", t.replace(" ", "").translate(DIGIT_FIX)):
                 hp, mx = int(m.group(1)), int(m.group(2))
                 if 0 < mx <= 99 and hp <= mx:

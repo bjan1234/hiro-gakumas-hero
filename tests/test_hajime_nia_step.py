@@ -6,10 +6,10 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace as NS
 
+from hiro.state import modes
+
 import cv2
 import pytest
-
-from hiro.state import modes
 
 FIXP = Path(__file__).with_name("fixtures") / "pages"
 
@@ -54,9 +54,9 @@ def test_header_weeks_read(name, stage, weeks):
 
 def test_weeks_ro_read_as_3():
     """OCR 把「3週」读成「ろ週」（初 / N.I.A 帧都有）。"""
-    import numpy as np
-
     from hiro.vision.action import _weeks
+
+    import numpy as np
 
     assert _weeks("中間まで ろ週", np.zeros((1280, 720, 3), np.uint8)) == 3
     assert _weeks("2次まで 8週", np.zeros((1280, 720, 3), np.uint8)) == 8

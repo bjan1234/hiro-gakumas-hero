@@ -133,7 +133,7 @@ def read_menu(img: MatLike, boxes) -> dict | None:
     hy = _cy(hdr)
     orange = _orange(cv2.cvtColor(img, cv2.COLOR_BGR2HSV))
     items = []
-    for k, (x1, x2) in enumerate(MENU_COLS):
+    for _k, (x1, x2) in enumerate(MENU_COLS):
         col = sorted(((t.replace(" ", ""), b) for t, b in boxes if x1 <= _cx(b) < x2 and hy + 10 <= _cy(b) <= hy + 165), key=lambda tb: (_cy(tb[1]), tb[1][0]))
         if not col:
             continue

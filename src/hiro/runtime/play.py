@@ -231,7 +231,7 @@ def run(args, session) -> int:
         print(err)
         device.close()
         return 3
-    core, rt = build(args, session, device)
+    _core, rt = build(args, session, device)
     active.use(rt)
     started = args.command != "new"  # resume：本来就在培育里
     try:

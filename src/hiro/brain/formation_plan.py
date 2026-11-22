@@ -149,9 +149,8 @@ def guide_check(mode: str, idol_card: str, sup: dict, mem: dict, support_invento
     """偶像卡攻略的 formation.support / formation.memory 推荐 和 这份方案对照（设计文档 4.9-3：具体选哪张由数字小广按库存和估值算，
     攻略只给推荐、卡池要求和依据）。列出：推荐里库存有、方案也选了的；推荐里库存有、方案没选的（写进 notes 提醒人看）；推荐里库存没有的。"""
     from hiro.brain import guides
-    from hiro.brain.idol_know import lookup
-
     from hiro.brain import support_select as ss
+    from hiro.brain.idol_know import lookup
 
     chosen_sup = {o.get("support_card_id") for o in (sup.get("own") or []) if isinstance(o, dict)} - {None}
     owned_sup = {c.get("support_card_id") for c in ss.normalize_inventory(support_inventory or {}).get("cards") or []} - {None}

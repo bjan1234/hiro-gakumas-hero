@@ -4,12 +4,12 @@
 
 import time
 
+from hiro.loop.session import Session
+from hiro.vision.ocr import screen_texts
+
 from kaa.tasks.produce.new.consts import Scene, SceneType
 from kaa.tasks.produce.new.controller import ProduceController
 from kotonebot import logging
-
-from hiro.loop.session import Session
-from hiro.vision.ocr import screen_texts
 
 logger = logging.getLogger(__name__)
 DECK_LIST_CLOSE = (360, 1157)  # 牌组一览「閉じる」（720x1280）
@@ -54,9 +54,9 @@ _TPL: dict = {}
 
 def _interval_title_tpl():
     if "interval" not in _TPL:
-        import cv2
-
         from hiro.vision.ui_templates import PACK, tpl
+
+        import cv2
 
         img = cv2.imread(str(PACK / tpl("InProduce.HifInterval.Title").file))  # 彩色匹配（INTERVAL_TITLE_MIN 按彩色分数定的）
         _TPL["interval"] = img[:, :, :3] if img is not None else None
@@ -258,9 +258,9 @@ class HiroController(ProduceController):
         if now - st["ocr_at"] < self.LIVE_OCR_EVERY:
             return
         st["ocr_at"] = now
-        from kotonebot import device
-
         from hiro.produce.ops import ocr_boxes
+
+        from kotonebot import device
 
         try:
             tap = live_start_tap(img, ocr_boxes(img))
@@ -280,11 +280,11 @@ class HiroController(ProduceController):
 
     def _advance(self) -> int:
         """过场推进（hiro.loop.advance）：认不出的帧上，安全时每 0.4s 再点几下空白处。"""
-        from kotonebot import device
-
         from hiro.loop import advance
         from hiro.vision.pages import dialog_header
         from hiro.vision.quick import quick_page
+
+        from kotonebot import device
 
         texts = self._ocr_texts()  # 本轮共用 OCR（UNKNOWN 已做过；IDLE 轮次这里才做）：判按钮字样
 
@@ -310,9 +310,9 @@ class HiroController(ProduceController):
 
     @staticmethod
     def _fallback_page() -> str | None:
-        from kotonebot import device
-
         from hiro.vision.quick import fallback_page
+
+        from kotonebot import device
 
         try:
             return fallback_page(device.screenshot())
@@ -325,9 +325,9 @@ class HiroController(ProduceController):
         和整帧 OCR 补判链之前：点一下就过的页面直接点并记观测（事件照常产生），返回 "handled"；P 道具三选一 / 定制后三选一返回
         "SELECT_PITEM"（原来 KAA 判 IDLE / None、要等 30 秒后整帧 OCR 补判）；认不出返回 None，照旧。
         协调 2026-11-02：每局 4–7 次「页面认不出超过 30 秒」，都是这几页。"""
-        from kotonebot import device
-
         from hiro.vision.quick import quick_page
+
+        from kotonebot import device
 
         img = device.screenshot()
         try:
@@ -380,9 +380,9 @@ class HiroController(ProduceController):
 
     @staticmethod
     def _is_hif_exam() -> bool:
-        from kotonebot import device
-
         from hiro.vision.hif import is_hif_exam
+
+        from kotonebot import device
 
         return is_hif_exam(device.screenshot())
 
@@ -481,9 +481,9 @@ class HiroController(ProduceController):
         LLM 给 stop、被安全规则拦下、调用失败、同屏没进展 → 报警并放手（这个画面不再问），仍由原来的 180 秒停机兜底。"""
         import time
 
-        from kotonebot import device
-
         from hiro.loop import rescue
+
+        from kotonebot import device
 
         if not rescue.LLM_UNKNOWN:
             return False
@@ -567,9 +567,9 @@ class HiroController(ProduceController):
         """本轮整帧 OCR（hiro.vision.ocr.screen_texts，Vision 约 0.5s；RapidOCR 整帧约 2–5s），各补判共用一次。框是整帧坐标（.text / .rect）。
         UNKNOWN 画面每轮以前要做 2–3 次 kotonebot 整帧 OCR，第十五到十七局未识别画面每轮中位 6.7s，KAA 的 skip() 也就 6.7s 才点一下。"""
         if getattr(self, "_boxes", None) is None:
-            from kotonebot import device
-
             from hiro.exec.exam import _roi_texts
+
+            from kotonebot import device
 
             img = device.screenshot()
             self._boxes = _roi_texts(img, 0, img.shape[0]) if img is not None else []  # 自上而下、同行从左到右
@@ -582,7 +582,6 @@ class HiroController(ProduceController):
 
     def _is_date_changed(self) -> bool:
         from hiro.loop.date_change import FORCED_TITLES
-
         from hiro.vision.textnorm import contains_any
 
         texts = [t.replace(" ", "") for t in self._ocr_texts()]
@@ -614,9 +613,9 @@ class HiroController(ProduceController):
 
         if not skip_settings.is_skip_settings(self._ocr_texts()):
             return False
-        from kotonebot import device
-
         from hiro.produce.ops import ocr_boxes
+
+        from kotonebot import device
 
         boxes = [(b.text, 1.0, (int(b.rect.x1), int(b.rect.y1), int(b.rect.x2), int(b.rect.y2))) for b in self._ocr_boxes()]
         r = skip_settings.handle(boxes, shoot=device.screenshot, ocr=ocr_boxes, click=lambda x, y: device.click(x, y))
@@ -652,9 +651,9 @@ class HiroController(ProduceController):
         self._net_retries = getattr(self, "_net_retries", 0) + 1
         if self._net_retries > self.NET_RETRY_MAX:
             return False
-        from kotonebot import device
-
         from hiro.loop import comm_error
+
+        from kotonebot import device
 
         boxes = [(b.text, 1.0, (int(b.rect.x1), int(b.rect.y1), int(b.rect.x2), int(b.rect.y2))) for b in self._ocr_boxes()]
         if HiroController.session is not None:
@@ -784,9 +783,9 @@ class HiroController(ProduceController):
         texts = self._ocr_texts()
         if not any("現在順位" in t or "ラウンド" in t or "最終順位" in t for t in texts):
             return False
-        from kotonebot import device
-
         from hiro.vision.pages import classify_page
+
+        from kotonebot import device
 
         hit = classify_page(device.screenshot())
         if not hit or hit[0] != "HIF_FINALS_RANKING":

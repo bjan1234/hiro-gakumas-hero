@@ -27,13 +27,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-import cv2
-import numpy as np
-
 from hiro.tool_device import open_tool_device
 from hiro.vision.classify import classify
 from hiro.vision.extract import extract
 from hiro.vision.observe import observation
+
+import cv2
+import numpy as np
 
 # 读这几页的字段还要 KAA（见模块说明），collect 不读
 NEEDS_KAA = {"SELECT_CARD": "选卡读卡还靠 KAA 的卡面插图比对（vision.extract._select_card），collect 不经 KAA，不读"}

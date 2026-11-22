@@ -4,11 +4,11 @@
 
 from types import SimpleNamespace as NS
 
-import pytest
-from test_shop_exec import FakeConsult, frame
-
 from hiro.contracts import Action, ActionKind, Decision, GameState, TraceWriter
 from hiro.produce import shop
+
+import pytest
+from test_shop_exec import FakeConsult, frame
 
 
 def _session(tmp_path, img):

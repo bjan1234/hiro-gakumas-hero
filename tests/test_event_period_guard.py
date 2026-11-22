@@ -3,11 +3,11 @@
 
 from pathlib import Path
 
+from hiro.vision import quick
+
 import cv2
 import numpy as np
 import pytest
-
-from hiro.vision import quick
 
 FIX = Path(__file__).parent / "fixtures"
 BONUS = ["date_change/event-login-bonus-jewel-dmm2.png", "home/g26-login-bonus.png", "quick/login-bonus-gakumas-wed.png",

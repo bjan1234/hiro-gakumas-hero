@@ -2,15 +2,15 @@
 
 from pathlib import Path
 
-import cv2
-import pytest
-
 import hiro  # noqa: F401
 from hiro.vision.extract import extract
 from hiro.vision.hif import read_hif_exam
 from hiro.vision.observe import observation
 from hiro.vision.offline import load
 from hiro.vision.scene import classify_current
+
+import cv2
+import pytest
 
 FIX = Path(__file__).with_name("fixtures") / "finals"
 
@@ -289,5 +289,5 @@ def test_finals_my_score_box_covers_overhang(monkeypatch):
     mine = boxes[:3]  # 前三次是玩家分数（之后是 NPC 格）
     right = hif.FINALS_ME_LEFTS[2] + hif.FINALS_ME_W  # 第 3 名白框右缘 483
     assert {k for k, _ in mine} == {"ocr", "font", "dddd"}
-    for _, (x1, y1, x2, y2) in mine:
+    for _, (_x1, _y1, x2, _y2) in mine:
         assert right + 5 <= x2 < right + 8

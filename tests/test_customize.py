@@ -2,11 +2,11 @@
 
 from pathlib import Path
 
-import cv2
-import pytest
-
 import hiro  # noqa: F401
 from hiro.vision.customize import master_offers
+
+import cv2
+import pytest
 
 FIX = Path(__file__).with_name("fixtures") / "guidance"
 CONFETTI = "p_card-02-act-2_062"

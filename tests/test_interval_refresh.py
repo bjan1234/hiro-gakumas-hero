@@ -2,12 +2,12 @@
 
 import copy
 
-import pytest
-
 from hiro.brain import deciders as dmod
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import ActionKind, GameState
+
+import pytest
 
 WIN7 = {"stamina": 17, "max_stamina": 33, "produce_point": 580, "complete": True, "dialog": None, "interval": {
     "cards": [{"index": 0, "price": 50, "purchased": False, "card_id": "p_card-02-men-2_056", "name": "止められない想い+", "upgrade": 1}],

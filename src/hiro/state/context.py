@@ -10,9 +10,8 @@ import math
 import threading
 
 from hiro.brain import hif_rules as rules
-from hiro.state.catalog import Catalog, CatalogUnavailable
+from hiro.state.catalog import Catalog, CatalogUnavailable  # noqa: F401
 from hiro.state.catalog import catalog as _catalog
-
 from hiro.state.knowledge import SELECTION_TARGETS, TURN_SPLIT, YARUKI_CARDS, idol_trend
 from hiro.state.produce import ATTRS, FINALS, SELECTION, LessonOption, ProduceState
 
@@ -187,7 +186,7 @@ def upcoming_exams(state: ProduceState) -> list[tuple[str, int]]:
 
 # ---------------------------------------------------------------- 公共局面
 def deck_summary(state: ProduceState) -> dict:
-    from hiro.brain.cards import parse_tags
+    from hiro.brain.cards import parse_tags  # noqa: F401
 
     if not state.deck:  # 培育中牌组不可能为空：空 = 识别还没读到
         return {"状态": "牌组未识别（不是 0 张）：不要按张数、已持有或「必拿还缺」推理，只看候选本身和社区评级"}
@@ -238,7 +237,9 @@ def _is_hajime_nia(mode: str | None) -> bool:
 
 def situation_hajime_nia(state: ProduceState, unknown: set[str] | frozenset = frozenset()) -> dict:
     """初 / N.I.A 的局面文本：只有这两个模式真有的东西。没有星星（用户 11-17：完全不用处理）、ワッペン、选拔 / 本战、H.I.F 的考试倍率。"""
-    from hiro.state.modes import NIA, mode as _mode, steps as _steps
+    from hiro.state.modes import NIA
+    from hiro.state.modes import mode as _mode
+    from hiro.state.modes import steps as _steps
 
     try:
         m = _mode(state.mode)
@@ -304,7 +305,7 @@ def situation(state: ProduceState, unknown: set[str] | frozenset = frozenset()) 
                  "ワッペン剩余": val("wappen_left"), "禁用剩余": val("excludes_left"), "刷新剩余": val("rerolls_left")},
         "属性": {a: (f"{state.params[a]}（成长率 {state.growth_permil[a] / 10:.1f}%）" if isinstance(state.params.get(a), (int, float)) else "未读到")
                  for a in ATTRS} | {"上限": val("param_cap")},
-        "主属性": "{0}（{1}；社区：课程只上这一项，赌 SP）".format(*main_attr_basis(state)),
+        "主属性": "{0}（{1}；社区：课程只上这一项，赌 SP）".format(*main_attr_basis(state)),  # noqa: UP030
         "星星": {"当前": state.star,
                  "获得倍率": f"{UNKNOWN}（预演里的星星按 1× 估，实际多半更高）" if "star_permil" in unknown else f"{state.star_permil / 1000:g}×",
                  "离 R2 基准 800": max(0, 800 - state.star) or "已达到（继续拿，最多到 3 倍）",
@@ -327,7 +328,7 @@ def support_counts(state: ProduceState) -> dict | None:
     """支援卡编成的属性分布（Assist 不计）；未识别时 None。"""
     if not state.supports:
         return None
-    counts = {a: 0 for a in ATTRS}
+    counts = dict.fromkeys(ATTRS, 0)
     for s in state.supports:
         try:
             row = catalog().one("SupportCard", s.support_card_id)
@@ -614,8 +615,8 @@ def preview_card_pick(state: ProduceState, candidates: list[dict], *, change: bo
                       unknown: set[str] | frozenset = frozenset()) -> dict:  # fmt: skip
     """三选一：candidates = [{card_id, upgrade}]；change=True 为セレクトチェンジ（不算获得，不触发ワッペン）。
     unknown 里的字段（禁用 / 刷新次数、ワッペン、牌组）显示为「未识别」，不按默认值 0 推理。"""
-    from hiro.brain.cards import card_view
     from hiro import master
+    from hiro.brain.cards import card_view
 
     other = _is_hajime_nia(state.mode)  # 初 / N.I.A：没有 H.I.F ワッペン、没有星星
     wappen = _scale(10, state.star_permil) if (not other and ("wappen_left" in unknown or state.wappen_left) and not change) else 0

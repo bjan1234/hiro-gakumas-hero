@@ -6,9 +6,9 @@
 import json
 from types import SimpleNamespace as NS
 
-import pytest
-
 from hiro.contracts import Observation
+
+import pytest
 
 
 def _seg(root, name, steps):

@@ -3,10 +3,10 @@
 import json
 import sqlite3
 
-import pytest
-
 from hiro import master
 from hiro.state import catalog as cat
+
+import pytest
 
 COLS = ("id", "upgradeCount", "name", "assetId", "rarity", "planType", "category", "stamina", "forceStamina", "costType", "costValue",
         "playMovePositionType", "produceDescriptions", "playEffects")  # fmt: skip

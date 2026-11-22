@@ -170,7 +170,7 @@ def heuristic_action(env, rng: random.Random) -> dict:
     # 复制饮料：手里有可打的持续核心时先喝，接着打它
     for d in drinks:
         effects = env.drink_definitions[env.drinks[d["id"]]]["effects"]
-        if any(e["op"] == "repeat_card" for e in effects):
+        if any(e["op"] == "repeat_card" for e in effects):  # noqa: SIM102
             if env.actions >= 1 and any(_sustained(env.definition(a["id"])) for a in real):
                 return d
     others = [d for d in drinks if not any(e["op"] == "repeat_card" for e in env.drink_definitions[env.drinks[d["id"]]]["effects"])]
@@ -191,7 +191,7 @@ def heuristic_action(env, rng: random.Random) -> dict:
     trouble = [a for a in plays if env.definition(a["id"]).get("trouble")]
     if trouble and rng.random() < 0.5:
         return trouble[0]  # 打出眠気：消耗行动、除外，压缩牌堆
-    return dict(kind="end_turn")
+    return {"kind": "end_turn"}
 
 
 # ---------- 社区打法续打（预演优化 P1，reports/analysis/preview-optimization-plan.md §2）----------
@@ -435,7 +435,7 @@ def community_action(env, rng: random.Random, allow_drinks: bool = True) -> dict
     trouble = [a for a in plays if env.definition(a["id"]).get("trouble")]
     if trouble and rng.random() < 0.5:
         return trouble[0]
-    return dict(kind="end_turn")
+    return {"kind": "end_turn"}
 
 
 FINISHER_AT_2 = False  # v1（剩 2 回合只在本回合倍率不低于最后一回合时打，贴近用户规则）；v2（剩 2 就打）bench 与 v1 无显著差

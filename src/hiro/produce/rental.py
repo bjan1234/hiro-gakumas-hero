@@ -10,9 +10,10 @@
 
 from __future__ import annotations
 
-
 import logging
-from hiro.devices.active import device, sleep as _sleep
+
+from hiro.devices.active import device
+from hiro.devices.active import sleep as _sleep
 
 logger = logging.getLogger(__name__)
 

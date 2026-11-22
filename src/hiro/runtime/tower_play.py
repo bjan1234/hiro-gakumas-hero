@@ -401,8 +401,8 @@ class TowerPlay:
 
     def on_exam(self, rt, f, hit):
         """考试：同 HifCore.on_exam_entered，只是标签按层、不走 H.I.F 的再挑戦（重试由结果页按 TowerRun 规则定）。"""
-        from hiro.exec.exam import run_exam
         from hiro.devices.active import device
+        from hiro.exec.exam import run_exam
 
         core = self.core
         self.exam_no += 1

@@ -24,11 +24,11 @@ import os
 import time
 from pathlib import Path
 
-import cv2
-import numpy as np
-
 from hiro.loop.errors import ResumeBlocked
 from hiro.runtime import nav, opening
+
+import cv2
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -319,6 +319,7 @@ def set_mode(session, mode: str) -> None:
 
 def run(args) -> int:
     from hiro import kaa_env
+    from hiro.brain import guides
     from hiro.contracts import TraceWriter
     from hiro.devices import active, open_device
     from hiro.devices.base import DeviceError
@@ -328,7 +329,6 @@ def run(args) -> int:
     from hiro.runtime import finish, play
     from hiro.runtime.loop import Runtime
     from hiro.vision.classify import classify
-    from hiro.brain import guides
 
     guides.refresh_if_stale()  # 偶像卡攻略包：没有或超过 24 小时就下载，失败不阻塞（协调 11-20）
     kaa_env.apply_formation_plan(args.idol)

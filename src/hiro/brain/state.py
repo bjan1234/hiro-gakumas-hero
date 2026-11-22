@@ -376,7 +376,7 @@ class BattleState:
                 total += (g + gain * k) * pct / 100 * (self.turn_permil(rem - k) or avg) / 1000
             return total
 
-        options = {w: value(w) for w in range(0, max(1, rem - 1))}
+        options = {w: value(w) for w in range(max(1, rem - 1))}
         best = max(options, key=lambda w: options[w])
         out = {"现在装的预计总得分": math.ceil(options[0]),
                "按元気增速": f"每回合约 +{gain:g}" if gain else "未知（按不增长算，会低估晚装的收益）"}  # fmt: skip
@@ -597,7 +597,7 @@ class BattleState:
         if profile and "trend" not in observed:
             from hiro.state.knowledge import idol_trend
 
-            try:
+            try:  # noqa: SIM105
                 observed["trend"] = tuple(idol_trend(profile.idol_id)[1])
             except (KeyError, IndexError):
                 pass
@@ -605,7 +605,7 @@ class BattleState:
             # 考试最后 3 回合固定为 流3 → 流2 → 流1（knowledge.IDOL_TREND，wiki「ターン割」；第 4 局本战两轮实机为 Vi → Da → Vo）
             from hiro.state.knowledge import idol_trend
 
-            try:
+            try:  # noqa: SIM105
                 observed["final_turn_permil"] = memory.attr_permil.get(idol_trend(profile.idol_id)[1][0])
             except KeyError:
                 pass

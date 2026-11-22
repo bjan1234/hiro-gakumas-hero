@@ -15,13 +15,13 @@ import re
 from functools import cache
 from pathlib import Path
 
-import cv2
-import numpy as np
-from cv2.typing import MatLike
-
 from hiro.vision.items import _library
 from hiro.vision.ocr import engine as ocr_engine
 from hiro.vision.ocr import ocr_boxes
+
+import cv2
+import numpy as np  # noqa: F401
+from cv2.typing import MatLike
 
 REGION = (40, 470, 700, 1070)
 COLS = (65, 220, 375, 530)  # 各列格子左缘
@@ -61,9 +61,8 @@ def _red_plus(img: MatLike, x: int, y: int) -> tuple[int, int]:
 
 
 def _card(img: MatLike, x: int, y: int = CARD_Y) -> dict:
-    from hiro.vision.deck import match_grid_card
-
     from hiro.vision.cards import card_version
+    from hiro.vision.deck import match_grid_card
 
     card = match_grid_card(img[y : y + CELL, x : x + CELL])
     strict, loose = _red_plus(img, x, y)

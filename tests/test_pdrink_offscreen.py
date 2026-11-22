@@ -6,11 +6,11 @@ import json
 from pathlib import Path
 from types import SimpleNamespace as NS
 
-import pytest
-
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import Action, ActionKind, Decision, GameState
+
+import pytest
 
 FIX = Path(__file__).parent / "data" / "g33-seq111-pdrink-max.json"  # 实机状态（page_fields 文本），随仓库发布
 

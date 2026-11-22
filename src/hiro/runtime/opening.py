@@ -70,7 +70,6 @@ FLIP_WAIT_S = 4.0  # 点了左右箭头后等画面换到别的剧本；这么�
 def select_scenario(rt, logo: str, timeout: float = LOGO_TIMEOUT) -> None:
     """剧本选择页翻到 logo：认出当前是哪个剧本，按顺序往前 / 往后点一下箭头，等画面换到别的剧本再决定下一下。
     原来每拍都点（N.I.A 采样第一次实机 11-17：翻页动画中认不出 logo 又连着点，来回翻，30 秒停在 H.I.F）。"""
-    from hiro.vision.ui_templates import point
 
     state = {"at": None, "from": None}
 
@@ -334,7 +333,7 @@ def step2(rt, *, set_no: int | None, plan: dict | None = None, rental_attr: str 
     dev = _RentalDevice(rt)
     formation_steps.autofix_support(WriterDevice(shoot=dev.screenshot, click=dev.click, swipe=dev.swipe, sleep=rt.sleep), plan)
     formation_steps.check_support(rt.screen.shot().img, plan, set_no, shoot=lambda: rt.screen.shot().img, sleep=rt.sleep)
-    if _next_enabled(rt.screen.shot(), "Produce.Step2.ButtonNext") is None:
+    if _next_enabled(rt.screen.shot(), "Produce.Step2.ButtonNext") is None:  # noqa: SIM102
         # 租借（hiro.produce.rental）走「当前设备」门面 hiro.devices.active（平台模块 feat_matto_handlers）：run_hif 在新主循环里
         # active.use(rt) 后它点的就是带拦截的 rt.device
         if not formation_steps.rental_pick(plan, rental_attr, main_attr):

@@ -25,7 +25,7 @@ from __future__ import annotations
 import re
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from functools import lru_cache
+from functools import cache, lru_cache  # noqa: F401
 
 ATTR_OF = {"SupportCardType_Vocal": "Vo", "SupportCardType_Dance": "Da", "SupportCardType_Visual": "Vi", "SupportCardType_Assist": None}
 NAME = {"Vo": "vocal", "Da": "dance", "Vi": "visual"}
@@ -92,7 +92,7 @@ def _trigger_count(tid: str, sp: dict) -> float:
     return 0.0
 
 
-@lru_cache(maxsize=None)
+@cache
 def _compiled(card_id: str, level: int, limit_rank: str | None, plan: str | None = None) -> tuple:
     """(属性, ((效果类型, 效果值, 触发 ID, 次数上限), ...))。素材源给不出技能时返回 (属性, ())。"""
     from hiro.brain.formation import _support_skills
@@ -105,7 +105,7 @@ def _compiled(card_id: str, level: int, limit_rank: str | None, plan: str | None
     return attr, tuple((s["effect_type"], s.get("value"), s.get("trigger_id"), s.get("limit")) for s in skills)
 
 
-@lru_cache(maxsize=None)
+@cache
 def _events(card_id: str, level: int) -> tuple:
     """支援事件（等级够了才有）给的东西：(("param", 属性, 值) | ("card", card_id) | ("pitem", id) | ("upgrade",) | ("p", 值), ...)。"""
     from hiro.state.context import catalog

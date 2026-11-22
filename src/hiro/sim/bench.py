@@ -13,7 +13,7 @@ import argparse
 import json
 import statistics
 import time
-from dataclasses import asdict
+from dataclasses import asdict  # noqa: F401
 from datetime import datetime
 from pathlib import Path
 

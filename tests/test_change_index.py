@@ -3,11 +3,11 @@
 
 from pathlib import Path
 
-import cv2
-
+from hiro.loop import kaa_patches as kp  # noqa: F401
 from hiro.produce import card_ops
-from hiro.loop import kaa_patches as kp
 from hiro.vision.deck import read_card_dialog
+
+import cv2
 
 FIX = Path(__file__).parent / "fixtures/change_index"
 EIEIO = "p_card-02-men-1_031"
@@ -20,7 +20,7 @@ def _cards(name):
 def test_main19_picks_unupgraded_copy_by_index():
     cards = _cards("main19-eieio-three.jpg")
     assert [(c["index"], c["upgrade"]) for c in cards if c.get("card_id") == EIEIO] == [(8, 1), (9, 0), (10, 0)]
-    hit, why = card_ops.pick_change_target(cards, 0, EIEIO, protected=set(), remove_index=10, remove_upgrade=0)
+    hit, _why = card_ops.pick_change_target(cards, 0, EIEIO, protected=set(), remove_index=10, remove_upgrade=0)
     assert hit["index"] == 10 and hit["upgrade"] == 0 and tuple(hit["center"]) == (434, 992)
 
 
@@ -45,7 +45,7 @@ def test_old_behaviour_without_index():
 def test_main19_second_change_kyorikan():
     """00:04 第二次换卡（距離感の基本，remove_index 7）当时是对的，新逻辑结果不变。"""
     cards = _cards("main19-kyorikan.jpg")
-    hit, why = card_ops.pick_change_target(cards, 0, "p_card-02-men-0_039", protected=set(), remove_index=7, remove_upgrade=0)
+    hit, _why = card_ops.pick_change_target(cards, 0, "p_card-02-men-0_039", protected=set(), remove_index=7, remove_upgrade=0)
     assert hit is not None and hit["index"] == 7
 
 
@@ -227,9 +227,9 @@ def test_detail_reads_expected_card_on_unread_cell():
 
 def test_stage2_guessed_cell_end_to_end_with_real_frames(monkeypatch):
     """点卡前用 mainz3 卡格帧、点卡后用详情栏帧，读卡全走真实识别（不塞 selected_card）：应点第 9 格并完成换卡。"""
-    import pytest
-
     import hiro.vision.deck as vd
+
+    import pytest
 
     img, _ = _mz3()
     p = FIX / "mainz3-hinata-picked.jpg"

@@ -3,13 +3,13 @@ _drink_full_skip 只认 source=rule，把有效决策当成「认不出」停机
 
 from types import SimpleNamespace as NS
 
-import pytest
-
 import hiro.produce.drink_swap as ds
 import hiro.produce.hif as hif
 from hiro.contracts import Action, ActionKind, Decision, GameState
 from hiro.produce.hif import HiroHifStrategy, UnhandledPage
 from hiro.vision.ocr import Box, Text
+
+import pytest
 
 CANDS = [{"slot": 0, "drink_id": "pdrink_kampo", "name": "パワフル漢方ドリンク"}, {"slot": 1, "drink_id": "pdrink_blend", "name": "厳選初星ブレンド"},
          {"slot": 2, "drink_id": "pdrink_aojiru", "name": "初星スペシャル青汁"}]  # fmt: skip

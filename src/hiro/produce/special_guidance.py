@@ -14,16 +14,17 @@
 所有等待按时间封顶，每步存 calib 帧。
 """
 
+import logging
 import re
 import time
 from collections.abc import Callable
 
-import numpy as np
-import logging
-from hiro.devices.active import device, sleep as _sleep
-
 from hiro.contracts import Action, ActionKind, ExecutionResult
+from hiro.devices.active import device
+from hiro.devices.active import sleep as _sleep
 from hiro.produce.ops import Run, button_sv, find_text, orange_lit
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ def enter(
     label = (pos[0] - 100, pos[1] + 20, pos[0] + 100, pos[1] + 110)  # 按钮下方的「特別指導」标签（r10：(440, 1080)）
     img = r.shoot()
     r.snap(img, "action-select")
-    for attempt in range(2):
+    for _attempt in range(2):
         r.tap(pos)
         ok, img = r.until(lambda im: find_text(r.ocr(im), TITLE, region=label) is None, ENTER_TIMEOUT / 2)
         if ok:
@@ -245,7 +246,7 @@ def _leave(r: Run) -> bool:
             r.tap(TOAST_TAP)
             last[0] = r.clock()
             return False
-        if on_page(bx) and ft(bx, ("終了確認",)) is None and r.clock() - last[0] >= LEAVE_RETAP_S and retaps[0] < LEAVE_RETAPS:
+        if on_page(bx) and ft(bx, ("終了確認",)) is None and r.clock() - last[0] >= LEAVE_RETAP_S and retaps[0] < LEAVE_RETAPS:  # noqa: SIM102
             # 点的时候画面还在切（菜单页「一覧に戻る」后立刻找「終了」，拿到的是菜单页位置 (653,977)，切回一览后那里是卡格，
             # DMM dmm2 点成了选中一张卡）：按当前画面重新找「終了」再点
             if (e := ft(bx, ("終了",), region=(560, 940, 720, 1120))) is not None:
@@ -357,13 +358,13 @@ def customize(
         got = {}
 
         def dismiss(im):  # 「〜をカスタマイズしました」还在就每秒点一下
-            if r.clock() - last[0] >= 1.0 and has_toast(r.ocr(im)):
+            if r.clock() - last[0] >= 1.0 and has_toast(r.ocr(im)):  # noqa: B023
                 r.tap(TOAST_TAP)
-                last[0] = r.clock()
+                last[0] = r.clock()  # noqa: B023
 
         def menu_back(im):
-            got["b"] = r.ocr(im)
-            return on_menu(got["b"]) and not has_toast(got["b"])
+            got["b"] = r.ocr(im)  # noqa: B023
+            return on_menu(got["b"]) and not has_toast(got["b"])  # noqa: B023
 
         ok, img = r.until(menu_back, DONE_TIMEOUT, tick=dismiss)
         boxes = got.get("b", [])

@@ -20,7 +20,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
-from functools import lru_cache
+from functools import cache, lru_cache  # noqa: F401
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ def norm_idol(idol_card: str | None) -> str | None:
     return idol_card.replace("i_card-skin-", "i_card-") if idol_card else None
 
 
-@lru_cache(maxsize=None)
+@cache
 def idol_traits(idol_card: str | None) -> tuple[str | None, str | None]:
     """偶像卡 → (plan, style)。先查 KAA 主数据，没有这张卡（新偶像）再查模拟器主数据；都查不到 (None, None)。"""
     cid = norm_idol(idol_card)
@@ -272,7 +272,7 @@ def cache_dir() -> Path:
     return Path(os.environ.get("HIRO_GUIDES_DIR") or Path.home() / ".cache" / "hiro" / "guides")
 
 
-@lru_cache(maxsize=None)
+@cache
 def _load_pack(mode: str, root: str) -> tuple[Entry, ...]:
     d = Path(root)
     try:

@@ -2,11 +2,11 @@
 
 from pathlib import Path
 
-import cv2
-import pytest
-
 from hiro.brain import support_select as ss
 from hiro.state.context import catalog
+
+import cv2
+import pytest
 
 FIX = Path(__file__).with_name("fixtures") / "support"
 

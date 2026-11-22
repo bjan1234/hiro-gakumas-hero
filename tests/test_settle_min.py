@@ -47,5 +47,5 @@ def test_min_duration_waits(monkeypatch):
 def test_min_duration_capped_by_settle_max(monkeypatch):
     from hiro.exec import exam as ex
 
-    f, reads = _run(monkeypatch, ex.SETTLE_FAST_MAX + 1)
+    f, _reads = _run(monkeypatch, ex.SETTLE_FAST_MAX + 1)
     assert f is None  # 要求比上限还长：照旧超时交回 _stable_frame

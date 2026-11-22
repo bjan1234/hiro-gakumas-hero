@@ -10,22 +10,22 @@ from dataclasses import dataclass
 from functools import cache, lru_cache
 from pathlib import Path
 
-import cv2
-import numpy as np
-from cv2.typing import MatLike
 from hiro import master
-
 from hiro.vision import layout
 from hiro.vision.card_art import match_card_art
 from hiro.vision.cards import card_summary, card_version
-from hiro.vision.hand_slots import CARD_OFFSET, card_letters, hand_slots
 from hiro.vision.digits import _iou, _scale, _templates, read_dddd, read_int, read_number, read_score
+from hiro.vision.hand_slots import CARD_OFFSET, card_letters, hand_slots
 from hiro.vision.items import read_drink_slots, read_pitems
 from hiro.vision.ocr import Box, ocr, ocr_batch
 from hiro.vision.ocr import engine as ocr_engine
 from hiro.vision.region_cache import RegionCache, cached
 from hiro.vision.status import read_status_column, status_summary
 from hiro.vision.ui_templates import normalize
+
+import cv2
+import numpy as np
+from cv2.typing import MatLike
 
 TEMPLATES = Path(__file__).with_name("templates")
 ATTRS = {"ボーカル": "vocal", "ダンス": "dance", "ビジュアル": "visual"}
@@ -151,14 +151,14 @@ def read_hif_result(img: MatLike) -> dict:
         entries.append({"y": cy, "passed": None if label is None else label == "突破", "name": name,
                         "score": score, "score_votes": votes, "me": bool(edge.mean() >= RESULT_ME_MIN)})  # fmt: skip
     # 分数读不出（被特效盖住）的行：有「突破 / 敗退」字样就照样成行，score 为 None
-    for text, (bx1, by1, bx2, by2) in boxes:
+    for text, (bx1, by1, bx2, by2) in boxes:  # noqa: B007
         cy = (by1 + by2) // 2
         if text in ("突破", "敗退") and bx1 < 160 and all(abs(e["y"] - cy) > 30 for e in entries):
             name = next((t for t, b in boxes if b[0] >= 200 and cy - 50 <= (b[1] + b[3]) // 2 < cy - 5 and not re.search(r"\d", t)), None)
             edge = white[max(0, cy - 50) : cy + 50, RESULT_ME_EDGE[0] : RESULT_ME_EDGE[1]]
             entries.append({"y": cy, "passed": text == "突破", "name": name, "score": None, "score_votes": None,
                             "me": bool(edge.mean() >= RESULT_ME_MIN)})  # fmt: skip
-    for text, (bx1, by1, bx2, by2) in boxes:
+    for text, (bx1, by1, bx2, by2) in boxes:  # noqa: B007
         if "人" in text and bx1 < 160:
             p = re.search(r"(\d+)", text)
             line["participants"] = int(p.group(1)) if p else None
@@ -571,7 +571,7 @@ def _name_bar(img: MatLike, letter: Box) -> str:
 
 
 # 卡名比对前的归一化：小写假名 → 大写（OCR 常把「ティ」的「ィ」读成「イ」）、片假名 / 平假名形近字（ヘ/へ）、长音的各种写法
-_KANA_FOLD = str.maketrans({**{a: b for a, b in zip("ァィゥェォャュョッヮぁぃぅぇぉゃゅょっゎ", "アイウエオヤユヨツワあいうえおやゆよつわ")},
+_KANA_FOLD = str.maketrans({**dict(zip("ァィゥェォャュョッヮぁぃぅぇぉゃゅょっゎ", "アイウエオヤユヨツワあいうえおやゆよつわ")),
                             "へ": "ヘ", "べ": "ベ", "ぺ": "ペ", "一": "ー", "-": "ー", "−": "ー", "ｰ": "ー", "!": "！", "?": "？"})  # fmt: skip
 NAME_TRIM_MAX = 2  # 卡名末尾最多去掉几个字再按前缀找（被下一张卡盖住时末字常被读成「！」「く」「2」）
 NAME_PREFIX_MIN = 3  # 前缀至少几个字才按前缀找唯一卡名

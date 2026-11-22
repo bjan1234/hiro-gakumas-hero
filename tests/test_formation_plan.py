@@ -3,15 +3,15 @@
 import json
 from pathlib import Path
 
-import cv2
-import pytest
-
 from hiro.brain import formation_plan as fp
 from hiro.brain import support_select as ss
 from hiro.brain.formation import select_memories
 from hiro.produce.formation_check import check_memory_step3, check_support_step2, memory_set_number
 from hiro.state.context import catalog
 from hiro.state.memory_priority import PROFILES, profile_for_idol
+
+import cv2
+import pytest
 
 FIX = Path(__file__).with_name("fixtures") / "support"
 HIRO = "i_card-shro-3-007"
@@ -187,8 +187,8 @@ def test_kaa_env_applies_plan(tmp_path, monkeypatch):
     assert kaa_env.apply_formation_plan("i_card-skin-amao-1-001", str(path)) is None  # 别的偶像：不用
     assert kaa_env.ACTIVE_PLAN is None and kaa_env.SUPPORT_SET is None
     assert kaa_env.apply_formation_plan("i_card-skin-shro-3-007", str(path)) is not None
-    assert (kaa_env.SUPPORT_SET, kaa_env.MEMORY_SET) == (20, 20) and kaa_env.MEMORY_CARDS == tuple(plan["memory"]["cards"])
-    assert kaa_env.PLAN_MAIN_ATTR == plan["main_attr"]
+    assert (kaa_env.SUPPORT_SET, kaa_env.MEMORY_SET) == (20, 20) and tuple(plan["memory"]["cards"]) == kaa_env.MEMORY_CARDS
+    assert plan["main_attr"] == kaa_env.PLAN_MAIN_ATTR
     monkeypatch.setattr(kaa_env, "SUPPORT_SET", 4)  # 环境变量写了编成号：以环境变量为准
     kaa_env.apply_formation_plan(None, str(path))
     assert kaa_env.SUPPORT_SET == 4
@@ -273,9 +273,9 @@ def test_scan_entries_keep_inventory_position():
 
 def test_support_step2_title_ocr_bo_variant():
     """第 2 步标题「2.サポート選択」被 OCR 读成「2.サボート選択」（11-16 Mac 账号 2）：也要认成 step2 页。"""
-    import numpy as np
-
     from hiro.vision.support_screens import read_support_formation
+
+    import numpy as np
 
     img = np.zeros((1280, 720, 3), np.uint8)
     boxes = [("2.サボート選択", (56, 39, 201, 64)), ("20/20", (40, 650, 130, 680)), ("サボートカード編成 20", (30, 980, 300, 1010))]

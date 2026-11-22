@@ -2,11 +2,11 @@
 
 from types import SimpleNamespace as NS
 
-import pytest
-
 from hiro.produce import card_ops
 from hiro.vision.ocr import Box
 from hiro.vision.ui_templates import Match
+
+import pytest
 
 
 def _setup(monkeypatch, found: dict):

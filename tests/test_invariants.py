@@ -3,11 +3,11 @@
 import sys
 from pathlib import Path
 
-import pytest
-
 from hiro.contracts import Check, GameState, Observation, PageObs
 from hiro.loop.reduce import reduce
 from hiro.state.invariants import check_invariants, filter_observation
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))  # invariants_replay
 
@@ -29,7 +29,7 @@ def rules(checks, verdict="read_error"):
     return {(c.field, c.rule) for c in checks if c.verdict == verdict}
 
 
-ACTION = dict(stamina=20, max_stamina=33, produce_point=380, star=345, param_cap=3000)
+ACTION = {"stamina": 20, "max_stamina": 33, "produce_point": 380, "star": 345, "param_cap": 3000}
 
 
 def test_param_drop_leading_digit():

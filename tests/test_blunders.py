@@ -7,9 +7,9 @@ import copy
 import json
 from pathlib import Path
 
-import pytest
-
 from tools.audit import blunders as B
+
+import pytest
 
 FIX = Path(__file__).parent / "fixtures" / "blunders"
 pytestmark = pytest.mark.skipif(not FIX.is_dir(), reason="需要样例 tests/fixtures/blunders（实机片段，不随仓库发布）")

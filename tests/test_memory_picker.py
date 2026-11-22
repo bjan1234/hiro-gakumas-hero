@@ -3,12 +3,12 @@
 import json
 from pathlib import Path
 
-import cv2
-import pytest
-
 import hiro  # noqa: F401
 from hiro.produce import memory_picker as mp
 from hiro.produce import ops
+
+import cv2
+import pytest
 
 FIX = Path(__file__).parent / "fixtures" / "memory"
 
@@ -109,7 +109,7 @@ def test_scan_refuses_outside_picker(tmp_path):
 
 # ---------------------------------------------------------------- 滚动核对（2026-11-01 实机：快滑带惯性，整行漏扫）
 
-import numpy as np
+import numpy as np  # noqa: E402
 
 PAGES = [cv2.imread(str(FIX / f"scan-{n}.jpg")) for n in ("0001-page000", "0002-page001", "0003-page002", "0004-page003")]
 
@@ -118,7 +118,7 @@ def list_rows():
     """4 张实拍页的完整行（实机核对过页与页之间没有重叠，行各不相同；压到浮动按钮的行不算）。"""
     out = []
     for img in PAGES:
-        for y1, y2 in mp.grid_rows(img):
+        for y1, _y2 in mp.grid_rows(img):
             out.append(img[y1 : y1 + 118, :].copy())
     return out
 
@@ -147,13 +147,13 @@ class ScrollList:
     def shoot(self):
         img = self.base.copy()
         for i, row in enumerate(self.rows):
-            y = int(round(self.TOP + i * mp.ROW_PITCH - self.offset))
+            y = int(round(self.TOP + i * mp.ROW_PITCH - self.offset))  # noqa: RUF046
             y1, y2 = max(y, mp.GRID_Y[0] - 5), min(y + 118, mp.GRID_Y[1] + 60)
             if y2 > y1:
                 img[y1:y2] = row[y1 - y : y2 - y]
         if self.selected is not None:
             r, c = self.selected
-            y = int(round(self.TOP + r * mp.ROW_PITCH - self.offset))
+            y = int(round(self.TOP + r * mp.ROW_PITCH - self.offset))  # noqa: RUF046
             x = mp.COL_X[c] - mp.CELL_W // 2
             if mp.GRID_Y[0] <= y and y + 118 <= mp.GRID_Y[1] + 60:
                 cv2.rectangle(img, (x + 6, y + 6), (x + mp.CELL_W - 7, y + 111), (0, 140, 255), 12)  # 选中框画在格子里（伸进缩略图区）
@@ -389,7 +389,7 @@ def test_select_checked_never_taps_same_cell_twice():
     still = np.zeros((1280, 720, 3), np.uint8)
     taps = []
     p = mp.Picker(lambda: still, lambda x, y: taps.append((x, y)), lambda *a: None, ocr=lambda im: [("キャンセル", 1, (0, 0, 1, 1)),
-                  ("決定", 1, (0, 0, 1, 1)), ("編成詳細", 1, (0, 0, 1, 1))], clock=iter(range(0, 10_000)).__next__, sleep=lambda s: None)  # fmt: skip
+                  ("決定", 1, (0, 0, 1, 1)), ("編成詳細", 1, (0, 0, 1, 1))], clock=iter(range(10_000)).__next__, sleep=lambda s: None)  # fmt: skip
     changed, _ = p.select_checked({"center": [360, 700]})
     assert not changed and taps == [(360, 700)]
     p.ocr = lambda im: []  # 选择页不见了
@@ -425,7 +425,7 @@ def test_select_checked_does_not_tap_preselected_cell():
     img = _bracketed(rect)
     taps = []
     p = mp.Picker(lambda: img, lambda x, y: taps.append((x, y)), lambda *a: None, ocr=lambda im: [("キャンセル", 1, (0, 0, 1, 1)),
-                  ("決定", 1, (0, 0, 1, 1)), ("編成詳細", 1, (0, 0, 1, 1))], clock=iter(range(0, 10_000)).__next__, sleep=lambda s: None)  # fmt: skip
+                  ("決定", 1, (0, 0, 1, 1)), ("編成詳細", 1, (0, 0, 1, 1))], clock=iter(range(10_000)).__next__, sleep=lambda s: None)  # fmt: skip
     changed, got = p.select_checked({"rect": rect, "center": [140, 645], "row": 0})
     assert changed and got is img and taps == []
     p.select_checked({"rect": [255, 585, 210, 120], "center": [360, 645], "row": 0})

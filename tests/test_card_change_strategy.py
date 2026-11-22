@@ -1,11 +1,11 @@
 """HiroHifStrategy.on_skill_card_change：按决策的 card_id 换出；决策取消时传 cancel；阶段 1 候选未识别时换入第 0 张。"""
 
-import pytest
-
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import Action, ActionKind, ExecutionResult, GameState
 from hiro.produce.hif import HiroHifStrategy
+
+import pytest
 
 DAYDREAM, HIGH, BASIC = "p_card-02-act-1_037", "p_card-00-men-2_014", "p_card-02-act-0_037"
 
@@ -84,9 +84,9 @@ def test_change_cancels_when_deck_unread():
 
 def test_change_cancel_then_return_forces_lowest_value():
     """取消后又回到换卡页（阶段 1 无取消键，main8 死循环）：按 choose_card_to_change 换出价值最低的非保护卡；没有可换的才停下。"""
-    import pytest
-
     from hiro.produce.hif import UnhandledPage
+
+    import pytest
 
     grid = [{"index": 0, "card_id": DAYDREAM, "upgrade": 1}, {"index": 1, "card_id": BASIC, "upgrade": 0}]
     st = _strategy({"SKILL_CARD_CHANGE_2": {"cards": grid}})
@@ -178,9 +178,9 @@ def test_forced_change_falls_back_to_ledger_when_screen_all_protected():
 
 def test_forced_change_gives_up_after_repeated_failures():
     """mainz3 r1（11-18 03:47）：强制换出的卡执行侧没点成，每次取消都绕回换卡页，转了 2 分钟。强制换出 CHANGE_FORCED_MAX 次都没换成就停下。"""
-    import pytest
-
     from hiro.produce.hif import UnhandledPage
+
+    import pytest
 
     st = _strategy({})
     st.s = StubSession({"SKILL_CARD_CHANGE_2": {"cards": [{"index": 0, "card_id": BASIC, "upgrade": 0}], "deck_complete": True}})

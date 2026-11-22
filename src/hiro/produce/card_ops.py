@@ -10,8 +10,9 @@ import time
 from collections.abc import Callable
 
 from hiro import imgio
-from hiro.devices.active import device, sleep as _sleep
-from hiro.vision.ocr import screen_texts
+from hiro.devices.active import device
+from hiro.devices.active import sleep as _sleep
+from hiro.vision.ocr import screen_texts  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +204,7 @@ def scan_dialog_deck(region: tuple[int, int, int, int], *, expected: int | None 
     """选卡对话框（换卡阶段 2 / 删卡 / 强化）往下滑着读整副牌组，拼完滑回顶部。
     返回 {cards（整副，index = 牌组序号 deck_index）, complete, screens, problems}；一屏放得下时 screens=1、cards 就是这一屏。
     complete=False（拼接对不上 / 张数与记账差太多）时 cards 仍是拼出来的结果，调用方不要当整副用。"""
-    from hiro.vision.deck import dialog_scroll, merge_dialog_screens, read_card_dialog
+    from hiro.vision.deck import dialog_scroll, merge_dialog_screens, read_card_dialog  # noqa: F401
 
     shoot = shoot or device.screenshot
     swipe = swipe or (lambda x1, y1, x2, y2: device.swipe(x1, y1, x2, y2, duration=CARD_OP_SWIPE_DURATION))
@@ -238,9 +239,9 @@ def scan_dialog_deck(region: tuple[int, int, int, int], *, expected: int | None 
 def _save_scan_frames(frames, problems) -> None:
     """整副拼接不可信时把每一屏存下来（Windows 第三局：MuMu 上换卡阶段 2 每局都「没有重叠的行」，要离线复现）。只观察，失败不影响流程。"""
     try:
-        import cv2
-
         from hiro.produce.ops import CALIB_DIR
+
+        import cv2  # noqa: F401
 
         d = CALIB_DIR / f"{time.strftime('%Y%m%d-%H%M%S')}-牌组拼接"
         d.mkdir(parents=True, exist_ok=True)

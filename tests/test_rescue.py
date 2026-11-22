@@ -2,14 +2,13 @@
 
 import json
 
-import numpy as np
-import pytest
-
 from hiro.brain.llm import MockLLM, prompt_version
+from hiro.brain.llm import MockLLM as _Mock
 from hiro.loop import rescue
 from hiro.loop.rescue import Rescuer, check
 
-from hiro.brain.llm import MockLLM as _Mock
+import numpy as np
+import pytest
 
 NEED_IMAGE = pytest.mark.skipif(not hasattr(_Mock, "ask_json_image"), reason="开源 hiro.brain.llm 还没有看图接口 ask_json_image，等策略层同步")
 
@@ -221,9 +220,9 @@ class _Box:
 def _controller(monkeypatch, boxes, replies, *, exam=False):
     import time as _time
 
-    import kotonebot
-
     from hiro.loop.controller import HiroController
+
+    import kotonebot
 
     f = _Fake([(b.text, 1.0, (b.rect.x1, b.rect.y1, b.rect.x2, b.rect.y2)) for b in boxes])
     monkeypatch.setattr(kotonebot, "device", type("D", (), {"screenshot": staticmethod(f.shoot), "click": staticmethod(f.click)}))

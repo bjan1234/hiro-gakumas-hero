@@ -5,11 +5,11 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace as NS
 
-import cv2
-import pytest
-
 import hiro  # noqa: F401
 from hiro.vision.quick import quick_page, split_card_names
+
+import cv2
+import pytest
 
 FIX = Path(__file__).with_name("fixtures")
 

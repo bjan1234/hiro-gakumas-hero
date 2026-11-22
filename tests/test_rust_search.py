@@ -30,9 +30,9 @@ def rs():
 
 @pytest.fixture()
 def rx(rs):
-    from gakumas_exam.native_battle import maybe_native
-
     from hiro.sim import interval as iv
+
+    from gakumas_exam.native_battle import maybe_native
 
     env = maybe_native(iv._env(iv.R2Setup(deck=DECK, drinks=[], hp=20, max_hp=33, permil=PERMIL, star=None), 7))
     if not hasattr(env, "rx"):
@@ -85,7 +85,7 @@ def test_drinks_setter_for_rebuild(rs, rx):
 
 def test_set_card_upgrade_adjusts_support_part(rs, rx):
     g = rx.zone("hand")[0]
-    cid, up, _ = rx.card_info(g)
+    _cid, up, _ = rx.card_info(g)
     assert rx.set_card_upgrade(g, up + 1) and rx.card_info(g)[1] == up + 1
     assert rx.set_card_upgrade(g, up) and rx.card_info(g)[1] == up
     assert not rx.set_card_upgrade(g, up)  # 没变化

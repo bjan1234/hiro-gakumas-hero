@@ -127,7 +127,7 @@ PAGE_EVENTS = {
     "SKILL_CARD_REMOVAL": _card_dialog,
     "UPGRADE_RESULT": _upgrade_result,
     "DELETE_RESULT": lambda obs, f: [_event(obs, "CARD_DELETE", {"card_id": c["card_id"], "upgrade": c["upgrade"]}, confirmed=True, confidence=1.0,
-                                            note="「〜を削除しました」（考试后自动处理基础卡 / 相談删卡）") for c in f.get("cards") or []],  # fmt: skip
+                                            note="「〜を削除しました」（考试后自动处理基础卡 / 相談删卡）") for c in f.get("cards") or []],  # fmt: skip  # noqa: RUF028
     "CUSTOMIZE_RESULT": lambda obs, f: [_event(obs, "CARD_CUSTOMIZE", {"card_id": f.get("card_id"), "upgrade": f.get("upgrade")}, confirmed=True,
                                                confidence=1.0 if f.get("card_id") else None)],  # 「〜をカスタマイズしました」
     "STAR_GAIN": _star_gain,

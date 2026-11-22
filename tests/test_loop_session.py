@@ -1,14 +1,14 @@
 """Session（注入截图 / 分类 / 提取）：观测与 reduce、缺字段等待、执行校验、trace 往返、报告度量。"""
 
-import json
-from pathlib import Path
-
-import numpy as np
+import json  # noqa: F401
+from pathlib import Path  # noqa: F401
 
 import hiro  # noqa: F401
-from hiro.contracts import Action, Candidate, Decision, LLMTrace, TraceWriter, read_steps
-from hiro.loop.report import markdown, report, summarize
+from hiro.contracts import Action, Candidate, Decision, LLMTrace, TraceWriter, read_steps  # noqa: F401
+from hiro.loop.report import markdown, report, summarize  # noqa: F401
 from hiro.loop.session import Session
+
+import numpy as np
 
 
 class Fake:

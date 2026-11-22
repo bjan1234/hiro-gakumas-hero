@@ -12,11 +12,11 @@ HUD、状态栏、分数等数字是 Campus-Alphanumeric-SemiBold（客户端 da
 import re
 from functools import cache
 
+from hiro.vision import assets
+
 import cv2
 import numpy as np
 from cv2.typing import MatLike
-
-from hiro.vision import assets
 
 FONT = "Campus-Alphanumeric-SemiBold.ttf"
 CHARS = "0123456789%"

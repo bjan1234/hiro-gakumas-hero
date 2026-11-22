@@ -406,4 +406,4 @@ def read_nia_page(texts, img=None) -> tuple[str, dict] | None:
     return None
 
 
-__all__ = ["read_nia_page", "read_sales_place", "read_sales_event", "read_audition_select", "read_votes"]
+__all__ = ["read_audition_select", "read_nia_page", "read_sales_event", "read_sales_place", "read_votes"]

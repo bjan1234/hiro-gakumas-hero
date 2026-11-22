@@ -1,9 +1,9 @@
 """学マス不在前台（GKMS 第五局 06:45：内存吃紧时进程被杀，前台是 MuMu 安卓桌面）：认出来、按开关拉起、回首页续跑。"""
 
+from hiro.loop import game_app as ga
+
 import numpy as np
 import pytest
-
-from hiro.loop import game_app as ga
 
 LAUNCHER = "  mCurrentFocus=Window{f0866f8 u0 app.lawnchair/app.lawnchair.LawnchairLauncher}\n"
 GAME = "  mCurrentFocus=Window{66b76c5 u0 com.bandainamcoent.idolmaster_gakuen/com.google.firebase.MessagingUnityPlayerActivity}\n"
@@ -82,7 +82,7 @@ def test_recover_to_home_taps_no_boost():
     assert ok and clicks[0] == (240, 907)
 
 
-import importlib.util as _kiu
+import importlib.util as _kiu  # noqa: E402
 
 NEED_KAA = pytest.mark.skipif(_kiu.find_spec("kotonebot") is None or _kiu.find_spec("kaa") is None,
                               reason="操作层：要装 KAA / kotonebot")

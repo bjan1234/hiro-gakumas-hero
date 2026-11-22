@@ -11,18 +11,19 @@
 不做决策：入参是契约 Action 与要点的位置，出参是 ExecutionResult。
 """
 
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from hiro import imgio
+from hiro.contracts import Action, ExecutionResult
+from hiro.devices.active import device
+from hiro.devices.active import sleep as _sleep
+
 import cv2
 import numpy as np
-import logging
-from hiro.devices.active import device, sleep as _sleep
-
-from hiro.contracts import Action, ExecutionResult
-from hiro import imgio
 
 logger = logging.getLogger(__name__)
 
@@ -363,9 +364,9 @@ def fast_acquire(card_center, *, shoot=None, click=None, sleep=_sleep, clock=tim
 
     def lit(img) -> bool:
         # 亮起没有实拍帧核对过（trace 只在选之前存帧）：绝对阈值或相对点之前的亮度 / 饱和度明显升高都算
-        sat, val = button_sv(img, RECEIVE_ROI)
+        sat, _val = button_sv(img, RECEIVE_ROI)
         return orange_lit(img, RECEIVE_ROI, base_val) or sat - base_sat >= RECEIVE_SAT_GAIN
-    for attempt in range(2):
+    for _attempt in range(2):
         click(*card_center)
         deadline = clock() + lit_timeout
         ok = False

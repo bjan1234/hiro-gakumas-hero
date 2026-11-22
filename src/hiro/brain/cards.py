@@ -8,7 +8,8 @@ KAA 的 effect_display_text 会省掉持续回合数与使用条件（如「元�
 import json
 import re
 from dataclasses import asdict, dataclass, field
-from functools import lru_cache
+from functools import cache, lru_cache  # noqa: F401
+
 
 def select(sql: str, *args):
     """主数据单行查询（hiro.master.rows）；拿不到主数据时返回 None。"""
@@ -170,7 +171,7 @@ class DrinkView:
         return cls(**d)
 
 
-@lru_cache(maxsize=None)
+@cache
 def _drink_text(drink_id: str) -> str:
     row = select("SELECT produceDescriptions FROM ProduceDrink WHERE id = ?;", drink_id)
     return description_text(row[0]) if row else ""

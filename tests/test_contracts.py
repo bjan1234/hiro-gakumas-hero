@@ -1,17 +1,31 @@
 """契约：往返、schema 校验、与现有结构的互转、数据集样本。"""
 
-import json
+import json  # noqa: F401
 import sys
 from pathlib import Path
 
-import pytest
-
 import hiro  # noqa: F401
 from hiro.contracts import (
-    CONTRACTS, Action, ActionKind, Candidate, Decision, ExecutionResult, GameState, LLMTrace, Observation, PageObs,
-    PageState, Preview, SchemaError, Source, Step, step_type,
+    CONTRACTS,
+    Action,
+    ActionKind,  # noqa: F401
+    Candidate,  # noqa: F401
+    Decision,  # noqa: F401
+    ExecutionResult,  # noqa: F401
+    GameState,
+    LLMTrace,  # noqa: F401
+    Observation,
+    PageObs,
+    PageState,
+    Preview,  # noqa: F401
+    SchemaError,
+    Source,
+    Step,  # noqa: F401
+    step_type,
 )  # fmt: skip
 from hiro.contracts.schemas import OUT, dump
+
+import pytest
 
 FIX = Path(__file__).with_name("fixtures")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))  # state_demo / contract_samples

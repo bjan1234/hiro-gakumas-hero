@@ -10,12 +10,11 @@ main13 本战（2026-11-02 04:00）：R1 结果页之后弹出这个框，hif.on
 
 from __future__ import annotations
 
-from hiro.vision.textnorm import contains_any
-
+import logging
 import time
 from collections.abc import Callable
 
-import logging
+from hiro.vision.textnorm import contains_any
 
 logger = logging.getLogger(__name__)
 

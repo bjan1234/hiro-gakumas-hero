@@ -5,10 +5,10 @@ import copy
 import json
 from pathlib import Path
 
-import pytest
-
 import hiro.sim  # noqa: F401
 from hiro.sim import interval as iv
+
+import pytest
 
 FIX = json.loads((Path(__file__).parent / "fixtures" / "interval" / "main25_interval.json").read_text(encoding="utf-8"))
 STEP = {s["line"]: s for s in FIX["steps"]}

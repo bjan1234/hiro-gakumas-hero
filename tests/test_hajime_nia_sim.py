@@ -2,9 +2,9 @@
 
 数字的出处见 docs/hajime-nia-mechanics.md。"""
 
-import pytest
-
 import hiro.sim  # noqa: F401  把 vendor/gakumas-player 放进 sys.path
+
+import pytest
 
 pytestmark = pytest.mark.sim_master
 

@@ -2,9 +2,9 @@
 
 import json
 
-import pytest
-
 from hiro.brain import guides
+
+import pytest
 
 FKTN = "i_card-fktn-3-000"
 TEBYOSHI, IMETORE, KAIKA, BASIC = "p_card-02-act-1_003", "p_card-02-men-2_008", "p_card-02-act-3_038", "p_card-00-act-0_001"

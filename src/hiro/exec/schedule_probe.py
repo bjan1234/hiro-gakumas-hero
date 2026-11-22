@@ -11,16 +11,15 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import time
 from collections.abc import Callable
 
-import numpy as np
-
-import logging
-
 from hiro.devices.active import sleep as _sleep
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 

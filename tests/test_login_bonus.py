@@ -5,16 +5,15 @@ import pytest
 
 pytest.importorskip("kaa")  # 操作层：要装 KAA / kotonebot（pip install -e ".[play]"）
 
+import importlib.util as _iu
 from pathlib import Path
+from pathlib import Path as _P
 from types import SimpleNamespace as NS
-
-import cv2
 
 from hiro.loop.resume import REWARD_TAP, reward_tap
 from hiro.produce.ops import ocr_boxes
 
-import importlib.util as _iu
-from pathlib import Path as _P
+import cv2
 
 
 def _real(*rel):

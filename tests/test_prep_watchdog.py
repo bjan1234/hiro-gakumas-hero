@@ -4,11 +4,11 @@
 
 from types import SimpleNamespace as NS
 
-import pytest
-
 from hiro.loop import kaa_patches, repeat_guard
 from hiro.loop.repeat_guard import Guard, Stalled, watchdog
 from hiro.produce import rental
+
+import pytest
 
 
 class Clock:

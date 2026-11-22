@@ -8,9 +8,9 @@ FIX = Path(__file__).parent / "fixtures" / "tower" / "pages"
 
 
 def _hit(name):
-    import cv2
-
     from hiro.vision.classify import classify
+
+    import cv2
 
     path = FIX / name
     if not path.exists():
@@ -81,9 +81,9 @@ def test_failed_ranking_page():
 
 
 def test_exam_over_on_ranking_not_in_exam():
-    import cv2
-
     from hiro.runtime.tower_play import exam_over
+
+    import cv2
 
     for name in ("60_failed_ranking.png", "40_after_r1_stop.png", "09_result.png"):
         if not (FIX / name).exists():

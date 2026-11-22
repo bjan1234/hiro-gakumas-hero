@@ -219,7 +219,7 @@ def jobs_dir(home: Path) -> Path:
 
 
 class Job:
-    def __init__(self, home: Path, kind: Kind, params: dict, on_exit: Callable[["Job"], None] | None = None,
+    def __init__(self, home: Path, kind: Kind, params: dict, on_exit: Callable[[Job], None] | None = None,
                  llm_env: dict | None = None):
         self.id = time.strftime("%Y%m%d-%H%M%S-") + secrets.token_hex(2)
         llm = {k: str(v) for k, v in (llm_env or {}).items() if k in LLM_VARS and v}

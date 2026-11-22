@@ -162,7 +162,7 @@ def _rank_check(seq: int, f: dict, prev_exam: dict, same: bool) -> list[Check]:
     me, rank, npcs = f.get("score"), f.get("my_rank_index"), f.get("npc_scores")
     if me is None or rank is None or not npcs or any(v is None for v in npcs):
         return []
-    if any(a < b for a, b in zip(npcs, npcs[1:], strict=False)):
+    if any(a < b for a, b in zip(npcs, npcs[1:], strict=False)):  # noqa: RUF007
         return [_check(seq, "exam.npc_scores", "按名次不增", npcs, "read_error", "rank_consistency", "对手分数顺序与名次矛盾")]
     above = npcs[: rank - 1]
     below = npcs[rank - 1 :]

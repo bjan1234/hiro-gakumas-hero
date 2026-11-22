@@ -1,11 +1,11 @@
 """选行动页的日程和页面对不上时不停机（DMM own 测试局第三次停机）：页头「選抜試験1まで」读偏 → step 停在前一天（授業日），
 用旧 step 的日程找课程 KeyError、重读 3 次后 unhandled。现在：附近找得到对得上的一步就按它预览，找不到按页面选项兜底；都记 fallback。"""
 
-import pytest
-
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import ActionKind, GameState
+
+import pytest
 
 pytestmark = pytest.mark.master
 

@@ -1,15 +1,15 @@
 # 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """用户规则 3a / 3f：KAA 的每个策略钩子都由 HiroHifStrategy 自己接管；没接管 / 读不出 / 决策不合法时停下（UnhandledPage），不落到 KAA 默认的 commit(0)。"""
 
-from hiro.vision.ocr import Box, Text
 import inspect
-
-import pytest
 
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import Action, ActionKind, Decision, ExecutionResult, GameState
 from hiro.produce.hif import HiroHifStrategy, UnhandledPage
+from hiro.vision.ocr import Box, Text
+
+import pytest
 
 
 def _kaa_hooks() -> set[str]:
@@ -114,9 +114,9 @@ def test_unknown_screen_stops_after_limit(monkeypatch):
     """画面持续认不出超过 UNKNOWN_STOP_AFTER：调 strategy._stop（停下报警），不无限空转。"""
     import time as _time
 
-    from kaa.tasks.produce.new.consts import Scene, SceneType
-
     from hiro.loop.controller import HiroController
+
+    from kaa.tasks.produce.new.consts import Scene, SceneType
 
     c = HiroController.__new__(HiroController)
     c._texts = ["?"]
@@ -285,11 +285,11 @@ def test_live_landscape_skips_page_checks(monkeypatch):
     """第三十一局：横屏 LIVE 期间主循环不跑快速判页 / KAA 判页（KAA 拿竖屏 rect 裁 1280x720，每 2s 报错），记一次进展后等。"""
     import time as _time
 
-    import kotonebot
-    import numpy as np
-
     from hiro.loop.controller import HiroController
     from hiro.loop.repeat_guard import Guard
+
+    import kotonebot
+    import numpy as np
 
     live = np.zeros((720, 1280, 3), np.uint8)
     live[200:500, 300:900] = 120
@@ -311,11 +311,11 @@ def test_live_tick_taps_start_and_warns_when_still(monkeypatch):
     """横屏帧：每 2s OCR 一次，认到 TAP TO START 就点；同一画面 60s 不变报一次警。"""
     import time as _time
 
-    import kotonebot
-    import numpy as np
-
     import hiro.produce.ops as ops
     from hiro.loop.controller import HiroController
+
+    import kotonebot
+    import numpy as np
 
     t = [0.0]
     clicks, notes = [], []

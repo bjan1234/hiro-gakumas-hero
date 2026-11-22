@@ -156,7 +156,7 @@ class ClaudeCLI:
         ]  # fmt: skip
         t0 = time.monotonic()
         # 实机 2026-10-31 12:36–12:39：连续 exit 1（stdout 是 output_tokens=0 的空结果），偶发故障重试一次即可
-        for attempt in range(1 + self.retries):
+        for _attempt in range(1 + self.retries):
             try:
                 proc = subprocess.run(cmd, capture_output=True, text=True, timeout=self.timeout, env=env, cwd=self.cwd)
             except subprocess.TimeoutExpired:

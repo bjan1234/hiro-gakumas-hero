@@ -11,14 +11,12 @@
 
 from __future__ import annotations
 
-from hiro.vision.textnorm import contains
-
+import logging
 import time
 from collections.abc import Callable
 
-import logging
-
 from hiro.loop.date_change import DateChanged
+from hiro.vision.textnorm import contains
 
 logger = logging.getLogger(__name__)
 

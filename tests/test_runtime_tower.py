@@ -2,10 +2,10 @@
 
 from types import SimpleNamespace as NS
 
+from hiro.runtime import guard, tower
+
 import numpy as np
 import pytest
-
-from hiro.runtime import guard, tower
 
 
 def layers(*stars, locked_from=None):

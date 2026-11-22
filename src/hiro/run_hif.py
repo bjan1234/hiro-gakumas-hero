@@ -14,18 +14,15 @@ reports/runs/<名>.json（度量：考试内截图→点击中位耗时、LLM �
 """
 
 import argparse
-import os
 import importlib
 import json
 import logging
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
 import hiro  # noqa: F401  兼容层
-from kaa.config.const import HifScenario
-from kotonebot.backend.context import init_context, manual_context
-
 from hiro.contracts import TraceWriter
 from hiro.device import connect
 from hiro.kaa_env import init_kaa
@@ -33,6 +30,9 @@ from hiro.loop import manifest as manifest_mod
 from hiro.loop.controller import HiroController
 from hiro.loop.report import markdown, report
 from hiro.loop.session import Session
+
+from kaa.config.const import HifScenario
+from kotonebot.backend.context import init_context, manual_context
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,8 @@ def _supervised_resume(scenario, idol, session, Strategy=None) -> None:
     import time
 
     from hiro.loop.date_change import DateChanged
-    from hiro.loop.resume import ResumeBlocked, run as resume_run
+    from hiro.loop.resume import ResumeBlocked
+    from hiro.loop.resume import run as resume_run
 
     attempt = date_changes = relaunches = 0
     while True:
@@ -99,11 +100,11 @@ def _supervised_resume(scenario, idol, session, Strategy=None) -> None:
 def _refill_ap(scenario) -> bool:
     """AP 不足：在培育页重新点 H.I.F 按钮弹出「AP不足」，交 hiro.loop.ap_refill（只喝 APドリンク，确认框有ジュエル就取消）。
     只打选拔时本战还要 20 AP，一起补上。"""
-    from kotonebot import device
-
     from hiro.loop import ap_refill
     from hiro.produce.ops import ocr_boxes
     from hiro.vision.ui_templates import tap
+
+    from kotonebot import device
 
     btn = "Produce.ButtonHifMain" if scenario == HifScenario.MAIN else "Produce.ButtonHifQualify"
     mode = "main" if scenario == HifScenario.MAIN else "qualify"
@@ -150,11 +151,11 @@ def _relaunch_game(session) -> bool:
 
 def _recover_date_change(session, note: str | None = "游戏日切换「日付変更」：回首页后续跑") -> bool:
     """日期切换：タイトルへ → TAP TO START → 登录奖励 → 首页。"""
-    from kaa.tasks.actions.scenes import at_home
-    from kotonebot import device
-
     from hiro.loop.date_change import recover_to_home
     from hiro.produce.ops import ocr_boxes
+
+    from kaa.tasks.actions.scenes import at_home
+    from kotonebot import device
 
     if note:
         session.recover("date_change", note)
@@ -305,10 +306,10 @@ def main():
     kaa_patches.EXPECT_MEMORY = tuple(v.strip() for v in args.expect_memory.split(",") if v.strip())
     kaa_patches.apply()
     # 日期切换看守：挂到 kotonebot 每个 Loop 的每一轮（任何卡在 KAA 循环里的流程都会被 DateChanged 打出来）
-    from kotonebot.config.config import conf as kb_conf
-
     from hiro.loop.date_change import loop_callback
     from hiro.produce.ops import ocr_boxes
+
+    from kotonebot.config.config import conf as kb_conf
 
     kb_conf().loop.loop_callbacks.append(loop_callback(ocr_boxes))
     from hiro.loop.repeat_guard import watchdog
@@ -335,7 +336,6 @@ def main():
             from hiro.loop.resume import ResumeBlocked, finish_produce_end, guard_new
 
             from kaa.tasks.actions.scenes import at_home
-
             from kotonebot import device as _dev
 
             _dev.screenshot()

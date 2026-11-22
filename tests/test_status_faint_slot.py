@@ -4,11 +4,11 @@ DMM qualifydmmw1-r1 #133–135：第 2 格是饮料效果的茶杯（底色很�
 
 from pathlib import Path
 
-import cv2
-import pytest
-
 from hiro.vision import status
 from hiro.vision.offline import load
+
+import cv2
+import pytest
 
 FIX = Path(__file__).parent / "fixtures" / "exam" / "status"
 

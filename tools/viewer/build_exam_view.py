@@ -163,7 +163,7 @@ def build(base: str, traces: Path) -> dict:
     exams: list[dict] = []
     cur: dict | None = None
     prev_rem = None
-    pending_result: dict | None = None
+    pending_result: dict | None = None  # noqa: F841
     thumbs: dict = {}
     for seg in _segments(traces, base):
         for line in (seg / "steps.jsonl").open(encoding="utf-8"):

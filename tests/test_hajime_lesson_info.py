@@ -4,10 +4,10 @@
 from pathlib import Path
 from types import SimpleNamespace as NS
 
+from hiro.contracts import Action, Decision
+
 import cv2
 import pytest
-
-from hiro.contracts import Action, Decision
 
 FIXP = Path(__file__).with_name("fixtures") / "pages"
 IDOL = "i_card-shro-3-007"  # 广（plan2）
@@ -108,10 +108,10 @@ def test_exam_session_has_lesson_field():
 
 # ---------------------------------------------------------------- 相談開始確認（P 少）
 def _rt(last, produce=None):
+    from hiro.contracts import GameState
+
     from test_runtime import frame as fake_frame
     from test_runtime import runtime
-
-    from hiro.contracts import GameState
 
     rt, _ = runtime([fake_frame()])
     rt.session = NS(last_decision=last, state=GameState(produce=produce))
@@ -244,11 +244,11 @@ def test_lesson_from_trace(tmp_path):
 
 @pytest.mark.parametrize(("ocr_text", "tpl", "want"), [("11", 1, 11), ("19", 6, 6), ("12", None, 12), ("6", 6, 6), ("2+1", 2, 3)])
 def test_lesson_turns_two_digit_cross_check(monkeypatch, ocr_text, tpl, want):
-    import numpy as np
-
     import hiro.exec.exam as ex
     import hiro.vision.ocr as ocr_mod
     from hiro.vision import hajime as hv
+
+    import numpy as np
 
     monkeypatch.setattr(ocr_mod, "ocr", lambda img, scale=2: [(ocr_text, 1.0)])
     monkeypatch.setattr(ex, "_hud_int", lambda img, a, b: tpl)

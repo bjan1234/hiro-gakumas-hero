@@ -50,23 +50,23 @@ def bonus_permils(b) -> dict:
 
 
 def _master():
-    from gakumas_exam.master import shared
-
     import hiro.sim  # noqa: F401  引擎路径
     from hiro.sim.engine import master_commit
+
+    from gakumas_exam.master import shared
 
     return shared(master_commit())
 
 
 def exam_env(lo: dict, seed: int, *, guid_prefix: str = "card-exam"):
     """编成 → 我们的引擎对局（FidelityBattle，Rust 后端时是 NativeBattle，.rx 是 gakumas_exam_rs.Exam）。"""
-    from gakumas_exam.battle import FidelityBattle, _native
-    from gakumas_exam.cards import ExamCard
-    from gakumas_exam.setup import new_exam
-
     import hiro.sim  # noqa: F401
     from hiro.bench_bridge.advisor import _customize_ids
     from hiro.search.loadout import parse_deck_entry
+
+    from gakumas_exam.battle import FidelityBattle, _native
+    from gakumas_exam.cards import ExamCard
+    from gakumas_exam.setup import new_exam
 
     m = _master()
     cz = _customize_ids()
@@ -168,10 +168,10 @@ def audition_row(idol_card_id: str, produce_id: str, round_key: str, number: int
 def turn_weights(lo: dict) -> dict | None:
     """这场考试三属性回合的权重 {1: Vo, 2: Da, 3: Vi}（主数据 ProduceExamBattleConfig.vocal / dance / visual）；查不到 None。"""
     try:
-        from gakumas_exam.master import shared
-
         import hiro.sim  # noqa: F401  引擎路径
         from hiro.sim.engine import master_commit
+
+        from gakumas_exam.master import shared
 
         cid = (lo.get("exam") or {}).get("produce_exam_battle_config_id")
         cfg = next((r for r in shared(master_commit()).table("ProduceExamBattleConfig") if r["id"] == cid), None) if cid else None

@@ -2,12 +2,12 @@
 
 from pathlib import Path
 
-import cv2
-import pytest
-
 import hiro  # noqa: F401
 from hiro.contracts import Action, ActionKind
 from hiro.produce import ops, shop
+
+import cv2
+import pytest
 
 shop_ocr = ops.ocr_boxes
 

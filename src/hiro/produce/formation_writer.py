@@ -17,10 +17,9 @@
 from __future__ import annotations
 
 import json
-
 import logging
-from dataclasses import dataclass, field
-from typing import Callable
+from collections.abc import Callable
+from dataclasses import dataclass, field  # noqa: F401
 
 from hiro.devices.active import sleep as _sleep
 
@@ -62,7 +61,7 @@ class Device:
 
     def snap(self, img, tag: str) -> None:
         if self.calib is not None and img is not None:
-            try:
+            try:  # noqa: SIM105
                 self.calib(img, tag)
             except Exception:  # noqa: BLE001  存帧失败不影响流程
                 pass

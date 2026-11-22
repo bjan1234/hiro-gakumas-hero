@@ -1,10 +1,11 @@
 """决策-08：删卡 / 强化 / 報酬スキップ 确认 / 兜底不选第 0 项。"""
 
 import hiro.sim  # noqa: F401  gakumas-player 路径
-import pytest
 from hiro.brain.deciders import ProduceDeciders, action_key
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import ActionKind, GameState
+
+import pytest
 
 DAY, TODOITE, EUREKA, SLEEP, HIGH, BASIC, YUME, EIEI = ("p_card-02-act-1_037", "p_card-02-act-3_039", "p_card-02-ido-3_105", "p_card-00-acc-0_002",
                                                         "p_card-00-men-2_014", "p_card-02-act-0_037", "p_card-02-men-3_040", "p_card-02-men-1_031")  # fmt: skip

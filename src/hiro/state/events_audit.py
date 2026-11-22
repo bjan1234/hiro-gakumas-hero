@@ -59,7 +59,7 @@ def audit(trace_dirs: list[Path], until: int | None = 6) -> dict:
     for t in trace_dirs:
         steps = _steps(t)
         acts = [i for i, s in enumerate(steps) if s["state"]["page"]["name"] == "ACTION_SELECT" and (s.get("decision") or {}).get("action", {}).get("kind") == "ProduceNext"]
-        for a, b in zip(acts, acts[1:] + [None]):
+        for a, b in zip(acts, acts[1:] + [None]):  # noqa: B007
             s = steps[a]
             prod = dict(s["state"].get("produce") or {})
             if not prod.get("step") or (until is not None and prod["step"] > until) or prod.get("mode") not in (None, "produce-007"):

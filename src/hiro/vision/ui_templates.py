@@ -18,9 +18,9 @@ from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
 
-import numpy as np
-
 from hiro.vision.ocr import Box, Point
+
+import numpy as np
 
 PACK = Path(__file__).resolve().parents[3] / "assets" / "pack" / "ui"
 SIZE = (720, 1280)  # 模板和坐标的基准分辨率（宽, 高）

@@ -4,18 +4,17 @@ import pytest
 
 pytest.importorskip("kotonebot")  # 操作层：要装 KAA / kotonebot（pip install -e ".[play]"）
 
+import importlib.util as _iu
 from pathlib import Path
-
-import cv2
-import numpy as np
-import pytest
+from pathlib import Path as _P
 
 import hiro  # noqa: F401
 from hiro.loop import date_change as dc
 from hiro.produce import ops
 
-import importlib.util as _iu
-from pathlib import Path as _P
+import cv2
+import numpy as np
+import pytest
 
 
 def _real(*rel):
@@ -115,9 +114,9 @@ def test_recover_waits_on_purchase_screen_without_close():
 
 def test_landscape_frame_skipped_no_crash():
     """q14：LIVE 横屏帧（720x1280 宽 > 高）切空图 OCR 抛 cv2.error，主循环连崩。横屏直接跳过。"""
-    import numpy as np
-
     from hiro.loop import date_change as dc
+
+    import numpy as np
 
     called = []
     img = np.zeros((720, 1280, 3), np.uint8)

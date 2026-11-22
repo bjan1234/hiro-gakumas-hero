@@ -4,13 +4,13 @@ import os
 import subprocess
 import sys
 
-import numpy as np
-import pytest
-
 from hiro.loop.errors import ResumeBlocked
-from hiro.runtime import Frame, Runtime, UNKNOWN, nav, opening
+from hiro.runtime import UNKNOWN, Frame, Runtime, nav, opening
 from hiro.vision.ocr import Box, Text
 from hiro.vision.ui_templates import Match
+
+import numpy as np
+import pytest
 
 
 class FakeDevice:
@@ -224,7 +224,7 @@ def _step2(monkeypatch, *, enabled_after_pick=True, picked=True, mismatch=False)
 
 
 def test_step2_full_formation_goes_next(monkeypatch):
-    calls, state = _step2(monkeypatch)
+    calls, _state = _step2(monkeypatch)
     s2 = frame({"Produce.TextStepIndicator2": (1, 1)})
     s2.lit = True
     rt, _ = rig(monkeypatch, [s2], on_tap=lambda taps: [frame({"Produce.TextStepIndicator3": (1, 1)})])
@@ -233,7 +233,7 @@ def test_step2_full_formation_goes_next(monkeypatch):
 
 
 def test_step2_rents_when_slot_empty(monkeypatch):
-    calls, state = _step2(monkeypatch)
+    calls, _state = _step2(monkeypatch)
     rt, _ = rig(monkeypatch, [frame({"Produce.TextStepIndicator2": (1, 1)})], on_tap=lambda taps: [frame({"Produce.TextStepIndicator3": (1, 1)})])
     opening.step2(rt, set_no=4, rental_attr="Vi")
     assert calls["pick"] == ["Vi"] and rt.raw_device.taps == [(500, 1150)]
@@ -310,7 +310,8 @@ def test_prepare_main_skips_formation_steps(monkeypatch):
 
 def _memory_unset_rig(monkeypatch, chosen):
     from hiro.produce import formation_steps, prep_steps
-    from hiro.vision.ocr import Box as OBox, Text
+    from hiro.vision.ocr import Box as OBox
+    from hiro.vision.ocr import Text
 
     monkeypatch.setattr(prep_steps, "select_set", lambda n, **kw: True)
     monkeypatch.setattr(formation_steps, "check_memory_set", lambda img, plan, n, **kw: None)
@@ -338,7 +339,8 @@ def test_step3_memory_unset_cancel_and_stop_when_plan_wants_four(monkeypatch):
 
 
 def _texts(*items):
-    from hiro.vision.ocr import Box as OBox, Text
+    from hiro.vision.ocr import Box as OBox
+    from hiro.vision.ocr import Text
 
     return [Text(t, OBox(x - 40, y - 15, x + 40, y + 15)) for t, x, y in items]
 
@@ -409,9 +411,9 @@ def test_finals_start_ocr_variants():
                                         ("finals/start-confirm-540.png", True), ("settings/start-confirm-m23.png", False)])
 def test_finals_start_on_real_frames(name, want):
     """实机开始确认页：本战（H.I.F本戦へ）认得出；选拔第 2 步的「プロデュース開始」不算。只用模板（不 OCR）。"""
-    import cv2
-
     from hiro.vision.offline import load
+
+    import cv2
 
     path = os.path.join(os.environ.get("HIRO_FIXTURES", os.path.join(os.path.dirname(__file__), "fixtures")), name)
     if not os.path.exists(path):
@@ -463,7 +465,7 @@ def test_on_start_confirm_real_frames(name, want):
 
 
 def test_on_start_confirm_not_qualify_step4(monkeypatch):
-    rt, _ = rig(monkeypatch, [frame({})])
+    _rt, _ = rig(monkeypatch, [frame({})])
     q = frame({"Produce.TextStepIndicator4Or2": (123, 49)}, _texts(("4.開始確認", 111, 49)))
     assert opening.on_start_confirm(q) is False
 

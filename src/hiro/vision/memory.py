@@ -72,7 +72,7 @@ def read_card_page(img: MatLike, boxes) -> dict:
 
     texts = [(_norm(t), b) for t, b in boxes if PANEL_Y[0] <= _cy(b) <= PANEL_Y[1]]
     timing = next(("start" if "開始時" in t else "mid" for t, _ in texts if "獲得" in t and ("開始時" in t or "後に" in t)), None)
-    x1, y1, x2, y2 = CARD_NAME_BOX
+    x1, y1, _x2, y2 = CARD_NAME_BOX
     name = "".join(t for t, b in texts if y1 <= _cy(b) <= y2 and b[0] >= x1)
     card = card_from_name(name) if name else None
     plan = next((v for t, _ in texts if "のみ" in t for k, v in PLAN.items() if k in t), None)

@@ -20,10 +20,10 @@ REREAD = {"ACTION_SELECT", "SELECT_CARD", "SELECT_DRINK", "HIF_EXAM", "HIF_EXAM_
 
 
 def _reread(scene: str, path: Path) -> dict | None:
-    import cv2
-
     from hiro.vision.extract import extract
     from hiro.vision.offline import load
+
+    import cv2
 
     raw = cv2.imread(str(path))
     if raw is None:  # 帧文件已删除：保留 manifest 里的原值
@@ -35,10 +35,10 @@ def _reread(scene: str, path: Path) -> dict | None:
 
 def _reclassify(path: Path) -> str | None:
     """用当前的 hiro.vision.scene 重判页面（manifest 里是采集时的旧标签）。图不在就返回 None。"""
-    import cv2
-
     from hiro.vision.offline import load
     from hiro.vision.scene import classify_current
+
+    import cv2
 
     raw = cv2.imread(str(path))
     if raw is None:
@@ -49,7 +49,7 @@ def _reclassify(path: Path) -> str | None:
 
 def from_manifest(dataset: Path, *, reread: bool = False, force: bool = False, reclassify: bool = False, limit: int | None = None):
     """reread：只重读 fields 缺失或报错的帧；force：图片还在就全部重读；reclassify：先用当前分类器重判页面。"""
-    rows = [json.loads(l) for l in (dataset / "manifest.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+    rows = [json.loads(l) for l in (dataset / "manifest.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]  # noqa: E741
     if limit:
         rows = rows[:limit]
     prev = None
@@ -61,9 +61,7 @@ def from_manifest(dataset: Path, *, reread: bool = False, force: bool = False, r
         stable = stable + 1 if scene == prev else 1
         prev = scene
         raw = r.get("fields") if scene == (r.get("scene") or "unknown") else None
-        if force and scene in FIELD_ADAPTERS:
-            raw = _reread(scene, dataset / r["file"]) or raw
-        elif reread and scene in REREAD and scene in FIELD_ADAPTERS and (raw is None or "error" in raw):
+        if (force and scene in FIELD_ADAPTERS) or (reread and scene in REREAD and scene in FIELD_ADAPTERS and (raw is None or "error" in raw)):
             raw = _reread(scene, dataset / r["file"]) or raw
         yield observation(
             r["seq"], r["t"], scene, raw, area=r.get("area", "unknown"), screenshot=r["file"], source="dataset", stable_frames=stable,

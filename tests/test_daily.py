@@ -4,9 +4,6 @@ import os
 import subprocess
 import sys
 
-import numpy as np
-import pytest
-
 from hiro.daily import (
     TASKS,
     Deadline,
@@ -22,6 +19,9 @@ from hiro.daily import (
 from hiro.runtime import Frame, nav
 from hiro.vision.ocr import Box
 from hiro.vision.ui_templates import Match, box, point
+
+import numpy as np
+import pytest
 
 HOME = {"Daily.ButtonHomeCurrent": (359, 1155)}
 

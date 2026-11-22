@@ -3,8 +3,6 @@
 刷出 ブースト 就买；空位满了 / P 到了需要量 / 估值不划算就停。动作名和执行 23e6965 对齐。"""
 
 import copy
-
-import pytest
 import json
 from pathlib import Path
 
@@ -13,6 +11,8 @@ from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import ActionKind, GameState
 from hiro.sim import interval as iv
+
+import pytest
 
 FIX = json.loads((Path(__file__).parent / "fixtures" / "q16_resource.json").read_text(encoding="utf-8"))["main17_interval"]
 GOOD = {"pdrink_02-3-010": 30000, "pdrink_00-2-008": 25000, "pdrink_00-2-010": 20000, "pdrink_00-3-001": 15000}  # 复制 / 爆发 / 抽牌 / 加行动

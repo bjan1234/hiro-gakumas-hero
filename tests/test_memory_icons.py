@@ -2,13 +2,13 @@
 
 from pathlib import Path
 
-import cv2
-import numpy as np
-import pytest
-
 from hiro.produce.formation_check import check_memory_cards
 from hiro.vision import memory_icons
 from hiro.vision.memory_icons import DETAIL_ICON, card_key, read_icon, read_step3_icons
+
+import cv2
+import numpy as np
+import pytest
 
 FIX = Path(__file__).with_name("fixtures")
 STEP3 = FIX / "support" / "step3-memory.jpg"

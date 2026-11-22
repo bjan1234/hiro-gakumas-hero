@@ -220,9 +220,9 @@ class PublicAssetSource:
 
             if not _sim_ready():
                 return None
+            from gakumas_exam.catalog import Catalog
             from gakumas_produce import multiplier
             from gakumas_produce.attributes import assessment, hif_preview
-            from gakumas_exam.catalog import Catalog
         except Exception:  # noqa: BLE001  引擎导入失败
             return None
         import threading

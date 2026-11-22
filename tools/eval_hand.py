@@ -9,12 +9,12 @@ import time
 from collections import Counter
 from pathlib import Path
 
-import cv2
-import numpy as np
-
 import hiro  # noqa: F401
 from hiro.vision.hif import read_hand
 from hiro.vision.offline import load
+
+import cv2
+import numpy as np
 
 
 def main():

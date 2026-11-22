@@ -3,13 +3,13 @@
 import json
 from pathlib import Path
 
-import cv2
-import pytest
-
 import hiro  # noqa: F401
 from hiro.vision import assets
 from hiro.vision.hif import is_hif_exam, read_hif_exam
 from hiro.vision.offline import load
+
+import cv2
+import pytest
 
 FIX = Path(__file__).with_name("fixtures") / "hif_hud"
 
@@ -134,7 +134,7 @@ def test_multiplier_occluded_first_digit():
         a = _parse_attr("".join(t for t, _ in ocr(_attr_crop(img))))
         return _vote_multiplier(img, a["multiplier_pct"], None, a["attr"])
 
-    v, votes = read(occluded)
+    v, _votes = read(occluded)
     assert v in (None, 1481) and 7481 not in ([v] if v else [])  # 没有记忆时不猜（两种读法一致时也只能是 1481）
     assert read(clear)[0] == 1481
     assert read(occluded)[0] == 1481

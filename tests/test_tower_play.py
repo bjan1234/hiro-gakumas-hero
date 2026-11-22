@@ -5,13 +5,13 @@ import json
 from pathlib import Path
 from types import SimpleNamespace as NS
 
-import pytest
-
 from hiro.contracts import Action, ActionKind, Decision
 from hiro.loop.errors import ResumeBlocked
 from hiro.runtime import tower_play as tp
 from hiro.runtime.loop import DONE
 from hiro.runtime.tower import TowerRun
+
+import pytest
 
 
 def _rt():
@@ -170,7 +170,7 @@ def _drive(p, game, ticks=60):
 def test_layers_three_stars_moves_up_to_frontier(tmp_path):
     """g7 11-17：打完 17 层回到层选择页，居中 17 层已三星，原来直接停。现在往上滑到最前沿 18 层（没三星）打。"""
     p = _play(tmp_path)
-    game = FakeLayers({n: (3, False) for n in range(1, 18)} | {18: (0, False), 19: (0, True), 20: (0, True)}, 17)
+    game = FakeLayers(dict.fromkeys(range(1, 18), (3, False)) | {18: (0, False), 19: (0, True), 20: (0, True)}, 17)
     assert _drive(p, game) == 18 and p.layer == 18 and game.swipes[0][1] > game.swipes[0][0]  # 往下拖 = 看更高的层
 
 
@@ -178,20 +178,20 @@ def test_layers_frontier_locked_goes_down_to_first_not_three_star(tmp_path):
     """最前沿锁着（要攒星）、上面没得打：往下找没三星的层（14 层 1 星）。跳过今天次数用完的 15 层。"""
     p = _play(tmp_path)
     p.run.tries[15] = 3
-    game = FakeLayers({n: (3, False) for n in range(1, 14)} | {14: (1, False), 15: (2, False), 16: (0, True), 17: (0, True)}, 16, px_per_layer=260)
+    game = FakeLayers(dict.fromkeys(range(1, 14), (3, False)) | {14: (1, False), 15: (2, False), 16: (0, True), 17: (0, True)}, 16, px_per_layer=260)
     assert _drive(p, game) == 14
 
 
 def test_layers_overshoot_and_calibration(tmp_path):
     """滑一下挪了两层（每层间距比初值小）：越过的层回头补看，不漏掉。"""
     p = _play(tmp_path)
-    game = FakeLayers({n: (3, False) for n in range(1, 18)} | {18: (2, False), 19: (0, True), 20: (0, True), 21: (0, True)}, 17, px_per_layer=80)
+    game = FakeLayers(dict.fromkeys(range(1, 18), (3, False)) | {18: (2, False), 19: (0, True), 20: (0, True), 21: (0, True)}, 17, px_per_layer=80)
     assert _drive(p, game) == 18
 
 
 def test_layers_nothing_to_play_stops(tmp_path):
     p = _play(tmp_path)
-    game = FakeLayers({n: (3, False) for n in range(1, 6)} | {6: (0, True), 7: (0, True)}, 5)
+    game = FakeLayers(dict.fromkeys(range(1, 6), (3, False)) | {6: (0, True), 7: (0, True)}, 5)
     with pytest.raises(ResumeBlocked, match="没有能打的层"):
         _drive(p, game)
     assert game.taps == []
@@ -200,7 +200,7 @@ def test_layers_nothing_to_play_stops(tmp_path):
 def test_layers_without_challenge_button_waits_one_frame(tmp_path):
     """居中的层没有「挑戦する」：第一帧先等（按钮可能还没出来），第二帧才当锁着往回滑。"""
     p = _play(tmp_path)
-    rt, taps = _rt()
+    rt, _taps = _rt()
     hit = NS(fields={"idol": "月村手毬", "stage": 19, "stars": 0, "locked": True, "challenge": None})
     assert p.on_layers(rt, None, hit) is tp.STAY
 
@@ -321,9 +321,9 @@ def test_retry_confirm_fading_frame_classified():
     """实机那一帧（OK 刚点下去）：读得出来就是确认框；读不全也只会 STAY（见上）。这里只核判页不出错。"""
     import os
 
-    import cv2
-
     from hiro.vision.classify import classify
+
+    import cv2
 
     path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "tower" / "pages" / "retry-confirm-ok-tapped-g5c.jpg"
     if not path.exists():

@@ -1,12 +1,12 @@
 """录屏一停就暂停对局（hiro.loop.pause_flag）：旗标出现 → 暂停、消失 → 恢复；开局前等录屏；暂停期间看门狗 / 收尾超时不计时。"""
 
 
-import numpy as np
-import pytest
+import importlib.util as _kiu
 
 from hiro.loop import pause_flag as rp
 
-import importlib.util as _kiu
+import numpy as np
+import pytest
 
 NEED_KAA = pytest.mark.skipif(_kiu.find_spec("kotonebot") is None or _kiu.find_spec("kaa") is None,
                               reason="操作层：要装 KAA / kotonebot（pip install -e \".[play]\"）")
@@ -155,6 +155,7 @@ def test_real_flow_controller_blocks_checkpoint(tmp_path):
     import time as _t
 
     import hiro  # noqa: F401
+
     from kotonebot.backend.context import FlowController
 
     flow, flag = FlowController(), tmp_path / "REC_DOWN"

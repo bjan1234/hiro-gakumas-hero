@@ -2,10 +2,10 @@
 
 from types import SimpleNamespace as NS
 
-import numpy as np
-
 from hiro.runtime import play, scenes
 from hiro.vision.ocr import Box, Text
+
+import numpy as np
 
 
 def T(text, x, y):
@@ -77,7 +77,7 @@ def test_run_hif_own_branch_skips_kaa_init(monkeypatch, tmp_path):
     called = {}
     monkeypatch.setattr(rh, "init_kaa", lambda *a, **k: called.setdefault("init_kaa", True))
     monkeypatch.setattr("hiro.runtime.play.run", lambda args, session: called.setdefault("play", args.command) and 0)
-    monkeypatch.setattr(rh.manifest_mod, "collect", lambda: NS(problems=[], to_dict=lambda: {}, exam_state_source="x", exam_advisor="y"))
+    monkeypatch.setattr(rh.manifest_mod, "collect", lambda: NS(problems=[], to_dict=dict, exam_state_source="x", exam_advisor="y"))
     monkeypatch.setattr(rh, "_write_report", lambda trace, name: called.setdefault("report", name))
     monkeypatch.setattr(sys, "argv", ["run_hif", "resume", "--mode", "main", "--trace", "t-own"])
     assert rh.main() == 0

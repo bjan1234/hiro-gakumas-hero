@@ -223,7 +223,7 @@ def wrong_card_exam(seg: Segment) -> list[Finding]:
     - 少掉的牌在同一回合后面的帧里又出现 → 是识别漏读（手牌换了布局），不算。"""
     out = []
     battle = [st for st in seg.steps if (st.get("decision") or {}).get("decider") == "battle"]
-    for i, (a, b) in enumerate(zip(battle, battle[1:], strict=False)):
+    for i, (a, b) in enumerate(zip(battle, battle[1:], strict=False)):  # noqa: RUF007
         ex = a.get("execution") or {}
         if (ex.get("action") or {}).get("kind") != "PlayCard" or not ex.get("ok"):
             continue
@@ -354,7 +354,7 @@ def exam_reads(seg: Segment) -> list[tuple[dict, str, int, int, str]]:
         for k in EXAM_READ_FIELDS:
             if _dropped(f.get(k), sv.get(k)):
                 out.append((st, f"exam.{k}", f[k], sv[k], "和存档对比：HUD 掉位"))
-    for a, b in zip(battle, battle[1:], strict=False):
+    for a, b in zip(battle, battle[1:], strict=False):  # noqa: RUF007
         fa, fb = a["observation"]["fields"], b["observation"]["fields"]
         ra, rb = fa.get("remaining_turns"), fb.get("remaining_turns")
         la, lb = fa.get("exam_label"), fb.get("exam_label")

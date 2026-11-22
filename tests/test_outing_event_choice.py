@@ -5,10 +5,10 @@ import os
 from pathlib import Path
 from types import SimpleNamespace as NS
 
-import pytest
-
 from hiro.produce import hif
 from hiro.vision.ocr import Box, Text
+
+import pytest
 
 
 def T(text, x, y):
@@ -46,10 +46,10 @@ def test_outing_stamina_max_without_button_stops(monkeypatch):
 
 def test_outing_stamina_max_real_frame_classified_and_button_read():
     """KAA 的样例帧（in_produce/screenshot_outing_2.png）：判页 OUTING_STAMINA_MAX，「選択する」在底部右侧。"""
-    import cv2
-
     from hiro.vision.classify import classify
     from hiro.vision.ocr import screen_texts
+
+    import cv2
 
     path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "outing-stamina-max-kaa.png"
     if not path.exists():

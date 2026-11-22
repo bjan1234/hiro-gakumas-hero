@@ -1,13 +1,13 @@
 """决策点补全（总控 11-13）：规则 / 模拟拿得准的照旧直接给；拿不准的交 LLM；LLM 不可用或输出非法再兜底。
 HIRO_PRODUCE_LLM 缺省全开（用户 11-14），off 全关，写名字只开这几条。用例默认在 off 下跑（conftest），要测的自己 setenv。"""
 
-import pytest
-
 from hiro.brain import deciders as dc
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.llm import MockLLM
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import GameState
+
+import pytest
 
 pytestmark = pytest.mark.master
 
@@ -21,7 +21,7 @@ def _change2(cards, deck=None):
     if deck is not None:
         produce["deck"] = [{"card_id": c, "upgrade": 0} for c in deck]
     return GameState.from_dict({"mode": "produce", "page": {"name": "SKILL_CARD_CHANGE_2", "area": "produce"}, "produce": produce,
-                                "page_fields": {"cards": [dict(index=i, card_id=c, upgrade=0) for i, c in enumerate(cards)]}})
+                                "page_fields": {"cards": [{"index": i, "card_id": c, "upgrade": 0} for i, c in enumerate(cards)]}})
 
 
 @pytest.fixture(autouse=True)

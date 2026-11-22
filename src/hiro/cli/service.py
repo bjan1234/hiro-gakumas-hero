@@ -54,7 +54,7 @@ def _kill_orphan(pid) -> None:
     while time.monotonic() - t0 < 5 and _is_our_python(pid):
         time.sleep(0.1)
     if sys.platform != "win32" and _is_our_python(pid):
-        try:
+        try:  # noqa: SIM105
             os.kill(pid, signal.SIGKILL)
         except OSError:
             pass

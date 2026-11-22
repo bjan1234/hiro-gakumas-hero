@@ -83,7 +83,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def log_message(self, fmt, *args):  # 交给 journald，只记简短一行
-        print("%s %s" % (self.address_string(), fmt % args), flush=True)
+        print("%s %s" % (self.address_string(), fmt % args), flush=True)  # noqa: UP031
 
     def do_GET(self):
         u = urlparse(self.path)

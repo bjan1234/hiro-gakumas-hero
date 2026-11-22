@@ -50,6 +50,7 @@ def family(produce_id: str | None) -> str | None:
 def master():
     """引擎的主数据（gakumasu-diff 快照，vendor/gakumas-player）。不用 hiro.state 的 KAA game.db：那份太旧，新偶像卡查不到（8a3a1e7 11-17）。"""
     import hiro.sim  # noqa: F401  引擎路径
+
     from gakumas_exam.catalog import Catalog
 
     return Catalog()

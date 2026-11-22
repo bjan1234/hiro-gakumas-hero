@@ -8,9 +8,9 @@ import shutil
 from pathlib import Path
 from types import SimpleNamespace as NS
 
-import pytest
-
 from hiro.contracts import TraceWriter
+
+import pytest
 
 FIX = Path(__file__).parent / "data" / "g33-main-resume-steps.jsonl"  # 实机状态（trace 步骤文本），随仓库发布
 
@@ -95,7 +95,7 @@ def test_consult_rereads_when_p_missing(monkeypatch):
     h._deck_size = lambda: None
     monkeypatch.setattr(hif, "sleep", lambda s: None)
     monkeypatch.setattr("hiro.produce.shop.execute_shop", lambda *a, **k: NS(ok=True, error=None, page_after="ACTION_SELECT"))
-    try:
+    try:  # noqa: SIM105
         h.on_consult(None)
     except Exception:  # noqa: BLE001  ShopEnd 之后的收尾依赖实机，这里只看决策前有没有重读
         pass
@@ -105,11 +105,11 @@ def test_consult_rereads_when_p_missing(monkeypatch):
 def test_g33_consult_hud_reaches_produce_and_overrides_seed(tmp_path):
     """识屏 140621f：相談页也读头部体力 / P 点（只进 page_fields）；reduce 把它们当 ANY_PAGE_PRODUCE 写进 state.produce，盖过打底值。
     用第三十三局本战续跑后 seq 14 那帧（P 380、体力 13/33）。打底值先改成 999 / 1，确认是画面读数生效。"""
-    import cv2
-
     from hiro.loop.reduce import reduce
     from hiro.vision.extract import extract
     from hiro.vision.observe import observation
+
+    import cv2
 
     frame = Path(__file__).parent / "fixtures" / "shop" / "consult-main33-00014.jpg"
     if not frame.exists():

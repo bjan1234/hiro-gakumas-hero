@@ -100,10 +100,10 @@ def parse_deck_entry(s: str) -> tuple:
 
 def supports_from_plan(plan: dict) -> list[dict]:
     """开局编成方案的支援卡（自有 + 租借）→ supportCardList 项。"""
+    from hiro.sim.engine import master_commit
+
     from gakumas_exam.loadout import support_entry
     from gakumas_exam.master import shared
-
-    from hiro.sim.engine import master_commit
 
     m = shared(master_commit())
     sup = plan.get("support") or {}

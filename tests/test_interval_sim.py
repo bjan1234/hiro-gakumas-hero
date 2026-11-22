@@ -1,11 +1,11 @@
 """轮间按计算选（协调 4a 第八局本战分析 B3，用户确认）：选项、配对评估、R2 开局合成与决策器接线。"""
 
-import pytest
-
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import GameState
 from hiro.sim import interval as iv
+
+import pytest
 
 DECK = [("p_card-02-men-2_004", 1), ("p_card-02-act-3_186", 1), ("p_card-02-act-3_039", 1), ("p_card-02-act-1_037", 1),
         ("p_card-02-act-2_062", 1), ("p_card-00-men-3_005", 1), ("p_card-00-men-3_003", 0), ("p_card-02-men-2_057", 1),

@@ -21,12 +21,12 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-import cv2
-import numpy as np
-
+from hiro import imgio
 from hiro.devices.active import sleep as _sleep
 from hiro.produce.ops import find_text, ocr_boxes, roi_diff
-from hiro import imgio
+
+import cv2
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +165,7 @@ def read_card_page(boxes) -> dict:
 
     timing_text = next((t for t in _lines(boxes, 180, 215) if "獲得" in t and "獲得可能" not in t), None)
     timing = next((v for k, v in TIMING.items() if timing_text and k in timing_text), None)
-    names = [t for t in _lines(boxes, 222, 260)]
+    names = list(_lines(boxes, 222, 260))
     card = next((c for t in names for v in _name_variants(t) if (c := card_from_name(v))), None)
     if card is None and names:
         card = fuzzy_card(names[0])
@@ -285,9 +285,9 @@ class Picker:
         return img, boxes
 
     def read_selected(self) -> dict:
-        img, boxes = self.to_page(1)
+        _img, boxes = self.to_page(1)
         entry = {"stats": read_stats(boxes), **read_card_page(boxes)}
-        img2, boxes2 = self.to_page(2)
+        _img2, boxes2 = self.to_page(2)
         entry["abilities"] = read_ability_page(boxes2)
         self.to_page(1)
         return entry
@@ -618,7 +618,7 @@ def explore(picker: Picker, out_dir: Path) -> list[dict]:
     shot("detail-p2")
     picker.to_page(1)
     img, still = picker.shoot(), 0
-    for i in range(200):
+    for i in range(200):  # noqa: B007
         nxt = picker.scroll()
         still = still + 1 if grid_still(img, nxt) else 0
         img = nxt

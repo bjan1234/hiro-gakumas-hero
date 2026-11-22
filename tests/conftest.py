@@ -29,7 +29,7 @@ if not FIXTURES.exists() and os.environ.get("HIRO_FIXTURES") and Path(os.environ
 HAVE_FIXTURES = FIXTURES.is_dir() and any(FIXTURES.iterdir())  # 空目录 / 断链都算没有样例
 
 if os.environ.get("HIRO_KAA_GAME_DATA"):
-    try:  # 先把 KAA 的数据目录指过去（hiro.vision 导入时做）：别的测试模块先导入 KAA 会在当前目录建空的 resources/game_data
+    try:  # 先把 KAA 的数据目录指过去（hiro.vision 导入时做）：别的测试模块先导入 KAA 会在当前目录建空的 resources/game_data  # noqa: SIM105
         import hiro.vision  # noqa: F401
     except Exception:  # noqa: BLE001 没装识别依赖：照常收集
         pass
@@ -54,8 +54,8 @@ def _has_module(name: str) -> bool:
 
 def _kaa_ok() -> bool:
     try:
-        import kotonebot  # noqa: F401
         import kaa  # noqa: F401
+        import kotonebot  # noqa: F401
 
         return True
     except Exception:  # noqa: BLE001 没装 play 组，或 macOS 上缺 hiro.compat 的补丁
@@ -97,11 +97,7 @@ def _collect_ignore() -> list[str]:
     out = []
     for f in sorted(TESTS.glob("test_*.py")):
         top = _top_level(f.read_text(encoding="utf-8"))
-        if any(re.search(rf"^(from|import) {re.escape(m)}\b", top, re.M) and not _has_module(m) for m in OPTIONAL_LAYERS):
-            out.append(f.name)
-        elif _missing_top_files(f, top):
-            out.append(f.name)
-        elif _top_import_missing_optional(top):
+        if any(re.search(rf"^(from|import) {re.escape(m)}\b", top, re.M) and not _has_module(m) for m in OPTIONAL_LAYERS) or _missing_top_files(f, top) or _top_import_missing_optional(top):
             out.append(f.name)
     return out
 

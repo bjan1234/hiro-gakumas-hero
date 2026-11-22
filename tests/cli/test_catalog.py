@@ -46,7 +46,7 @@ def server(monkeypatch):
 
 
 def test_search_before_sync_explains(run_cli):
-    code, env = run_cli("catalog", "search", "エウレカ")
+    _code, env = run_cli("catalog", "search", "エウレカ")
     assert env["ok"] is False and env["error"]["code"] == "catalog_missing"
     assert "hiro catalog sync" in env["error"]["hint"]
 
@@ -67,9 +67,9 @@ def test_sync_then_search_and_get(run_cli, server):
 
 def test_sprite_downloads_once_and_caches(run_cli, server, hiro_home):
     run_cli("catalog", "sync")
-    code, env = run_cli("catalog", "sprite", "img_general_pitem_3-076")
+    code, env = run_cli("catalog", "sprite", "img_general_pitem_3-076")  # noqa: RUF059
     p = env["data"]["path"]
-    assert open(p, "rb").read() == b"\x89PNG fake"
+    assert open(p, "rb").read() == b"\x89PNG fake"  # noqa: SIM115
     server.shutdown()
-    code, env = run_cli("catalog", "sprite", "img_general_pitem_3-076")
+    _code, env = run_cli("catalog", "sprite", "img_general_pitem_3-076")
     assert env["ok"] and env["data"]["path"] == p

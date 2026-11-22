@@ -3,12 +3,12 @@
 import json
 from types import SimpleNamespace as NS
 
-import numpy as np
-import pytest
-
 from hiro.loop.errors import ResumeBlocked
 from hiro.runtime import nia_sample as ns
 from hiro.vision.classify import UNKNOWN, PageHit
+
+import numpy as np
+import pytest
 from test_opening import _texts, frame, rig  # 同目录（pytest 把测试目录放进 sys.path）
 
 
@@ -183,6 +183,7 @@ def test_consult_end_confirm_interrupt():
     """「相談終了確認」单独留在画面上（实机帧）：中断层点「決定」。"""
     from hiro.runtime import interrupts
     from hiro.runtime.frame import Frame
+
     from test_runtime import frame as fake_frame
     from test_runtime import runtime
 

@@ -8,10 +8,10 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace as NS
 
+from hiro.loop import skip_settings as ss
+
 import cv2
 import pytest
-
-from hiro.loop import skip_settings as ss
 
 FIX = Path(__file__).parent / "fixtures" / "first_run"  # 实机帧（不随仓库发布）
 BOXES = json.loads((Path(__file__).parent / "data" / "g33-ocr-boxes.json").read_text(encoding="utf-8"))  # 同一批帧的 OCR 框（随仓库发布）

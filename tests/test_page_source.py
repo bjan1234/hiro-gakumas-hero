@@ -30,11 +30,11 @@ class FakeSession:
 
 
 def _controller(monkeypatch, kaa_scene, *, fallback=None):
-    import kotonebot
-
     from hiro.loop import controller as ctl
     from hiro.loop import kaa_patches
     from hiro.loop.controller import HiroController
+
+    import kotonebot
 
     portrait = np.zeros((1280, 720, 3), np.uint8)
     monkeypatch.setattr(kotonebot, "device", NS(screenshot=lambda: portrait, click=lambda *a: None))
@@ -53,8 +53,8 @@ def _controller(monkeypatch, kaa_scene, *, fallback=None):
                  "_is_drink_offer", "_retry_network_error", "_skip_commu", "_first_run_settings", "_cancel_recover_dialog",
                  "_resume_special_guidance", "_record_finals_ranking", "_close_produce_log", "_is_pitem_select", "_watch_unknown"):  # fmt: skip
         setattr(c, name, lambda *a, **k: False)
-    c._ocr_boxes = lambda: []
-    c._ocr_texts = lambda: []
+    c._ocr_boxes = list
+    c._ocr_texts = list
     c._dispatch = lambda scene, last: None
     c._advance = lambda: 0
     return c, s
@@ -146,10 +146,10 @@ def test_kaa_usage_counts_outermost_kaa_calls_only(monkeypatch):
 
 
 def test_kaa_usage_install_on_real_kaa_classes():
+    from hiro.loop import kaa_usage
+
     from kaa.tasks.produce.new.page import ActionSelectContext, ProducePage, StudyContext
     from kaa.tasks.produce.new.strategies.hif_grind import HifGrindStrategy
-
-    from hiro.loop import kaa_usage
 
     kaa_usage.install()
     assert kaa_usage.install() == 0  # 第二次不重复包

@@ -203,7 +203,7 @@ def from_engine(state: dict, exam: dict, legal: Iterable, *, customize_ids=None,
     def zone(name):
         return sorted((card_spec(cards[i], customize_ids) for i in zones.get(name) or ()), key=_sort_key)
 
-    permil = dict((int(k), int(v)) for k, v in state.get("bonus_permil") or ())
+    permil = {int(k): int(v) for k, v in state.get("bonus_permil") or ()}
     st = state.get("status") or {}
     stance = STANCES.get(int(st.get("idol_type") or 0))
     turn = int(state.get("current_turn") or 1)

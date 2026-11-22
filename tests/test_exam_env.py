@@ -2,10 +2,10 @@
 
 from types import SimpleNamespace
 
-import pytest
-
 from hiro.search import exam_env as E
 from hiro.search.loadout import parse_deck_entry
+
+import pytest
 
 
 def test_bonus_permils_list_and_dict():

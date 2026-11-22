@@ -7,20 +7,20 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-import numpy as np
-
-import logging
 from hiro.loop import pause_flag
 from hiro.loop.errors import ResumeBlocked
 from hiro.runtime import interrupts as _interrupts
 from hiro.runtime.frame import Frame, Screen
 from hiro.runtime.guard import GuardedDevice
 from hiro.vision.classify import UNKNOWN, PageHit
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ class Runtime:
     raw_device: object
     classify: Callable[[object], PageHit]  # img → PageHit，纯函数（hiro.vision.classify.classify）
     handlers: dict[str, Handler] = field(default_factory=dict)
-    advance: Callable[["Runtime", Frame, PageHit], bool] = lambda rt, f, hit: False  # 没有处理器的页：安全推进，点了返回 True
+    advance: Callable[[Runtime, Frame, PageHit], bool] = lambda rt, f, hit: False  # 没有处理器的页：安全推进，点了返回 True
     session: object | None = None  # hiro.loop.session.Session；有就每拍观测
     interrupts: tuple = _interrupts.DEFAULT
     clock: Callable[[], float] = pause_flag.active_clock

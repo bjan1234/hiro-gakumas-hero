@@ -4,10 +4,10 @@
 
 from types import SimpleNamespace as NS
 
-import pytest
-
 from hiro.runtime import interrupts, play
 from hiro.runtime.frame import Frame
+
+import pytest
 from test_runtime import frame as fake_frame
 from test_runtime import runtime
 

@@ -153,10 +153,10 @@ class Sampler:
 def resume(produce_module, scenario, idol: str) -> None:
     """续跑进行中的初：hiro.loop.resume.enter_produce 进培育（破弃提示只点キャンセル 并抛 ResumeBlocked），
     再用 KAA 原版 ProduceController + StandardStrategy 接着打（同 KAA resume_produce，场景按 --difficulty，不靠再開对话框认）。"""
+    from hiro.loop.resume import enter_produce
+
     from kaa.kaa_context import clear_produce_session, init_produce_session, produce_solution
     from kaa.tasks.produce.session import ProduceSession
-
-    from hiro.loop.resume import enter_produce
 
     how = enter_produce()
     logger.info("续跑：%s（%s）", how, scenario)
@@ -181,12 +181,12 @@ def main() -> int:
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s")
 
-    from kaa.config.const import HajimeScenario
-    from kotonebot.backend.context import init_context, manual_context
-
     from hiro import kaa_env
     from hiro.device import connect
     from hiro.kaa_env import SetupMissing, init_kaa
+
+    from kaa.config.const import HajimeScenario
+    from kotonebot.backend.context import init_context, manual_context
 
     scenario = getattr(HajimeScenario, DIFFICULTY[args.difficulty])
     try:
@@ -213,9 +213,9 @@ def main() -> int:
     kaa_patches.apply()  # 破弃框只点キャンセル、编成核对、租借、不盲选第一项……（同 run_hif）
     import importlib
 
-    from kaa.tasks.actions.scenes import at_home
-
     from hiro.loop.resume import ResumeBlocked, finish_produce_end, guard_new
+
+    from kaa.tasks.actions.scenes import at_home
     from kotonebot import device as kdev
 
     produce_module = importlib.import_module("kaa.tasks.produce.produce")  # KAA 原版 ProduceController + StandardStrategy

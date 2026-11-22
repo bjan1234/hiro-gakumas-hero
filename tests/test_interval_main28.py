@@ -5,13 +5,13 @@ import copy
 import json
 from pathlib import Path
 
-import pytest
-
 import hiro.sim  # noqa: F401
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import ActionKind, GameState
 from hiro.sim import interval as iv
+
+import pytest
 
 FIX = json.loads((Path(__file__).parent / "fixtures" / "interval" / "main28_interval.json").read_text(encoding="utf-8"))
 GAINS = {k: tuple(v) for k, v in FIX["gains"].items()}

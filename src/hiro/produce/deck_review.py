@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from hiro.devices.active import sleep as _sleep
+
 from hiro import imgio
+from hiro.devices.active import sleep as _sleep
 
 CLOSE_TEXTS = ("閉じる",)
 CLOSE_TAP = (360, 1160)  # 一览底部「閉じる」（识屏：KAA OwnedSkillCardsDialog.ButtonClose）
@@ -27,10 +28,10 @@ SAVE_DIR = None  # 每屏截图存这里（识屏要核对第一次实机的一�
 
 
 def _view_diff(a, b) -> float:
+    from hiro.vision.deck import LIST_VIEW
+
     import cv2
     import numpy as np
-
-    from hiro.vision.deck import LIST_VIEW
 
     x1, y1, x2, y2 = LIST_VIEW
     ga, gb = (cv2.cvtColor(i[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY).astype(np.float32) for i in (a, b))
@@ -41,7 +42,7 @@ def _save(imgs) -> None:
     if SAVE_DIR is None:
         return
     try:
-        import cv2
+        import cv2  # noqa: F401
 
         SAVE_DIR.mkdir(parents=True, exist_ok=True)
         stamp = time.strftime("%Y%m%d-%H%M%S")

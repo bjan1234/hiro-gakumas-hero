@@ -33,7 +33,7 @@ def _action(s: dict) -> str | None:
 def gaps(base: str) -> list[dict]:
     out = []
     for seg in _segments(base):
-        steps = [json.loads(line) for line in open(seg / "steps.jsonl")]
+        steps = [json.loads(line) for line in open(seg / "steps.jsonl")]  # noqa: SIM115
         last = None  # 上一个有执行结果的步
         between: list[dict] = []
         for s in steps:
@@ -65,7 +65,7 @@ def gaps(base: str) -> list[dict]:
 
 def q(v, p):
     v = sorted(v)
-    return v[min(len(v) - 1, int(round(p * (len(v) - 1))))]
+    return v[min(len(v) - 1, int(round(p * (len(v) - 1))))]  # noqa: RUF046
 
 
 def main(argv=None):

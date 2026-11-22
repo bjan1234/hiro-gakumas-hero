@@ -12,25 +12,25 @@
 """
 
 
+import logging
 import os
 import time
+from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
-from collections.abc import Callable
 
 from hiro import master
-import logging
-from hiro.devices.active import Loop, device, sleep
-
 from hiro.brain.battle import BattleBrain
-from hiro.brain.rules import Decision
 from hiro.brain.cards import card_view, drink_view
+from hiro.brain.rules import Decision
 from hiro.brain.state import BattleState, ExamMemory
-from hiro.contracts import Action, Decision as DecisionContract, ExecutionResult
+from hiro.contracts import Action, ExecutionResult
+from hiro.contracts import Decision as DecisionContract  # noqa: F401
+from hiro.devices.active import Loop, device, sleep
+from hiro.exec import schedule_probe
 from hiro.perception.lesson import _read_int
 from hiro.produce import ops
 from hiro.recorder import Recorder
-from hiro.exec import schedule_probe
 from hiro.vision.hif import EXAM_CACHE, hand_cards
 from hiro.vision.ocr import Box, Text, find_text, screen_texts
 from hiro.vision.ui_templates import box, tap, tpl
@@ -116,7 +116,7 @@ class Frame:
         self.genki = _hud_int(img, hif.BOX_GENKI, box("InProduce.InLesson.BoxGenki"))
         self.cards = hand_cards(img, cache=EXAM_CACHE)  # 位置 / 能不能打 / 卡面认出的卡（hiro.vision.hif.hand_cards）
         self.drinks: list[tuple[master.Drink, tuple]] = _drinks(img)
-        self._hand: list[dict] | None | bool = False  # 识别层手牌，按需读（见 hand）
+        self._hand: list[dict] | bool | None = False  # 识别层手牌，按需读（见 hand）
 
     @property
     def hand(self) -> list[dict] | None:
@@ -476,11 +476,9 @@ def _guard_dialog_loop(img, session, memory, last_action, exam) -> None:
     """通用防空转：考试循环弹窗阶段每轮都点了东西又回来、手牌 / HUD 不变（_lite_sig 相同）、上一个动作也没变 → 连续 REPEAT_MAX 轮
     就点舞台空白取消选中、本回合禁用上一个动作。第二十一局选拔①：卡停在选中态再点 404 次、17.8 分钟，期间没有一个决策步。
     HUD 被弹窗挡住（_lite_sig 读不到）时不计数：那是真弹窗，交给弹窗处理和空转看门狗。"""
-    from hiro.loop.repeat_guard import REPEAT_MAX, action_key
+    from hiro.loop.repeat_guard import REPEAT_MAX, SCREEN_DIFF, _thumb, action_key
 
     import numpy as np
-
-    from hiro.loop.repeat_guard import SCREEN_DIFF, _thumb
 
     if session is None or last_action is None or getattr(session, "guard", None) is None:
         return
@@ -605,7 +603,7 @@ def _handle_dialogs(img=None, *, slow: bool = False, select: bool = True) -> boo
     """处理出牌过程中会弹出的对话框（读最近一次截图 img）。返回是否处理了什么。
     处理后等弹窗区域变化 / 画面稳定再返回，不固定睡 2s。"""
     img = img if img is not None else device.screenshot()
-    if tpl("InProduce.IconTitleSkillCardMove").exists(img):
+    if tpl("InProduce.IconTitleSkillCardMove").exists(img):  # noqa: SIM102
         if _skill_card_move():
             ops.wait_stable(timeout=DIALOG_SETTLE)
             return True

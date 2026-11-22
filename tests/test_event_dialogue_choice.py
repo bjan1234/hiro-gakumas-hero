@@ -4,11 +4,11 @@
 from pathlib import Path
 from types import SimpleNamespace as NS
 
-import cv2
-import pytest
-
 from hiro.contracts import Action, ActionKind, Decision
 from hiro.produce import hif
+
+import cv2
+import pytest
 
 FIX = Path(__file__).with_name("fixtures")
 

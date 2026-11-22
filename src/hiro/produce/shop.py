@@ -11,16 +11,17 @@
 所有等待按时间封顶；截图、点击、时钟、「交換済」判定都可注入，便于离线测试。
 """
 
+import logging
 import time
 from collections.abc import Callable
 
+from hiro.contracts import Action, ActionKind, ExecutionResult
+from hiro.devices.active import device
+from hiro.devices.active import sleep as _sleep
+from hiro.produce.ops import Run, button_sv, find_text, orange_lit, roi_diff
+
 import cv2
 import numpy as np
-import logging
-from hiro.devices.active import device, sleep as _sleep
-
-from hiro.contracts import Action, ActionKind, ExecutionResult
-from hiro.produce.ops import Run, button_sv, find_text, orange_lit, roi_diff
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +156,7 @@ def _buy(r: Run, item: dict, purchased, confirm_reader=_read_dialog) -> Executio
     r.snap(img, "confirm")
     if not ok:
         return r.result(False, f"点「交換する」后 {DIALOG_TIMEOUT:.0f}s 内没出现「交換確認」弹窗")
-    if confirm_reader is not None and (item.get("card_id") or item.get("drink_id")):
+    if confirm_reader is not None and (item.get("card_id") or item.get("drink_id")):  # noqa: SIM102
         if why := dialog_mismatch(item, confirm_reader(img)):
             r.tap(CANCEL_TAP)
             return r.result(False, f"货架第 {index} 格：{why}，已取消")
@@ -298,15 +299,15 @@ def _end(r: Run) -> ExecutionResult:
         streak = [0]
 
         def confirm(im):
-            if cancel_visible(im) and r.clock() - last[0] >= SKIP_EVERY:
+            if cancel_visible(im) and r.clock() - last[0] >= SKIP_EVERY:  # noqa: B023
                 r.snap(im, "end-confirm")
                 r.tap(find_text(r.ocr(im), END_CONFIRM_TEXTS, region=(360, 1080, 720, 1240)) or CONFIRM_TAP)
-                last[0] = r.clock()
+                last[0] = r.clock()  # noqa: B023
 
         def left(im):
             gone = not cancel_visible(im) and not shop_shown(r.ocr(im))
-            streak[0] = streak[0] + 1 if gone else 0
-            return streak[0] >= END_LEFT_FRAMES
+            streak[0] = streak[0] + 1 if gone else 0  # noqa: B023
+            return streak[0] >= END_LEFT_FRAMES  # noqa: B023
 
         ok, img = r.until(left, END_TIMEOUT, tick=confirm)
         r.snap(img, "end")

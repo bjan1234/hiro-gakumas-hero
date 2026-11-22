@@ -5,9 +5,9 @@ import os
 import subprocess
 import sys
 
-import numpy as np
-
 from hiro.vision import classify as c
+
+import numpy as np
 
 
 def test_landscape_is_live_and_no_input_is_unknown():

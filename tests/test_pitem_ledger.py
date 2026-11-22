@@ -4,11 +4,11 @@
 from pathlib import Path
 from types import SimpleNamespace as NS
 
-import cv2
-import pytest
-
 from hiro.contracts import Event, GameState
 from hiro.loop.events import apply_event
+
+import cv2
+import pytest
 
 
 def _ev(kind, seq=1, origin="observed", **args):

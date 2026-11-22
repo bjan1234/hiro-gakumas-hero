@@ -17,10 +17,10 @@ HiroController._quick_page 按它给的位置点；这里只处理认不出的�
 
 from __future__ import annotations
 
-from hiro.vision.textnorm import contains
-
 import time
 from collections.abc import Callable
+
+from hiro.vision.textnorm import contains
 
 ADVANCE_TAP = (12, 12)  # 与 KAA kaa.tasks.common.skip() 相同
 # 角落点了一阵还过不去时改点上方中间空白（第二十三局：P 道具效果触发说明条 / 获得卡片演出，(12,12) 点不掉停 78s，

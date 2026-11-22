@@ -12,7 +12,7 @@
     memory_sets:  [{index, memories: [{card_id, upgrade, customizations: [customize_id]}]}]
 """
 
-from functools import lru_cache
+from functools import cache, lru_cache  # noqa: F401
 
 from hiro.state.knowledge import MEMORY_WANT, SUPPORT_MAIN_TARGET
 
@@ -39,7 +39,7 @@ def _support_skills(card_id: str, level: int, limit_rank: str | None = None, pla
         return []
 
 
-@lru_cache(maxsize=None)
+@cache
 def _skills(card_id: str, level: int, limit_rank: int | None, plan: str) -> tuple:
     """支援卡在该等级生效的技能：((effect_type, trigger_id), ...)。素材源给不出来返回 ()。"""
     return tuple((s["effect_type"], s.get("trigger_id")) for s in _support_skills(card_id, level, limit_rank, plan))
@@ -104,8 +104,8 @@ def _swaps_hand(card_id: str | None) -> bool:
     if not card_id:
         return False
     try:
-        from hiro.brain.cards import card_view
         from hiro import master
+        from hiro.brain.cards import card_view
 
         kaa = master.card(card_id)
         return bool(kaa) and "手札をすべて入れ替える" in card_view(0, kaa, available=True).text
@@ -127,8 +127,17 @@ def qualify_memory_profile(mem: dict, idol_card_id: str | None) -> dict:
     mem：{index, idol_card_id, event_mode?, ichibanboshi?, star, params{Vo,Da,Vi}, deck[{card_id, upgrade, customized?}], pitems?}
     比较顺序：能用 → 必拿卡（届いて！、せのびの魔法、デイドリーミング）几张 → 缺几个核心角色（终结 / 延迟 / 持续 / 循环，决策-07）→ 冲突牌几张
     → 一番星专属卡 → 星星 → 属性过本战审查线几项 → S/A 张数 → 眠気 → 牌组离 22 张多远 → 属性合计。"""
-    from hiro.state.knowledge import (CORE_ROLES, FINALS_DECK_TARGET, FINALS_PARAM_LINES, FINALS_STAR_LINES, ROLES, YARUKI_CARDS, card_role,
-                                      idol_trend, is_conflict)  # fmt: skip
+    from hiro.state.knowledge import (
+        CORE_ROLES,
+        FINALS_DECK_TARGET,
+        FINALS_PARAM_LINES,
+        FINALS_STAR_LINES,
+        ROLES,
+        YARUKI_CARDS,
+        card_role,
+        idol_trend,  # fmt: skip
+        is_conflict,
+    )
 
     notes, problems = [], []
     same = idol_card_id is None or (mem.get("idol_card_id") or "").replace("i_card-skin-", "i_card-") == idol_card_id.replace("i_card-skin-", "i_card-")
@@ -305,7 +314,15 @@ def memory_quality(mem: dict, gains: dict | None = None, finals: dict | None = N
 
 
 def _formation_score(mems: list[dict], scored: dict, gains, finals, profile: str | None = None) -> tuple[float, list[str]]:
-    from hiro.state.memory_priority import AB_BONUS, AB_PENALTY, PARAM_CAP, PARAM_FINALS, PARAM_GAINS, PROFILES, card_entry
+    from hiro.state.memory_priority import (
+        AB_BONUS,
+        AB_PENALTY,
+        PARAM_CAP,
+        PARAM_FINALS,
+        PARAM_GAINS,
+        PROFILES,
+        card_entry,
+    )
 
     gains, finals = gains or PARAM_GAINS, finals or PARAM_FINALS
     total, notes, seen = 0.0, [], {}
@@ -361,7 +378,7 @@ def select_memories(inventory: dict | list, *, gains: dict | None = None, finals
     from itertools import combinations
 
     from hiro.state.context import catalog
-    from hiro.state.memory_priority import MEMORY_PRIORITY, card_entry, fallback_weight, param_points
+    from hiro.state.memory_priority import MEMORY_PRIORITY, card_entry, fallback_weight, param_points  # noqa: F401
 
     rows = (inventory.get("memories") or inventory.get("entries") or []) if isinstance(inventory, dict) else inventory
     mems, skipped = [], []

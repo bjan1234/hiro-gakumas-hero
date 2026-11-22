@@ -462,7 +462,7 @@ def decide_with_policy(policy: str, state, memory, brain, live_off: str | None =
 def llm_blocks(state, action: str) -> str | None:
     """LLM / 规则层（没有预演）选的动作是否被硬规则禁止：只用看局面就能判的那几条——饮料预算、E3（届いて 留到剩 ≤2）、
     R3 的加分 / 回血饮料（以及开着时的追加行动饮料）。需要预演即时结果的（R1 R2 R6 R8、R3 抽牌饮料）判不了，不拦。返回原因或 None。"""
-    legal = [a for a in state.legal_actions()]
+    legal = list(state.legal_actions())
     if action not in legal:
         return None
     # 没有预演：把它当成期望最高、其余并列，跑一遍专家的规则链，看规则会不会改选（E1 在这些占位行上不会触发：差 1 分、标准误 0）

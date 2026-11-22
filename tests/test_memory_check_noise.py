@@ -3,9 +3,9 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from hiro.produce.memory_select import memory_missing_on_page
+
+import pytest
 
 FIX = Path(__file__).with_name("fixtures") / "pages"
 TRUE = ("1472", "2236", "1191")  # 画面上的 Vo / Da / Vi
@@ -41,10 +41,10 @@ def test_one_digit_off_does_not_join_tokens():
 
 
 def test_finals_start_page_recognized_on_dmm_frame():
-    import cv2
-
     from hiro.runtime import opening
     from hiro.runtime.frame import Frame
+
+    import cv2
 
     p = FIX / "finals-start-dmm-540.png"
     if not p.exists():

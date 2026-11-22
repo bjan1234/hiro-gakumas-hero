@@ -150,7 +150,7 @@ PLAN_BOOST = 1.3  # プラン不一致 的卡图被压暗：饱和度、亮度�
 
 
 def _plan_mismatch(img: MatLike, box) -> bool:
-    x1, y1, x2, y2 = box
+    x1, y1, x2, _y2 = box
     hsv = cv2.cvtColor(img[max(0, y1 - 40) : y1 - 4, max(0, x1 - 10) : x2 + 20], cv2.COLOR_BGR2HSV)
     red = ((hsv[..., 0] <= 8) | (hsv[..., 0] >= 170)) & (hsv[..., 1] >= 120) & (hsv[..., 2] >= 180)
     return float(red.mean()) >= PLAN_RED_MIN

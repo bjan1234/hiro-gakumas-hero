@@ -1,6 +1,6 @@
 """过场推进（协调 2026-11-02「动画期间点屏幕跳过」）：认不出的帧上安全时连点空白处；主循环共用一次 OCR；trace 记过场耗时。"""
 
-from types import SimpleNamespace as NS
+from types import SimpleNamespace as NS  # noqa: F401
 
 from hiro.loop import advance
 
@@ -26,9 +26,9 @@ def test_no_tap_when_buttons_or_purchase_words():
 
 
 def test_stops_when_dialog_or_page_recognized_mid_burst():
-    n, clicks, _ = _run([], ["a", "dialog", "c"], header=lambda img: 750 if img == "dialog" else None)
+    n, clicks, _ = _run([], ["a", "dialog", "c"], header=lambda img: 750 if img == "dialog" else None)  # noqa: RUF059
     assert n == 1
-    n, clicks, _ = _run([], ["a", "b", "pitem"], quick=lambda img: {"page": "SELECT_PITEM"} if img == "pitem" else None)
+    n, _clicks, _ = _run([], ["a", "b", "pitem"], quick=lambda img: {"page": "SELECT_PITEM"} if img == "pitem" else None)
     assert n == 2
 
 
@@ -43,11 +43,11 @@ def test_tap_point_is_kaa_skip_corner():
 
 
 def test_session_records_transition_and_taps(tmp_path):
-    import numpy as np
-
     from hiro.contracts import Action, ActionKind, ExecutionResult, TraceWriter
     from hiro.contracts import Decision as D
     from hiro.loop.session import Session
+
+    import numpy as np
 
     s = Session(TraceWriter(tmp_path / "t"), shoot=lambda: np.zeros((1280, 720, 3), np.uint8))
     s.observe(scene="ACTION_SELECT", area="produce", img=None, fields=False)

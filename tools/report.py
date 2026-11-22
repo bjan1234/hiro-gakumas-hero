@@ -13,12 +13,12 @@ import os
 from collections import Counter, defaultdict
 from pathlib import Path
 
-import cv2
-
 import hiro  # noqa: F401
 from hiro.vision.extract import extract
 from hiro.vision.offline import load
 from hiro.vision.scene import classify_current
+
+import cv2
 
 
 def main():

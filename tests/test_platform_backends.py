@@ -5,11 +5,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-import numpy as np
-import pytest
-
 from hiro import device
 from hiro.vision import ocr
+
+import numpy as np
+import pytest
 
 SRC = Path(__file__).resolve().parents[1] / "src"
 
@@ -174,7 +174,7 @@ def test_rapidocr_model_lookup(monkeypatch, tmp_path):
     monkeypatch.setattr(ocr, "RAPID_DIR", tmp_path)
     assert ocr._rapid_model("ja") == tmp_path / "japan_PP-OCRv3_rec_infer.onnx"
     monkeypatch.setattr("importlib.util.find_spec", lambda name: None)
-    with pytest.raises(RuntimeError, match="en_PP-OCRv3_rec_infer.onnx"):
+    with pytest.raises(RuntimeError, match="en_PP-OCRv3_rec_infer.onnx"):  # noqa: RUF043
         ocr._rapid_model("en")
 
 
@@ -397,9 +397,9 @@ def test_winocr_word_joining():
 def test_finals_npc_score_with_dropped_digit_is_rejected(monkeypatch):
     """本战 NPC 分数整场不变（R1 约 29–40 万、R2 约 42–60 万），读成五位数一定是掉了首位：作废，不交给名次自洽检查当上限
     （Windows 第二局 RapidOCR 把 451280 读成 51280，我方分数被丢了 8 次）。"""
-    import cv2
-
     from hiro.vision import hif
+
+    import cv2
 
     img = cv2.imread(str(Path(__file__).parent / "fixtures" / "finals" / "exam-r2-t12.jpg"))
     monkeypatch.setattr(hif, "ocr_engine", lambda: "vision")  # 测的是 Vision 读法下掉首位的作废；非 Vision 后端走 ddddocr
@@ -410,10 +410,10 @@ def test_finals_npc_score_with_dropped_digit_is_rejected(monkeypatch):
 
 def test_imwrite_handles_non_ascii_path(tmp_path):
     """标定帧目录是中文名（「换卡」）：Windows 上 OpenCV 的 imwrite 会静默失败，hiro.imgio.imwrite 先编码再写文件。"""
+    from hiro.imgio import imwrite
+
     import cv2
     import numpy as np
-
-    from hiro.imgio import imwrite
 
     p = tmp_path / "20261107-063238-换卡" / "01-阶段1.jpg"
     p.parent.mkdir()
@@ -464,11 +464,11 @@ def test_merge_dialog_screens_tolerates_one_misread_cell():
 @pytest.mark.fixtures
 def test_result_score_over_max_is_dropped(monkeypatch):
     """结算页分数超过两轮合计上限（Windows 第四局把 1,079,363 读成 36350791）：作废成 None，名次和其他行照常。"""
-    import cv2
-
     from hiro.vision import hif
     from hiro.vision.offline import load
     from hiro.vision.pages import _texts, read_finals_ranking_page
+
+    import cv2
 
     real = hif._result_score
     monkeypatch.setattr(hif, "_result_score", lambda img, digits, b: (36350791, None) if digits == "479574" else real(img, digits, b))
@@ -479,9 +479,9 @@ def test_result_score_over_max_is_dropped(monkeypatch):
 
 def test_dimmed_card_needs_two_agreeing_gains():
     """压暗格几档提亮投票：两档一致才用；各档都不一样就当没认出（不交出认错的卡）。"""
-    import numpy as np
-
     from hiro.vision.deck import _dimmed_card
+
+    import numpy as np
 
     class C:
         def __init__(self, i):
@@ -498,10 +498,10 @@ def test_dimmed_card_needs_two_agreeing_gains():
 def test_enhance_dialog_scan_win5_stitches():
     """Windows 第五局强化翻牌组：MuMu 每滑一次约 1.5 行，第 2、3 屏只重叠一行，压暗格又认错两张 → 「第 3 屏没有重叠的行」、拼出 25 张。
     压暗格投票后拼出整副（记账 20 张，容差内）。"""
-    import cv2
-
     from hiro.vision.deck import ENHANCE_GRID, merge_dialog_screens, read_card_dialog
     from hiro.vision.offline import load
+
+    import cv2
 
     d = Path(__file__).parent / "fixtures" / "deck_scan" / "win5-enhance"
     if not d.is_dir():
@@ -524,10 +524,10 @@ def test_sale_split_and_floor():
 @pytest.mark.fixtures
 def test_consult_sale_price_win6():
     """Windows 第六局相談货架 #124：SALE 卡 70→49，RapidOCR 整块读成 40；非 Vision 后端改为多种读法投票。"""
-    import cv2
-
     from hiro.vision.offline import load
     from hiro.vision.shop import read_consult
+
+    import cv2
 
     f = Path(__file__).parent / "fixtures" / "consult" / "consult-sale-win6-124.jpg"
     if not f.exists():
@@ -543,10 +543,10 @@ def test_consult_sale_price_win6():
 ])  # fmt: skip
 def test_action_costs_gated_by_heart(rel, costs):
     """选行动页课程卡的体力消耗以绿色爱心徽章为准（非 Vision 后端）：没有爱心不认数字，有爱心没读到就单独读爱心右边。"""
-    import cv2
-
     from hiro.vision.extract import extract
     from hiro.vision.offline import load
+
+    import cv2
 
     f = Path(__file__).parent / "fixtures" / "action_select" / rel
     if not f.exists():
@@ -564,7 +564,7 @@ def test_r1_done_in_trace(tmp_path):
 
     d = tmp_path / "mainwin10-20261108-032030"
     d.mkdir()
-    page = lambda kind: json.dumps({"observation": {"page": {"name": "HIF_FINALS_RANKING"}, "fields": {"kind": kind, "round_result": None}}})
+    page = lambda kind: json.dumps({"observation": {"page": {"name": "HIF_FINALS_RANKING"}, "fields": {"kind": kind, "round_result": None}}})  # noqa: E731
     (d / "steps.jsonl").write_text(page("standings") + "\n", encoding="utf-8")
     st = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
     st.s = NS(trace=NS(dir=str(d)))
@@ -575,9 +575,9 @@ def test_r1_done_in_trace(tmp_path):
 
 def test_vote_price_sale_fixes_one_digit_misread(monkeypatch):
     """SALE 格：几种读法一致把 49 读成 40、整块读到了原价 70 → 按原价七折取整成 49（Windows 第八、十局）。"""
-    import numpy as np
-
     from hiro.vision import digits, shop
+
+    import numpy as np
 
     monkeypatch.setattr(shop, "_cell_price", lambda img, x, band, scale=3: [40])
     monkeypatch.setattr(digits, "read_dddd", lambda img, box: 40)
@@ -589,9 +589,9 @@ def test_vote_price_sale_fixes_one_digit_misread(monkeypatch):
 
 def test_vote_price_sale_single_digit(monkeypatch):
     """SALE 实付价读成个位数（105→73 读成 5）：按看到的原价七折取整。"""
-    import numpy as np
-
     from hiro.vision import digits, shop
+
+    import numpy as np
 
     monkeypatch.setattr(shop, "_cell_price", lambda img, x, band, scale=3: [5])
     monkeypatch.setattr(digits, "read_dddd", lambda img, box: None)
@@ -609,10 +609,10 @@ def test_ap_shortfall_with_accented_a():
 
 @pytest.mark.fixtures
 def test_ap_shortfall_real_frame_win12():
-    import cv2
-
     from hiro.loop import ap_refill as ap
     from hiro.produce.ops import ocr_boxes
+
+    import cv2
 
     f = Path(__file__).parent / "fixtures" / "ap_refill" / "ap-short-win12.png"
     if not f.exists():
@@ -622,9 +622,9 @@ def test_ap_shortfall_real_frame_win12():
 
 def test_vote_price_sale_known_prices(monkeypatch):
     """SALE 格连原价都没读到、实付价 49 读成 40：已知 SALE 价里只差一位的唯一一个是 49。"""
-    import numpy as np
-
     from hiro.vision import digits, shop
+
+    import numpy as np
 
     monkeypatch.setattr(shop, "_cell_price", lambda img, x, band, scale=3: [40])
     monkeypatch.setattr(digits, "read_dddd", lambda img, box: 40)

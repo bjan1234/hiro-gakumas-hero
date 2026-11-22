@@ -2,9 +2,9 @@
 
 import json
 
-import pytest
-
 from hiro.brain import guides as g
+
+import pytest
 
 FKTN, HIRO = "i_card-fktn-3-000", "i_card-shro-3-007"
 
@@ -84,7 +84,7 @@ def test_switches_and_pack(monkeypatch, tmp_path):
     (tmp_path / "manifest.json").write_text(json.dumps({"schema": 1, "packs": {"hajime": {"name": "hajime-20261120-1"}}}))
     monkeypatch.setenv("HIRO_GUIDES_DIR", str(tmp_path))
     g._load_pack.cache_clear()
-    q = dict(mode="hajime", difficulty="pro", decision="card_pick")
+    q = {"mode": "hajime", "difficulty": "pro", "decision": "card_pick"}
     assert _ids(g.lookup(idol_card=FKTN, **q)) == ["x"]
     assert g.lookup(idol_card=HIRO, **q) == []
     monkeypatch.setenv("HIRO_GUIDES_HIRO", "1")

@@ -35,7 +35,7 @@ def replay(first: Path) -> dict:
     state = GameState()
     checks, decisions, deck_actions = [], [], []
     for seg in segments(first):
-        for line in open(seg / "steps.jsonl", encoding="utf-8"):
+        for line in open(seg / "steps.jsonl", encoding="utf-8"):  # noqa: SIM115
             step = json.loads(line)
             raws = step.get("observations_before", []) + [step["observation"]] + step.get("observations_after", [])
             for raw in raws:

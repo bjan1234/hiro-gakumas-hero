@@ -2,11 +2,11 @@
 
 from pathlib import Path
 
-import cv2
-import pytest
-
 import hiro  # noqa: F401
 from hiro.vision.memory import merge_detail, parse_stat, read_memory_detail
+
+import cv2
+import pytest
 
 FIX = Path(__file__).with_name("fixtures") / "memory"
 

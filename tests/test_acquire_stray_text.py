@@ -4,9 +4,9 @@
 
 from pathlib import Path
 
-import pytest
-
 from hiro.vision import deck
+
+import pytest
 
 FIX = Path(__file__).with_name("fixtures") / "acquire_dmm"
 
@@ -53,10 +53,10 @@ def test_acquire_bar_retries_smaller_scale_when_empty(monkeypatch):
     RapidOCR 一个字都没读出（1.5 / 2 倍都读得出「ホットコーヒー」），整页判 unknown，180 秒停机。默认倍数读空时再用 1.5 倍读一次。"""
     from pathlib import Path
 
-    import cv2
-
     import hiro.vision.ocr as ocr_mod
     from hiro.vision import deck
+
+    import cv2
 
     p = Path(__file__).parent / "fixtures" / "pages" / "acquire-drink-pitem-banner-z7.png"
     if not p.exists():

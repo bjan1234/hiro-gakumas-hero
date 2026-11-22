@@ -1,9 +1,9 @@
 """任务 ②：特別指導记下定制了哪一项（CARD_CUSTOMIZE 带 customize_id / levels），牌组记账存下，搜索起点的牌组带上定制次数。"""
 
-import pytest
-
 from hiro.contracts import Event, GameState
 from hiro.loop.events import _apply_deck, events_from_step
+
+import pytest
 
 CZ = "p_card_custom-040_040_070-g_effect-p_card-02-act-1_037-enc_1-g_effect-p_card-02-act-1_037-enc_2-g_effect-p_card-02-act-1_037-enc_3"
 

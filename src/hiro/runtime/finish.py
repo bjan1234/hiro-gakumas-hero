@@ -49,7 +49,7 @@ def resume_produce(rt, timeout: float = RESUME_TIMEOUT) -> str:
             return "resumed"
         if not home:
             texts = [t.text for t in f.texts]
-            if any(h in t for t in texts for h in comm_error.TITLE_HINTS):
+            if any(h in t for t in texts for h in comm_error.TITLE_HINTS):  # noqa: SIM102
                 # 通信エラー（E209 资源下载失败等）：只点リトライ。11-19 账号 2：续跑入口没认这个框，判 unknown 9 秒后把
                 # 「X タイトルへ」上的 X 当成关闭图标点了，游戏回标题（违反「通信错误不点タイトルへ」）
                 if comm_error.handle(f.boxes, rt.device.tap, sleep=rt.sleep) is not None:

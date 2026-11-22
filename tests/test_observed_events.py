@@ -2,13 +2,13 @@
 
 from pathlib import Path
 
+import hiro  # noqa: F401
+from hiro.contracts import Event
+from hiro.vision import deck
+from hiro.vision.events import observed_events, selection_args
+
 import cv2
 import pytest
-
-import hiro  # noqa: F401
-from hiro.vision import deck
-from hiro.contracts import Event
-from hiro.vision.events import observed_events, selection_args
 
 FIX = Path(__file__).with_name("fixtures")
 
@@ -116,7 +116,7 @@ def test_deck_review_event():
     """牌组页看全才发 DECK_REVIEW（origin=review）；deck 与推算比较用 deck.deck_diff。"""
     from hiro.vision.observe import observation
 
-    raw, merged = _merged()
+    _raw, merged = _merged()
     obs = observation(5, 0.0, "DECK_LIST", merged)
     ev = observed_events(obs)[0].to_dict()
     assert (ev["kind"], ev["origin"], ev["confirmed"], ev["args"]["deck_size"]) == ("DECK_REVIEW", "review", True, 16)
@@ -124,7 +124,7 @@ def test_deck_review_event():
 
 
 def test_deck_diff():
-    raw, merged = _merged()
+    _raw, merged = _merged()
     expected = [{"card_id": c["card_id"], "upgrade": c["upgrade"]} for c in merged["deck"]]
     assert deck.deck_diff(expected, merged["cards"]) == {"same": True, "missing": [], "extra": [], "upgraded": [], "unknown": 0}
 

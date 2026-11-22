@@ -102,7 +102,7 @@ def read_schedule_list(img: np.ndarray, texts=None) -> dict | None:
 def _fill_gaps(labels: list[tuple[int, int]]) -> list[tuple[int, int]]:
     """OCR 漏掉的「N週」（灰字）：相邻两个读到的周差 2、y 差约两行（普通行）时补中间那周。"""
     out = list(labels)
-    for (w1, y1), (w2, y2) in zip(labels, labels[1:]):
+    for (w1, y1), (w2, y2) in zip(labels, labels[1:]):  # noqa: RUF007
         if w1 - w2 == 2 and abs((y2 - y1) - 2 * ROW_H) <= 20:
             out.append((w1 - 1, (y1 + y2) // 2))
     return sorted(out, key=lambda r: r[1])

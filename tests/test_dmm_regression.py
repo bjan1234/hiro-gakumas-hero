@@ -10,9 +10,9 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
-
 from tools.audit.dmm_samples import diff, read
+
+import pytest
 
 HERE = Path(__file__).parent
 SAMPLES = json.loads((HERE / "dmm_regression.json").read_text(encoding="utf-8"))

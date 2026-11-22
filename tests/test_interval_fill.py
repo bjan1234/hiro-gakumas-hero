@@ -1,9 +1,9 @@
 """本战轮间补到 22 张（协调 11-18 mainz4 R2 复盘；用户确认「本战轮间还是要补充到 22 张卡」）。
 货架取自 Windows mainz4-20261118-133027 轮间第一页（seq 794）：P 580、体力 20/33、R1 牌组 16 张。"""
 
-import pytest
-
 from hiro.sim import interval as iv
+
+import pytest
 
 DECK = [("p_card-02-act-3_039", 1), ("p_card-02-act-3_045", 1), ("p_card-02-act-3_186", 1), ("p_card-02-ido-3_105", 1), ("p_card-02-act-2_062", 1),
         ("p_card-02-act-1_037", 1), ("p_card-02-men-3_002", 1), ("p_card-02-sup-3_094", 1), ("p_card-02-men-2_004", 1), ("p_card-02-men-2_052", 1),

@@ -96,7 +96,7 @@ def replay(paths: list[Path], llm: str | None, *, only: str | None = None, limit
                 except Exception as e:  # noqa: BLE001
                     row.update(new=None, new_source="error", new_reason=repr(e)[:160], seconds=round(time.monotonic() - t0, 1))
             rows.append(row)
-            try:
+            try:  # noqa: SIM105
                 brain.commit(state, memory, rec.to_battle())  # 按实机执行的动作推进记忆
             except Exception:  # noqa: BLE001  记忆推进失败不影响后面的步（下一步重新读局面）
                 pass

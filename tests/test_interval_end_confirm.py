@@ -2,10 +2,10 @@
 インターバルを終了して本戦へ進みますか？），执行器在等轮间主画面、主循环判成 DIALOG 没有处理器，247 秒后停机。
 这个框只在我们自己点了「終了」后出现（决策已定结束轮间），中断层点「本戦へ」。"""
 
-import pytest
-
 from hiro.runtime import interrupts
 from hiro.runtime.frame import Frame
+
+import pytest
 from test_runtime import frame as fake_frame
 from test_runtime import runtime
 

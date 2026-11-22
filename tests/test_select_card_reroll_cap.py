@@ -3,9 +3,9 @@ DMM 选拔第 6 天：决策要用最后 1 次刷新，执行侧每页 3 次上�
 
 from types import SimpleNamespace as NS
 
-import pytest
-
 from hiro.contracts import Action, ActionKind, Candidate, Decision, GameState
+
+import pytest
 
 
 def test_reroll_blocked_redecides(monkeypatch):
@@ -87,9 +87,9 @@ def test_reroll_confirm_taps_reroll_button_with_arrow(monkeypatch):
     import os
     from pathlib import Path
 
-    import cv2
-
     from hiro.vision.ocr import screen_texts
+
+    import cv2
 
     path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "settings" / "reroll-confirm-acct2.png"
     if not path.exists():

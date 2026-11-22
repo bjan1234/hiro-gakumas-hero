@@ -14,10 +14,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from hiro.vision.ui_templates import PACK, box, tpl
+
 import cv2
 import numpy as np
-
-from hiro.vision.ui_templates import PACK, box, tpl
 
 
 @dataclass(frozen=True)

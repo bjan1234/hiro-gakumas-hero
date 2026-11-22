@@ -4,16 +4,16 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-import pytest
-
 import hiro  # noqa: F401
 from hiro.brain.llm import ClaudeCLI, LLMAdapter, MockLLM, OpenAICompatible, extract_json, from_spec, prompt_version
-from hiro.contracts import Decision
+from hiro.contracts import Decision  # noqa: F401
+
+import pytest
 
 
 class _FakeOpenAI(BaseHTTPRequestHandler):
     mode = "ok"
-    seen: list[dict] = []
+    seen: list[dict] = []  # noqa: RUF012
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))

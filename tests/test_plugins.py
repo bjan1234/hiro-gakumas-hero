@@ -1,6 +1,6 @@
-import pytest
-
 from hiro import plugins
+
+import pytest
 
 
 class Advisor:

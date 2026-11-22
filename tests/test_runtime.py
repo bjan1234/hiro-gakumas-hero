@@ -5,14 +5,13 @@ import subprocess
 import sys
 import threading
 
-import numpy as np
-import pytest
-
 from hiro.loop.date_change import DateChanged
 from hiro.loop.errors import ResumeBlocked
-from hiro.runtime import DONE, STAY, UNKNOWN, DangerBlocked, Frame, PageHit, Runtime, stop
-from hiro.runtime import guard, interrupts
+from hiro.runtime import DONE, STAY, UNKNOWN, DangerBlocked, Frame, PageHit, Runtime, guard, interrupts, stop
 from hiro.vision.ocr import Box, Text
+
+import numpy as np
+import pytest
 
 
 def T(text, x, y):
@@ -220,7 +219,7 @@ def test_comm_error_retry_cap_stops_and_saves_frame():
     rt.session = NS(trace=NS(next_seq=lambda: 9, save_frame=lambda seq, img: saved.append(seq) or "frames/00009.jpg"), note=lambda s: None)
     for _ in range(interrupts.COMM_RETRY_MAX):
         assert interrupts.comm(rt.screen.shot(), rt) == "通信エラー：retry"
-    with pytest.raises(ResumeBlocked, match="通信エラー.*停机.*00009"):
+    with pytest.raises(ResumeBlocked, match="通信エラー.*停机.*00009"):  # noqa: RUF043
         interrupts.comm(rt.screen.shot(), rt)
     assert len(rt.raw_device.taps) == interrupts.COMM_RETRY_MAX and saved
     rt, clock = runtime([_comm_frame()])
@@ -290,7 +289,7 @@ def test_no_dialog_skips_ocr():
 # ---------------------------------------------------------------- wait_until / 主循环一拍
 def test_wait_until_hits_and_times_out():
     rt, clock = runtime([frame(), frame(), frame([T("OK", 1, 1)])])
-    ok, f = rt.wait_until(lambda f: any(t.text == "OK" for t in f.texts), timeout=5)
+    ok, _f = rt.wait_until(lambda f: any(t.text == "OK" for t in f.texts), timeout=5)
     assert ok and clock.now == pytest.approx(0.6)
     rt, clock = runtime([frame()])
     ok, _ = rt.wait_until(lambda f: False, timeout=2)
@@ -343,7 +342,7 @@ def test_step_unknown_advances_then_watchdog_stops():
     clock.now = 179.0
     rt.step()
     clock.now = 181.0
-    with pytest.raises(ResumeBlocked, match="没变化|认不出"):
+    with pytest.raises(ResumeBlocked, match="没变化|认不出"):  # noqa: RUF043
         rt.step()
 
 
@@ -435,10 +434,10 @@ def test_tutorial_card_taps_its_only_button(name, word):
     from pathlib import Path
     from types import SimpleNamespace as NS
 
-    import cv2
-
     from hiro.runtime import interrupts
     from hiro.runtime.frame import Frame
+
+    import cv2
 
     path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / name
     if not path.exists():
@@ -458,10 +457,10 @@ def test_reroll_confirm_interrupt_on_resume():
     from pathlib import Path
     from types import SimpleNamespace as NS
 
-    import cv2
-
     from hiro.runtime import interrupts
     from hiro.runtime.frame import Frame
+
+    import cv2
 
     path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "settings" / "reroll-confirm-acct2.png"
     if not path.exists():
@@ -499,11 +498,11 @@ def test_empty_crop_does_not_crash_main_loop(monkeypatch):
     import os
     from pathlib import Path
 
-    import cv2
-    import numpy as np
-
     from hiro.vision import pages
     from hiro.vision.ocr import ocr_boxes
+
+    import cv2
+    import numpy as np
 
     assert ocr_boxes(np.zeros((0, 680, 3), np.uint8)) == [] and ocr_boxes(None) == []
     img = np.full((1280, 720, 3), 255, np.uint8)
@@ -533,7 +532,7 @@ def test_handler_exception_is_absorbed_then_stops_after_limit():
     中间成功一拍就重新计数；同一异常连续 ERROR_LIMIT 次才停机，写明原因。"""
     from hiro.runtime import loop
 
-    sess, rec, saved = _fake_session()
+    sess, rec, _saved = _fake_session()
     boom = {"on": True}
 
     def handler(rt, f, hit):
@@ -541,7 +540,7 @@ def test_handler_exception_is_absorbed_then_stops_after_limit():
             raise ValueError("ssize.empty")
         return DONE
 
-    rt, clock = runtime([frame()], classify=lambda img: PageHit("ACTION_SELECT", "pixel"), handlers={"ACTION_SELECT": handler}, session=sess)
+    rt, _clock = runtime([frame()], classify=lambda img: PageHit("ACTION_SELECT", "pixel"), handlers={"ACTION_SELECT": handler}, session=sess)
     for _ in range(loop.ERROR_LIMIT - 1):
         assert rt.step() is STAY
     assert len(rec) == loop.ERROR_LIMIT - 1 and rec[0][0] == "unhandled" and "ValueError" in rec[0][1] and "frames/00007.jpg" in rec[0][1]
@@ -573,7 +572,7 @@ def test_interrupt_exception_absorbed_in_tick():
         raise IndexError("crop")
 
     rt, _ = runtime([frame()], interrupts=(bad,), session=sess)
-    f, done = rt.tick()
+    _f, done = rt.tick()
     assert done and "IndexError" in done and rec and "中断层" in rec[0][1]
 
 
@@ -618,11 +617,11 @@ def test_pitem_customize_done_page_is_tapped_through():
     from pathlib import Path
     from types import SimpleNamespace as NS
 
-    import cv2
-
     from hiro.runtime import play
     from hiro.runtime.frame import Frame
     from hiro.vision.classify import classify
+
+    import cv2
 
     path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "pitem-customize-done.png"
     if not path.exists():
@@ -640,9 +639,9 @@ def test_achievement_toast_waits_without_tapping(name):
     import os
     from pathlib import Path
 
-    import cv2
-
     from hiro.runtime.frame import Frame
+
+    import cv2
 
     path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / name
     if not path.exists():
@@ -658,7 +657,7 @@ def test_achievement_toast_waits_without_tapping(name):
 def test_drive_waits_out_achievement_toast():
     """drive 等第 1 步页头时提示条盖着：这几拍当中断处理（不调 step、不算超时），消失后照常认出。"""
     seq = [True, True, True, False]
-    rt, clock = runtime([frame()], interrupts=(lambda f, rt: "成就提示条盖住页头：等它消失" if seq.pop(0) else None,))
+    rt, _clock = runtime([frame()], interrupts=(lambda f, rt: "成就提示条盖住页头：等它消失" if seq.pop(0) else None,))
     calls = []
     assert rt.drive(lambda f: calls.append(1) or True, 1.0, "等第 1 步") is True and calls == [1]
 
@@ -702,9 +701,9 @@ def test_affection_unlock_taps_close_on_real_frame(monkeypatch):
     import os
     from pathlib import Path
 
-    import cv2
-
     from hiro.runtime.frame import Frame
+
+    import cv2
 
     path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "home-affection-step-unlock.png"
     if not path.exists():
@@ -739,9 +738,9 @@ def test_use_limit_on_real_frame():
     import os
     from pathlib import Path
 
-    import cv2
-
     from hiro.runtime.frame import Frame
+
+    import cv2
 
     path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "home-use-limit.png"
     if not path.exists():
@@ -757,9 +756,9 @@ def test_live_setting_dialog_on_real_frame():
     import os
     from pathlib import Path
 
-    import cv2
-
     from hiro.runtime.frame import Frame
+
+    import cv2
 
     path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "nia-live-setting.png"
     if not path.exists():

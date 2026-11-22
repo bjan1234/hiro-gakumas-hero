@@ -7,11 +7,11 @@
 
 from pathlib import Path
 
-import cv2
-
 from hiro.contracts import Action, ActionKind, Decision, ExecutionResult
 from hiro.produce import interval, shop
 from tests.test_interval import Fake
+
+import cv2
 
 FIX = Path(__file__).parent / "fixtures/interval_reroll"
 

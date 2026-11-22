@@ -48,7 +48,7 @@ def test_run_start_accepts_new_params(run_cli):
 
 def test_mode_jobs_require_an_idol_for_new(run_cli):
     for kind in ("hajime", "nia"):
-        code, env = run_cli("run", "start", kind)
+        _code, env = run_cli("run", "start", kind)
         assert env["ok"] is False and env["error"]["code"] == "bad_args", kind
 
 

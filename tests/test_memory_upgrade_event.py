@@ -3,11 +3,11 @@
 
 from pathlib import Path
 
-import cv2
-import pytest
-
 from hiro.contracts import Event, GameState
 from hiro.loop.events import apply_event
+
+import cv2
+import pytest
 
 FIX = Path(__file__).with_name("fixtures") / "events"
 DECK = [{"card_id": "p_card-02-men-3_002", "upgrade": 0}, {"card_id": "p_card-02-act-1_037", "upgrade": 1}]

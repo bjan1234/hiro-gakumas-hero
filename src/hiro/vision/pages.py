@@ -404,7 +404,7 @@ def read_exam_briefing(img: MatLike, boxes) -> dict:
     # 「親愛度ボーナス」演出中倍率在往上跳（314% → 471% → 1413%），这时的数不是最终值
     animating = _has(boxes, "ボーナス") is not None
     if animating:
-        mult = {k: None for k in mult}
+        mult = dict.fromkeys(mult)
     exam_no = int(exam.group(1)) if exam else None
     if exam_no is None and rank_line is not None:
         # RapidOCR 把「選抜試験1突破ライン」读成「選抜試験突破ライン」（q17-123）：选拔三场的参赛人数固定 128 / 64 / 32
@@ -459,7 +459,7 @@ def read_finals_ranking_page(img: MatLike, boxes) -> dict:
     还没演出时玩家卡在「NEXT」下面、没有分数。
     {entries: [{rank, score, me}], next: 有「NEXT」, my_score, rank（玩家已演出才有）, finals_round: 1 / 2 / None}。
     finals_round 按 NPC 目标分落在主数据哪一轮的区间（hif.finals_round_from_npc）。"""
-    from hiro.vision.hif import _result_score, finals_round_from_npc, read_retry
+    from hiro.vision.hif import _result_score, finals_round_from_npc, read_retry  # noqa: F401
 
     title = next((t for t, b in boxes if "ラウンド" in t and "結果" in t), None)
     if title is not None or _has(boxes, "ログ") is not None:
@@ -504,7 +504,7 @@ def _merged_gain(img: MatLike, listed: str, box, n_total: int, n_gain: int) -> i
     from hiro.vision.digits import read_dddd
     from hiro.vision.ocr import ocr
 
-    x1, y1, x2, y2 = box
+    _x1, y1, x2, y2 = box
     cut = _gain_cut(img, box, n_total, n_gain)
     crop = img[max(0, y1 - 6) : y2 + 6, cut : min(img.shape[1], x2 + 6)]
     again = re.sub(r"\D", "", "".join(t for t, _ in ocr(cv2.resize(crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC), scale=1)))
@@ -526,7 +526,7 @@ def _merged_total(img: MatLike, listed: str, box, n_total: int, n_gain: int) -> 
     from hiro.vision.digits import read_dddd
     from hiro.vision.ocr import ocr
 
-    x1, y1, x2, y2 = box
+    x1, y1, _x2, y2 = box
     # 加分是蓝色小字、总分是白字：切在第一列蓝色像素之前（按字数比例估会切掉总分末位）
     # 只看框中间几行、从框宽 35% 往右找（框边缘有进度条等蓝色，总分至少占框的三分之一）
     cut = _gain_cut(img, box, n_total, n_gain)
@@ -651,7 +651,7 @@ def read_hud_resources(img: MatLike) -> dict:
         if not votes:
             return None
         best, n = Counter(votes).most_common(1)[0]
-        return best if n >= 2 or len(votes) == 1 and len(values) == 1 else None
+        return best if n >= 2 or (len(votes) == 1 and len(values) == 1) else None
 
     def font(box) -> int | None:
         t, _ = read_text(img, box)  # 「不确定」多半是斜杠 / 图标，数字本身仍可用作一票

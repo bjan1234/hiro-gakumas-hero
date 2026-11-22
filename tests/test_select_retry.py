@@ -3,12 +3,12 @@
 
 from types import SimpleNamespace as NS
 
-import pytest
-
 import hiro.produce.hif as hif
-from hiro.produce import ops
 from hiro.contracts import Action, ActionKind, Decision, ExecutionResult, GameState
+from hiro.produce import ops
 from hiro.produce.hif import HiroHifStrategy, UnhandledPage
+
+import pytest
 
 CANDS = [{"index": i, "drink_id": f"d{i}", "name": n} for i, n in enumerate(("ブーストエキス", "ミックススムージー", "センブリソーダ"))]
 

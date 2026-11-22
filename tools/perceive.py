@@ -7,11 +7,11 @@ import argparse
 import json
 import time
 
-import cv2
-
 import hiro  # noqa: F401  兼容层
 from hiro.context import ensure_offline_context
 from hiro.perception.lesson import read_lesson
+
+import cv2
 
 
 def main():

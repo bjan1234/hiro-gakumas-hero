@@ -12,12 +12,12 @@ from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
+from hiro.vision import assets
+from hiro.vision.region_cache import RegionCache, cached
+
 import cv2
 import numpy as np
 from cv2.typing import MatLike
-
-from hiro.vision import assets
-from hiro.vision.region_cache import RegionCache, cached
 
 MIN_SCORE = 0.5
 MIN_MARGIN = 0.15  # 领先次佳的幅度；背景误配时各候选分数接近
@@ -375,7 +375,6 @@ def read_pdrink_max(img: MatLike) -> dict | None:
     import re
 
     from hiro import master
-
     from hiro.vision.ocr import ocr_boxes
 
     boxes = [(t.replace(" ", ""), b) for t, _, b in ocr_boxes(img)]  # 整屏：「あと N個選択」随弹窗高度在 y≈780–1210（原来只看 0:1150，长弹窗读不到）

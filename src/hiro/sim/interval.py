@@ -23,20 +23,25 @@ import statistics
 import time
 import uuid
 from dataclasses import dataclass, field
-from functools import lru_cache
+from functools import cache, lru_cache
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-import hiro.sim  # noqa: F401  引擎路径
-from hiro.sim import FIXTURES
+from typing import TYPE_CHECKING  # noqa: E402
+
+import hiro.sim  # noqa: E402, F401  引擎路径
+from hiro.sim import FIXTURES  # noqa: E402
+
+if TYPE_CHECKING:
+    from collections import OrderedDict
 
 TEMPLATE = "campus-20261019/r2-opening"
 STAR_BASELINE_R2 = 800  # 本战 R2 审查基准 [wiki]
 WAPPEN_STAR = 15  # 轮间买一张卡用掉一枚ワッペン：星星 +15（第八局实况：两张 +30）
 
 
-@lru_cache(maxsize=None)
+@cache
 def _template(name: str = TEMPLATE) -> dict:
     return json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
 
@@ -90,7 +95,7 @@ def ouenbou_fill(deck: list, pool: tuple | None = None) -> list:
     quota = [(cid, n * w / total) for cid, w in pool]
     got = {cid: int(q) for cid, q in quota}
     left = n - sum(got.values())
-    for cid, q in sorted(quota, key=lambda x: (-(x[1] - int(x[1])), -x[1], x[0]))[:left]:
+    for cid, _q in sorted(quota, key=lambda x: (-(x[1] - int(x[1])), -x[1], x[0]))[:left]:
         got[cid] += 1
     for cid, _ in sorted(pool, key=lambda x: (-x[1], x[0])):
         out += [(cid, 0)] * got[cid]
@@ -122,16 +127,16 @@ def ouenbou_pool(idol_card_id: str | None) -> tuple | None:
     return tuple((e["id"], int(e["ratio"])) for e in row["produceCardRatios"] if int(e.get("upgradeCount") or 0) == 0)
 
 
-@lru_cache(maxsize=None)
+@cache
 def _custom_reactions(item_id: str) -> int:
     """定制 P 道具育成中的触发次数（_reactionCount，永久附魔按它叠层）：画面读不到，按主数据的上限（produceEffectTriggerCount）算——
     到本战时一般已触发满（验证 2：リボンくま 「以降の試験開始時 好印象+3・やる気+3（プロデュース中2回）」真值叠 2 层）。非定制道具 0。"""
     if not str(item_id).startswith("customize_pitem-"):
         return 0
     try:
-        from gakumas_exam.master import shared
-
         from hiro.sim.engine import master_commit
+
+        from gakumas_exam.master import shared
 
         row = next((r for r in shared(master_commit()).table("ProduceCustomizeItem") if r["id"] == item_id), None)
         return max(1, int((row or {}).get("produceEffectTriggerCount") or 1))
@@ -191,7 +196,7 @@ def _env(setup: R2Setup, seed: int):
     return _episode(setup, _exam_cached(setup.key(), obs), seed)
 
 
-_EPISODES: "OrderedDict" = None  # type: ignore[assignment]
+_EPISODES: OrderedDict = None  # type: ignore[assignment]
 EPISODE_CACHE = 512  # 每个进程缓存的开局数（同一组合 × 种子）
 
 
@@ -278,7 +283,7 @@ def drink_allowed(env, action: dict, rule: str, drunk_this_turn: int) -> bool:
     cash = any(any(e.get("op") in CASH_OPS for e in env.definition(i)["effects"]) for i in env.zones["hand"] if i in playable)
     if "repeat_card" in ops:
         return any(c in DRINK_TARGETS for c in hand) and env.actions > 0
-    if "extra_action" in ops or "timed_score_boost" in ops and "draw" not in ops:
+    if "extra_action" in ops or ("timed_score_boost" in ops and "draw" not in ops):
         return cash
     return drunk_this_turn < 1
 
@@ -370,7 +375,7 @@ def _pool(workers: int):
     """常驻进程池（协调 2026-11-03：选拔饮料模拟每次 10–47 秒，其中每次新开进程、每个进程重新编译考试约 5.7 秒）。
     进程里的考试编译缓存（_exam_cached）跨调用复用；池坏了（BrokenProcessPool）由调用方重建。"""
     global _POOL, _POOL_N
-    if _POOL is None or _POOL_N != workers:
+    if _POOL is None or workers != _POOL_N:
         from concurrent.futures import ProcessPoolExecutor
 
         if _POOL is not None:
@@ -481,7 +486,7 @@ def options(shelf: dict, setup: R2Setup, p: int, *, wappen_left: int = 2, junk: 
             continue
         # 用户 2026-11-01（第九局复盘）：ワッペン / 星星不能单独作为买卡理由。评估买卡时不算星星加成，只算这张卡进牌组的效果
         out.append(Option(f"card{it['index']}", f"买卡 {it.get('name')}", it["price"],
-                          lambda s, c=(it["card_id"], it.get("upgrade") or 0): _with(s, deck=s.deck + [c]),
+                          lambda s, c=(it["card_id"], it.get("upgrade") or 0): _with(s, deck=s.deck + [c]),  # noqa: B008
                           [("IntervalBuy", {"index": it["index"]})], group="wappen", card_id=it["card_id"]))  # fmt: skip
     for it in shelf.get("changes") or []:
         if it.get("purchased") or not it.get("card_id") or not junk:
@@ -500,8 +505,8 @@ def options(shelf: dict, setup: R2Setup, p: int, *, wappen_left: int = 2, junk: 
 
 
 def _with(s: R2Setup, **kw) -> R2Setup:
-    d = dict(deck=list(s.deck), drinks=list(s.drinks), hp=s.hp, max_hp=s.max_hp, permil=dict(s.permil), star=s.star, template=s.template, fill=s.fill,
-             items=s.items, supports=s.supports, skills=s.skills, ouenbou_pool=s.ouenbou_pool)
+    d = {"deck": list(s.deck), "drinks": list(s.drinks), "hp": s.hp, "max_hp": s.max_hp, "permil": dict(s.permil), "star": s.star, "template": s.template, "fill": s.fill,
+             "items": s.items, "supports": s.supports, "skills": s.skills, "ouenbou_pool": s.ouenbou_pool}
     d.update(kw)
     return R2Setup(**d)
 
@@ -575,7 +580,7 @@ def plan_actions(best: dict, opts: list[Option]) -> list:
 # ---------------------------------------------------------------- 实机接线
 
 # 开源版：本战上下文的记账在 hiro.state.finals_context（考试循环调用它的 note_exam），这里是同一个对象
-from hiro.state.finals_context import CONTEXT, CONTEXT_FILE  # noqa: E402
+from hiro.state.finals_context import CONTEXT, CONTEXT_FILE  # noqa: E402, F401
 
 
 def note_exam(label: str, *, deck=None, drinks=None, permil=None, max_hp=None, trace_dir=None) -> None:
@@ -754,9 +759,8 @@ def _card_rule_key(card_id: str, owned: set) -> tuple:
     """轮间补卡的社区默认顺序（大的先）：缺的必拿卡 > 一次性的再动 / 加使用数卡（いおん ep08：优先用一次性再动卡补张数）> 社区评级 / 卡牌价值。"""
     from hiro.brain.cards import description_text
     from hiro.brain.deciders import _card_priority
-    from hiro.state.knowledge import is_once
     from hiro.state.context import catalog
-    from hiro.state.knowledge import YARUKI_CARDS
+    from hiro.state.knowledge import YARUKI_CARDS, is_once
 
     know = YARUKI_CARDS.get(card_id) or {}
     try:
@@ -786,9 +790,7 @@ def rule_plan(shelf: dict, setup: R2Setup, opts: list[Option], p: int, *, target
     # 本战瘦牌组（用户 2026-11-02）：不再为凑 22 张买卡——不满 22 张由応援棒在 R2 开考时补「基本」卡（模拟里按 OUENBOU_BASICS 补）；
     # 只买核心卡（缺的必拿 / S·A / 核心角色）。依据：第十六局轮间（24 张牌组）买 イメトレ+ / トキメキ+ / 本番前夜+ / ゆるふわ+
     # 比不买（応援棒补基础卡）−1.3 万 ~ −3.1 万；牌组越大，せのび / 届いて 越难在关键回合抽到
-    from hiro.brain.deciders import _is_core_card
-
-    from hiro.brain.deciders import wants_copy
+    from hiro.brain.deciders import _is_core_card, wants_copy
 
     count = lambda cid: sum(1 for c in setup.deck if c[0] == cid)  # noqa: E731
     if INTERVAL_RECOVER_FIRST and setup.hp < recover_target(setup.max_hp):
@@ -938,9 +940,7 @@ def plan_tiered(shelf: dict, *, hp: int, max_hp: int, p: int, star: int | None, 
     # 续打第 2、3 步改好复测前，回满这一档不进模拟候选，模拟显著也不偏离到回满
     opts = [o for o in opts if not (o.group == "hp" and int(o.key[2:]) >= max_hp)]
     # 瘦牌组：非核心卡不进模拟候选（模拟显著也不偏离到买废卡）
-    from hiro.brain.deciders import _is_core_card
-
-    from hiro.brain.deciders import wants_copy
+    from hiro.brain.deciders import _is_core_card, wants_copy
 
     all_cards = [o for o in opts if o.group == "wappen"]
     opts = [o for o in opts if not (o.group == "wappen" and not (_is_core_card(o.card_id) and wants_copy(o.card_id, sum(1 for c in deck if c[0] == o.card_id))))]
@@ -1058,7 +1058,7 @@ GAIN_SIG = 1.5  # 一瓶饮料的增益要超过几个标准误才算「值得�
 SPARE_P_VALUE = 20
 
 
-@lru_cache(maxsize=None)
+@cache
 def drink_price(drink_id: str) -> int:
     from hiro.state.context import catalog
 

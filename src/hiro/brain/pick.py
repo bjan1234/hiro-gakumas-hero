@@ -39,7 +39,7 @@ class CardPicker:
             "recommended": recommended,
             "candidates": [
                 {"index": v.slot, "name": v.name, "category": v.category, "text": v.text,
-                 "tags": {k: x for k, x in v.to_dict()["tags"].items()}}
+                 "tags": dict(v.to_dict()["tags"].items())}
                 for v in known
             ],
         }  # fmt: skip

@@ -401,7 +401,7 @@ def quick_page(img: MatLike) -> dict | None:
         return done("TRANSITION", fields={"kind": "day_countdown", "text": cd})
     if _schedule_overlay(hsv):
         return done("TRANSITION", tap=SCHEDULE_CLOSE, fields={"kind": "schedule"})  # 日程表覆盖层：点底部 ✕ 关掉
-    if _hit(gray, "quick_hud_label"):  # 剧情对话框 / 事件过场 / 主页菜单下方也有白块：只在培育画面（右上「審査基準」）认气泡
+    if _hit(gray, "quick_hud_label"):  # 剧情对话框 / 事件过场 / 主页菜单下方也有白块：只在培育画面（右上「審査基準」）认气泡  # noqa: SIM102
         if (bubble := bottom_bubble(img, hsv, white)) is not None:
             page, fields = bubble
             return done(page, tap=SKIP_TAP, fields=fields)

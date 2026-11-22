@@ -10,40 +10,39 @@
   这里只做 observe → decide → 把契约 Action 翻译成 KAA 上下文的操作 → verify。
 """
 
+import logging
 import time
-from pathlib import Path
 from dataclasses import replace
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-import logging
-from hiro.devices.active import Loop, device, sleep
-
 from hiro.brain.battle import BattleBrain
-from hiro.vision.ocr import find_text, screen_texts
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.llm import from_spec
 from hiro.brain.state import profile_for
-from hiro.contracts import Action, ActionKind, Candidate, Decision, ExecutionResult
+from hiro.contracts import Action, ActionKind, Candidate, Decision, ExecutionResult  # noqa: F401
+from hiro.devices.active import Loop, device, sleep
+from hiro.exec.exam import run_exam
 from hiro.loop.errors import ResumeBlocked
 from hiro.loop.session import Session
 from hiro.produce import ops
 from hiro.produce.ops import button_text
-from hiro.vision.hif import is_final_exam
-from hiro.vision.ui_templates import box, tap, tpl
-from hiro.exec.exam import run_exam
 from hiro.recorder import Recorder
+from hiro.vision.hif import is_final_exam
+from hiro.vision.ocr import find_text, screen_texts
+from hiro.vision.ui_templates import box, tap, tpl
 
 if TYPE_CHECKING:
     from kaa.tasks.produce.new.controller import ProduceController
     from kaa.tasks.produce.new.page import (
-        ActionSelectContext,
-        CardSelectContext,
+        ActionSelectContext,  # noqa: F401
+        CardSelectContext,  # noqa: F401
         ConsultContext,
-        DrinkSelectContext,
+        DrinkSelectContext,  # noqa: F401
         ExamContext,
-        HifRoundIntervalContext,
-        OutingContext,
-        StudyContext,
+        HifRoundIntervalContext,  # noqa: F401
+        OutingContext,  # noqa: F401
+        StudyContext,  # noqa: F401
     )
 
 
@@ -575,7 +574,7 @@ class HifCore:
             obs = self.s.observe(scene="SELECT_CARD", img=img, fields=raw)
         d = self.deciders.decide("SELECT_CARD", self.s.state, n_options=len(options))
         self._note_fallback("SELECT_CARD", d)
-        if d.action.kind is ActionKind.REROLL and self._rerolls_this_page < self.MAX_REROLLS_PER_PAGE:
+        if d.action.kind is ActionKind.REROLL and self._rerolls_this_page < self.MAX_REROLLS_PER_PAGE:  # noqa: SIM102
             if self._reroll(obs, d, t0):
                 return  # 候选换了：主循环重新 observe → 再决策
         if d.action.kind is ActionKind.REROLL:
@@ -633,9 +632,9 @@ class HifCore:
         mode = "qualify" if self.scenario == "qualify" else "main"
         return f"{mode}，已完成 {self.exam_count} 场考试"
 
-    POUCH_NAME = {"red": "ポーチ（赤）", "green": "ポーチ（緑）", "yellow": "ポーチ（黄）"}
+    POUCH_NAME = {"red": "ポーチ（赤）", "green": "ポーチ（緑）", "yellow": "ポーチ（黄）"}  # noqa: RUF012
 
-    POUCH_KANJI = {"red": "赤", "green": "緑", "yellow": "黄"}
+    POUCH_KANJI = {"red": "赤", "green": "緑", "yellow": "黄"}  # noqa: RUF012
 
     def _custom_options(self, img, options: list[dict]) -> list[dict]:
         """定制三选一（两段：毛绒 / 装饰）：hiro.vision.pitem_custom 按画面认候选，名称拼成「ロボ（黄）」「花ロボ（黄）」供决策器解析。"""
@@ -672,7 +671,7 @@ class HifCore:
 
         t0 = time.monotonic()
         for read in range(1, self.PITEM_READS + 1):
-            img, texts, custom = self._pitem_frame()
+            img, _texts, custom = self._pitem_frame()
             raw, _ = extract("SELECT_PITEM", img)
             raw = dict(raw or {})
             # 识别给颜色、决策器按名称解析：选拔①后的背包按颜色补名称，选拔②③后的定制由 hiro.vision.pitem_custom 认候选
@@ -766,7 +765,7 @@ class HifCore:
 
     def _load_finals_context(self) -> None:
         """续跑：从同一局之前的 trace 段读回本战 R1 记下的牌组 / 饮料 / 倍率（hiro.state.finals_context.CONTEXT），轮间决策用。"""
-        import re
+        import re  # noqa: F401
 
         from hiro.state.finals_context import CONTEXT_FILE, load_context
 
@@ -892,7 +891,7 @@ class HifCore:
 
     def _picked_cards_from_trace(self) -> set[str]:
         """同一局之前各 trace 段（<基名>、<基名>-rN）按事件记账得到的现有卡（hiro.loop.ledger：拿卡 / 买卡 / 换入 + 回忆，减去换出 / 删除）。"""
-        import re
+        import re  # noqa: F401
 
         from hiro.kaa_env import MEMORY_CARDS
         from hiro.loop.ledger import owned_cards, steps_of
@@ -1168,7 +1167,7 @@ class HifCore:
         # （DMM mainverify2 11-17：开局读过 19 张后支援事件给的「頭上に注意！」漏记，R1 搜索整场跟丢）
         pending = "produce.deck" in self.s.state.pending_review and flag != "0"
         pending = pending and getattr(self, "_pending_reviewed_at", None) != (self.exam_count, prod.get("step"))
-        if not ((empty and due) or pending):
+        if not ((empty and due) or pending):  # noqa: SIM102
             if flag != "1" or not due:
                 return
         if pending:
@@ -1710,7 +1709,7 @@ class HifCore:
                            warnings=[*d.warnings, f"总控兜底：打开 {name} 对话框选卡"])  # fmt: skip
         return d
 
-    op_failed: dict = {}  # {"enhance"|"remove": {card_id}}：点了却做不成的卡（q10：届いて！+ 已满级，识别没读出「+」），本局不再选
+    op_failed: dict = {}  # {"enhance"|"remove": {card_id}}：点了却做不成的卡（q10：届いて！+ 已满级，识别没读出「+」），本局不再选  # noqa: RUF012
     last_dialog_pick: tuple | None = None
 
     def _choose_dialog_card(self, kind: str, cards: list) -> str | None:
@@ -1910,7 +1909,7 @@ class HifCore:
     RETRY_JEWEL = ("ジュエル",)
     RETRY_CONFIRM_WAIT = 15.0
     RETRY_CONFIRM_TAPS = 3
-    retries_used: dict = {}  # {"free": n, "ticket": n}（进程内，复盘统计）
+    retries_used: dict = {}  # {"free": n, "ticket": n}（进程内，复盘统计）  # noqa: RUF012
 
     MAX_RETRIES_PER_EXAM = 3  # 同一场考试最多再挑戦几次（含续跑前的段）：打法 / 引擎没改时重复挑戦只花时间
 
@@ -1928,7 +1927,7 @@ class HifCore:
                 continue
             for line in f.open(encoding="utf-8"):
                 if "使用再挑戦" in line:
-                    try:
+                    try:  # noqa: SIM105
                         n += sum(1 for x in _json.loads(line).get("notes") or [] if "使用再挑戦" in x and (label in x or "本战" in x))
                     except ValueError:
                         pass

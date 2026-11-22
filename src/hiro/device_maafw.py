@@ -110,7 +110,7 @@ class MaaFwWin32Impl:
         self._ctrl = None
 
     def _connect(self) -> None:
-        Win32Controller, S, I, Toolkit = _maa()
+        Win32Controller, S, I, Toolkit = _maa()  # noqa: E741
         log_dir = os.environ.get("HIRO_MAAFW_LOG") or os.path.join(tempfile.gettempdir(), "hiro-maafw")
         os.makedirs(log_dir, exist_ok=True)
         Toolkit.init_option(log_dir)  # 框架自己的日志写这里（debug/maa.log）
@@ -173,7 +173,7 @@ class MaaFwWin32Impl:
         for i in range(1, steps + 1):
             t = i / steps
             time.sleep(1 / SWIPE_FPS)
-            self._job(lambda c: c.post_touch_move(round(x1 + (x2 - x1) * t), round(y1 + (y2 - y1) * t)), "拖动")
+            self._job(lambda c: c.post_touch_move(round(x1 + (x2 - x1) * t), round(y1 + (y2 - y1) * t)), "拖动")  # noqa: B023
         end = time.monotonic() + self.swipe_hold
         while time.monotonic() < end:
             time.sleep(1 / SWIPE_FPS)

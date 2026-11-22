@@ -1,9 +1,9 @@
 """初 / N.I.A 选行动（hiro.brain.hajime_nia.choose_action）：通关档的社区规则，每条规则至少一个用例。
 设计稿 （作者本机，未发布） 第四节；规则文件 src/hiro/defaults/hajime_nia_rules.json。"""
 
-import pytest
-
 from hiro.brain.hajime_nia import Status, choose_action
+
+import pytest
 
 
 def _opt(option, attr=None, sp=None, hp_cost=None):
@@ -11,7 +11,7 @@ def _opt(option, attr=None, sp=None, hp_cost=None):
 
 
 def _st(**kw):
-    base = dict(mode="produce-001", step=3, stamina=30, max_stamina=30, produce_point=0, params={"Vo": 300, "Da": 200, "Vi": 100})
+    base = {"mode": "produce-001", "step": 3, "stamina": 30, "max_stamina": 30, "produce_point": 0, "params": {"Vo": 300, "Da": 200, "Vi": 100}}
     base.update(kw)
     return Status(**base)
 
@@ -92,7 +92,7 @@ def test_hajime_lesson_week_very_low_stamina_rests():
 
 
 def _nia(**kw):
-    base = dict(mode="produce-004", step=3, stamina=20, max_stamina=30, produce_point=0, params={"Vo": 300, "Da": 200, "Vi": 150}, rest_left=4)
+    base = {"mode": "produce-004", "step": 3, "stamina": 20, "max_stamina": 30, "produce_point": 0, "params": {"Vo": 300, "Da": 200, "Vi": 150}, "rest_left": 4}
     base.update(kw)
     return _st(**base)
 
@@ -116,7 +116,7 @@ def test_nia_lesson_stamina_at_least_cost():
 
 def test_nia_sales_when_no_lesson():
     opts = [_opt("sales"), _opt("gift"), _opt("rest")]
-    o, _, rules = _pick(_nia(), opts)
+    o, _, _rules = _pick(_nia(), opts)
     assert o["option"] == "sales"
 
 
@@ -377,7 +377,7 @@ def test_hajime_oikomi_takes_highest_exam_criteria():
     for o in opts:
         o["oikomi"] = True
     st = _st(params={"Vo": 252, "Da": 260, "Vi": 180}, criteria={"Vo": 0.45, "Da": 0.35, "Vi": 0.20}, stamina=34)
-    o, reason, rules = _pick(st, opts)
+    o, _reason, rules = _pick(st, opts)
     assert o["attr"] == "Vo" and "hajime.oikomi_bonus" in rules
 
 
@@ -497,7 +497,7 @@ def test_event_choice_pure_dialogue_picks_first():
 def test_hajime_full_stamina_prefers_shop_over_outing():
     """初实机（协调 11-17）：体力 30/30、没课的周，原来选了外出。满体力外出回体力用不上：P 点够删卡时相談排在外出前。"""
     opts = [_opt("outing"), _opt("shop"), _opt("rest")]
-    o, reason, _ = _pick(_st(stamina=30, max_stamina=30, produce_point=150), opts)
+    o, _reason, _ = _pick(_st(stamina=30, max_stamina=30, produce_point=150), opts)
     assert o["option"] == "shop"
 
 

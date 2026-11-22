@@ -12,15 +12,16 @@
 每一步存帧到 ops.CALIB_DIR。任何一步超时返回 ok=False 并写明卡在哪一步。所有等待按时间封顶。
 """
 
+import logging
 import time
 from collections.abc import Callable
 
-import numpy as np
-import logging
-from hiro.devices.active import device, sleep as _sleep
-
 from hiro.contracts import Action, ExecutionResult
+from hiro.devices.active import device
+from hiro.devices.active import sleep as _sleep
 from hiro.produce.ops import Run, button_sv, find_text, orange_lit, roi_diff
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 

@@ -125,7 +125,7 @@ def _marks(img: MatLike, region: tuple[int, int, int, int]) -> list[tuple[int, i
 
 def _geometry(marks: list[tuple[int, int]]) -> dict:
     xs = sorted({x for x, _ in marks})
-    gaps = [b - a for a, b in zip(xs, xs[1:]) if b - a > 60]
+    gaps = [b - a for a, b in zip(xs, xs[1:]) if b - a > 60]  # noqa: RUF007
     if not gaps:
         return GEOMETRY["list"]
     return GEOMETRY["list"] if min(gaps) >= PITCH_SPLIT else GEOMETRY["dialog"]
@@ -133,7 +133,7 @@ def _geometry(marks: list[tuple[int, int]]) -> dict:
 
 def _hsv(cell: MatLike, box: tuple[float, float, float, float]):
     n = cell.shape[0]
-    y1, y2, x1, x2 = (int(round(v * n)) for v in box)
+    y1, y2, x1, x2 = (int(round(v * n)) for v in box)  # noqa: RUF046
     hsv = cv2.cvtColor(cell[y1:y2, x1:x2], cv2.COLOR_BGR2HSV)
     return hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2], (n / 125) ** 2
 
@@ -708,7 +708,7 @@ def _near_name(text: str) -> str | None:
     """主数据里与 text 等长（≥3 字）、只差一个字的名称；恰好一个才返回（卡名含「+」）。"""
     if len(text) < 3:
         return None
-    names = {n for n in _cards_by_full_name()} | set(_drinks_by_name()) | set(_pitems_by_name())
+    names = set(_cards_by_full_name()) | set(_drinks_by_name()) | set(_pitems_by_name())
     hits = {n for n in names if len(n) == len(text) and sum(a != b for a, b in zip(n, text, strict=True)) == 1}
     return hits.pop() if len(hits) == 1 else None
 

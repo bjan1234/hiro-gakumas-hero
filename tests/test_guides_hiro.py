@@ -3,9 +3,9 @@
 import json
 import random
 
-import pytest
-
 from hiro.brain import guides
+
+import pytest
 
 HIRO = "i_card-shro-3-007"
 

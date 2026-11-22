@@ -1,18 +1,16 @@
 """「通信エラー」（第二十二局本战轮间 12:26 卡死 195s 停机）：有リトライ就点リトライ（绝不点タイトルへ）；
 只有「閉じる」（時間が経っているのでタイトルに戻します）就点閉じる、抛 CommErrorToTitle 走回首页续跑。"""
 
+import importlib.util as _iu
+import importlib.util as _kiu
 from pathlib import Path
-
-import cv2
-import pytest
+from pathlib import Path as _P
 
 from hiro.loop import comm_error as ce
 from hiro.loop.date_change import DateChanged
 
-import importlib.util as _iu
-from pathlib import Path as _P
-
-import importlib.util as _kiu
+import cv2
+import pytest
 
 NEED_KAA = pytest.mark.skipif(_kiu.find_spec("kotonebot") is None or _kiu.find_spec("kaa") is None,
                               reason="操作层：要装 KAA / kotonebot（pip install -e \".[play]\"）")
@@ -64,9 +62,9 @@ def test_loop_callback_handles_comm_error(monkeypatch):
     """KAA 每个 Loop 的全局回调（日期切换看守）顺带处理通信エラー：考试 / 其他 KAA 循环里也不会卡住。"""
     from types import SimpleNamespace as NS
 
-    import kotonebot
-
     from hiro.loop import date_change
+
+    import kotonebot
 
     clicks = []
     monkeypatch.setattr(kotonebot, "device", NS(click=lambda x, y: clicks.append((x, y))))
@@ -84,9 +82,9 @@ def test_comm_retry_episode_pauses_unknown_stop(monkeypatch):
     点过リトライ后 90s 内的 UNKNOWN 不计时、不问 LLM；同一轮故障超过 15 分钟恢复原来的 180 秒停机。"""
     from types import SimpleNamespace as NS
 
-    import kotonebot
-
     from hiro.loop import controller as ctl
+
+    import kotonebot
     from kaa.tasks.produce.new.consts import Scene, SceneType
 
     monkeypatch.setattr(kotonebot, "device", NS(screenshot=lambda: None))
@@ -150,10 +148,10 @@ def test_e209_on_orange_loading_screen_is_a_dialog():
     import os
     from pathlib import Path
 
-    import cv2
-
     from hiro.loop.comm_error import comm_error
     from hiro.runtime.frame import Frame
+
+    import cv2
 
     path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "comm-e209-on-loading-acct2.png"
     if not path.exists():
@@ -172,10 +170,10 @@ def test_e209_on_loading_with_orange_bottom_still_retries():
     from pathlib import Path
     from types import SimpleNamespace
 
-    import cv2
-
     from hiro.runtime import interrupts
     from hiro.runtime.frame import Frame
+
+    import cv2
 
     path = Path(os.environ.get("HIRO_FIXTURES", Path(__file__).parent / "fixtures")) / "pages" / "comm-e209-on-loading-move-acct2.png"
     if not path.exists():

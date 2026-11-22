@@ -46,7 +46,14 @@ def _evidence(text: str) -> list[dict]:
 
 
 def card_pick_entry() -> dict:
-    from hiro.state.knowledge import CONFLICT_CARDS, CULL_AS_IMPRESSION, OFF_PLAN_CARDS, SMALL_DECK_CORE, YARUKI_CARDS, core_keep
+    from hiro.state.knowledge import (
+        CONFLICT_CARDS,
+        CULL_AS_IMPRESSION,
+        OFF_PLAN_CARDS,
+        SMALL_DECK_CORE,
+        YARUKI_CARDS,
+        core_keep,
+    )
 
     prefer, ev_text = [], []
     conflicts = set(CONFLICT_CARDS) | set(OFF_PLAN_CARDS) | set(CULL_AS_IMPRESSION)

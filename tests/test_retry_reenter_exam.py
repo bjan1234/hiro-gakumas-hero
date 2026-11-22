@@ -4,9 +4,9 @@ _dispatch 只在「上一页不是 EXAM」时进 on_exam_entered → 主循环�
 策略置 exam_restarted 后，下一次看到考试页要重新进入 on_exam_entered，且只进一次。"""
 
 import hiro  # noqa: F401  兼容层（先于 kaa）
-from kaa.tasks.produce.new.consts import Scene, SceneType
-
 from hiro.loop.controller import HiroController
+
+from kaa.tasks.produce.new.consts import Scene, SceneType
 
 
 class Strategy:
@@ -240,17 +240,17 @@ def test_finals_retry_skipped_when_far_behind_first(monkeypatch):
 
 def test_finals_retry_kept_when_close_to_first(monkeypatch):
     """mainverify4（11-17）：离第 1 约 9 千，照常重打。"""
-    st, notes, calls = _gap_strategy(monkeypatch, _final_page(1071491, 400000, 1080506))
+    st, _notes, calls = _gap_strategy(monkeypatch, _final_page(1071491, 400000, 1080506))
     assert st._finals_retry(None, "r2") is True and calls == ["r2"]
 
 
 def test_finals_retry_gap_unreadable_keeps_old_rule(monkeypatch):
     page = _final_page(846075, None, 1080506)  # 本轮分没读到：算不了差距，按原规则重打
-    st, notes, calls = _gap_strategy(monkeypatch, page)
+    st, _notes, _calls = _gap_strategy(monkeypatch, page)
     assert st._finals_retry(None, "r2") is True
 
 
 def test_finals_retry_gap_threshold_env(monkeypatch):
     monkeypatch.setenv("HIRO_RETRY_GAP_MAX", "1.0")  # 放宽到 100%：65% 的差距也重打
-    st, notes, calls = _gap_strategy(monkeypatch, _final_page(846075, 362089, 1080506))
+    st, _notes, _calls = _gap_strategy(monkeypatch, _final_page(846075, 362089, 1080506))
     assert st._finals_retry(None, "r2") is True

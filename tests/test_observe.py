@@ -3,15 +3,15 @@
 import json
 from pathlib import Path
 
-import cv2
-import pytest
-
 import hiro  # noqa: F401
 from hiro.brain.state import BattleState, ExamMemory, profile_for
 from hiro.vision.action import read_action_select
 from hiro.vision.hif import read_hif_exam
 from hiro.vision.observe import battle_observation, produce_observation
 from hiro.vision.offline import load
+
+import cv2
+import pytest
 
 FIX = Path(__file__).with_name("fixtures")
 # 选拔①之前的日程（gakumas_produce produce-007），与画面「選抜試験1まで N日」推出的 step 对应

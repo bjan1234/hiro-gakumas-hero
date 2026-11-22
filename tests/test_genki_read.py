@@ -5,12 +5,12 @@
 
 from pathlib import Path
 
-import cv2
-import pytest
-
 import hiro  # noqa: F401
 from hiro.vision.digits import read_number
 from hiro.vision.hif import BOX_GENKI, read_hif_hud
+
+import cv2
+import pytest
 
 FIX = Path(__file__).with_name("fixtures") / "genki"
 

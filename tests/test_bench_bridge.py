@@ -2,14 +2,14 @@
 
 from types import SimpleNamespace
 
-import pytest
-
 from hiro.bench_bridge import advisor as A
 from hiro.bench_bridge.screen import ScreenTracker, exam_fields, from_screen
 from hiro.bench_bridge.uiobs import from_engine
 from hiro.brain.cards import CardView, DrinkView
 from hiro.brain.state import CAMPUS_HIRO, BattleState, ExamMemory
 from hiro.contracts import Action
+
+import pytest
 
 
 def _card(slot, cid, u=0, available=True, name=None):
@@ -311,7 +311,7 @@ def test_unread_hand_upgrade_falls_back_to_deck_base(monkeypatch):
 
 @pytest.mark.bench_on
 def test_default_uses_screen_path_even_with_sim_game(monkeypatch):
-    adv, algo = _advisor(monkeypatch, ("play", 0))
+    adv, _algo = _advisor(monkeypatch, ("play", 0))
     st, mem = _state([_card(0, "p_card-a", 0)])
     st.sim_game = object()
     monkeypatch.setattr(A, "_engine_state", lambda game: (_ for _ in ()).throw(AssertionError("不该读引擎局面")))
@@ -647,7 +647,7 @@ def test_tower_ctx_carries_known_draws(monkeypatch, tmp_path):
     saved = TOWER_LO
     TOWER_LO = {**saved, **sig}
     try:
-        adv, hif, tower = _tower_advisor(monkeypatch, tmp_path, "my.gnrpa:Search")
+        adv, _hif, tower = _tower_advisor(monkeypatch, tmp_path, "my.gnrpa:Search")
     finally:
         TOWER_LO = saved
     st, mem = _state([_card(0, "p_card-a", 1)], remaining=15, turn=1)

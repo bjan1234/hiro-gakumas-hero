@@ -57,7 +57,7 @@ def _vision_raw(img: MatLike, w: int, h: int, languages) -> list[tuple[str, floa
     import Vision
     from Foundation import NSData
 
-    ok, buf = cv2.imencode(".png", img)
+    _ok, buf = cv2.imencode(".png", img)
     handler = Vision.VNImageRequestHandler.alloc().initWithData_options_(NSData.dataWithBytes_length_(buf.tobytes(), len(buf)), None)
     request = Vision.VNRecognizeTextRequest.alloc().init()
     request.setRecognitionLevel_(0)  # accurate

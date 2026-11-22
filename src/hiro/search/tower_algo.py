@@ -30,7 +30,7 @@ def _status_maps() -> tuple[dict, dict]:
     synced = {k: (c, False) for c, k in U.VALUE_KIND.items()}
     synced.update({k: (c, True) for c, k in U.TURN_AMOUNT_KIND.items()})
     synced["parameter_buff"] = ("ParameterBuffStatusEffect", True)
-    names = [k for k in U.FLAG_KIND.values()]
+    names = list(U.FLAG_KIND.values())
     flags = {k: (c, True) for c, k in U.FLAG_KIND.items() if names.count(k) == 1}
     return synced, flags
 
@@ -42,15 +42,15 @@ def sync_statuses(rx, status: list) -> None:
     shown = {s[0]: s for s in status}
     for name, (cls, by_turn) in synced.items():
         s = shown.get(name)
-        n = int(round(float(s[1]))) if s else 0
-        try:
+        n = int(round(float(s[1]))) if s else 0  # noqa: RUF046
+        try:  # noqa: SIM105
             rx.override_status(cls, by_turn, n)
         except KeyError:
             pass
-    for name, (cls, by_turn) in flags.items():
+    for name, (cls, by_turn) in flags.items():  # noqa: B007
         s = shown.get(name)
         if s and len(s) > 2 and 0 < int(s[2]) < 99:
-            try:
+            try:  # noqa: SIM105
                 rx.override_status(cls, True, int(s[2]))
             except KeyError:
                 pass

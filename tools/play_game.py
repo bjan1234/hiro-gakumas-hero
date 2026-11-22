@@ -165,7 +165,7 @@ def _probe(kind: str) -> dict:
     """在短命子进程里做要识别层的读屏（设置检查 / 读选拔回忆），结果是一行 JSON。
     包装进程本身不导入 KAA / OCR：它要一直挂着等 run_hif，导入一次就常驻约 2.5 GB（Windows 第十九局，和模拟器 + MuMu 一起把内存吃满）。"""
     import json
-    import os
+    import os  # noqa: F401
 
     try:
         out = subprocess.run([PY, str(Path(__file__).resolve()), "--probe", kind], cwd=ROOT, capture_output=True, text=True,
@@ -215,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
     common = ["--idol", args.idol, *(["--main-attr", args.main_attr] if args.main_attr else []), *passthrough]
     t0 = time.monotonic()
     # 设备操作前：外部暂停旗标在就等。也放子进程里：导入 hiro 包会连带 cv2 / kotonebot，Windows 上包装进程因此常驻约 500 MB（第二十局）
-    import os
+    import os  # noqa: F401
 
     subprocess.call([PY, "-c", "from hiro.loop import pause_flag; pause_flag.wait_until_recording()"], cwd=ROOT,
                     env=child_env())  # fmt: skip

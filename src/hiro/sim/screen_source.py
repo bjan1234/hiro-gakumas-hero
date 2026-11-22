@@ -184,7 +184,7 @@ class SimScreenExamStateSource(ScreenExamStateSource):
         """开考：合成开局（牌组 / 饮料 / 体力 / 倍率），建 SimTracker。"""
         from hiro.sim import interval as iv
         from hiro.sim import resource as rv
-        from hiro.sim.env import SimGame
+        from hiro.sim.env import SimGame  # noqa: F401
         from hiro.sim.track import SimTracker
         from hiro.state.finals_context import CONTEXT
 

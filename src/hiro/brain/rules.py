@@ -191,7 +191,7 @@ def soft_warnings(state: BattleState, decision: Decision) -> list[str]:
         same = [x for x in state.drinks if drink and x.name == drink.name]
         if drink and "使用数追加" in drink.text and len(same) <= 1 and not any("使用数追加" in x.text for x in state.drinks if x is not drink):
             out.append(f"{drink.name} 是最后一瓶加行动饮料，剩 {state.remaining_turns} 回合就喝：末段连打兑现时没有了")
-    if decision.kind == "skip":
+    if decision.kind == "skip":  # noqa: SIM102
         if any(c.available and c.card_id and not c.tags.is_sleep for c in state.hand):
             out.append("手里还有可打的牌却跳过回合（回复 2 体力）")
     return out

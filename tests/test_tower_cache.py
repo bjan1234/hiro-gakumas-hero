@@ -3,11 +3,11 @@
 import json
 from types import SimpleNamespace as NS
 
-import pytest
-
 from hiro.runtime import tower_cache as tc
 from hiro.runtime import tower_play as tp
 from hiro.runtime.tower import TowerRun
+
+import pytest
 
 
 @pytest.fixture(autouse=True)
@@ -162,11 +162,9 @@ def test_rivals_unread_score_gives_empty():
 
 def test_progress_survives_restart_same_game_day(tmp_path, monkeypatch):
     """跨进程记每层挑战次数（协调 11-17：重启后从 0 算，手毬 16 层实际打了 3 次、日志每次都写 1）：同一游戏日读回来，换日不读。"""
-    from datetime import datetime
+    from datetime import datetime, timedelta, timezone
 
     from hiro.runtime.tower import TowerRun
-
-    from datetime import timedelta, timezone
 
     assert tc.game_day(datetime(2026, 11, 17, 4, 59)) == "2026-11-16" and tc.game_day(datetime(2026, 11, 17, 5, 0)) == "2026-11-17"  # 日本时间 5 点换日
     cst = timezone(timedelta(hours=8))  # 北京时间 04:05 = 日本 05:05：协调 11-17 实机这时弹了「日付変更」

@@ -7,11 +7,11 @@ import json
 from pathlib import Path
 from types import SimpleNamespace as NS
 
-import pytest
-
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import ExecutionResult, GameState
+
+import pytest
 
 FIX = Path(__file__).parent / "data" / "g33-main-seq81-enhance.json"  # 实机状态（page_fields 文本），随仓库发布
 
@@ -89,7 +89,7 @@ def test_hook_without_cancel_button_stops_instead_of_guessing(monkeypatch):
     from hiro.contracts import Action, ActionKind, Decision
 
     d = Decision(Action(ActionKind.ENHANCE_CARD, {"cancel": True}), "卡格里没有能强化的卡", "rule", 0.7)
-    h, clicks, stops, records, seen = _hook(monkeypatch, cancel_btn=False, decision=d)
+    h, clicks, stops, _records, seen = _hook(monkeypatch, cancel_btn=False, decision=d)
     with pytest.raises(RuntimeError):
         h._card_event("SKILL_CARD_ENHANCE", None, "enhance_card")
     assert seen["cancelable"] == [False] and clicks == [] and "キャンセル" in stops[0]
@@ -101,7 +101,7 @@ def test_hook_forced_page_rereads_on_wait_then_executes(monkeypatch):
 
     wait = Decision(Action.ui(ActionKind.WAIT, why="卡格没读到"), "等重新识别", "rule", 0.3)
     pick = Decision(Action(ActionKind.ENHANCE_CARD, {"card_id": "x", "index": 0, "upgrade": 0}), "强化 x", "rule", 0.7)
-    h, clicks, stops, records, seen = _hook(monkeypatch, cancel_btn=False, decision=[wait, pick])
+    h, clicks, stops, _records, seen = _hook(monkeypatch, cancel_btn=False, decision=[wait, pick])
     done = []
     monkeypatch.setattr(card_ops, "enhance_card", lambda ctx, cid: done.append(cid) or True, raising=False)
     h._card_event("SKILL_CARD_ENHANCE", None, "enhance_card")
@@ -113,7 +113,7 @@ def test_hook_recognition_cancelable_wins_and_falls_back_to_fixed_cancel(monkeyp
     from hiro.contracts import Action, ActionKind, Decision
 
     d = Decision(Action(ActionKind.ENHANCE_CARD, {"cancel": True}), "没有值得强化的卡", "rule", 0.7)
-    h, clicks, stops, records, seen = _hook(monkeypatch, cancel_btn=False, decision=d)
+    h, clicks, stops, _records, seen = _hook(monkeypatch, cancel_btn=False, decision=d)
     h.s.state = GameState(page_fields={"cards": [{"card_id": "x"}], "cancelable": True})
     h._card_event("SKILL_CARD_ENHANCE", None, "enhance_card")
     assert seen["cancelable"] == [True] and clicks == [h.CARD_OP_CANCEL_XY] and not stops

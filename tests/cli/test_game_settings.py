@@ -14,7 +14,7 @@ def _tool():
 
 def test_check_settings_json_output(tmp_path, monkeypatch):
     mod = _tool()
-    found = {k: "ON" for k in mod.WANT}
+    found = dict.fromkeys(mod.WANT, "ON")
     found["支援事件剧情跳过"] = "OFF"
     monkeypatch.setattr(mod, "check", lambda save_dir=None: found)
     out = tmp_path / "out.json"

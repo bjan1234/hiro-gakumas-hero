@@ -8,7 +8,7 @@ gift（差し入れ）、shop（相談）、special_guidance、rest；新增 all
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from functools import lru_cache
+from functools import cache, lru_cache  # noqa: F401
 
 from hiro.brain import hajime_nia_rules as hr
 from hiro.state import modes
@@ -167,7 +167,7 @@ def _hajime(p: _Pick) -> tuple[int, str, list[str]]:
         # 累了：课程、授業让位给外出或休息，没有外出就休息（协调 11-17 初 REGULAR 实机：体力 9/30 选 SP 课，游戏弹「体力が低下しています」）
         p.use("hajime.outing_when")
         p.use("hajime.outing_vs_rest")
-        outing = p.idx("outing") if not (st.difficulty == "master") else []
+        outing = p.idx("outing") if st.difficulty != "master" else []
         rest_ok = bool(p.idx("rest")) and _rest_ok(p)
         if outing and (st.produce_point >= OUTING_POINTS or not rest_ok):
             return p.done(outing[0], f"体力少了 {lost}（{st.stamina}/{st.max_stamina}），课程让位，去外出")
@@ -211,7 +211,7 @@ def _hajime(p: _Pick) -> tuple[int, str, list[str]]:
     # 相談做不成事（P 点不够删卡 / 强化）时排最后：0P 档的外出也有体力和技能卡，比白进相談强，体力几乎满也一样（协调 11-17 初第二局）。
     # MASTER 外出随机性大 [ww-初M]，休息在外出前
     order += (["rest", "outing"] if st.difficulty == "master" else ["outing", "rest"]) + ["shop"]
-    tail = "，相談 P 点不够（{0}P < {1}P）不去".format(st.produce_point, st.consult_price or SHOP_POINTS) if p.idx("shop") and not st.shop_ok else ""
+    tail = f"，相談 P 点不够（{st.produce_point}P < {st.consult_price or SHOP_POINTS}P）不去" if p.idx("shop") and not st.shop_ok else ""
     return _fallback_order(p, tuple(dict.fromkeys(order)), "没有课程 / 授業" + ("，体力几乎是满的" if outing_ok and near_full else "") + tail)
 
 
@@ -391,7 +391,7 @@ def _master_votes(st: Status, kind: str | None) -> tuple[int, int] | None:
     return (row[0], row[1]) if row else None
 
 
-@lru_cache(maxsize=None)
+@cache
 def _business_rows(mode: str, idol: str) -> dict:
     from gakumas_produce.hajime_nia import rules
 

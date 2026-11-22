@@ -13,16 +13,15 @@ import json
 import re
 from functools import lru_cache
 
+from hiro import master
+from hiro.vision import assets, layout
+from hiro.vision.digits import read_dddd, read_leading_int
+from hiro.vision.ocr import ocr
+from hiro.vision.region_cache import RegionCache, cached
+
 import cv2
 import numpy as np
 from cv2.typing import MatLike
-from hiro import master
-
-from hiro.vision import assets
-from hiro.vision.region_cache import RegionCache, cached
-from hiro.vision import layout
-from hiro.vision.digits import read_dddd, read_leading_int
-from hiro.vision.ocr import ocr
 
 ICON_PREFIX = "img_general_icon_exam-effect_"
 _FIRST_SLOT = "BuffListRoot/BuffList/ExamMainBuffView"

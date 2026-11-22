@@ -6,7 +6,7 @@ LLM 调用次数与 token、故障恢复次数、页面切换、每场考试结�
 
 import argparse
 import json
-import statistics
+import statistics  # noqa: F401
 import sys
 from collections import Counter
 from pathlib import Path
@@ -65,7 +65,7 @@ def summarize(steps: list[Step], run_meta: dict | None = None) -> dict:
         for n in s.notes:
             if n.startswith("recover:"):
                 recov[n.split(":")[1]] += 1
-    page_changes = sum(1 for a, b in zip(steps, steps[1:]) if a.state.page.name != b.state.page.name)
+    page_changes = sum(1 for a, b in zip(steps, steps[1:]) if a.state.page.name != b.state.page.name)  # noqa: RUF007
     exams: dict[str, dict] = {}
     for s in steps:
         label = s.state.exam_session.label

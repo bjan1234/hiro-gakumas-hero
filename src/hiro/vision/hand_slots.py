@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import numpy as np
-
 from hiro.vision.ocr import Box, Point
 from hiro.vision.ui_templates import box, normalize, tpl
+
+import numpy as np
 
 CARD_OFFSET = (57, 148)  # 字母框（中心 x，上边 y）到卡面左上角的偏移
 CARD_SCALE = 168 / 256  # 原始卡面图（256 宽）到 720x1280 截图里卡面的缩放（同 KAA play_cards.ui）

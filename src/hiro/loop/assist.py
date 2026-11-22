@@ -10,10 +10,9 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
-
-import logging
 
 from hiro.loop import rescue
 

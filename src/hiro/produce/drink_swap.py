@@ -15,16 +15,17 @@
 所有等待按时间封顶。
 """
 
+import logging
 import time
 from collections.abc import Callable
 
+from hiro.contracts import Action, ActionKind, ExecutionResult
+from hiro.devices.active import device
+from hiro.devices.active import sleep as _sleep
+from hiro.produce.ops import Run, button_sv, find_text, orange_lit
+
 import cv2
 import numpy as np
-import logging
-from hiro.devices.active import device, sleep as _sleep
-
-from hiro.contracts import Action, ActionKind, ExecutionResult
-from hiro.produce.ops import Run, button_sv, find_text, orange_lit
 
 logger = logging.getLogger(__name__)
 

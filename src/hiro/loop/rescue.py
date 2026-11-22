@@ -19,16 +19,15 @@
 
 from __future__ import annotations
 
-from hiro.vision.textnorm import contains, contains_any
-
 import json
+import logging
 import os
 import time
 from collections.abc import Callable
 from pathlib import Path
 
-import logging
 from hiro import imgio
+from hiro.vision.textnorm import contains, contains_any
 
 logger = logging.getLogger(__name__)
 
@@ -246,9 +245,9 @@ class Rescuer:
         return self._finish(rec, img)
 
     def _ask(self, img, boxes, context):
-        import cv2
-
         from hiro.brain.llm import load_prompt
+
+        import cv2
 
         small = cv2.resize(img, IMAGE_SIZE, interpolation=cv2.INTER_AREA)
         _, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 80])
@@ -301,7 +300,7 @@ class Rescuer:
                        f"；{rec['skipped']}" if rec.get("skipped") else "")  # fmt: skip
         if self.out_dir is not None:
             try:
-                import cv2
+                import cv2  # noqa: F401
 
                 d = self.out_dir / f"{time.strftime('%Y%m%d-%H%M%S')}-{len(self.log)}"
                 d.mkdir(parents=True, exist_ok=True)

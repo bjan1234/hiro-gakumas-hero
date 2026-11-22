@@ -2,10 +2,10 @@
 
 from types import SimpleNamespace as NS
 
-import pytest
-
 from hiro.produce import hif
 from hiro.vision.ocr import Box, Text
+
+import pytest
 
 
 def T(text, x, y):

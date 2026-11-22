@@ -1,15 +1,16 @@
 """收尾 / 回首页 / 日切换恢复阶段的认不出画面处理（hiro.loop.assist）：快速判页 → 卡住 ≥12s 交 LLM（同主循环、同拦截）。"""
 
-import pytest
 from hiro.brain.llm import MockLLM as _Mock
+
+import pytest
 
 NEED_IMAGE = pytest.mark.skipif(not hasattr(_Mock, "ask_json_image"), reason="开源 hiro.brain.llm 还没有看图接口 ask_json_image，等策略层同步")
 
-import numpy as np
+from hiro.brain.llm import MockLLM  # noqa: E402
+from hiro.loop import rescue  # noqa: E402
+from hiro.loop.assist import Assist  # noqa: E402
 
-from hiro.brain.llm import MockLLM
-from hiro.loop import rescue
-from hiro.loop.assist import Assist
+import numpy as np  # noqa: E402
 
 BONUS = [("毎週水曜日は学マスの日", 1.0, (407, 95, 582, 115)), ("開催期間：2026/11/11 04:59まで", 1.0, (173, 218, 549, 246)),
          ("学マ水曜日ガシャチケット", 1.0, (216, 763, 504, 787))]  # fmt: skip

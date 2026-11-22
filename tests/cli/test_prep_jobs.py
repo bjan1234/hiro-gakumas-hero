@@ -1,6 +1,6 @@
 """开局前准备的任务：写编成、检查游戏设置、调 DMM 窗口。"""
 
-import sys
+import sys  # noqa: F401
 
 from hiro.cli.jobs import KINDS
 
@@ -23,7 +23,7 @@ def test_run_start_write_formation_is_pending(run_cli, hiro_home):
 
 
 def test_write_formation_without_plan_is_refused_before_confirm(run_cli):
-    code, env = run_cli("run", "start", "write-formation")
+    _code, env = run_cli("run", "start", "write-formation")
     assert env["ok"] is False and env["error"]["code"] == "no_plan"
 
 
@@ -40,7 +40,7 @@ def test_fit_window_only_on_windows(run_cli, monkeypatch):
     k = KINDS["fit-window"]
     assert k.argv({}, None)[1:] == ["-m", "hiro.devices.win_window", "fit"]
     monkeypatch.setattr(jobs.sys, "platform", "darwin")
-    code, env = run_cli("run", "start", "fit-window")
+    _code, env = run_cli("run", "start", "fit-window")
     assert env["ok"] is False and env["error"]["code"] == "windows_only"
 
 

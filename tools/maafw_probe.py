@@ -36,13 +36,13 @@ def main():
     a = ap.parse_args()
     if a.harness:
         return harness(a)
+    from hiro.device_maafw import find_window, input_method, screencap_flags
+
     from maa.controller import Win32Controller
     from maa.define import MaaWin32InputMethodEnum as I
     from maa.define import MaaWin32ScreencapMethodEnum as S
     from maa.toolkit import Toolkit
     from PIL import Image
-
-    from hiro.device_maafw import find_window, input_method, screencap_flags
 
     os.makedirs(a.out, exist_ok=True)
     Toolkit.init_option(a.out)
@@ -102,12 +102,12 @@ def harness(a):
     import threading
     from ctypes import wintypes
 
+    from hiro.device_maafw import input_method, screencap_flags
+
     from maa.controller import Win32Controller
     from maa.define import MaaWin32InputMethodEnum as I
     from maa.define import MaaWin32ScreencapMethodEnum as S
     from maa.toolkit import Toolkit
-
-    from hiro.device_maafw import input_method, screencap_flags
 
     os.makedirs(a.out, exist_ok=True)
     u32, k32 = ctypes.windll.user32, ctypes.windll.kernel32

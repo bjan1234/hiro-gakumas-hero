@@ -22,11 +22,12 @@ import importlib
 import time
 from collections.abc import Callable
 
-from kotonebot import device, logging
-from kotonebot.primitives import Rect
 from hiro import imgio
 from hiro.produce.card_ops import change_stage1, change_stage2, pitem_commit
 from hiro.vision.ocr import screen_texts
+
+from kotonebot import device, logging
+from kotonebot.primitives import Rect
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +130,6 @@ def _guard_action_like(orig):
         return orig
 
     def wrapped(self):
-        import importlib
 
         pg = importlib.import_module("kaa.tasks.produce.new.page")
         from kaa.tasks.produce.new.consts import Scene, SceneType
@@ -175,7 +175,7 @@ def _default_rental_pick() -> bool:
 RENTAL_PICK: Callable | None = _default_rental_pick  # 默认：主属性、等级最高的一张；策略层可替换成自己的选择
 
 
-from hiro.produce.formation_check import FormationMismatch  # noqa: E402  run_hif 按 kaa_patches.FormationMismatch 捕获
+from hiro.produce.formation_check import FormationMismatch  # noqa: E402, F401  run_hif 按 kaa_patches.FormationMismatch 捕获
 
 
 def _check_support(img) -> None:
@@ -196,9 +196,9 @@ def _autofix_on() -> bool:
 def _writer_device(tag: str):
     from pathlib import Path
 
-    import cv2
-
     from hiro.produce.formation_writer import Device
+
+    import cv2
 
     d = Path("reports/live/calib") / f"{time.strftime('%Y%m%d-%H%M%S')}-编成修正-{tag}"
     n = [0]
@@ -248,9 +248,9 @@ def _rent_step2(orig):
                 logger.warning("支援卡：HIRO_SUPPORT_SET=auto，由 KAA「おまかせ」选支援卡和租借")
                 return orig(set_number=set_number, auto_set=auto_set)
             raise RuntimeError("支援卡「おまかせ」没有被明确选择（HIRO_SUPPORT_SET=auto），auto_set_support_card 必须为 False")
-        from kotonebot import device
-
         from hiro.vision.ui_templates import find_enabled, tpl
+
+        from kotonebot import device
 
         if not tpl("Produce.TextStepIndicator2").exists(device.screenshot()):
             return False
@@ -343,7 +343,6 @@ def _prep_progress(fn, name: str):
 
 
 def apply() -> None:
-    import importlib
 
     import kaa.game_ui.idols_overview as io
     from kaa.tasks.produce.new.page import ActionSelectContext, PItemSelectContext, SkillCardChangeContext

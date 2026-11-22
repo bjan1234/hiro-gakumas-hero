@@ -14,6 +14,7 @@ import copy
 import random
 
 import hiro.sim  # noqa: F401  引擎路径
+
 from gakumas_exam.battle import FidelityBattle
 from gakumas_exam.catalog import Catalog
 from gakumas_exam.examconfig import ATTR_BY_TYPE, exam_meta, turn_attributes_for

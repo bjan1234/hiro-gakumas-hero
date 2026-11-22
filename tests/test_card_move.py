@@ -2,12 +2,12 @@
 
 import json
 
-import pytest
-
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.llm import MockLLM
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import ActionKind, GameState
+
+import pytest
 
 pytestmark = pytest.mark.master
 

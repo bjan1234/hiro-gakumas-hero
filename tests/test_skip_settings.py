@@ -1,13 +1,12 @@
 """「演出スキップ設定」弹窗（第二十三局）与开始确认页判据：设置框盖在開始確認页上时不停机、开局过场里不停机。"""
 
+import importlib.util as _iu
 from pathlib import Path
-
-import pytest
+from pathlib import Path as _P
 
 from hiro.loop import skip_settings
 
-import importlib.util as _iu
-from pathlib import Path as _P
+import pytest
 
 
 def _real(*rel):
@@ -31,9 +30,9 @@ def _boxes(state: str):
 
 @_real('settings/skip-settings-off-m23.png')
 def test_read_real_frame():
-    import cv2
-
     from hiro.produce.ops import ocr_boxes
+
+    import cv2
 
     img = cv2.imread(str(FIX / "skip-settings-off-m23.png"))
     r = skip_settings.read(ocr_boxes(img))
@@ -96,9 +95,9 @@ def test_voice_keeps_voice_on():
 @_real("settings/acquire-guide-acct2.png")
 def test_acquire_guide_picks_hide_then_decides():
     """獲得ガイド表示設定（新账号第一次拿技能卡，选卡三选一中途弹）：选「獲得ガイドを表示しない」，再点決定（协调 11-14，Mac 账号 2）。"""
-    import cv2
-
     from hiro.produce.ops import ocr_boxes
+
+    import cv2
 
     boxes = ocr_boxes(cv2.imread(str(FIX / "acquire-guide-acct2.png")))
     clicks = []

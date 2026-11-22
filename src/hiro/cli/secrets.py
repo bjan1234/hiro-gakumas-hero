@@ -26,7 +26,7 @@ _NAME = re.compile(r"^[A-Za-z0-9_.@-]{1,64}$")
 
 # ============================================================================ 后端
 class MemoryBackend:
-    store: dict[str, str] = {}
+    store: dict[str, str] = {}  # noqa: RUF012
 
     def set(self, name: str, value: str) -> None:
         self.store[name] = value

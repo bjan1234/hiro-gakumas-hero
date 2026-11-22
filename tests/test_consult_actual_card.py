@@ -3,10 +3,10 @@
 
 from types import SimpleNamespace as NS
 
-import pytest
-
 from hiro.contracts import Action, ActionKind, Decision, GameState
 from hiro.loop.events import events_from_step
+
+import pytest
 
 DECK = [{"card_id": "p_card-02-men-0_001"}, {"card_id": "p_card-02-men-0_002"}, {"card_id": "p_card-00-men-0_003", "upgrade": 0}]
 SLEEPY = "p_card-00-acc-0_002"

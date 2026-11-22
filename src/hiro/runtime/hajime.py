@@ -157,7 +157,7 @@ def hajime_core(scenario_mode: str):
     class HajimeCore(HifCore):
         RETRY_JEWEL = ("ジュエル", "マニー")  # 再挑戦确认框要花ジュエル或用マニー买券：取消（协调 11-17：只用免费次数和已有チケット）
         last_action_choice = None
-        last_action_options: list = []
+        last_action_options: list = []  # noqa: RUF012
         last_exam_next = None
         _lesson_done = False  # 刚打完的练习课还有残帧：不重进，等处理过选行动页再开门
 
@@ -292,8 +292,8 @@ def hajime_core(scenario_mode: str):
         def _retry_if_failed(self, label: str, *, timeout: float = RESULT_WAIT_S) -> bool:
             """结算名次页：名次没进前 pass_rank（初前 3）就再挑戦（_click_retry：免费 / 已有チケット、每场最多 3 次、ジュエル / マニー 取消）。
             返回是否已发起再挑戦。"""
-            from hiro.vision.ocr import screen_texts
             from hiro.produce.ops import button_text
+            from hiro.vision.ocr import screen_texts
 
             deadline = time.monotonic() + timeout
             res = None
@@ -349,6 +349,7 @@ def hajime_main_attr(idol: str, mode: str, plan: dict | None) -> str | None:
 
 def run(args) -> int:
     from hiro import kaa_env
+    from hiro.brain import guides
     from hiro.contracts import TraceWriter
     from hiro.devices import active, open_device
     from hiro.devices.base import DeviceError
@@ -359,8 +360,6 @@ def run(args) -> int:
     from hiro.runtime.loop import Runtime
     from hiro.runtime.nia_sample import Sampler, set_mode
     from hiro.vision.classify import PageHit, classify
-
-    from hiro.brain import guides
 
     guides.refresh_if_stale()  # 偶像卡攻略包：没有或超过 24 小时就下载，失败不阻塞（协调 11-20）
     kaa_env.apply_formation_plan(args.idol)

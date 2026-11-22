@@ -9,8 +9,8 @@
 from __future__ import annotations
 
 import argparse
-import os
 import html
+import os
 import re
 import subprocess
 import time

@@ -4,21 +4,21 @@
 import re
 import time
 
-from cv2.typing import MatLike
-
 from hiro.perception.lesson import read_lesson
 from hiro.vision.action import read_action_select
 from hiro.vision.cards import card_summary, dialog_card_upgraded
 from hiro.vision.deck import read_card_dialog, read_confirm_dialog, read_deck_list
 from hiro.vision.drinks import read_drink_dialog
 from hiro.vision.event import read_event_choice_page, read_event_choices
-from hiro.vision.items import read_pdrink_max
-from hiro.vision.pages import page_fields
 from hiro.vision.hif import read_hif_exam, read_hif_result
+from hiro.vision.items import read_pdrink_max
 from hiro.vision.ocr import ocr
+from hiro.vision.pages import page_fields
 from hiro.vision.pitem_select import read_pitem_select
 from hiro.vision.shop import read_consult
 from hiro.vision.support import read_supports
+
+from cv2.typing import MatLike
 
 
 def _lesson(img: MatLike) -> dict:

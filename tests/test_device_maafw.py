@@ -14,7 +14,7 @@ class S(IntEnum):
     PrintWindow = 16
 
 
-class I(IntEnum):
+class I(IntEnum):  # noqa: E742
     Null = 0
     Seize = 1
     SendMessage = 2
@@ -33,7 +33,7 @@ class Job:
 
 
 class FakeCtrl:
-    instances = []
+    instances = []  # noqa: RUF012
     fail_screencap = 0
 
     def __init__(self, hwnd, screencap_method, mouse_method, keyboard_method):
@@ -80,7 +80,7 @@ class Win:
 
 
 class FakeToolkit:
-    windows = [Win(7, "Chrome_WidgetWin_1", "DMM GAME PLAYER"), Win(42, "UnityWndClass", "gakumas")]
+    windows = [Win(7, "Chrome_WidgetWin_1", "DMM GAME PLAYER"), Win(42, "UnityWndClass", "gakumas")]  # noqa: RUF012
 
     @staticmethod
     def init_option(path):

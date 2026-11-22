@@ -1,6 +1,6 @@
-import pytest
-
 from hiro.cli import registry
+
+import pytest
 
 CALLS = []
 
@@ -45,7 +45,7 @@ def test_expired_pending_is_refused(run_cli, act_cmd, monkeypatch):
     _, env = run_cli("test", "poke")
     pid = env["data"]["pending"]["id"]
     monkeypatch.setattr(pending, "_now", lambda: 10 ** 12)
-    code, env = run_cli("confirm", pid)
+    _code, env = run_cli("confirm", pid)
     assert env["error"]["code"] == "pending_expired" and CALLS == []
 
 
@@ -66,7 +66,7 @@ def test_confirm_is_not_an_agent_tool(run_cli):
 
 
 def test_bad_id_is_rejected(run_cli):
-    code, env = run_cli("confirm", "../../etc/passwd")
+    _code, env = run_cli("confirm", "../../etc/passwd")
     assert env["error"]["code"] == "pending_unknown"
 
 
@@ -75,9 +75,9 @@ def test_agent_sandbox_env_refuses_confirm_secrets_and_act(run_cli, act_cmd, mon
     pid = env["data"]["pending"]["id"]
     monkeypatch.setenv("HIRO_AGENT_SANDBOX", "1")
     for argv in (("confirm", pid), ("test", "poke"), ("secret", "copy", "game-password"), ("cancel", pid)):
-        code, env = run_cli(*argv)
+        code, env = run_cli(*argv)  # noqa: RUF059
         assert env["ok"] is False and env["error"]["code"] == "agent_readonly", argv
         assert "HIRO_ACTION" in env["error"]["hint"]
-    code, env = run_cli("pending", "list")
+    _code, env = run_cli("pending", "list")
     assert env["ok"] is True
     assert CALLS == []

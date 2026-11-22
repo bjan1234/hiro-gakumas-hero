@@ -66,11 +66,11 @@ def test_event_commit_double_clicks_and_confirms_outing_ap_dialog(monkeypatch):
     """授業 / 外出提交（HifCore._event_commit，替换 KAA Study/OutingContext.commit）：双击第 i 个按钮；外出时 AP 已满框点确定。"""
     from types import SimpleNamespace as NS
 
-    import pytest
-
     import hiro.produce.hif as hif
     import hiro.vision.classify as cl
     from hiro.vision.ocr import Box
+
+    import pytest
 
     t = [0.0]
     clicks, taps = [], []

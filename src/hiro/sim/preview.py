@@ -20,8 +20,8 @@ FIELDS = (("score", "分数"), ("shield", "元气"), ("hp", "体力"), ("motivat
 
 
 def _snap(env) -> dict:
-    return dict(score=env.score, shield=env.shield, hp=env.hp, motivation=env.motivation, impression=env.impression,
-                actions=env.actions, hand=len(env.zones["hand"]), turn=env.turn, ended=env.ended)  # fmt: skip
+    return {"score": env.score, "shield": env.shield, "hp": env.hp, "motivation": env.motivation, "impression": env.impression,
+                "actions": env.actions, "hand": len(env.zones["hand"]), "turn": env.turn, "ended": env.ended}  # fmt: skip
 
 
 LAST_STATS: dict = {}  # 最近一次 preview_actions 的统计（preview_ms / worlds_planned / worlds_done / candidates / depth），实机记进 trace
@@ -204,9 +204,8 @@ def _drink_branch_ok(w, a, legal, drunk: int) -> bool:
     """INTURN_DRINK_BUDGET：这一路已经喝过非 S0 饮料、剩余 > 4 回合时不再展开饮料（卡手时抽牌类除外）。"""
     if a["kind"] != "drink" or drunk < 1 or len(w.turns) - w.turn <= 4:
         return True
-    from hiro.state.knowledge import DRAW_CLASSES, drink_class
-
     from hiro.produce import exam_policy
+    from hiro.state.knowledge import DRAW_CLASSES, drink_class
 
     stuck = not any(x["kind"] == "play" and not w.definition(x["id"]).get("trouble") for x in legal)
     if exam_policy.STUCK_EMPTY_MAX_REM is not None and len(w.turns) - w.turn > exam_policy.STUCK_EMPTY_MAX_REM:
@@ -372,4 +371,4 @@ def prompt_block(slots: dict) -> list[dict]:
     return rows
 
 
-__all__ = ["Preview", "preview_actions", "slot_previews", "prompt_block", "asdict"]
+__all__ = ["Preview", "asdict", "preview_actions", "prompt_block", "slot_previews"]

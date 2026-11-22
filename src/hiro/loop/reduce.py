@@ -171,7 +171,7 @@ def _reduce_fields(s: GameState, obs: Observation) -> None:
             s.exam_session.label = str(value)
             continue
         if section is None and key in ANY_PAGE_PRODUCE and s.produce is not None:
-            section_key = "produce"  # 相談等页面底栏的持有饮料：也写进 produce（识别 3804ac8）
+            section_key = "produce"  # 相談等页面底栏的持有饮料：也写进 produce（识别 3804ac8）  # noqa: F841
             s.produce[key] = copy.deepcopy(value)
             s.sources[f"produce.{key}"] = Source(origin, obs.seq)
             s.page_fields[key] = value

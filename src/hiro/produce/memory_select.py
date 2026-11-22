@@ -6,8 +6,8 @@ from __future__ import annotations
 import logging
 import time
 
-from hiro.devices.active import sleep as _sleep
 from hiro import imgio
+from hiro.devices.active import sleep as _sleep
 from hiro.vision.ocr import screen_texts
 
 logger = logging.getLogger(__name__)
@@ -36,9 +36,9 @@ def _memory_snap(img, tag: str) -> None:
     if img is None:
         return
     try:
-        import cv2
-
         from hiro.produce.ops import CALIB_DIR
+
+        import cv2  # noqa: F401
 
         d = CALIB_DIR / f"{time.strftime('%Y%m%d-%H%M%S', time.localtime(_memory_snap.t0))}-回忆"
         d.mkdir(parents=True, exist_ok=True)
@@ -113,7 +113,7 @@ def memory_value_seen(value: str, texts: str) -> bool:
         return True
     import re
 
-    for m in re.finditer(r"\d{%d}" % len(value), texts):
+    for m in re.finditer(r"\d{%d}" % len(value), texts):  # noqa: UP031
         cand = m.group(0)
         diffs = [(a, b) for a, b in zip(value, cand) if a != b]
         if len(diffs) == 1 and diffs[0][1] in _DIGIT_CONFUSION.get(diffs[0][0], ""):

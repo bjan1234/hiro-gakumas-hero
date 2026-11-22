@@ -3,10 +3,11 @@
 第 4 局本战两次授業セレクトチェンジ 由 KAA 固定换第 0 张，换走了 デイドリーミング、がむしゃら
 （reports/analysis/q4-daydreaming-missing-exec.md）。"""
 
-import pytest
 from hiro.brain.deciders import ProduceDeciders, card_value
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import ActionKind, GameState
+
+import pytest
 
 DAYDREAM, TODOITE, HIGH, BASIC, SLEEP, AYAKU = ("p_card-02-act-1_037", "p_card-02-act-3_039", "p_card-00-men-2_014",
                                                "p_card-02-act-0_037", "p_card-00-acc-0_002", "p_card-02-act-3_045")  # fmt: skip

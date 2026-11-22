@@ -3,12 +3,12 @@
 from pathlib import Path
 from types import SimpleNamespace as NS
 
+from hiro.contracts import Action, ActionKind, Decision
+from hiro.runtime.loop import DONE, STAY
+
 import cv2
 import numpy as np
 import pytest
-
-from hiro.contracts import Action, ActionKind, Decision
-from hiro.runtime.loop import DONE, STAY
 
 FIX = Path(__file__).with_name("fixtures") / "pages"
 
@@ -210,9 +210,9 @@ def test_audition_select_second_stage():
 
 def test_resort_layout_reading():
     """协调 11-17：リゾート施設（绿，+2,800，消費なし）/ 企業 +4,000 / 商業 +4,000 -5；展开态把リゾート施設读成「ノゾート施談」也认。"""
-    name, f = _read("nia-sales-place-resort.png")
+    name, f = _read("nia-sales-place-resort.png")  # noqa: RUF059
     assert [(p["kind"], p["gain"], p["hp_cost"]) for p in f["places"]] == [("resort", 2800, 0), ("corporate", 4000, 0), ("commercial", 4000, 5)]
-    name, f = _read("nia-sales-place-camp-expanded.png")
+    _name, f = _read("nia-sales-place-camp-expanded.png")
     assert f["places"][0]["kind"] == "resort" and f["expanded"] and f["selected"] == 0 and abs(f["start"][1] - 779) < 15
 
 

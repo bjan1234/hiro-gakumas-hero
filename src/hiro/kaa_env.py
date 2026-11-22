@@ -54,7 +54,13 @@ def kaa_backend(device: str, *, adb: str | None = None, screenshot: str | None =
     """按 HIRO_DEVICE 等构造 KAA 的 BackendConfig；PlayCover 路线（auto / maatools）返回 None，不动 KAA 默认值。
     platform 现在只保留给调用方 / 测试（各平台缺省一致）。"""
     from kaa.config.base_config import (
-        AutoConnection, BackendConfig, CustomDevice, DmmDevice, LeidianDevice, MuMu12V5Device, TcpConnection,
+        AutoConnection,
+        BackendConfig,
+        CustomDevice,
+        DmmDevice,
+        LeidianDevice,
+        MuMu12V5Device,
+        TcpConnection,
     )  # fmt: skip
 
     if device not in _KAA_DEVICE:

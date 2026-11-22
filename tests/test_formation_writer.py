@@ -2,11 +2,11 @@
 
 from pathlib import Path
 
-import cv2
-import pytest
-
 from hiro.produce import formation_writer as fw
 from hiro.produce.formation_writer import FormationWriteError, fix_plan
+
+import cv2
+import pytest
 
 FIX = Path(__file__).with_name("fixtures") / "support"
 

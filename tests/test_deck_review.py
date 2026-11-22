@@ -32,9 +32,9 @@ def test_review_deck_no_button(monkeypatch):
 
 def test_review_deck_multi_screen_uses_merge(monkeypatch):
     """一屏不全：每屏截一张往下滑，滑不动了停；整组交给识屏的 merge_deck_list（没有时两两拼）。读完点「閉じる」。"""
-    import numpy as np
-
     import hiro.vision.deck as vd
+
+    import numpy as np
 
     frames = [np.full((1280, 720, 3), v, np.uint8) for v in (10, 60, 110, 110)]  # 第 3、4 屏一样 = 到底
     state = {"open": False, "i": 0}
@@ -114,8 +114,8 @@ def _open_env(monkeypatch, opens_at):
     def sleep(s):
         state["t"] += s
 
-    return state, clicks, dict(shoot=lambda: None, click=click, swipe=lambda *a: None, ocr_texts=lambda img: [], sleep=sleep,
-                               clock=lambda: state["t"])  # fmt: skip
+    return state, clicks, {"shoot": lambda: None, "click": click, "swipe": lambda *a: None, "ocr_texts": lambda img: [], "sleep": sleep,
+                               "clock": lambda: state["t"]}  # fmt: skip
 
 
 def test_first_tap_swallowed_then_retap_opens(monkeypatch):
@@ -127,7 +127,7 @@ def test_first_tap_swallowed_then_retap_opens(monkeypatch):
 
 def test_late_list_is_closed_after_giving_up(monkeypatch):
     """一览在放弃之后才出来：关掉，不留在画面上（第二十局被 KAA 判成 SELECT_PITEM 停机）。"""
-    state, clicks, kw = _open_env(monkeypatch, ["time", dr.OPEN_TIMEOUT + 1.0])
+    _state, clicks, kw = _open_env(monkeypatch, ["time", dr.OPEN_TIMEOUT + 1.0])
     monkeypatch.setattr(dr, "RETAP_AFTER", 999)  # 只看「晚出来」这条
     r = dr.review_deck(**kw)
     assert r["deck"] is None and r["opened"] and r["closed"] and clicks[-1] == dr.CLOSE_TAP
@@ -136,9 +136,9 @@ def test_late_list_is_closed_after_giving_up(monkeypatch):
 def test_review_deck_waits_for_bounce_and_stops_when_complete(monkeypatch):
     """第二十三局：滑到底后列表回弹，每屏都截在动的时候，相邻屏一直不一样 → 拍满 6 屏、58.8s。
     现在滑完等两帧一样（停稳）再截，读一屏拼一次，拼出整副就不再滑。"""
-    import numpy as np
-
     import hiro.vision.deck as vd
+
+    import numpy as np
 
     # 每次滑动后：先两帧在动（回弹），然后停在这一屏
     screens = [10, 60, 110]
@@ -226,9 +226,9 @@ def test_pending_deck_review_can_be_switched_off(monkeypatch):
 
 def _rows_list(monkeypatch, retry_ok: bool):
     """一览 4 行 16 张：屏位置 0（顶，第 1–3 行）/ 1（底，第 2–4 行）。逐屏拼接出错（DMM qualifyverify4：拼出 25 张、标签 16 张）。"""
-    import numpy as np
-
     import hiro.vision.deck as vd
+
+    import numpy as np
 
     state = {"open": False, "pos": 0, "swipes": []}
     monkeypatch.setattr(vd, "find_deck_button", lambda img: (558, 1200))

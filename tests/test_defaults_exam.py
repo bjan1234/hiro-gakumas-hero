@@ -1,13 +1,13 @@
 """ExamAdvisor / ExamStateSource 默认实现：不需要模拟器、KAA、识别层也能跑（合成局面）。"""
 
-import pytest
-
 from hiro import plugins
-from hiro.brain.cards import CardView, DrinkView
+from hiro.brain.cards import CardView, DrinkView  # noqa: F401
 from hiro.brain.state import CAMPUS_HIRO, BattleState, ExamMemory
 from hiro.contracts import Action, Preview
 from hiro.defaults.advisor import RuleLLMAdvisor, preview_rows
 from hiro.defaults.exam_state import ScreenExamStateSource, screen_state
+
+import pytest
 
 
 def _card(slot, name, cid, available=True):

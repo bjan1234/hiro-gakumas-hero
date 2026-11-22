@@ -4,6 +4,7 @@
 Session 只负责把它们按契约记下来，并提供两类恢复：缺字段等待（observe_complete）与执行后校验（verify）。
 """
 
+import logging
 import time
 from collections import Counter
 from collections.abc import Callable
@@ -12,7 +13,6 @@ from typing import Any
 from hiro.contracts import Decision, ExecutionResult, GameState, Observation, Preview, Step, TraceWriter
 from hiro.loop.reduce import reduce
 from hiro.loop.transitions import is_transient, successors
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +56,8 @@ class Session:
         self.last_decision = None  # (页面名, Decision)：最近一次记录的决策（中断层看「刚才是不是选了休息」）
         self.steps = 0
         self._last_exec_t: float | None = None  # 上一个有执行结果的步落盘时刻（time.time），算过场耗时
-        from hiro.loop.repeat_guard import Guard
-
         from hiro.loop.pause_flag import active_clock
+        from hiro.loop.repeat_guard import Guard
 
         # 防空转：重复无效动作 + 没进展（hiro.loop.repeat_guard）；录屏暂停期间不计时（测试注入了 clock 时用注入的）
         self.guard = Guard(clock=active_clock if self.clock is time.monotonic else self.clock)
