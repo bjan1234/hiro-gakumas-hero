@@ -1914,10 +1914,17 @@ class HifCore:
         if not retry_handoff.enabled():
             return False
 
-        def still_here() -> bool:
-            return any(button_text(t.text, "再挑戦") and t.rect.center.y > 900 for t in screen_texts(device.screenshot()))
+        from hiro.vision.hif import is_hif_exam
 
-        got = retry_handoff.wait(label, still_here=still_here)
+        def look() -> str:
+            img = device.screenshot()
+            if is_hif_exam(img):
+                return "exam"
+            if any(button_text(t.text, "再挑戦") and t.rect.center.y > 900 for t in screen_texts(img)):
+                return "result"
+            return "other"
+
+        got = retry_handoff.wait(label, look=look)
         self.s.note(f"{label} 没过线，再挑戦交给人：{'人处理过了' if got == 'user' else '交回程序'}")
         return got == "user"
 

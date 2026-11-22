@@ -1,11 +1,13 @@
 """考试没过线时把再挑戦交给人（用户 2026-11-21：方便排查是打牌的问题还是养成的问题）。
 
-开关 HIRO_RETRY_HANDOFF=1（缺省关）。结算页出现「再挑戦」、程序本来要决定重不重打时，先停下：
-- 发系统通知、写等人文件（同 hiro.loop.unread_story.wait_file）、DMM 版把窗口挪到屏幕正中；
-- 你在游戏里自己决定：点「再挑戦」亲手打这一场，或者不打（点次へ / 结束）；
-- 弄完删掉等人文件，程序从当时的画面接着走（你打的那一场程序不碰）；
-- 删文件时画面还停在这张结算页（你什么都没做）：程序照自己的规则决定重不重打；
-- HIRO_RETRY_HANDOFF_TIMEOUT_S 秒（缺省 1800）没人删文件：同上，照程序的规则走（不关游戏）。
+开关 HIRO_RETRY_HANDOFF=1（缺省关）。结算页出现「再挑戦」、程序本来要决定重不重打时，先停下：发系统通知、
+写等人文件（只是说明，不用删）、DMM 版把窗口挪到屏幕正中。然后看画面判断你在做什么（用户 11-21：不让人删文件）：
+- 结算页一直停着 HIRO_RETRY_HANDOFF_TIMEOUT_S 秒（缺省 60）没人动 → 当作你不打，交回程序按规则决定（"auto"）；
+- 进了考试画面 → 你在亲手打，一直等（不计时，最多 PLAY_MAX_S）；
+  - 打完又回到带「再挑戦」的结算页（又没过）→ 再给你 60 秒决定要不要再打；
+  - 打完离开了结算页（过了）→ 交回程序从当前画面接着走（"user"）；
+- 离开结算页、也不在考试里，持续 AWAY_S 秒（你点了次へ / 结束，不打了）→ 交回程序从当前画面接着走（"user"）。
+删掉等人文件也算「继续」：画面还在结算页就交回程序决定，不在就从当前画面接着走。
 等的时间按暂停计（pause_flag.hold），看门狗不算。
 """
 
@@ -18,7 +20,9 @@ from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
-POLL_S = 3.0
+POLL_S = 2.0
+AWAY_S = 15.0  # 不在结算页也不在考试里持续这么久，才算你已经走开了结算页（点再挑戦后的确认框 / 读取画面不算）
+PLAY_MAX_S = 45 * 60  # 亲手打一场考试最多等这么久
 
 
 def enabled(env: dict | None = None) -> bool:
@@ -27,16 +31,16 @@ def enabled(env: dict | None = None) -> bool:
 
 def timeout_s(env: dict | None = None) -> float:
     try:
-        return max(60.0, float((env if env is not None else os.environ).get("HIRO_RETRY_HANDOFF_TIMEOUT_S") or 1800))
+        return max(15.0, float((env if env is not None else os.environ).get("HIRO_RETRY_HANDOFF_TIMEOUT_S") or 60))
     except ValueError:
-        return 1800.0
+        return 60.0
 
 
-def wait(label: str, *, still_here: Callable[[], bool], sleep: Callable[[float], None] = time.sleep,
+def wait(label: str, *, look: Callable[[], str], sleep: Callable[[float], None] = time.sleep,
          clock: Callable[[], float] = time.monotonic, notifier: Callable[[str, str], None] | None = None,
          env: dict | None = None) -> str:  # fmt: skip
-    """结算页上、要不要再挑戦之前调。返回 "user"（你处理过了：画面已经不是这张结算页）/ "auto"（交回程序决定）。
-    still_here()：画面是不是还停在这张结算页。"""
+    """结算页上、要不要再挑戦之前调。look() 返回当前画面："result"（带再挑戦的结算页）/ "exam"（考试中）/ "other"。
+    返回 "user"（你处理过了，程序从当前画面接着走）/ "auto"（交回程序按规则决定再挑戦）。"""
     from hiro.loop import unread_story
     from hiro.loop.pause_flag import hold
 
@@ -45,31 +49,56 @@ def wait(label: str, *, still_here: Callable[[], bool], sleep: Callable[[float],
     path = unread_story.wait_file(env)
     unread_story._show_game(env)
     limit = timeout_s(env)
-    msg = (f"{time.strftime('%Y-%m-%d %H:%M:%S')} {label} 没过线，再挑戦交给你。\n"
-           f"在游戏里自己决定：点「再挑戦」亲手打，或者不打。弄完（打完这一场 / 点了次へ）删掉这个文件，程序接着走；"
-           f"什么都不做直接删文件 = 交回程序按规则决定；{limit / 60:.0f} 分钟没人删也交回程序。\n")
+    msg = (f"{time.strftime('%Y-%m-%d %H:%M:%S')} {label} 没过线，再挑戦交给你：{limit:.0f} 秒内点「再挑戦」就亲手打这一场，"
+           f"程序等你打完再接着走；{limit:.0f} 秒没人动就交回程序。\n")
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(msg, encoding="utf-8")
     except OSError as e:
         logger.warning("写等人文件 %s 失败：%r", path, e)
-    logger.warning("%s 没过线：再挑戦交给人（%s；删文件继续，%.0f 分钟没人管交回程序）", label, path, limit / 60)
-    notifier("数字小广：考试没过线", f"{label} 再挑戦交给你：自己打或不打，弄完删掉 {path.name}。")
+    logger.warning("%s 没过线：再挑戦交给人（%.0f 秒内没人动就交回程序）", label, limit)
+    notifier("数字小广：考试没过线", f"{label}：{limit:.0f} 秒内点「再挑戦」就亲手打，打完程序接着走；没人动就交回程序。")
+    result = "auto"
     with hold():
-        start = clock()
-        while path.exists() and clock() - start < limit:
+        idle_since, away_since, play_since, played = clock(), None, None, False
+        while True:
             sleep(POLL_S)
-    if path.exists():
-        path.unlink(missing_ok=True)
-        logger.warning("%s 再挑戦等了 %.0f 分钟没人管，交回程序按规则决定", label, limit / 60)
-        return "auto"
-    try:
-        here = still_here()
-    except Exception as e:  # noqa: BLE001
-        logger.warning("%s 再挑戦交接：读画面失败（%r），交回程序", label, e)
-        here = True
-    if here:
-        logger.warning("%s 等人文件删了、画面还在结算页：交回程序按规则决定再挑戦", label)
-        return "auto"
-    logger.warning("%s 再挑戦你处理过了（画面已离开结算页），程序从当前画面接着走", label)
-    return "user"
+            now = clock()
+            if not path.exists():  # 手动「继续」
+                try:
+                    result = "auto" if look() == "result" else "user"
+                except Exception:  # noqa: BLE001
+                    result = "auto"
+                break
+            try:
+                s = look()
+            except Exception as e:  # noqa: BLE001
+                logger.warning("%s 再挑戦交接：读画面失败：%r", label, e)
+                continue
+            if s == "exam":
+                if play_since is None:
+                    play_since = now
+                    logger.warning("%s 你在亲手打这一场，等你打完", label)
+                played, away_since = True, None
+                if now - play_since >= PLAY_MAX_S:
+                    logger.warning("%s 亲手打了 %.0f 分钟还没打完，交回程序", label, PLAY_MAX_S / 60)
+                    result = "user"
+                    break
+                continue
+            if s == "result":
+                if played:  # 打完又没过：再给 limit 秒决定要不要再打
+                    logger.warning("%s 你打的这一次也没过，%.0f 秒内可以再点再挑戦", label, limit)
+                    played, play_since, idle_since = False, None, now
+                away_since = None
+                if now - idle_since >= limit:
+                    logger.warning("%s 结算页 %.0f 秒没人动，交回程序按规则决定再挑戦", label, limit)
+                    result = "auto"
+                    break
+                continue
+            away_since = now if away_since is None else away_since  # other：确认框 / 读取画面 / 你点了次へ
+            if now - away_since >= AWAY_S:
+                logger.warning("%s 画面已经离开结算页（%s），程序从当前画面接着走", label, "你打完了" if played else "你没再挑戦")
+                result = "user"
+                break
+    path.unlink(missing_ok=True)
+    return result
