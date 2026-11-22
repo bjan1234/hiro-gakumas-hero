@@ -68,15 +68,25 @@ export function PlanView({ plan, compact }: { plan: PlanSummary; compact?: boole
                 </RowTip>
               );
             })}
-            {sup.rental && (
-              <div className="flex items-center gap-2 rounded-lg border border-dashed border-line px-2 py-1 text-ink-2">
-                <span className={cx("rounded px-1.5 text-[11px] font-bold", ATTR_STYLE[String(sup.rental.attr)] ?? "bg-chip text-ink-2")}>
-                  {ATTR_ZH[String(sup.rental.attr)] ?? sup.rental.attr ?? "?"}
-                </span>
-                <span className="jp min-w-0 flex-1 truncate">租借：{sup.rental.name ?? "开局时按实际列表挑"}</span>
-                {sup.rental.estimated && <span className="text-[11px] text-ink-3">估算</span>}
-              </div>
-            )}
+            {sup.rental &&
+              (() => {
+                const r = sup.rental;
+                const zh = r.id ? supports?.cards[r.id]?.name.zh : undefined;
+                return (
+                  <div className="flex items-center gap-2 rounded-lg border border-dashed border-line px-2 py-1 text-ink-2">
+                    {r.id && <Thumb asset={`support-${r.id}`} className="size-7" />}
+                    <span className={cx("rounded px-1.5 text-[11px] font-bold", ATTR_STYLE[String(r.attr)] ?? "bg-chip text-ink-2")}>
+                      {ATTR_ZH[String(r.attr)] ?? r.attr ?? "?"}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">
+                      租借：
+                      <span className={cx(!zh && "jp")}>{zh ?? r.name ?? "开局时按实际列表挑"}</span>
+                      {zh && r.name && <span className="jp ml-1.5 text-[11px] text-ink-3">{r.name}</span>}
+                    </span>
+                    {r.estimated && <span className="text-[11px] text-ink-3">估算</span>}
+                  </div>
+                );
+              })()}
           </div>
         )}
       </div>
