@@ -3,6 +3,7 @@
 _dispatch 只在「上一页不是 EXAM」时进 on_exam_entered → 主循环空转（两次各卡 18 / 7 分钟）。
 策略置 exam_restarted 后，下一次看到考试页要重新进入 on_exam_entered，且只进一次。"""
 
+import pytest
 import hiro  # noqa: F401  兼容层（先于 kaa）
 from kaa.tasks.produce.new.consts import Scene, SceneType
 
@@ -266,16 +267,40 @@ def test_retry_cap_env(tmp_path, monkeypatch):
         assert st.retry_cap() == want
 
 
-def test_retry_cap_one_blocks_second_retry(tmp_path, monkeypatch):
-    """上限 1：画面「あと 2回」= 已用 1 次 → 不再点再挑戦（不碰按钮、不点确认框）。"""
+def _cap1(tmp_path, monkeypatch, left, notes_before=()):
     st = _finals_strategy(tmp_path, {"main-x": []})
     monkeypatch.setenv("HIRO_RETRY_MAX", "1")
     import hiro.produce.hif as hif
 
-    monkeypatch.setattr(hif, "screen_retries_left", lambda texts: 2)
+    monkeypatch.setattr(hif, "screen_retries_left", lambda texts: left)
     from types import SimpleNamespace as NS
 
-    notes = []
-    st.s = NS(note=notes.append, notes=[], trace=st.s.trace)
+    notes = list(notes_before)
+    st.s = NS(note=notes.append, notes=notes, trace=st.s.trace)
+    return st, notes, hif
+
+
+def test_retry_cap_one_blocks_second_retry(tmp_path, monkeypatch):
+    """上限 1：这一场本局已经用过 1 次（trace 记录）→ 不再点再挑戦（不碰按钮）。"""
+    st, notes, _ = _cap1(tmp_path, monkeypatch, 2, ["qualify-2 使用再挑戦（免费）"])
     assert st._click_retry("qualify-2", object(), []) is None
-    assert notes and "上限 1" in notes[0]
+    assert "上限 1" in notes[-1]
+
+
+def test_retry_cap_one_ignores_daily_shared_count(tmp_path, monkeypatch):
+    """用户 11-21：「あと N回」是当天全局共用的。画面あと1回、这一场本局没重试过 → 照样重试一次（会去点按钮）。"""
+    st, notes, hif = _cap1(tmp_path, monkeypatch, 1)
+
+    class Clicked(Exception):
+        pass
+
+    monkeypatch.setattr(hif, "device", type("D", (), {"click": staticmethod(lambda *a: (_ for _ in ()).throw(Clicked()))}))
+    btn = type("B", (), {"rect": type("R", (), {"center": (360, 1100)})()})()
+    with pytest.raises(Clicked):
+        st._click_retry("qualify-2", btn, [])
+
+
+def test_retry_cap_one_stops_when_daily_pool_empty(tmp_path, monkeypatch):
+    st, notes, _ = _cap1(tmp_path, monkeypatch, 0)
+    assert st._click_retry("qualify-2", object(), []) is None
+    assert "用完" in notes[-1]

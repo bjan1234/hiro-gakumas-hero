@@ -1956,8 +1956,18 @@ class HifCore:
         if left is not None and left > self.MAX_RETRIES_PER_EXAM:
             logger.warning("%s 画面「あと %d回」超过上限 %d，按 trace 记录计数", label, left, self.MAX_RETRIES_PER_EXAM)
             left = None
-        used = self.MAX_RETRIES_PER_EXAM - left if left is not None else self._retries_so_far(label)
         cap = self.retry_cap()
+        if cap < self.MAX_RETRIES_PER_EXAM:
+            # 收紧了上限（HIRO_RETRY_MAX）：「あと N回」是当天全局共用的次数（每天重置，用户 11-21），不代表这一场用了几次，
+            # 按本局 trace 记录数这一场的；画面剩 0 次就不点（再点只会弹ジュエル确认）
+            # 11-21 麻央：当天别的局用掉 2 次，画面「あと1回」，按旧算法当成这一场已用 2 次，一次都没重试就结束了
+            used = self._retries_so_far(label)
+            if left == 0:
+                self.s.note(f"{label} 当天的再挑戦次数用完（画面あと0回），不再挑戦")
+                logger.warning("%s 当天的再挑戦次数用完（画面「あと0回」），不再挑戦", label)
+                return None
+        else:
+            used = self.MAX_RETRIES_PER_EXAM - left if left is not None else self._retries_so_far(label)
         if used >= cap:
             self.s.note(f"{label} 已再挑戦 {used} 次，到上限 {cap}，不再挑戦")
             logger.warning("%s 已再挑戦 %d 次（上限 %d），不再挑戦", label, used, cap)
