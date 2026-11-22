@@ -67,3 +67,12 @@ section-order = ["future", "standard-library", "first-party", "third-party", "lo
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.basedpyright]
+# 类型检查（basedpyright = pyright 加基线功能）。现有错误记在 .basedpyright/baseline.json，CI 只拦新增的；
+# 修掉旧错误后跑 `basedpyright --writebaseline` 更新基线。分析环境以 CI 为准：只装 `.[dev]`、Linux、Python 3.10
+include = ["src"]
+exclude = ["vendor", "**/__pycache__"]
+pythonVersion = "3.10"
+pythonPlatform = "Linux"
+typeCheckingMode = "standard"
