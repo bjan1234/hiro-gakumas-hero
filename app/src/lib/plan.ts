@@ -28,7 +28,7 @@ export interface PlanSummary {
     value?: number | null;
     counts?: Record<string, number> | null;
     own: PlanSupport[];
-    rental?: { name?: string | null; attr?: string | null; value?: number | null; estimated?: boolean } | null;
+    rental?: { id?: string | null; name?: string | null; attr?: string | null; value?: number | null; estimated?: boolean } | null;
   };
   memory: { set?: number | null; error?: string | null; cards?: string[]; chosen: PlanMemory[] };
   notes: string[];

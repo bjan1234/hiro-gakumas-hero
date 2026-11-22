@@ -27,7 +27,7 @@ def summarize(plan: dict) -> dict:
             "own": [{"id": o.get("support_card_id"), "name": o.get("name"), "attr": o.get("attr"), "level": o.get("level"),
                      "value": o.get("value"), "why": (o.get("why") or [])[:4]} for o in sup.get("own") or []],
             "rental": None if not rental and not sup.get("rental_rule") else {
-                "name": (rental or {}).get("name"), "attr": (rental or {}).get("attr") or (sup.get("rental_rule") or {}).get("attr"),
+                "id": (rental or {}).get("support_card_id"), "name": (rental or {}).get("name"), "attr": (rental or {}).get("attr") or (sup.get("rental_rule") or {}).get("attr"),
                 "value": (rental or {}).get("value"), "estimated": bool(sup.get("rental_estimated"))},
         },
         "memory": {
