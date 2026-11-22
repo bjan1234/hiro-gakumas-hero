@@ -24,6 +24,8 @@
 #   暂停：缺省设 HIRO_PAUSE_FLAG=%LOCALAPPDATA%\hiro\pause.flag（已设就用已设的）；建这个文件就停在下一个检查点，删掉继续
 #   -ScheduleProbe  每场考试第 1 回合出牌前点开审查日程一次、存帧、关掉（HIRO_EXAM_SCHEDULE_PROBE=1，测试局用；关不掉会停机）
 #   -RunHifArgs  原样交给 run_hif 的其他参数，一个字符串，如 -RunHifArgs "--no-llm"
+#   -RetryMax    同一场考试失败后最多再挑戦几次（0–3，缺省 3 = 游戏上限；HIRO_RETRY_MAX）。只用免费次数 / 再挑戦チケット，绝不用ジュエル
+#   -RetryHandoff 考试没过线时把再挑戦交给你（亲手打这一场，方便分清是打牌还是养成的问题；HIRO_RETRY_HANDOFF=1，见 hiro.loop.retry_handoff）
 #   -CloseGame   跑完（不管成败）关什么：off（缺省）/ emulator（MuMu 关模拟器、DMM 关游戏 + DMM Game Player）/ game（只关游戏）
 #                （HIRO_CLOSE_GAME，见 hiro.runtime.close_game；外面已设且没给这个参数时用外面的）
 #   -UnreadStory 未读剧情：skip（缺省，照旧跳过）/ stop（点キャンセル、暂停等人、发通知；HIRO_UNREAD_STORY，见 hiro.runtime.unread_story）
@@ -55,6 +57,8 @@ param(
     [switch]$ScheduleProbe,
     [switch]$AllowDiscard,
     [string]$RunHifArgs = "",
+    [ValidateRange(0, 3)][int]$RetryMax = 3,
+    [switch]$RetryHandoff,
     [ValidateSet("off", "emulator", "game")][string]$CloseGame = "off",
     [ValidateSet("skip", "stop")][string]$UnreadStory = "skip",
     [int]$UnreadTimeout = 60
@@ -102,6 +106,8 @@ $env:HIRO_LLM = $Llm
 if ($Proxy) { $env:HTTPS_PROXY = $Proxy; $env:HTTP_PROXY = $Proxy; $env:NO_PROXY = "127.0.0.1,localhost" }
 $env:HIRO_EXAM_PLAYBOOK = "1"; $env:HIRO_R1_TURN_PROXY = "1"
 if ($Relaunch) { $env:HIRO_RELAUNCH_GAME = "1" }
+if ($PSBoundParameters.ContainsKey("RetryMax") -or -not $env:HIRO_RETRY_MAX) { $env:HIRO_RETRY_MAX = "$RetryMax" }
+if ($RetryHandoff) { $env:HIRO_RETRY_HANDOFF = "1" }
 # 跑完关游戏 / 未读剧情停下等人：给了参数就用参数；没给且外面没设时用缺省
 if ($PSBoundParameters.ContainsKey("CloseGame") -or -not $env:HIRO_CLOSE_GAME) { $env:HIRO_CLOSE_GAME = $CloseGame }
 if ($PSBoundParameters.ContainsKey("UnreadStory") -or -not $env:HIRO_UNREAD_STORY) { $env:HIRO_UNREAD_STORY = $UnreadStory }

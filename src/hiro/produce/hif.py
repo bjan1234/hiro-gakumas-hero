@@ -1892,6 +1892,8 @@ class HifCore:
             self.s.note(f"{label} 敗退（{res.get('score')} Pt），没有再挑戦按钮，结束培育")
             logger.warning("%s 敗退，没有再挑戦按钮", label)
             return False
+        if self._handoff_retry(label):
+            return False  # 人处理过了（亲手再挑戦打完 / 不打）：从当前画面接着收尾
         kind = self._click_retry(label, btn, texts)
         if kind is None:
             return False
@@ -1903,6 +1905,21 @@ class HifCore:
         type(self).exams_done = self.exam_count
         self.rec.log("exam_retry", exam=label, retry_kind=kind)
         return True
+
+    def _handoff_retry(self, label: str) -> bool:
+        """HIRO_RETRY_HANDOFF=1：没过线时把再挑戦交给人（hiro.loop.retry_handoff）。返回 True = 人处理过了，程序不再挑戦；
+        False = 开关没开 / 交回程序按规则决定。"""
+        from hiro.loop import retry_handoff
+
+        if not retry_handoff.enabled():
+            return False
+
+        def still_here() -> bool:
+            return any(button_text(t.text, "再挑戦") and t.rect.center.y > 900 for t in screen_texts(device.screenshot()))
+
+        got = retry_handoff.wait(label, still_here=still_here)
+        self.s.note(f"{label} 没过线，再挑戦交给人：{'人处理过了' if got == 'user' else '交回程序'}")
+        return got == "user"
 
     exam_restarted = False  # 刚点了再挑戦、同一场考试要重新进入（见 HiroController._rearm_exam）
     _retry_comm_error = False  # 上一次点再挑戦遇到通信エラー（不算决定不再挑戦）
@@ -2078,6 +2095,9 @@ class HifCore:
         page_key = (label, f.get("score"), f.get("round_score"))
         if page_key == self._retry_declined:
             return False  # 这张结算页已经决定不再挑戦：别再点开确认框，让调用方点「次へ」收尾
+        if self._handoff_retry(label):
+            self._retry_declined = page_key
+            return False  # 人处理过了：从当前画面接着收尾
         if (gap := self._gap_to_first(f)) is not None and gap[1] > self._retry_gap_max():
             # 离第 1 太远：重打 R2 只是在原分数附近波动，追不上，还会把更好的一次覆盖掉、多花券（mainz4 11-18：差 23.4 万 = 本轮分 65%，
             # 四次 R2 本轮分 33–38 万；用户 11-18「差距很大就不要重打」）
