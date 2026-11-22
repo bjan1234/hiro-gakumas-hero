@@ -712,7 +712,7 @@ class HiroController(ProduceController):
             return False
         from kotonebot import device
 
-        from hiro.loop import unread_story
+        from hiro.runtime import unread_story
 
         if hit[0] == "スキップ確認" and unread_story.stopping():
             return self._unread_story(device)
@@ -735,8 +735,8 @@ class HiroController(ProduceController):
         return True
 
     def _unread_story(self, device) -> bool:
-        """HIRO_UNREAD_STORY=stop：未读剧情的「スキップ確認」框点キャンセル，停下等人（hiro.loop.unread_story）。"""
-        from hiro.loop import unread_story
+        """HIRO_UNREAD_STORY=stop：未读剧情的「スキップ確認」框点キャンセル，停下等人（hiro.runtime.unread_story）。"""
+        from hiro.runtime import unread_story
         from hiro.loop.skip_settings import is_ok_text
 
         def tap(word: str):

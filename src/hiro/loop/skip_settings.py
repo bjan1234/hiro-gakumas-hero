@@ -72,10 +72,10 @@ STORY_TOGGLES = ("support_commu", "start_commu", "hajime_commu", "affection_movi
 
 
 def desired(stop_story: bool | None = None) -> dict[str, str | None]:
-    """各开关要的状态：缺省全 ON。HIRO_UNREAD_STORY=stop 时（hiro.loop.unread_story）：「未読コミュでも早送り」要 OFF
+    """各开关要的状态：缺省全 ON。HIRO_UNREAD_STORY=stop 时（hiro.runtime.unread_story）：「未読コミュでも早送り」要 OFF
     （开着时未读剧情自己快进过去，不弹确认框，就认不出未读）；跳剧情类的演出开关不动（None = 保持原样）。"""
     if stop_story is None:
-        from hiro.loop.unread_story import stopping
+        from hiro.runtime.unread_story import stopping
 
         stop_story = stopping()
     if not stop_story:

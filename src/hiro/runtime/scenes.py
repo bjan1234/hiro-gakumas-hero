@@ -89,6 +89,32 @@ def commu_skip(rt, frame) -> bool:
     return True
 
 
+def unread_confirm(rt) -> bool:
+    """剧情点 SKIP 后弹的「スキップ確認：未読のコミュです」（HIRO_UNREAD_STORY=stop）：交给 unread_story.handle——
+    点キャンセル、停下等人（看完自动继续 / 删等人文件 = 跳过 / 剧情框文字 60 秒没变就关游戏，抛 UnreadStoryTimeout 停机）。
+    SKIP 按钮本身照常点（scenes.commu_skip）：读过的剧情不弹这个框，直接跳。"""
+    from hiro.loop.skip_settings import is_ok_text
+    from hiro.runtime import unread_story
+
+    def tap(word: str):
+        def go():
+            boxes = screen_texts(rt.screen.shot().img)
+            btn = next((b for b in boxes if b.text.strip() == word or (word == "決定" and is_ok_text(b.text))), None)
+            if btn is None:
+                raise RuntimeError(f"未读剧情确认框上没找到「{word}」")
+            rt.device.tap(*btn.rect.center)
+            rt.sleep(0.8)
+
+        return go
+
+    got = unread_story.handle(cancel=tap("キャンセル"), confirm=tap("決定"), texts=lambda: unread_story.read_screen(rt.screen.shot().img),
+                              snap=lambda: rt.screen.shot().img, sleep=rt.sleep)  # fmt: skip
+    logger.warning("未读剧情确认框：%s", got)
+    if rt.session is not None:
+        rt.session.recover("dialog", f"未读剧情：{got}")
+    return True
+
+
 def first_run_settings(rt, frame) -> bool:
     """重新登录后游戏重置本地设置弹的一次性设置框：选推荐项（有的话）→ 点「決定」。"""
     from hiro.loop.skip_settings import is_ok_text
@@ -97,6 +123,10 @@ def first_run_settings(rt, frame) -> bool:
     hit = next((x for x in FIRST_RUN_SETTINGS if any(x[0] in t for t in texts)), None)
     if hit is None:
         return False
+    from hiro.runtime import unread_story
+
+    if hit[0] == "スキップ確認" and unread_story.stopping():
+        return unread_confirm(rt)  # HIRO_UNREAD_STORY=stop：未读剧情的确认框不点決定，停下等人（review #13）
     boxes = screen_texts(rt.screen.shot().img)
     opt = next((b for b in boxes if hit[1] in b.text), None) if hit[1] else None
     if opt is not None:

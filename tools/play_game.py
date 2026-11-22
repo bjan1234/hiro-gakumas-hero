@@ -154,7 +154,7 @@ def run(mode: str, trace: str, common: list[str], extra: list[str]) -> int:
     cur.write_text(trace, encoding="utf-8")
     with open(log, "w") as f:
         code = subprocess.call(run_cmd(mode, trace, common, extra), cwd=ROOT, stdout=f, stderr=subprocess.STDOUT,
-                               env={**child_env(), "HIRO_CLOSE_GAME_BY_PARENT": "1"})  # fmt: skip  选拔和本战之间不关游戏，跑完由 main 关
+                               env=child_env())  # fmt: skip  run_hif 单段不关游戏，整局跑完由 main 关
     with open(log, "a") as f:
         f.write(f"EXIT {code}\n")
     print(f"{mode} {trace} exit={code} {(time.monotonic() - t0) / 60:.1f} min（日志 {log}）", flush=True)
@@ -211,13 +211,13 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def close_game_at_exit(code: int) -> None:
-    """整局（选拔 + 本战）结束后按 HIRO_CLOSE_GAME 关游戏 / 模拟器（hiro.loop.close_game；不管成败）。放子进程里跑，包装进程不导入 hiro。"""
+    """整局（选拔 + 本战）结束后按 HIRO_CLOSE_GAME 关游戏 / 模拟器（hiro.runtime.close_game；不管成败）。放子进程里跑，包装进程不导入 hiro。"""
     import os
 
     if (os.environ.get("HIRO_CLOSE_GAME") or "off").strip().lower() in ("", "0", "off", "no", "false"):
         return
     env = {k: v for k, v in child_env().items() if k != "HIRO_CLOSE_GAME_BY_PARENT"}
-    subprocess.call([PY, "-c", f"import logging; logging.basicConfig(level=logging.INFO); from hiro.loop import close_game; "
+    subprocess.call([PY, "-c", f"import logging; logging.basicConfig(level=logging.INFO); from hiro.runtime import close_game; "
                                f"close_game.close_at_exit(why='play_game 结束（退出码 {code}）')"], cwd=ROOT, env=env)  # fmt: skip
 
 

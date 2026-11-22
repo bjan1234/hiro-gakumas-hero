@@ -1,10 +1,10 @@
-"""跑完关游戏（hiro.loop.close_game）+ 未读剧情停下等人（hiro.loop.unread_story）。不碰设备：命令和截图都是假的。"""
+"""跑完关游戏（hiro.runtime.close_game）+ 未读剧情停下等人（hiro.runtime.unread_story）。不碰设备：命令和截图都是假的。"""
 
 import pytest
 
-from hiro.loop import close_game as cg
+from hiro.runtime import close_game as cg
 from hiro.loop import pause_flag, skip_settings
-from hiro.loop import unread_story as us
+from hiro.runtime import unread_story as us
 
 MGR = r"C:\Program Files\Netease\MuMuPlayer\nx_main\MuMuManager.exe"
 
@@ -244,3 +244,31 @@ def test_cutscene_forever_still_times_out(tmp_path):
     with pytest.raises(us.UnreadStoryTimeout):
         r.run()
     assert us.PLAYING_MAX_S + 60 <= r.t <= us.PLAYING_MAX_S + 60 + 2 * us.POLL_S
+
+
+def test_runtime_skip_confirm_goes_to_unread_story_when_stopping(monkeypatch):
+    """review #13：新主循环（HIRO_RUNTIME=own）里「スキップ確認」原来直接点決定；stop 时要交给 unread_story.handle。"""
+    from types import SimpleNamespace as NS
+
+    from hiro.runtime import scenes
+
+    called = []
+    monkeypatch.setattr(us, "handle", lambda **kw: called.append(sorted(kw)) or "left")
+    frame = NS(texts=[NS(text="スキップ確認"), NS(text="未読のコミュです")])
+    rt = NS(session=None, screen=NS(shot=lambda: NS(img=None)), device=NS(tap=lambda x, y: None), sleep=lambda s: None)
+    monkeypatch.setenv("HIRO_UNREAD_STORY", "stop")
+    assert scenes.first_run_settings(rt, frame) is True and called and "cancel" in called[0]
+    called.clear()
+    monkeypatch.setenv("HIRO_UNREAD_STORY", "skip")
+    monkeypatch.setattr(scenes, "screen_texts", lambda img: [])
+    scenes.first_run_settings(rt, frame)
+    assert called == []  # skip：照旧走一次性设置框（点決定），不等人
+
+
+def test_run_hif_does_not_close_game_per_segment():
+    """review #13：单段 run_hif 不关游戏（初星助手把选拔、本战拆成两个任务；DMM 关了拉不起来）。只有 play_game 整局结束关。"""
+    import inspect
+
+    import hiro.run_hif as rh
+
+    assert "close_game" not in inspect.getsource(rh)

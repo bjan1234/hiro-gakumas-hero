@@ -6,10 +6,11 @@
 - game：只关游戏（安卓后端 am force-stop / MuMuManager app close；DMM taskkill gakumas.exe）。
 培育进度在服务器上，关掉游戏不会丢；下次 `run_hif resume` 接着跑。
 
-谁来关：
-- tools/play_game.py 跑完整局（选拔 + 本战）后关一次；它起的 run_hif 子进程设 HIRO_CLOSE_GAME_BY_PARENT=1，中途不关；
-- 直接跑 python -m hiro.run_hif 时由 run_hif 自己在退出时关；
-- 未读剧情等人超时（hiro.loop.unread_story）不看开关，直接按 HIRO_CLOSE_GAME 的目标关（没开时关模拟器）。
+谁来关：只由「整局的发起方」关一次（review #13）：
+- tools/play_game.py 跑完整局（选拔 + 本战）后关一次；
+- 单段的 python -m hiro.run_hif 不关（初星助手等把选拔、本战拆成两个任务跑，DMM 关了以后程序拉不起来，本战就开不了局）；
+  别的发起方（任务收尾、自己的脚本）要关就调 close_at_exit；
+- 未读剧情等人超时（hiro.runtime.unread_story）不看开关，直接按 HIRO_CLOSE_GAME 的目标关（没开时关模拟器）。
 不 import kotonebot / KAA：进程收尾时 KAA 上下文可能已经没了，这里只跑外部命令。
 """
 

@@ -25,8 +25,8 @@
 #   -ScheduleProbe  每场考试第 1 回合出牌前点开审查日程一次、存帧、关掉（HIRO_EXAM_SCHEDULE_PROBE=1，测试局用；关不掉会停机）
 #   -RunHifArgs  原样交给 run_hif 的其他参数，一个字符串，如 -RunHifArgs "--no-llm"
 #   -CloseGame   跑完（不管成败）关什么：off（缺省）/ emulator（MuMu 关模拟器、DMM 关游戏 + DMM Game Player）/ game（只关游戏）
-#                （HIRO_CLOSE_GAME，见 hiro.loop.close_game；外面已设且没给这个参数时用外面的）
-#   -UnreadStory 未读剧情：skip（缺省，照旧跳过）/ stop（点キャンセル、暂停等人、发通知；HIRO_UNREAD_STORY，见 hiro.loop.unread_story）
+#                （HIRO_CLOSE_GAME，见 hiro.runtime.close_game；外面已设且没给这个参数时用外面的）
+#   -UnreadStory 未读剧情：skip（缺省，照旧跳过）/ stop（点キャンセル、暂停等人、发通知；HIRO_UNREAD_STORY，见 hiro.runtime.unread_story）
 #   -UnreadTimeout  stop 时剧情框文字多少秒没变（没人推进剧情）就关游戏（缺省 60；HIRO_UNREAD_TIMEOUT_S）。等人文件 %LOCALAPPDATA%\hiro\waiting-for-user.txt，删掉就跳过这段继续
 #
 # 为什么是这些缺省（Windows 实测，2026-11-07–09，22 局 3 次夺冠）：

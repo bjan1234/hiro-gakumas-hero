@@ -7,7 +7,7 @@
   - 删掉等人文件 → 继续；如果还停在剧情里，接下来 ALLOW_SKIP_S 秒内的未读确认框按「決定」（= 你同意跳过这段）；
   - 连续 LEFT_POLLS 次认出是日文原版的游戏页面、不在剧情里（你自己看完 / 手动跳过了）→ 删掉等人文件，继续；
     汉化插件开着（界面是中文、认不出页面）时不算，接着等：关掉汉化后程序才继续；
-  - 剧情框的文字 HIRO_UNREAD_TIMEOUT_S 秒（缺省 60）没变（没人在推进剧情）→ 关游戏 / 模拟器（hiro.loop.close_game，目标按 HIRO_CLOSE_GAME，没开时关模拟器），
+  - 剧情框的文字 HIRO_UNREAD_TIMEOUT_S 秒（缺省 60）没变（没人在推进剧情）→ 关游戏 / 模拟器（hiro.runtime.close_game，目标按 HIRO_CLOSE_GAME，没开时关模拟器），
     抛 UnreadStoryTimeout（ResumeBlocked 的子类：run_hif 退出码 3）。培育进度在服务器上，下次 `run_hif resume` 接着跑。
   「有没有人在看」只看剧情框文字（OCR）：剧情里人物待机、风吹等画面一直在动，按像素变化判不了（用户 11-20）。
   剧情里插的过场动画 / LIVE（没有剧情底栏、或横屏）是剧情自己在播，不计空闲（最多 PLAYING_MAX_S）；横屏帧也不算「回到游戏」（用户 11-21）。
@@ -293,7 +293,7 @@ def handle(*, cancel: Callable[[], object], confirm: Callable[[], object], texts
         path.write_text(msg + f"{time.strftime('%H:%M:%S')} 超时没人管，已关闭游戏。\n", encoding="utf-8")
     except OSError:
         pass
-    from hiro.loop import close_game
+    from hiro.runtime import close_game
 
     what = close_game.target(env)
     (close or close_game.close)("emulator" if what == "off" else what, why="未读剧情等人超时")

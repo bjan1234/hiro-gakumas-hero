@@ -50,7 +50,7 @@ def active_clock() -> float:
 
 @contextmanager
 def hold():
-    """主线程自己在等人（例如未读剧情，hiro.loop.unread_story）：这段时间按暂停计，active_clock 不走。
+    """主线程自己在等人（例如未读剧情，hiro.runtime.unread_story）：这段时间按暂停计，active_clock 不走。
     已经在暂停里（录屏旗标）就不重复记，也不替它结束。"""
     mine = not paused()
     if mine:

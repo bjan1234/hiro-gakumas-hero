@@ -348,10 +348,10 @@ UNREAD_COMMU_MODULES = ("kaa.tasks.actions.commu", "kaa.tasks.produce.new.strate
 
 def _unread_commu(orig):
     """KAA 的 handle_unread_commu 看到未读确认框（スキップ確認 / 快进确认）就点「はい」跳过。HIRO_UNREAD_STORY=stop 时改成
-    点キャンセル、停下等人（hiro.loop.unread_story）；skip（缺省）照旧。SKIP / 快进按钮照常点：读过的剧情不弹框直接跳。"""
+    点キャンセル、停下等人（hiro.runtime.unread_story）；skip（缺省）照旧。SKIP / 快进按钮照常点：读过的剧情不弹框直接跳。"""
 
     def wrapped(img=None):
-        from hiro.loop import unread_story
+        from hiro.runtime import unread_story
 
         if not unread_story.stopping():
             return orig(img)
