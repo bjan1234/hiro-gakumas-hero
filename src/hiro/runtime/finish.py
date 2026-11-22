@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from hiro.loop import photo_pick
+from hiro.runtime import photo_pick
 from hiro.loop import resume_rules as rr
 from hiro.runtime import nav
 from hiro.runtime.loop import DONE, Outcome

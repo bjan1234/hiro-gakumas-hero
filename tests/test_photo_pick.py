@@ -1,8 +1,8 @@
-"""LIVE 后选回忆照片：HIRO_PHOTO_PICK=stop 时停下等人（hiro.loop.photo_pick）。"""
+"""LIVE 后选回忆照片：HIRO_PHOTO_PICK=stop 时停下等人（hiro.runtime.photo_pick）。"""
 
 import pytest
 
-from hiro.loop import photo_pick as pp
+from hiro.runtime import photo_pick as pp
 
 PAGE = ["メモリーにするフォト", "次へ"]
 CONFIRM = ["選択したフォトをメモリーとして保存しますか?", "決定"]

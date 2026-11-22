@@ -3,7 +3,7 @@
 开关 HIRO_LIVE：
 - play（缺省，和以前一样）：点「TAP TO START」开始演出，演出不点，等它播完；照片按 HIRO_PHOTO_PICK。
 - watch（我亲自看）：开始前的曲目页不点，像未读剧情一样停下等人——发通知、写等人文件、DMM 版把窗口挪到屏幕正中。
-  你自己点开始、看完，程序接着走；照片你自己选（hiro.loop.photo_pick）。
+  你自己点开始、看完，程序接着走；照片你自己选（hiro.runtime.photo_pick）。
   曲目页 HIRO_LIVE_TIMEOUT_S 秒（缺省 60）还在 = 没人在，关游戏 / 模拟器（同未读剧情），抛 LiveWatchTimeout（run_hif 退出码 3，之后 resume）。
   删掉等人文件 = 这场不看了：程序点开始再跳过，照片仍然等你选。
 - pick（跳过 LIVE，我自己选照片）：演出里点右上角 SKIP；照片你自己选。
@@ -101,7 +101,7 @@ def watch_wait(*, items: Callable[[], tuple[int, int, Items]], sleep: Callable[[
                notifier: Callable[[str, str], None] | None = None, env: dict | None = None) -> str:  # fmt: skip
     """曲目页上、watch 模式时调。items() → (宽, 高, [(文字, 中心)])。返回 "user"（你点了开始）/ "file"（删了等人文件：不看了）；
     曲目页一直在到超时：关游戏并抛 LiveWatchTimeout。"""
-    from hiro.loop import unread_story
+    from hiro.runtime import unread_story
     from hiro.loop.pause_flag import hold
 
     env = env if env is not None else os.environ
@@ -139,7 +139,7 @@ def watch_wait(*, items: Callable[[], tuple[int, int, Items]], sleep: Callable[[
         path.write_text(msg + f"{time.strftime('%H:%M:%S')} 超时没人点开始，已关闭游戏。\n", encoding="utf-8")
     except OSError:
         pass
-    from hiro.loop import close_game
+    from hiro.runtime import close_game
 
     what = close_game.target(env)
     (close or close_game.close)("emulator" if what == "off" else what, why="LIVE 开始前等人超时")

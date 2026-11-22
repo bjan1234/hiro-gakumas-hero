@@ -267,7 +267,7 @@ class HiroController(ProduceController):
 
         from hiro.produce.ops import ocr_boxes
 
-        from hiro.loop import live_mode
+        from hiro.runtime import live_mode
 
         def shoot():
             im = device.screenshot()
@@ -278,7 +278,7 @@ class HiroController(ProduceController):
         except Exception as e:  # noqa: BLE001  OCR 出错不能打断等待
             logger.debug("横屏 OCR 出错：%r", e)
             return
-        # 曲目页点开始 / HIRO_LIVE=watch 开始前停下等人 / pick·auto 点 SKIP（hiro.loop.live_mode，用户 11-21）
+        # 曲目页点开始 / HIRO_LIVE=watch 开始前停下等人 / pick·auto 点 SKIP（hiro.runtime.live_mode，用户 11-21）
         done = live_mode.driver().step(img.shape[1], img.shape[0], items, lambda x, y: device.click(x, y), shoot)
         if done is not None and done != "watched":
             self._count_taps(1)

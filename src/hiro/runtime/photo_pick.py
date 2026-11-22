@@ -5,7 +5,7 @@ LIVE 演出时游戏会自动拍照，演出完是「メモリーにするフォ
 程序原来直接用默认的第一张（hiro.loop.resume.finish_produce_end / hiro.runtime.finish）。
 
 开关 HIRO_PHOTO_PICK：auto（缺省，和以前一样用第一张）/ stop。stop 时第一次看到选照片页：
-- 不点，写等人文件（同 hiro.loop.unread_story.wait_file）、发系统通知；DMM 版把游戏窗口挪到屏幕正中；
+- 不点，写等人文件（同 hiro.runtime.unread_story.wait_file）、发系统通知；DMM 版把游戏窗口挪到屏幕正中；
 - 等你自己选、点「次へ」和「決定」。选照片页和保存确认框都连续 LEFT_POLLS 次不在 → 删掉等人文件，接着点结算画面；
 - 删掉等人文件 = 用默认的那张，程序接着点；
 - HIRO_PHOTO_TIMEOUT_S 秒（缺省 600）没人管 → 用默认的那张接着点（不关游戏：照片不影响进度，选拔之后还要接着打本战）。
@@ -32,8 +32,8 @@ _auto_until = [0.0]
 
 
 def mode(env: dict | None = None) -> str:
-    """HIRO_LIVE 是 watch / pick / auto 时由它定（hiro.loop.live_mode.photo_override），否则看 HIRO_PHOTO_PICK。"""
-    from hiro.loop import live_mode
+    """HIRO_LIVE 是 watch / pick / auto 时由它定（hiro.runtime.live_mode.photo_override），否则看 HIRO_PHOTO_PICK。"""
+    from hiro.runtime import live_mode
 
     if (forced := live_mode.photo_override(env)) is not None:
         return forced
@@ -69,7 +69,7 @@ def wait(*, texts: Callable[[], list], sleep: Callable[[float], None] = time.sle
          notifier: Callable[[str, str], None] | None = None, env: dict | None = None) -> str:  # fmt: skip
     """选照片页在屏幕上、should_wait 为真时调。返回 "user"（你选完了）/ "file"（删了等人文件）/ "timeout"（没人管，用默认）。
     返回后 AUTO_AFTER_S 秒内 should_wait 为假，调用方照旧自动点。"""
-    from hiro.loop import unread_story
+    from hiro.runtime import unread_story
     from hiro.loop.pause_flag import hold
 
     env = env if env is not None else os.environ

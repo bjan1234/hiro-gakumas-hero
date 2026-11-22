@@ -1,9 +1,9 @@
-"""LIVE 看 / 跳 / 照片谁选：HIRO_LIVE=play|watch|pick|auto（hiro.loop.live_mode）。"""
+"""LIVE 看 / 跳 / 照片谁选：HIRO_LIVE=play|watch|pick|auto（hiro.runtime.live_mode）。"""
 
 import pytest
 
-from hiro.loop import live_mode as lm
-from hiro.loop import photo_pick
+from hiro.runtime import live_mode as lm
+from hiro.runtime import photo_pick
 
 W, H = 1280, 720
 SONG = [("Campus mode!!", (640, 200)), ("作詞 某某", (640, 400)), ("TAP TO START", (640, 650))]

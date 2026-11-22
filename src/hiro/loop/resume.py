@@ -159,7 +159,7 @@ def finish_produce_end(*, timeout: float = 180.0, go_home: bool = False) -> bool
     不点「再挑戦」「生成」以外的花费类按钮；关注制作人一律跳过。返回是否回到首页。"""
     from hiro.devices.active import device as dev
 
-    from hiro.loop import photo_pick
+    from hiro.runtime import photo_pick
     from hiro.loop.assist import Assist
 
     assist = Assist("结算收尾 / 回首页", click=lambda x, y: dev.click(x, y))  # 快速判页 + 卡住交 LLM（同主循环）
