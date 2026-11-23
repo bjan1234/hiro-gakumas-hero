@@ -550,3 +550,12 @@ def test_detail_page_when_slash_is_dropped():
     assert mp.detail_page([("12", 1, box)]) == 1
     assert mp.detail_page([("1/2", 1, box)]) == 1 and mp.detail_page([("212", 1, box)]) == 2
     assert mp.detail_page([("22", 1, (40, 517, 90, 549))]) is None  # 不在居中位置（别处的数字）不算
+
+
+@pytest.mark.fixtures
+def test_scan_logs_progress_every_few_pages(tmp_path, monkeypatch, caplog):
+    """初星助手的驾驶舱靠日志看进度：扫描过程中每 PROGRESS_EVERY 页打一行（11-23 账号 2 扫了半小时只看到「开始」）。"""
+    monkeypatch.setattr(mp, "PROGRESS_EVERY", 1)
+    caplog.set_level("INFO", logger=mp.logger.name)
+    run_scan(tmp_path, ScrollList(), monkeypatch)
+    assert any("回忆扫描：第 1 页" in r.getMessage() for r in caplog.records)
