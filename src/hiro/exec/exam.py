@@ -32,6 +32,7 @@ from hiro.produce import ops
 from hiro.recorder import Recorder
 from hiro.vision.hif import EXAM_CACHE, hand_cards
 from hiro.vision.ocr import Box, Text, find_text, screen_texts
+from hiro.vision.textnorm import contains  # OCR 容错匹配（用户 11-21）
 from hiro.vision.ui_templates import box, tap, tpl
 
 logger = logging.getLogger(__name__)
@@ -264,7 +265,7 @@ def _is_select(text: str) -> bool:
 
 def _confirm_dialog(boxes, texts) -> bool:
     """按 OCR 结果处理确认框：危险弹窗只点キャンセル；HIF_DIALOGS 里的点对应按钮。返回是否点了。"""
-    if any(w in t for t in texts for w in DANGER_WORDS):
+    if any(contains(t, w) for t in texts for w in DANGER_WORDS):
         pos = _ocr_button("キャンセル", min_y=600, boxes=boxes)
         if pos:
             logger.warning("危险弹窗（リタイア / 破棄）→ 只点キャンセル %s", pos)
@@ -580,7 +581,7 @@ def _hif_drink_dialogs(*, force: bool = False, boxes=None) -> bool:
         _last_dialog_ocr = now
         boxes = screen_texts(device.screenshot())
     texts = [t.text for t in boxes]
-    if any(w in t for t in texts for w in DANGER_WORDS):
+    if any(contains(t, w) for t in texts for w in DANGER_WORDS):
         return _confirm_dialog(boxes, texts)
     sel = next((t for t in boxes if _is_select(t.text) and t.rect.center.y > 1000), None)
     if sel is not None and not any("ドリンク" in t or "確認" in t or "ターン終了" in t for t in texts):

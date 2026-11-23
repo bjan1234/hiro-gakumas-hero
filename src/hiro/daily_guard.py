@@ -15,6 +15,8 @@ import threading
 import time
 from collections.abc import Callable
 
+from hiro.vision.textnorm import contains  # OCR 容错匹配（用户 11-21）
+
 logger = logging.getLogger(__name__)
 
 INFO_TITLES = (
@@ -51,7 +53,7 @@ def classify_popup(boxes) -> tuple[str, tuple[int, int]] | None:
     texts = [(t.replace(" ", ""), _center(b)) for t, _, b in boxes]
     buttons = [(t, c) for t, c in texts if BUTTON_BAND[0] <= c[1] <= BUTTON_BAND[1]]
     cancel = next((c for t, c in buttons if any(k in t for k in CANCEL_TEXTS)), None)
-    if any("ジュエル" in t for t, _ in texts):
+    if any(contains(t, "ジュエル") for t, _ in texts):
         return ("cancel", cancel) if cancel else None  # 含ジュエル：只认キャンセル，没有就不碰
     close = next((c for t, c in buttons if any(k in t for k in CLOSE_TEXTS)), None)
     if close is None or any(any(k in t for k in ACTION_TEXTS) for t, _ in buttons):

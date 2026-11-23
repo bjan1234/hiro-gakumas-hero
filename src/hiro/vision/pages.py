@@ -10,6 +10,8 @@
 import re
 from functools import cache
 
+from hiro.vision.textnorm import contains  # OCR 容错匹配（用户 11-21）
+
 import cv2
 import numpy as np
 from cv2.typing import MatLike
@@ -177,7 +179,7 @@ def read_dialog(img: MatLike) -> dict | None:
         if kind == "other":
             kind = next((k for key, k in DIALOG_BODY_KINDS if key in body), "other")
         danger = kind in DANGER_KINDS or (
-            kind != "produce_resume" and any(w in title or w in body for w in DANGER_WORDS)
+            kind != "produce_resume" and any(contains(title, w) or contains(body, w) for w in DANGER_WORDS)
         )
         return {"kind": kind, "title": title, "body": body, "danger": danger, "y": int((y1 + y2) // 2)}
     return None
@@ -837,7 +839,7 @@ def read_retry_confirm(img: MatLike, header_y: int | None = None) -> dict:
         b = max((b for t, b in boxes if t == word or t.endswith(word)), key=lambda b: b[1], default=None)
         return [int((b[0] + b[2]) // 2), int((b[1] + b[3]) // 2)] if b else list(default)
 
-    return {"free": any("無料" in t for t in texts), "jewel": any("ジュエル" in t for t in texts),
+    return {"free": any("無料" in t for t in texts), "jewel": any(contains(t, "ジュエル") for t in texts),
             "tickets_before": nums[0][1] if len(nums) >= 2 else None, "tickets_after": nums[-1][1] if len(nums) >= 2 else None,
             "left": int(frac.group(1)) if frac else None, "total": int(frac.group(2)) if frac else None,
             "cancel": button("キャンセル", RETRY_CANCEL), "ok": button("決定", RETRY_OK)}  # fmt: skip
@@ -863,7 +865,7 @@ def read_refresh_confirm(img: MatLike, header_y: int | None = None) -> dict:
         return [int((b[0] + b[2]) // 2), int((b[1] + b[3]) // 2)] if b else list(default)
 
     return {"p_before": before, "p_after": after, "cost": before - after if before is not None and after is not None else None,
-            "jewel": any("ジュエル" in t for t, _ in boxes), "cancel": button("キャンセル", REFRESH_CANCEL), "ok": button("更新する", REFRESH_OK)}  # fmt: skip
+            "jewel": any(contains(t, "ジュエル") for t, _ in boxes), "cancel": button("キャンセル", REFRESH_CANCEL), "ok": button("更新する", REFRESH_OK)}  # fmt: skip
 
 
 def _growth_pct(text: str) -> float | None:

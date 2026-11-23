@@ -15,6 +15,7 @@
 from functools import cache, lru_cache  # noqa: F401
 
 from hiro.state.knowledge import MEMORY_WANT, SUPPORT_MAIN_TARGET
+from hiro.vision.textnorm import contains  # OCR 容错匹配（用户 11-21）
 
 ATTR_OF = {"SupportCardType_Vocal": "Vo", "SupportCardType_Dance": "Da", "SupportCardType_Visual": "Vi"}
 EFFECT_ATTR = {"Vo": "Vocal", "Da": "Dance", "Vi": "Visual"}
@@ -519,7 +520,7 @@ def cost_allowed(cost) -> bool:
         if isinstance(cost, str)
         else " ".join(str(v) for v in (cost.values() if isinstance(cost, dict) else [cost]))
     )
-    if any(f in text for f in SPEND_FORBIDDEN):
+    if any(contains(text, f) for f in SPEND_FORBIDDEN):
         return False
     return any(a in text for a in SPEND_ALLOWED)
 

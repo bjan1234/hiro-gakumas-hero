@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from hiro.vision.textnorm import contains  # OCR 容错匹配（用户 11-21）
+
 DISCARD_TITLE = "プロデュースデータの破棄"
 
 RESUME_FORBIDDEN = ("破棄", "開始する")  # 有这些字就不是「再開」对话框，绝不点
@@ -11,7 +13,7 @@ def resume_button(boxes):
     """「プロデュース再開」对话框的「再開する」按钮（OCR 判，KAA 的 ButtonResume 模板在第二十局日期切换后没认出，40s 超时）。
     boxes：hiro.vision.ocr.screen_texts 的结果（.text / .rect）。只在标题「プロデュース再開」+ 按钮「再開する」都在、且没有破棄 / 開始する 时返回按钮。"""
     texts = [b.text.replace(" ", "") for b in boxes]
-    if not any("プロデュース再開" in t for t in texts) or any(k in t for t in texts for k in RESUME_FORBIDDEN):
+    if not any("プロデュース再開" in t for t in texts) or any(contains(t, k) for t in texts for k in RESUME_FORBIDDEN):
         return None
     return next((b for b in boxes if b.text.replace(" ", "").strip() == "再開する"), None)
 
@@ -37,7 +39,9 @@ def reward_tap(boxes) -> tuple[int, int] | None:
     """领奖 / 活动获得画面 → 底部空白的点击位置；不是、有危险字样、或底部那块有文字（可能是按钮）时 None。
     boxes：.text / .rect.center（kotonebot ocr）。"""
     texts = [t.text.replace(" ", "") for t in boxes]
-    if not any(h in t for t in texts for h in REWARD_HINTS) or any(d in t for t in texts for d in REWARD_DANGER):
+    if not any(h in t for t in texts for h in REWARD_HINTS) or any(
+        contains(t, d) for t in texts for d in REWARD_DANGER
+    ):
         return None
     x, y = REWARD_TAP
     if any(abs(t.rect.center.x - x) <= 200 and abs(t.rect.center.y - y) <= 60 for t in boxes):

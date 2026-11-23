@@ -37,6 +37,7 @@ from hiro.loop.resume_rules import (  # noqa: E402,F401  纯判据挪到 resume_
     reward_tap,
 )
 from hiro.vision.ocr import find_text, screen_texts  # noqa: E402
+from hiro.vision.textnorm import contains_any  # noqa: E402  OCR 容错匹配（用户 11-21）
 from hiro.vision.ui_templates import box, tap, tpl  # noqa: E402
 
 
@@ -185,8 +186,7 @@ OPENING_STEP_WORDS = (
 
 def is_opening_step(texts) -> bool:
     """开局准备页（第 1–4 步）：左上步骤条「N.xxx選択」或页面提示文字。"""
-    flat = [t.replace(" ", "") for t in texts]
-    return any(w in t for t in flat for w in OPENING_STEP_WORDS)
+    return any(contains_any(t, OPENING_STEP_WORDS) for t in texts)
 
 
 def finish_produce_end(*, timeout: float = 180.0, go_home: bool = False) -> bool:
