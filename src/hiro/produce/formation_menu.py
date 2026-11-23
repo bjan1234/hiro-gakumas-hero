@@ -39,6 +39,7 @@ MEMORY_EMPTY_STD = 20.0  # 「未設定」空格的灰度标准差很小（同 m
 MENU_MARGIN = 6.0  # 大图标认卡：第一名领先这么多也算认出（82 号帧 至高のエンターメ+ 分数 22.8 刚过线、领先 9.9）
 MENU_SCORE_MAX = 30.0
 SET_MAX_TAPS = 20
+SET_NUMBER_LEFT = 70  # 「/20」左边裁多宽去补读编号（两位数「20」约 40 像素宽）
 WAIT_TRIES, WAIT_GAP = 12, 0.5
 ARROW_RETRIES = 2  # 翻编号的箭头点了没反应时再点几次
 
@@ -93,11 +94,32 @@ def _orange_ratio(img, b) -> float:
     )
 
 
+def _set_number(img, texts) -> int | None:
+    """左侧「N/20」的 N。整帧 OCR 有时只读出「/20」、把编号漏掉（11-20 Windows MuMu：编成 9 读成「/20」，翻号停在 8 → 9），
+    这时把「/20」左边连同它裁下来再读一次（ocr_boxes 按 2 倍读；不先手动放大：screen_texts 自己还会再放大 1.5 倍，
+    RapidOCR 对放大倍数敏感，4 倍以上会多读出杂字，review #11）。"""
+    for t, b in texts:
+        if b[0] < 250 and 900 <= b[1] <= 1000 and (m := re.search(r"(\d+)/20$", t)):
+            return int(m.group(1))
+    slash = next((b for t, b in texts if b[0] < 250 and 900 <= b[1] <= 1000 and t.replace(" ", "") == "/20"), None)
+    if slash is None or img is None:
+        return None
+    x1, y1, x2, y2 = (int(v) for v in slash)
+    crop = img[max(0, y1 - 15) : y2 + 15, max(0, x1 - SET_NUMBER_LEFT) : x2 + 10]
+    from hiro.vision.ocr import ocr_boxes
+
+    for t, _c, _b in ocr_boxes(crop, scale=2):
+        if m := re.search(r"(\d+)/20$", t.replace(" ", "")):
+            n = int(m.group(1))
+            return n if 1 <= n <= 20 else None
+    return None
+
+
 def read_menu(img, texts) -> dict | None:
     """プロデュース編成 页 → {mode, tab: support|memory|None, number, buttons{switch, support_tab, memory_tab}}；不是这一页时 None。
     认页：底部两个页签 + 左侧「N/20」+「おまかせ」都在（选择页 / 切替框盖住时不算）。当前页签按文字橙色比例判。"""
     sup, mem = _find(texts, "サポート編成", y_min=1040), _find(texts, "メモリー編成", y_min=1040)
-    num = next((m for t, b in texts if b[0] < 250 and 900 <= b[1] <= 1000 and (m := re.search(r"(\d+)/20$", t))), None)
+    num = _set_number(img, texts)
     if sup is None or mem is None or num is None or _find(texts, "おまかせ", y_min=900, y_max=1000) is None:
         return None
     if _find(texts, "決定", y_min=1100) is not None:
@@ -105,7 +127,7 @@ def read_menu(img, texts) -> dict | None:
     rs, rm = _orange_ratio(img, sup), _orange_ratio(img, mem)
     tab = "support" if rs > rm and rs > 0.05 else "memory" if rm > rs and rm > 0.05 else None
     switch = _find(texts, "プロデュース切替", y_max=90)
-    return {"mode": read_mode(texts), "tab": tab, "number": int(num.group(1)),
+    return {"mode": read_mode(texts), "tab": tab, "number": num,
             "buttons": {"switch": _center(switch) if switch else None, "support_tab": _center(sup), "memory_tab": _center(mem)}}  # fmt: skip
 
 

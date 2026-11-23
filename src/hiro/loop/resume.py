@@ -195,6 +195,7 @@ def finish_produce_end(*, timeout: float = 180.0, go_home: bool = False) -> bool
     不点「再挑戦」「生成」以外的花费类按钮；关注制作人一律跳过。返回是否回到首页。"""
     from hiro.devices.active import device as dev
     from hiro.loop.assist import Assist
+    from hiro.runtime import photo_pick
 
     assist = Assist("结算收尾 / 回首页", click=lambda x, y: dev.click(x, y))  # 快速判页 + 卡住交 LLM（同主循环）
     deadline = active_clock() + timeout  # 录屏暂停期间不计时（hiro.loop.pause_flag）
@@ -228,6 +229,10 @@ def finish_produce_end(*, timeout: float = 180.0, go_home: bool = False) -> bool
                 "结算后到了培育开始确认页（%s），停止点击", "本战" if any("本戦へ" in t for t in texts) else "新培育"
             )
             return True
+        if photo_pick.should_wait(texts):
+            # HIRO_PHOTO_PICK=stop：停下等人自己选照片（用户 11-21），等完照旧往下点
+            photo_pick.wait(texts=lambda: [t.text for t in screen_texts(dev.screenshot())])
+            continue
         if any("メモリーにするフォト" in t for t in texts):
             # 选回忆照片页（q14：重新登录后不再自动跳过，180s 没回首页）：默认第一张已选中，点「次へ」
             nxt = next((t for t in boxes if t.text.strip() == "次へ"), None)

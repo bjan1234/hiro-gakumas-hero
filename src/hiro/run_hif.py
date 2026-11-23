@@ -256,7 +256,7 @@ def main():
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s")
     from hiro.brain import guides
 
-    guides.refresh_if_stale()  # 偶像卡攻略包：没有或超过 24 小时就下载，失败不阻塞（协调 11-20；H.I.F 这次不接攻略，下好给初 / N.I.A 用）
+    guides.refresh_if_stale()  # 偶像卡攻略包：没有或超过 24 小时就下载，失败不阻塞（协调 11-20；H.I.F 要 HIRO_HIF_GUIDES=1 才用）
     if args.command == "resume" and not args.trace:
         prev = last_run_identity(args.mode)
         if prev is not None:
