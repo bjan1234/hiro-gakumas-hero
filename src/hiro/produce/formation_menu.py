@@ -17,11 +17,12 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Callable
-
-import cv2
+from collections.abc import Callable
 
 from hiro.produce.formation_writer import Device, FormationWriteError, fix_memory, fix_plan, fix_support
+from hiro.vision.textnorm import contains, same  # OCR 容错匹配（用户 11-21）
+
+import cv2
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ MENU_SCORE_MAX = 30.0
 SET_MAX_TAPS = 20
 SET_NUMBER_LEFT = 70  # 「/20」左边裁多宽去补读编号（两位数「20」约 40 像素宽）
 WAIT_TRIES, WAIT_GAP = 12, 0.5
+ARROW_RETRIES = 2  # 翻编号的箭头点了没反应时再点几次
 
 
 # ---------------------------------------------------------------- 读页面
@@ -48,7 +50,19 @@ def _texts(img, ocr) -> list[tuple[str, tuple]]:
 
 
 def _find(texts, word: str, *, y_min: int = 0, y_max: int = 1280):
-    return next((b for t, b in texts if word in t and y_min <= b[1] <= y_max), None)
+    return next(
+        (b for t, b in texts if contains(t, word) and y_min <= b[1] <= y_max), None
+    )  # 容错：「メモリー綿成」也认（11-21）
+
+
+def _is_submenu_item(t: str) -> bool:
+    """子菜单里的「プロデュース編成」（整个框就是这几个字，容错：11-21 DMM 读成「プロデュース綿成」）。"""
+    return same(t, "プロデュース編成")
+
+
+def _is_panel(t: str) -> bool:
+    """面板按钮「プロデュース編成・スキルカード」。"""
+    return contains(t, "プロデュース") and contains(t, "スキルカード")
 
 
 def _center(b) -> tuple[int, int]:
@@ -73,7 +87,11 @@ def read_mode(texts) -> str | None:
 def _orange_ratio(img, b) -> float:
     x1, y1, x2, y2 = (int(v) for v in b)
     hsv = cv2.cvtColor(img[y1:y2, x1:x2], cv2.COLOR_BGR2HSV)
-    return float(((hsv[..., 0] >= 5) & (hsv[..., 0] <= 25) & (hsv[..., 1] >= 120) & (hsv[..., 2] >= 180)).mean()) if hsv.size else 0.0
+    return (
+        float(((hsv[..., 0] >= 5) & (hsv[..., 0] <= 25) & (hsv[..., 1] >= 120) & (hsv[..., 2] >= 180)).mean())
+        if hsv.size
+        else 0.0
+    )
 
 
 def _set_number(img, texts) -> int | None:
@@ -126,7 +144,13 @@ def read_memory_icons(img) -> list[dict]:
             out.append({"slot": i, "card": None, "known": False, "empty": True})
             continue
         r = memory_icons.read_icon(icon)
-        if not r["known"] and r["card"] and r["margin"] is not None and r["margin"] >= MENU_MARGIN and r["score"] <= MENU_SCORE_MAX:
+        if (
+            not r["known"]
+            and r["card"]
+            and r["margin"] is not None
+            and r["margin"] >= MENU_MARGIN
+            and r["score"] <= MENU_SCORE_MAX
+        ):
             r["known"] = True
         out.append(dict(r, slot=i))
     return out
@@ -148,7 +172,7 @@ class Menu:
 
     def wait_menu(self, ok: Callable[[dict], bool] = lambda m: True, why: str = "编成菜单"):
         for _ in range(WAIT_TRIES):
-            img, texts, m = self.look()
+            img, texts, m = self.look()  # noqa: RUF059
             if m is not None and ok(m):
                 return img, m
             self.dev.sleep(WAIT_GAP)
@@ -162,15 +186,18 @@ class Menu:
         img, texts, m = self.look()
         if m is not None:
             return m
-        if not (_find(texts, "ホーム", y_min=1050) and _find(texts, "コンテスト", y_min=1050)) and _find(texts, "プロデュース編成") is None:
+        if (
+            not (_find(texts, "ホーム", y_min=1050) and _find(texts, "コンテスト", y_min=1050))
+            and _find(texts, "プロデュース編成") is None
+        ):
             self.dev.snap(img, "menu-not-home")
             raise FormationWriteError("不在主页也不在プロデュース編成页：请先回主页再运行")
         tapped_idol = tapped_panel = False
         for _ in range(WAIT_TRIES * 2):
             if (m := read_menu(img, texts)) is not None:
                 return m
-            item = next((b for t, b in texts if t == "プロデュース編成"), None)  # 子菜单里的那一项（完全等于这几个字）
-            panel = next((b for t, b in texts if "プロデュース編成" in t and t != "プロデュース編成"), None)  # 面板按钮「…・スキルカード」
+            item = next((b for t, b in texts if _is_submenu_item(t)), None)  # 子菜单里的那一项（只有这几个字）
+            panel = next((b for t, b in texts if _is_panel(t)), None)  # 面板按钮「…・スキルカード」
             if item is not None:
                 self.dev.click(*_center(item))
                 return self.wait_menu(why="プロデュース編成页")[1]
@@ -229,8 +256,18 @@ class Menu:
             cur = m["number"]
             if cur == number:
                 return m
-            self.dev.click(*ARROWS["next" if number > cur else "prev"])
-            _, m = self.wait_menu(lambda x, cur=cur: x["number"] != cur, why=f"编成号从 {cur} 变")
+            for attempt in range(ARROW_RETRIES + 1):
+                # DMM 后台点击偶尔丢一下（11-21：12→18 都翻了，18 这一下没反应）：编号没变就再点，最多 ARROW_RETRIES 次
+                self.dev.click(*ARROWS["next" if number > cur else "prev"])
+                try:
+                    _, m = self.wait_menu(lambda x, cur=cur: x["number"] != cur, why=f"编成号从 {cur} 变")
+                    break
+                except FormationWriteError:
+                    if attempt == ARROW_RETRIES:
+                        raise
+                    _, m = self.wait_menu(why="プロデュース編成页")
+                    if m["number"] != cur:
+                        break
         raise FormationWriteError(f"点了 {SET_MAX_TAPS} 次箭头还没到编成 {number}")
 
 
@@ -267,7 +304,9 @@ def write_memory(dev: Device, plan: dict, make_picker, *, dry_run: bool = False)
     if dry_run or not moves:
         done = []
     else:
-        done = fix_memory(dev, plan, read_icons=lambda img: read_memory_icons(img), make_picker=make_picker, slots=MEMORY_TILES)
+        done = fix_memory(
+            dev, plan, read_icons=lambda img: read_memory_icons(img), make_picker=make_picker, slots=MEMORY_TILES
+        )
     if not dry_run:
         left = memory_diff(plan, _settle_icons(dev))
         if left:
@@ -320,4 +359,52 @@ def run(dev: Device, plan: dict, mode: str, *, what: tuple[str, ...] = ("support
     return out
 
 
-__all__ = ["Menu", "read_menu", "read_mode", "read_memory_icons", "memory_diff", "support_diff", "write_memory", "write_support", "run"]
+__all__ = [
+    "Menu",
+    "memory_diff",
+    "read_memory_icons",
+    "read_menu",
+    "read_mode",
+    "run",
+    "support_diff",
+    "write_memory",
+    "write_support",
+]
+
+
+PICKER_TRIES = 4  # 点格子后最多看几次列表开没开（每次 1.5 秒，第一次和中途各点一次）
+
+
+def open_picker(dev: Device, kind: str, *, ready: Callable[[object], bool], read_formation=None) -> None:
+    """从首页（或编成菜单）进支援卡 / 回忆的选择列表，给库存扫描用（初星助手的「扫描」按钮）：进菜单 → 切到 kind 页 →
+    点当前编成第 1 格。只点格子，不点「決定」；列表里由扫描自己读完点キャンセル。ready(截图) 判断列表开了没有。"""
+    from hiro.produce.formation_writer import FormationWriteError, _settled_step2
+
+    menu = Menu(dev)
+    menu.open()
+    menu.ensure_tab(kind)
+    if kind == "memory":
+        slot = MEMORY_TILES[0]
+    else:
+        page = _settled_step2(dev, read_formation, view="formation")
+        if page is None or not page.get("slots"):
+            raise FormationWriteError("读不到支援卡编成页的格子")
+        slot = tuple(page["slots"][0]["center"])
+    for attempt in range(PICKER_TRIES):
+        if attempt in (0, PICKER_TRIES // 2):
+            dev.click(*slot)
+        dev.sleep(1.5)
+        if ready(dev.shoot()):
+            logger.info("编成菜单：%s 选择列表已打开（点了第 1 格）", kind)
+            return
+    raise FormationWriteError(f"点{'回忆' if kind == 'memory' else '支援卡'}格没打开选择列表")
+
+
+def tool_device(d) -> Device:
+    """hiro.tool_device 的设备 → 编成菜单 / 写编成用的 Device（同 tools/write_formation.py）。"""
+    from hiro.devices.active import sleep
+    from hiro.produce.formation_writer import Device as WriterDevice
+    from hiro.vision.ocr import screen_texts
+
+    return WriterDevice(shoot=d.screenshot, click=d.tap, swipe=lambda x1, y1, x2, y2, dur=None: d.swipe(x1, y1, x2, y2, duration=dur or 0.3),
+                        ocr=lambda img: [(t.text, 1.0, tuple(int(v) for v in t.rect)) for t in screen_texts(img)], sleep=sleep)  # fmt: skip
