@@ -1168,10 +1168,28 @@ def r1_deck_to_note(exam: str, session, context: dict) -> list | None:
     ] or None
 
 
-def seed_max_hp(memory: ExamMemory, session, rec=None) -> int | None:
+def _exam_family(label: str | None, session) -> str | None:
+    """这场考试属于哪个模式家族（hif / hajime / nia / tower）：先看局面的 produce.mode，再看考试标签。"""
+    from hiro.state.modes import family
+
+    produce = (getattr(getattr(session, "state", None), "produce", None) or {}) if session is not None else {}
+    if (f := family(produce.get("mode"))) is not None:
+        return f
+    lab = str(label or "").lower()
+    if lab in ("r1", "r2") or lab.startswith("qualify"):
+        return "hif"
+    for f in ("hajime", "nia", "tower"):
+        if lab.startswith(f):
+            return f
+    return None
+
+
+def seed_max_hp(memory: ExamMemory, session, rec=None, profile=None) -> int | None:
     """开考时给本场考试记忆填最大体力：取培育页头部 OCR 读到的「体力 x/上限」（主循环状态 produce.max_stamina）。
     最大体力随偶像卡等级、开花、账号等级、支援卡等浮动，不写死；考试画面只显示当前体力，所以要在培育页读。
-    记忆里已经有（续跑读回）就不覆盖；读不到就留 None（不猜），日志写明。"""
+    记忆里已经有（续跑读回）就不覆盖；读不到时用构筑表里这个模式已知的值兜底（IdolProfile.known_max_hp，广 H.I.F 33，
+    来源记 profile_known，协调 11-20：续跑 / 开考前没经过培育页 / DMM 页头没读出时，广的固有道具和本战配额模板全失效）；
+    再没有就留 None（不猜），日志写明。"""
     if getattr(memory, "max_hp", None):
         return memory.max_hp
     if not hasattr(memory, "set_max_hp"):
@@ -1180,6 +1198,15 @@ def seed_max_hp(memory: ExamMemory, session, rec=None) -> int | None:
     value = produce.get("max_stamina")
     if memory.set_max_hp(value, "produce_screen"):
         logger.info("[%s] 最大体力 %s（培育页读数）", memory.exam, memory.max_hp)
+    elif (
+        known := (getattr(profile, "known_max_hp", None) or {}).get(_exam_family(memory.exam, session))
+    ) and memory.set_max_hp(known, "profile_known"):
+        logger.warning(
+            "[%s] 培育页没读出体力上限：最大体力按构筑表兜底 %s（%s 的已知值）",
+            memory.exam,
+            memory.max_hp,
+            getattr(profile, "name", "?"),
+        )
     else:
         logger.warning("[%s] 最大体力未读到（培育页没读出体力上限）：半血 / 道具判断按未知处理", memory.exam)
     if rec is not None:
@@ -1247,7 +1274,7 @@ def run_exam(
                 last_remaining=memory.last_remaining,
             )
             session.note(f"读回本场考试记忆（{restored.name}）：T{memory.turn}")
-    seed_max_hp(memory, session, rec)
+    seed_max_hp(memory, session, rec, brain.profile)
     source.begin(
         {
             "exam": exam,
@@ -1342,7 +1369,7 @@ def run_exam(
                         memory_remaining=memory.last_remaining,
                     )
                     memory = brain.new_memory(exam)  # 画面剩余回合比记忆多：不是同一场（再挑戦 / 新开）
-                    seed_max_hp(memory, session, rec)
+                    seed_max_hp(memory, session, rec, brain.profile)
                 restored = None
             if stable_wait.waited >= STABLE_WAIT_S and session is not None:
                 session.note(f"画面 {stable_wait.waited:.0f}s 不稳定，用单帧出决策")
