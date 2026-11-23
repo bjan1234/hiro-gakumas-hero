@@ -249,8 +249,8 @@ open /tmp/hiro-view/demo-run.html
 `desktop-v*` 的安装包（Windows 安装程序、macOS 磁盘镜像），第一次打开时它会下载本仓库、装好 Python 环境。
 安装包由 GitHub Actions（`.github/workflows/desktop.yml`）从源码构建。
 
-**Code signing policy**：Windows 安装包的签名、团队分工和隐私说明见 [docs/code-signing-policy.md](docs/code-signing-policy.md)。
-Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+安装包目前没有代码签名，第一次打开时系统会拦一下（Windows 点「更多信息 → 仍要运行」，macOS 在 Finder 里右键 → 打开）。
+签名打算、隐私说明和卸载方法见 [docs/code-signing-policy.md](docs/code-signing-policy.md)。
 
 ## 致谢与许可
 
