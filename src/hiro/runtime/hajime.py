@@ -442,7 +442,8 @@ def run(args) -> int:
     device = open_device()
     device.connect()
     rt = Runtime(raw_device=device, classify=sampler, handlers=make_handlers(core), advance=play.advance, session=session,
-                 landscape=LandscapeGuard(active=getattr(device, "name", "") == "maatools"), idle_stop_s=play.IDLE_STOP_S)  # fmt: skip
+                 landscape=LandscapeGuard(active=getattr(device, "name", "") == "maatools"), idle_stop_s=play.IDLE_STOP_S,
+                 rescue=not args.no_llm)  # fmt: skip
     active.use(rt)
     logger.info("初：%s（%s），帧存到 %s", args.difficulty, mode, sampler.out)
     rt.device.on_tap = lambda x, y: sampler.save_tap(rt.screen.frame, x, y)
