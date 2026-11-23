@@ -133,6 +133,21 @@ def test_rust_interval_after_does_not_refire_on_uncounted_play():
 COST_CARD = "p_card-01-men-2_037"  # 存在感：メンタル，消耗好調 2
 
 
+def _next(ex, card_id, kocho):
+    """下一张出牌前：好調设成 kocho 回合，把 card_id 放到手牌第一张（测试里直接摆）。"""
+    ex.advance()
+    (k,) = [s for s in ex.status.effects if s.cls == "ParameterBuffStatusEffect"] or [None]
+    if k is None:
+        ex.status._try_add("TryAddParameterBuffStatus", turn=kocho)
+    else:
+        k.turn = kocho
+    c = next(c for z in ("hand", "deck", "grave") for c in ex.zones[z] if c.card_id == card_id)
+    for z in ("hand", "deck", "grave"):
+        if c in ex.zones[z]:
+            ex.zones[z].remove(c)
+    ex.zones["hand"].insert(0, c)
+
+
 def _uncounted_after_failed_check():
     """计数到 3 的那张出牌开始时好調 6（计数）、付费后好調 4（出牌后条件不成立，不发动）；
     下一张开始时好調 2（不计数），スリリング 打完好調又够了：计数还是 3，也不能发动。返回下一张之前的局面。"""
@@ -144,28 +159,15 @@ def _uncounted_after_failed_check():
         stamina=200, plan_type=1,
     )  # fmt: skip
 
-    def play(card_id, kocho):
-        ex.advance()
-        (k,) = [s for s in ex.status.effects if s.cls == "ParameterBuffStatusEffect"] or [None]
-        if k is None:
-            ex.status._try_add("TryAddParameterBuffStatus", turn=kocho)
-        else:
-            k.turn = kocho
-        c = next(c for z in ("hand", "deck", "grave") for c in ex.zones[z] if c.card_id == card_id)
-        for z in ("hand", "deck", "grave"):
-            if c in ex.zones[z]:
-                ex.zones[z].remove(c)
-        ex.zones["hand"].insert(0, c)  # 测试里直接把要打的卡放到手牌第一张
-
-    play(AFTER_CARD, 20)
+    _next(ex, AFTER_CARD, 20)
     ex.step(("play", 0))
-    play(AFTER_CARD, 20)
+    _next(ex, AFTER_CARD, 20)
     ex.step(("play", 0))
-    play(COST_CARD, 6)
+    _next(ex, COST_CARD, 6)
     ex.step(("play", 0))
     assert _py_after_count(ex) == 3 and ex.status.GetParameterBuffTurn(False) < 5
     assert ex.items[0]["_fireCount"] == 0
-    play(AFTER_CARD, 2)
+    _next(ex, AFTER_CARD, 2)
     return ex
 
 
@@ -187,3 +189,42 @@ def test_rust_interval_after_skips_count_already_checked():
     rx.step(("play", 0))
     assert _rs_after_count(rx) == 3
     assert dict(map(tuple, json.loads(rx.export_json())["items"]))[AFTER_ITEM] == 0
+
+
+def _after_trigger(ex):
+    from gakumas_exam.status import TriggerEffect
+
+    (s,) = [s for s in ex.status.effects if isinstance(s, TriggerEffect) and 44 in (s.trigger.get("phaseTypes") or [])]
+    return s
+
+
+def _limit_restored_then_uncounted():
+    """计数 3 发动后次数用完（不可用），这期间照样计到 6、不发动；次数加回来后，下一张不计数的出牌也不能在 6 上补发。"""
+    ex = _after_exam()  # 第 3 次已发动；之后开始时好調 2
+    _after_trigger(ex).limit_count = 0  # 次数用完
+    _next(ex, AFTER_CARD, 20)
+    _play_until(ex, lambda: _py_after_count(ex), 6)
+    assert ex.items[0]["_fireCount"] == 1
+    _after_trigger(ex).limit_count = -1  # 次数加回来（如效果 150）
+    _next(ex, AFTER_CARD, 2)
+    return ex
+
+
+@pytest.mark.sim_master
+def test_python_interval_after_tracks_count_while_unavailable():
+    ex = _limit_restored_then_uncounted()
+    ex.step(("play", 0))
+    assert _py_after_count(ex) == 6 and ex.status.GetParameterBuffTurn(False) >= 5
+    assert ex.items[0]["_fireCount"] == 1
+
+
+@pytest.mark.sim_master
+def test_rust_interval_after_tracks_count_while_unavailable():
+    from gakumas_exam import native
+
+    if not native.available():
+        pytest.skip("没装 gakumas_exam_rs")
+    rx = native.to_native(_limit_restored_then_uncounted())
+    rx.step(("play", 0))
+    assert _rs_after_count(rx) == 6
+    assert dict(map(tuple, json.loads(rx.export_json())["items"]))[AFTER_ITEM] == 1

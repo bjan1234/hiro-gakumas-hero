@@ -1379,6 +1379,20 @@ impl Exam {
     }
 
     pub fn card_play_after_enchants(&mut self, card: CardId, ctx: Ctx) -> Vec<i64> {
+        // ExamPlayCountIntervalAfter：计数在出牌开始时判场面条件、这里在出牌后再判。只有这次出牌计了数（计数比上次判定时涨了）
+        // 才可能发动，没计数而卡牌效果让条件成立时不发动（#44）。每次判定都记下计数，用完次数暂不可用时也记
+        let mut fresh: Vec<i64> = vec![];
+        for s in self.status.effects.iter_mut() {
+            if let Some(t) = s.trig.as_mut() {
+                if t.trigger.has_phase(ph::ExamPlayCountIntervalAfter) {
+                    let n = t.phase(ph::ExamPlayCountIntervalAfter);
+                    if n != t.after_seen_count {
+                        fresh.push(s.uid);
+                    }
+                    t.after_seen_count = n;
+                }
+            }
+        }
         self.enchants(&mut |ex, i| {
             let tr = ex.trig_of(i);
             if !ex.target_search_ok(&tr, card) {
@@ -1387,13 +1401,9 @@ impl Exam {
             if tr.has_phase(ph::ExamCardPlayAfter) {
                 ex.trigger_field_valid(Some(&tr), Some(ctx), Some(&[card]))
             } else if tr.has_phase(ph::ExamPlayCountIntervalAfter) {
-                let t = ex.status.effects[i].trig.as_ref().unwrap();
-                let (n, seen) = (t.phase(ph::ExamPlayCountIntervalAfter), t.after_seen_count);
+                let n = ex.status.effects[i].trig.as_ref().unwrap().phase(ph::ExamPlayCountIntervalAfter);
                 let v = tr.v0_or1();
-                // 计数在出牌开始时判场面条件、这里在出牌后再判：只有这次出牌计了数（计数比上次判定时涨了）才可能发动，
-                // 没计数而卡牌效果让条件成立时不发动（#44）
-                ex.status.effects[i].trig.as_mut().unwrap().after_seen_count = n;
-                n >= 1 && n % v == 0 && n != seen && ex.trigger_field_valid(Some(&tr), Some(ctx), Some(&[card]))
+                n >= 1 && n % v == 0 && fresh.contains(&ex.status.effects[i].uid) && ex.trigger_field_valid(Some(&tr), Some(ctx), Some(&[card]))
             } else {
                 false
             }
