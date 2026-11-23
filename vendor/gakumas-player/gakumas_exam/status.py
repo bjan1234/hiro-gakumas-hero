@@ -84,7 +84,7 @@ class TriggerEffect(Status):
     """TriggerEffectStatusEffect：附魔。trigger 为主数据 ProduceExamTrigger 行（已转整数枚举），effects 为 ProduceExamEffect 行列表。"""
     __slots__ = ('trigger', 'effects', 'turn_count', 'phase_count', 'limit_count', 'limit_in_turn', 'limit_in_turn_remain',
                  'enchant_id', 'origin_type', 'source', 'override_type', 'from_effect_ids', 'from_enchant', 'encore',
-                 'after_fired_at')
+                 'after_seen_count')
 
     def __init__(self, trigger, effects, origin_type, turn=-1, limit_count=-1, limit_in_turn=-1, enchant_id='', source=None,
                  override_type=31, passing=False, uid=0):
@@ -103,8 +103,8 @@ class TriggerEffect(Status):
         self.from_effect_ids = []
         self.from_enchant = False
         self.encore = False
-        # ExamPlayCountIntervalAfter 上次发动时的计数：计数没变（这次出牌没计数）就不再发动（#44）
-        self.after_fired_at = 0
+        # ExamPlayCountIntervalAfter 上次出牌后判定时的计数：计数没涨（这次出牌没计数）就不发动（#44）
+        self.after_seen_count = 0
 
     def __deepcopy__(self, memo):
         return _slot_copy(self, memo, ('trigger', 'effects'))
@@ -127,7 +127,7 @@ class TriggerEffect(Status):
         t.from_effect_ids = list(self.from_effect_ids)
         t.from_enchant = self.from_enchant
         t.encore = self.encore
-        t.after_fired_at = self.after_fired_at
+        t.after_seen_count = self.after_seen_count
         return t
 
     def __repr__(self):

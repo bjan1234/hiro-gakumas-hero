@@ -798,9 +798,10 @@ class Exam:
             elif PH['ExamPlayCountIntervalAfter'] in phases:
                 n = s.phase_count.get(PH['ExamPlayCountIntervalAfter'], 0)
                 v = (tr.get('phaseValues') or [1])[0] or 1
-                # 计数在出牌开始时判场面条件、这里在出牌后再判：这次没计数而卡牌效果让条件成立时，同一个计数不再发动（#44）
-                if n >= 1 and n % v == 0 and n != s.after_fired_at and triggers.trigger_field_valid(self, tr, ctx, target_cards=[card]):
-                    s.after_fired_at = n
+                # 计数在出牌开始时判场面条件、这里在出牌后再判：只有这次出牌计了数（计数比上次判定时涨了）才可能发动，
+                # 没计数而卡牌效果让条件成立时不发动（#44）
+                fresh, s.after_seen_count = n != s.after_seen_count, n
+                if n >= 1 and n % v == 0 and fresh and triggers.trigger_field_valid(self, tr, ctx, target_cards=[card]):
                     out.append(s)
         return out
 
