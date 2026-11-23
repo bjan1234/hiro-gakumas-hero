@@ -25,6 +25,7 @@ jobs:
       - name: 装依赖到独立环境
         run: |
           python -m venv env
+          env/bin/pip install -U pip          # venv 自带的 pip 偏旧，本身就有已知漏洞，先升到最新
           env/bin/pip install -e ".[dev]"
       - uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266  # v1.1.0
         with:
