@@ -184,6 +184,8 @@ def _check_support(img) -> None:
     from hiro import kaa_env
     from hiro.produce import formation_steps
 
+    # 调用时按模块名取 device（测试会替换 kotonebot / kotonebot.device；CI 的类型检查环境没有 kotonebot，不能静态导入）
+    device = importlib.import_module("kotonebot").device
     # 传 shoot / sleep：刚翻过编成号，等卡片动画停了再核对（原来没传，等待循环 0 次，只读翻号后那一帧，11-21 DMM 5 格全空停了）
     formation_steps.check_support(
         img, kaa_env.ACTIVE_PLAN, kaa_env.SUPPORT_SET, shoot=device.screenshot, sleep=time.sleep
