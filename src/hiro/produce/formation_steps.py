@@ -91,12 +91,18 @@ def rental_pick(plan: dict | None, attr: str | None, main_attr: str | None = Non
         {"support_card_id": o["support_card_id"], "level": o.get("level")}
         for o in (plan.get("support") or {}).get("own") or []
     ]
-    scorer = None
+    scorer = fallback = None
     if own:
-        from hiro.brain.support_select import rental_scorer
+        from hiro.brain.support_select import MAIN_COUNT, rental_scorer
 
-        scorer = rental_scorer(own, attr or main_attr, (plan.get("idol") or {}).get("plan"))
-    return rental.pick_rental(attr=attr or rental.WANT_ATTR, scorer=scorer)
+        main = attr or main_attr or plan.get("main_attr")
+        scorer = rental_scorer(own, main, (plan.get("idol") or {}).get("plan"))
+        # 社区推荐打分全打不上时的退路：对应类型等级最高。自己已有 4 张主属性 → 不要主属性；不足 4 张 → 要主属性
+        # （流派由游戏的「プラン適正」勾选挡住）
+        n_main = sum((o.get("attr") == main) for o in (plan.get("support") or {}).get("own") or [])
+        if main:
+            fallback = (lambda a, m=main: a != m) if n_main >= MAIN_COUNT else (lambda a, m=main: a == m)
+    return rental.pick_rental(attr=attr or rental.WANT_ATTR, scorer=scorer, fallback=fallback)
 
 
 def memory_card_problems(img, plan: dict) -> tuple[list[str], list[str]]:
