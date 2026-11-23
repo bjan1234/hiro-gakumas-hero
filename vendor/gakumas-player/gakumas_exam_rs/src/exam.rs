@@ -1387,9 +1387,15 @@ impl Exam {
             if tr.has_phase(ph::ExamCardPlayAfter) {
                 ex.trigger_field_valid(Some(&tr), Some(ctx), Some(&[card]))
             } else if tr.has_phase(ph::ExamPlayCountIntervalAfter) {
-                let n = ex.status.effects[i].trig.as_ref().unwrap().phase(ph::ExamPlayCountIntervalAfter);
+                let t = ex.status.effects[i].trig.as_ref().unwrap();
+                let (n, fired_at) = (t.phase(ph::ExamPlayCountIntervalAfter), t.after_fired_at);
                 let v = tr.v0_or1();
-                n >= 1 && n % v == 0 && ex.trigger_field_valid(Some(&tr), Some(ctx), Some(&[card]))
+                // 计数在出牌开始时判场面条件、这里在出牌后再判：这次没计数而卡牌效果让条件成立时，同一个计数不再发动（#44）
+                let ok = n >= 1 && n % v == 0 && n != fired_at && ex.trigger_field_valid(Some(&tr), Some(ctx), Some(&[card]));
+                if ok {
+                    ex.status.effects[i].trig.as_mut().unwrap().after_fired_at = n;
+                }
+                ok
             } else {
                 false
             }

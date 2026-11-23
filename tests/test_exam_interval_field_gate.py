@@ -57,3 +57,74 @@ def test_rust_counts_only_plays_with_field_condition(kocho, counted):
     rx = native.to_native(_exam(kocho))
     rx.step(("play", 0))
     assert _rs_count(rx) == counted
+
+
+# 「出牌后」版（ExamPlayCountIntervalAfter）：计数在出牌开始时判条件、发动在出牌后判条件。这次出牌没计数（开始时条件不成立），
+# 卡牌效果又把条件抬上去时，不能在同一个计数上再发动一次（#44 review）
+AFTER_ITEM = "pitem_01-3-315-0"  # 溢れ出る想い：好調 5 回合以上时，メンタル卡每用 3 次（出牌后）
+AFTER_CARD = "p_card-01-men-2_098"  # スリリング：メンタル，加好調
+
+
+def _after_exam():
+    from gakumas_exam.master import load
+    from gakumas_exam.setup import new_exam
+
+    ex = new_exam(
+        None, load(), 1, deck=[(AFTER_CARD, 0)] * 20, items=[AFTER_ITEM], turn_types=[1] * 12, stamina=200, plan_type=1
+    )
+    ex.status._try_add("TryAddParameterBuffStatus", turn=6)
+    for _ in range(3):
+        ex.step(("play", 0))
+    assert ex.items[0]["_fireCount"] == 1  # 第 3 次发动
+    (kocho,) = [s for s in ex.status.effects if s.cls == "ParameterBuffStatusEffect"]
+    kocho.turn = 2  # 下一张出牌开始时好調不到 5：不计数；スリリング 打完好調又够了
+    return ex
+
+
+def _play_until(ex, count, n):
+    """一直打第一张手牌，直到触发计数到 n（手牌里有生成的非メンタル卡，打了不计数；行动次数用完就结束回合）。"""
+    for _ in range(30):
+        if count() >= n:
+            return
+        ex.advance()  # 结束回合后先开下一回合（抽牌）
+        ex.step(("play", 0) if ("play", 0) in ex.legal_actions() else ("end",))
+    raise AssertionError("计数没到")
+
+
+def _py_after_count(ex):
+    from gakumas_exam.status import TriggerEffect
+
+    (s,) = [s for s in ex.status.effects if isinstance(s, TriggerEffect) and 44 in (s.trigger.get("phaseTypes") or [])]
+    return s.phase_count.get(44, 0)
+
+
+def _rs_after_count(rx):
+    effects = json.loads(rx.export_json())["status"]["effects"]
+    (s,) = [s for s in effects if s.get("trig") and 44 in s["trig"]["trigger"]["phaseTypes"]]
+    return dict(map(tuple, s["trig"]["phase_count"])).get(44, 0)
+
+
+@pytest.mark.sim_master
+def test_python_interval_after_does_not_refire_on_uncounted_play():
+    ex = _after_exam()
+    ex.step(("play", 0))
+    assert ex.status.GetParameterBuffTurn(False) >= 5
+    assert ex.items[0]["_fireCount"] == 1
+    assert _py_after_count(ex) == 3
+    _play_until(ex, lambda: _py_after_count(ex), 6)  # 之后计到 6 照常发动
+    assert ex.items[0]["_fireCount"] == 2
+
+
+@pytest.mark.sim_master
+def test_rust_interval_after_does_not_refire_on_uncounted_play():
+    from gakumas_exam import native
+
+    if not native.available():
+        pytest.skip("没装 gakumas_exam_rs")
+    rx = native.to_native(_after_exam())
+    fired = lambda: dict(map(tuple, json.loads(rx.export_json())["items"]))[AFTER_ITEM]  # noqa: E731
+    rx.step(("play", 0))
+    assert fired() == 1
+    assert _rs_after_count(rx) == 3
+    _play_until(rx, lambda: _rs_after_count(rx), 6)  # 之后计到 6 照常发动
+    assert fired() == 2
