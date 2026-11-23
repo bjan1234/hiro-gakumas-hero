@@ -965,3 +965,29 @@ def test_consult_one_delete_per_visit():
     assert pd.decide("CONSULT", _live_state("produce-002", shelf=[], services=after)).action.kind.name == "SHOP_BUY"
     used = {"delete": {"price": 125, "available": True, "used": True}}
     assert _pd().decide("CONSULT", _live_state("produce-004", shelf=[], services=used)).action.kind.name == "SHOP_END"
+
+
+# ---------------------------------------------------------------- 属性上限（11-23 Mac 初 REGULAR：Vo 1000/1000 还选 Vo 课，游戏弹「レッスンパラメータ上限」卡住）
+
+
+def test_hajime_lesson_skips_capped_attr():
+    opts = [_opt("training", "Vo", True), _opt("training", "Da", False), _opt("training", "Vi", True)]
+    o, _, _ = _pick(_st(main_attr="Vo", params={"Vo": 1000, "Da": 288, "Vi": 275}), opts)
+    assert o["attr"] == "Vi" and o["sp"]  # Vo 封顶：剩下的里 SP 优先
+
+
+def test_hajime_oikomi_skips_capped_attr():
+    opts = [
+        {**_opt("training", "Vo"), "oikomi": True},
+        {**_opt("training", "Da"), "oikomi": True},
+        {**_opt("training", "Vi"), "oikomi": True},
+    ]
+    st = _st(main_attr="Vo", params={"Vo": 1000, "Da": 393, "Vi": 313}, criteria={"Vo": 0.4, "Da": 0.35, "Vi": 0.25})
+    o, _, _ = _pick(st, opts)
+    assert o["attr"] == "Da"  # Vo 封顶：审查基准第二高的
+
+
+def test_hajime_lesson_all_capped_falls_back():
+    opts = [_opt("training", "Vo", True), _opt("training", "Da", False)]
+    o, _, _ = _pick(_st(main_attr="Vo", params={"Vo": 1000, "Da": 1000, "Vi": 1000}), opts)
+    assert o["attr"] == "Vo"  # 都封顶了：照原来的规则选，不卡住
