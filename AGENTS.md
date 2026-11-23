@@ -208,6 +208,8 @@ PYTHONPATH=src python -m hiro.run_hif resume --mode qualify|main   # 续跑进�
 | `HIRO_DEBUG_RECOG=1` | 把全部识别互验写进 trace，页面变化都存帧 |
 
 固定编成时，租借格按 `--main-attr` 挑主属性、等级最高的一张；挑不到就停下（不开局）。
+有开局编成方案时按「加上这张后编成的价值」挑（社区推荐）；两页 + 刷新都打不上分时，退回租对应类型里等级最高的一张
+（自己已有 4 张主属性就租非主属性，不足就租主属性；流派由游戏的「プラン適正」挡住）。`HIRO_RENTAL_FALLBACK=0` 关掉，照旧停下。
 
 别的设备上有进行中的培育时，`run_hif new` 会停下（退出码 3）。只有使用者明确同意放弃那一份进度，才加 `--allow-discard`。
 
