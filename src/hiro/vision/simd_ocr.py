@@ -1,9 +1,13 @@
-"""Local SIMD PaddleOCR worker and KotoneBot OCR adapter."""
+"""本机 SIMD PaddleOCR 辅助进程（.NET 10，PP-OCRv6 medium）和 KotoneBot 的 OCR 适配。
+
+HIRO_OCR=simd 时用。辅助进程挂掉（自己崩溃、读超时被关掉）后，下一次识别会自动重新拉起，再试一次。"""
+
 from __future__ import annotations
 
 import atexit
 import base64
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -14,6 +18,11 @@ from threading import RLock, Thread
 
 import cv2
 import numpy as np
+
+logger = logging.getLogger(__name__)
+
+START_TIMEOUT = 45  # 辅助进程启动（加载模型）最多等这么久
+READ_TIMEOUT = 15  # 一次识别最多等这么久
 
 
 class SimdOcr:
@@ -26,26 +35,32 @@ class SimdOcr:
                 raise RuntimeError(f"HIRO_OCR=simd 缺少 {path}；安装方法见 docs/assets.md")
         if (dotnet := shutil.which("dotnet")) is None:
             raise RuntimeError("HIRO_OCR=simd 找不到 .NET 10 (dotnet)")
+        self.cmd = [dotnet, str(helper.resolve()), str(models.resolve())]
         self.lock = RLock()
+        self._start()
+        atexit.register(self.close)
+
+    def _start(self):
+        """拉起辅助进程，等它加载完模型回 ready。每个进程配一个自己的回复队列和读线程：重启后旧线程不会往新队列里塞东西。"""
         self.replies = Queue()
         self.proc = subprocess.Popen(
-            [dotnet, str(helper.resolve()), str(models.resolve())],
+            self.cmd,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, encoding="utf-8",
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        Thread(target=self._read_replies, daemon=True).start()
+        )  # fmt: skip
+        Thread(target=self._read_replies, args=(self.proc, self.replies), daemon=True).start()
         try:
-            if self._read(45).get("ready") is not True:
+            if self._read(START_TIMEOUT).get("ready") is not True:
                 raise RuntimeError("SIMD OCR 启动时没有返回 ready")
         except Exception:
             self.close()
             raise
-        atexit.register(self.close)
 
-    def _read_replies(self):
-        for line in self.proc.stdout:
-            self.replies.put(line)
-        self.replies.put(None)
+    @staticmethod
+    def _read_replies(proc, replies):
+        for line in proc.stdout:
+            replies.put(line)
+        replies.put(None)
 
     def _read(self, timeout):
         try:
@@ -60,19 +75,35 @@ class SimdOcr:
             raise RuntimeError(f"SIMD OCR: {result['error']}")
         return result
 
+    def _request(self, line: str):
+        stdin = self.proc.stdin
+        assert stdin is not None  # Popen 时给了 stdin=PIPE
+        stdin.write(line)
+        stdin.flush()
+        return self._read(READ_TIMEOUT)["lines"]
+
     def _infer(self, pixels, only_rec):
         h, w = pixels.shape[:2]
         request = {"width": w, "height": h, "only_rec": only_rec,
-                   "bgr": base64.b64encode(memoryview(pixels)).decode("ascii")}
+                   "bgr": base64.b64encode(memoryview(pixels)).decode("ascii")}  # fmt: skip
+        line = json.dumps(request, separators=(",", ":")) + "\n"
         with self.lock:
-            self.proc.stdin.write(json.dumps(request, separators=(",", ":")) + "\n")
-            self.proc.stdin.flush()
-            return self._read(15)["lines"]
+            if self.proc.poll() is not None:  # 上次超时被关掉，或者自己崩了：重新拉起
+                logger.warning("SIMD OCR 辅助进程已退出（退出码 %s），重新启动", self.proc.returncode)
+                self._start()
+            try:
+                return self._request(line)
+            except (RuntimeError, OSError) as e:  # 超时 / 子进程中途退出 / 管道断开：关掉、重启，再试一次
+                logger.warning("SIMD OCR 识别失败（%s），重启辅助进程再试一次", e)
+                self.close()
+                self._start()
+                return self._request(line)
 
     def close(self):
         with self.lock:
             if self.proc.poll() is None:
-                self.proc.stdin.close()
+                if self.proc.stdin is not None:
+                    self.proc.stdin.close()
                 try:
                     self.proc.wait(timeout=1)
                 except subprocess.TimeoutExpired:
@@ -85,12 +116,15 @@ class SimdOcr:
         from hiro.vision.ocr import _SIMPLIFIED
 
         original_h, original_w = img.shape[:2]
-        # Preserve the previous backend's grayscale preprocessing and ROI scale.
+        # 和原来的后端一样先转灰度、按 ROI 缩放
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
         scale = min(scale, 2000 / max(original_h, original_w))
         if scale != 1:
-            gray = cv2.resize(gray, (max(1, round(original_w * scale)), max(1, round(original_h * scale))),
-                              interpolation=cv2.INTER_CUBIC if scale > 1 else cv2.INTER_AREA)
+            gray = cv2.resize(
+                gray,
+                (max(1, round(original_w * scale)), max(1, round(original_h * scale))),
+                interpolation=cv2.INTER_CUBIC if scale > 1 else cv2.INTER_AREA,
+            )
         h, w = gray.shape
         lines = self._infer(np.ascontiguousarray(cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)), only_rec)
         out = []
@@ -112,20 +146,20 @@ def simd_engine() -> SimdOcr:
 
 @cache
 def install_kotonebot() -> None:
-    """Keep KotoneBot's find/expect and matching behavior, swapping only its image OCR."""
-    from kotonebot.backend.ocr import Ocr, OcrResult, OcrResultList, sanitize_text
-    from kotonebot.primitives.geometry import Rect
+    """KotoneBot 的 find / expect 和匹配逻辑不变，只把它的图像 OCR 换成 SIMD。"""
+    from kotonebot.backend.ocr import Ocr, OcrResult, OcrResultList, sanitize_text  # type: ignore[import-not-found]
+    from kotonebot.primitives.geometry import Rect  # type: ignore[import-not-found]
 
-    client = simd_engine()  # fail at startup before any device input if the requested backend is unavailable
+    client = simd_engine()  # 后端不可用时在启动阶段就报错，不等到操作设备时
 
     def simd_ocr(self, img, *, rect=None, pad=True, only_rec=False):
         if rect is None:
             x, y, crop = 0, 0, img
         else:
             x, y, w, h = rect.xywh
-            crop = img[y:y+h, x:x+w]
+            crop = img[y : y + h, x : x + w]
         results = OcrResultList()
-        # The 631px padding in KotoneBot is specific to its RapidOCR model.
+        # KotoneBot 补 631px 边是给它的 RapidOCR 模型用的，这里不补
         scale = 2 if rect is not None else 1
         for text, confidence, (x1, y1, x2, y2) in client.read(crop, scale=scale, only_rec=only_rec):
             absolute = Rect(x + x1, y + y1, x2 - x1, y2 - y1)
