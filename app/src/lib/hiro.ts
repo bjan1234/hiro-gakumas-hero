@@ -24,11 +24,14 @@ export function spriteUrl(asset: string): string {
   return homeUrl(`sprites/${asset}.png`);
 }
 
-/** 事件里的截图是绝对路径；只取 traces/ 之后那段交给 homeFiles。 */
+/** 事件里的截图是绝对路径；只取 traces/（对局 trace）或 jobs/（初 / N.I.A 存在任务目录的画面）之后那段交给 homeFiles。 */
 export function frameUrl(abs: string | null | undefined): string | null {
   if (!abs) return null;
-  const m = abs.replace(/\\/g, "/").match(/\/traces\/([^/]+\/frames\/[0-9]+\.jpg)$/);
-  return m ? homeUrl(`traces/${m[1]}`) : null;
+  const p = abs.replace(/\\/g, "/");
+  const t = p.match(/\/traces\/([^/]+\/frames\/[0-9]+\.jpg)$/);
+  if (t) return homeUrl(`traces/${t[1]}`);
+  const j = p.match(/\/jobs\/([^/]+\/frames\/[0-9]+(?:-[A-Za-z0-9_-]+)?\.jpg)$/);
+  return j ? homeUrl(`jobs/${j[1]}`) : null;
 }
 
 // ---- 工具层返回的数据形状 ----

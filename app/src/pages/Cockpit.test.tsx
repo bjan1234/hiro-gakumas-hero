@@ -79,3 +79,32 @@ test("每一步用中文页面名和动作名；事件重复返回时不重复�
   expect(screen.getByText(/出牌/)).toBeTruthy();
   expect(screen.queryByText(/SELECT_PITEM|PlayCard/)).toBeNull();
 });
+
+test("开局准备阶段（还没有步骤）：日志去掉时间 / 级别 / 模块前缀，frame 事件出实时画面", async () => {
+  const job = { id: "j1", kind: "hajime", params: {}, state: "running", summary: "开一局「初」", started_at: 1, ended_at: null, exit_code: null, pausable: true };
+  const fake = fakeCaller({
+    "run events": {
+      ok: true,
+      exit: 0,
+      data: {
+        job: "j1",
+        state: "running",
+        events: [
+          { seq: 0, t: 1, type: "log", text: "[2026-11-23 19:53:10,001] [INFO] [hiro.produce.rental] 租借：目前最好 私たちも成長していくぞ！" },
+          { seq: 1, t: 2, type: "frame", text: "", frame: "/h/jobs/j1/frames/00081-195535-opening.jpg", page: "opening" },
+        ],
+      },
+    },
+    "run status": { ok: true, exit: 0, data: { current: job, recent: [] } },
+  });
+  render(
+    <HiroCtx.Provider value={fake.call}>
+      <Cockpit jobId="j1" onBack={() => {}} />
+    </HiroCtx.Provider>,
+  );
+  await waitFor(() => expect(screen.getAllByText("租借：目前最好 私たちも成長していくぞ！").length).toBeGreaterThan(0));
+  expect(screen.queryByText(/\[INFO\]/)).toBeNull();
+  const img = screen.getByAltText("游戏画面") as HTMLImageElement;
+  expect(img.src).toContain("jobs/j1/frames/00081-195535-opening.jpg");
+  expect(screen.getByText("开局准备")).toBeTruthy();
+});

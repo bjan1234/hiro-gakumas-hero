@@ -27,6 +27,7 @@ LIVE = ("running", "paused", "takeover")
 LLM_VARS = ("HIRO_LLM", "OPENAI_BASE_URL", "OPENAI_API_KEY", "HIRO_CODEX_BIN")
 STOP_GRACE = 10.0
 TRACE_POLL = 0.5
+FRAME_EVERY = 1.5  # 实时画面事件最多这么久一条（帧存得很密，不全进事件流）
 
 
 def step_event(rec: dict, trace: Path) -> dict:
@@ -47,6 +48,24 @@ def step_event(rec: dict, trace: Path) -> dict:
         "frame": str(frame) if frame is not None and frame.is_file() else None,
         "text": dec.get("reason") or "",
     }
+
+
+def read_new_frames(index: Path, pos: int) -> tuple[int, dict | None]:
+    """帧索引 frames.jsonl 从 pos 往后读完整的行：返回 (新位置, 最后一条记录或 None)。半行留到下次。"""
+    if not index.is_file():
+        return pos, None
+    last = None
+    with index.open("rb") as f:
+        f.seek(pos)
+        for raw in f:
+            if not raw.endswith(b"\n"):
+                break
+            pos += len(raw)
+            try:
+                last = json.loads(raw)
+            except ValueError:
+                continue
+    return pos, last
 
 
 @dataclass(frozen=True)
@@ -450,6 +469,7 @@ class Job:
         )
         self._save()
         self._tail_pos = 0
+        self._frame_pos, self._frame_at, self._frame_pending = 0, 0.0, None
         self._tail_lock = threading.Lock()
         threading.Thread(target=self._pump, daemon=True).start()
         threading.Thread(target=self._tail_trace, daemon=True).start()
@@ -475,9 +495,25 @@ class Job:
                 ev = step_event(rec, self.trace)
                 self.emit("step", ev.pop("text"), **ev)
 
+    def _read_frames(self) -> None:
+        """初 / N.I.A 存在任务目录 frames/ 的画面：最新一张发成 frame 事件（驾驶舱的实时画面，开局三步也有）。"""
+        index = self.dir / "frames" / "frames.jsonl"
+        self._frame_pos, rec = read_new_frames(index, self._frame_pos)
+        if rec is not None and rec.get("file"):
+            self._frame_pending = rec
+        rec = self._frame_pending
+        if rec is None or time.time() - self._frame_at < FRAME_EVERY:
+            return
+        path = index.parent / rec["file"]
+        if path.is_file():
+            self.emit("frame", "", frame=str(path), page=rec.get("page"))
+            self._frame_at = time.time()
+        self._frame_pending = None
+
     def _tail_trace(self) -> None:
         while self.proc and self.proc.poll() is None:
             self._read_steps()
+            self._read_frames()
             time.sleep(TRACE_POLL)
 
     def _pump(self) -> None:
