@@ -1,8 +1,8 @@
 """hiro.loop.win_desktop：DMM 后台点击读不到光标（拒绝访问）时等桌面恢复再重做（2026-11-10 dmm1m 21:16 UAC 撞上点击）。"""
 
-import pytest
-
 from hiro.loop import win_desktop as wd
+
+import pytest
 
 
 class _Denied(Exception):
@@ -149,5 +149,7 @@ def test_post_message_ignores_stale_last_error():
     class Bad:
         hwnd = 0x7FFFFFF0
 
-    with pytest.raises(Exception):
-        wd.post_message(Bad(), 0, 0, 0)  # 真失败：pywin32 自己抛
+    import pywintypes
+
+    with pytest.raises(pywintypes.error):
+        wd.post_message(Bad(), 0, 0, 0)  # 真失败：pywin32 自己抛 pywintypes.error

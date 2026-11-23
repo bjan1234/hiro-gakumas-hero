@@ -1,9 +1,9 @@
 """开局第 2 步支援卡核对（hiro.produce.formation_steps.check_support）：等翻页动画停、全认不出不算通过（账号 2 11-16）。"""
 
-import pytest
-
 from hiro.produce import formation_steps
 from hiro.produce.formation_check import FormationMismatch
+
+import pytest
 
 PLAN = {"support": {"set": 20, "own": [{"support_card_id": f"s{i}"} for i in range(5)]}}
 
@@ -54,7 +54,9 @@ def test_kaa_check_support_waits_for_animation(monkeypatch):
 
     seen = {}
     monkeypatch.setattr(formation_steps, "check_support", lambda img, plan, set_no, **kw: seen.update(kw))
-    monkeypatch.setitem(sys.modules, "kotonebot", types.SimpleNamespace(device=types.SimpleNamespace(screenshot=lambda: "img")))
+    monkeypatch.setitem(
+        sys.modules, "kotonebot", types.SimpleNamespace(device=types.SimpleNamespace(screenshot=lambda: "img"))
+    )
     kaa_patches._check_support("img")
     assert callable(seen.get("shoot")) and callable(seen.get("sleep"))
 
@@ -65,5 +67,7 @@ def test_step3_blank_reads_keep_waiting(monkeypatch):
     reads = {"blank": [{"known": False}] * 4, "full": [{"known": True, "card": c} for c in ("a", "b", "c", "d")]}
     monkeypatch.setattr("hiro.vision.memory_icons.read_step3_icons", lambda img: reads[img])
     monkeypatch.setattr("hiro.vision.memory_icons.card_key", lambda c: c)
-    img = formation_steps.settled_step3(lambda: next(frames), {"memory": {"cards": ["a", "b", "c", "d"]}}, sleep=lambda s: None)
+    img = formation_steps.settled_step3(
+        lambda: next(frames), {"memory": {"cards": ["a", "b", "c", "d"]}}, sleep=lambda s: None
+    )
     assert img == "full"

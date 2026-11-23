@@ -23,15 +23,14 @@ import os
 import time
 from collections.abc import Callable
 
-from kotonebot import device, logging
-from kotonebot.primitives import Rect
 from hiro import imgio
 from hiro.produce.card_ops import change_stage1, change_stage2, pitem_commit
 from hiro.vision.ocr import screen_texts
 
+from kotonebot import device, logging
+from kotonebot.primitives import Rect
+
 logger = logging.getLogger(__name__)
-
-
 
 
 def _progress(why: str) -> None:
@@ -107,7 +106,9 @@ class NeverConfirmDiscard:
 
         device.click(*CANCEL_BUTTON)
         logger.error("KAA 想确认「%s」：已点「キャンセル」，停止运行", DISCARD_TITLE)
-        raise ResumeBlocked(f"游戏提示「{DISCARD_TITLE}」：其他端末有进行中的培育。已点「キャンセル」，不破弃；由用户决定。")
+        raise ResumeBlocked(
+            f"游戏提示「{DISCARD_TITLE}」：其他端末有进行中的培育。已点「キャンセル」，不破弃；由用户决定。"
+        )
 
     try_click = click = wait = _block
 
@@ -130,7 +131,6 @@ def _guard_action_like(orig):
         return orig
 
     def wrapped(self):
-        import importlib
 
         pg = importlib.import_module("kaa.tasks.produce.new.page")
         from kaa.tasks.produce.new.consts import Scene, SceneType
@@ -176,7 +176,7 @@ def _default_rental_pick() -> bool:
 RENTAL_PICK: Callable | None = _default_rental_pick  # 默认：主属性、等级最高的一张；策略层可替换成自己的选择
 
 
-from hiro.produce.formation_check import FormationMismatch  # noqa: E402  run_hif 按 kaa_patches.FormationMismatch 捕获
+from hiro.produce.formation_check import FormationMismatch  # noqa: E402, F401  run_hif 按 kaa_patches.FormationMismatch 捕获
 
 
 def _check_support(img) -> None:
@@ -187,7 +187,9 @@ def _check_support(img) -> None:
     from kotonebot import device
 
     # 传 shoot / sleep：刚翻过编成号，等卡片动画停了再核对（原来没传，等待循环 0 次，只读翻号后那一帧，11-21 DMM 5 格全空停了）
-    formation_steps.check_support(img, kaa_env.ACTIVE_PLAN, kaa_env.SUPPORT_SET, shoot=device.screenshot, sleep=time.sleep)
+    formation_steps.check_support(
+        img, kaa_env.ACTIVE_PLAN, kaa_env.SUPPORT_SET, shoot=device.screenshot, sleep=time.sleep
+    )
 
 
 def _autofix_on() -> bool:
@@ -200,9 +202,9 @@ def _autofix_on() -> bool:
 def _writer_device(tag: str):
     from pathlib import Path
 
-    import cv2
-
     from hiro.produce.formation_writer import Device
+
+    import cv2
 
     d = Path("reports/live/calib") / f"{time.strftime('%Y%m%d-%H%M%S')}-编成修正-{tag}"
     n = [0]
@@ -231,7 +233,9 @@ def _check_memory_set() -> None:
     from hiro import kaa_env
     from hiro.produce import formation_steps
 
-    formation_steps.check_memory_set(device.screenshot(), kaa_env.ACTIVE_PLAN, kaa_env.MEMORY_SET, shoot=device.screenshot)
+    formation_steps.check_memory_set(
+        device.screenshot(), kaa_env.ACTIVE_PLAN, kaa_env.MEMORY_SET, shoot=device.screenshot
+    )
 
 
 def select_set(index: int) -> None:
@@ -251,10 +255,12 @@ def _rent_step2(orig):
             if kaa_env.SUPPORT_SET == kaa_env.AUTO:  # 使用者明确写了 HIRO_SUPPORT_SET=auto：交给 KAA 的おまかせ
                 logger.warning("支援卡：HIRO_SUPPORT_SET=auto，由 KAA「おまかせ」选支援卡和租借")
                 return orig(set_number=set_number, auto_set=auto_set)
-            raise RuntimeError("支援卡「おまかせ」没有被明确选择（HIRO_SUPPORT_SET=auto），auto_set_support_card 必须为 False")
-        from kotonebot import device
-
+            raise RuntimeError(
+                "支援卡「おまかせ」没有被明确选择（HIRO_SUPPORT_SET=auto），auto_set_support_card 必须为 False"
+            )
         from hiro.vision.ui_templates import find_enabled, tpl
+
+        from kotonebot import device
 
         if not tpl("Produce.TextStepIndicator2").exists(device.screenshot(), threshold=STEP_INDICATOR_THRESHOLD):
             return False
@@ -270,7 +276,9 @@ def _rent_step2(orig):
                 if find_enabled("Produce.Step2.ButtonNext", device.screenshot()) is not None:
                     return True
                 time.sleep(0.5)
-        logger.error("支援卡：编成 %s 的租借格还空着，选择系统未交付，停下交总控手动挑（不让 KAA 确认第一张）", set_number)
+        logger.error(
+            "支援卡：编成 %s 的租借格还空着，选择系统未交付，停下交总控手动挑（不让 KAA 确认第一张）", set_number
+        )
         raise RentalPending(f"支援卡编成 {set_number} 的租借格需要手动挑选")
 
     wrapped._hiro_rent = True
@@ -324,7 +332,14 @@ def action_commit(self, action) -> None:
     self.controller.wait_disappear(button.prefab)
 
 
-PREP_STEPS = ("step1", "step2", "step3", "step4", "_select_set", "_select_idol")  # KAA 培育准备里每一步前后各报一次进展（D38）
+PREP_STEPS = (
+    "step1",
+    "step2",
+    "step3",
+    "step4",
+    "_select_set",
+    "_select_idol",
+)  # KAA 培育准备里每一步前后各报一次进展（D38）
 
 
 def _prep_progress(fn, name: str):
@@ -352,9 +367,7 @@ STEP_INDICATOR_THRESHOLD = 0.7
 STEP_INDICATORS = ("TextStepIndicator1", "TextStepIndicator2", "TextStepIndicator3", "TextStepIndicator4Or2")
 
 
-def _relax_step_indicators() -> None:
-    from kaa.tasks import R
-
+def _relax_step_indicators(R) -> None:
     for name in STEP_INDICATORS:
         prefab = getattr(R.Produce, name, None)
         if prefab is not None:
@@ -377,7 +390,9 @@ def _dry_run_start_button(orig):
             self.found = found
 
         def click(self, *a, **k):
-            logger.warning("开局演练：走到第 4 步「プロデュース開始」（%s），按 HIRO_OPENING_DRY_RUN 不点，停下", self.found)
+            logger.warning(
+                "开局演练：走到第 4 步「プロデュース開始」（%s），按 HIRO_OPENING_DRY_RUN 不点，停下", self.found
+            )
             raise OpeningDryRunDone("开局演练完成：第 1–4 步走通，没点プロデュース開始")
 
     class DryRunStart:
@@ -410,6 +425,8 @@ def _track_start_button(orig):
             return getattr(self.found, name)
 
     class TrackedStart:
+        _hiro_tracked = True  # 已经包过一层：apply() 重复调用时不再包
+
         @staticmethod
         def wait(*a, **k):
             return _Tracked(orig.wait(*a, **k))
@@ -421,7 +438,6 @@ def _track_start_button(orig):
 
 
 def apply() -> None:
-    import importlib
 
     import kaa.game_ui.idols_overview as io
     from kaa.tasks.produce.new.page import ActionSelectContext, PItemSelectContext, SkillCardChangeContext
@@ -445,7 +461,9 @@ def apply() -> None:
     global _ORIG_DISCARD_CONFIRM
     if R.Produce.BreakProduceDialog.ButtonConfirm is not NeverConfirmDiscard:
         _ORIG_DISCARD_CONFIRM = R.Produce.BreakProduceDialog.ButtonConfirm
-    R.Produce.BreakProduceDialog.ButtonConfirm = NeverConfirmDiscard  # do_produce 按属性名取，替换后它点不到「開始する」
+    R.Produce.BreakProduceDialog.ButtonConfirm = (
+        NeverConfirmDiscard  # do_produce 按属性名取，替换后它点不到「開始する」
+    )
     prep._select_set = select_set  # 编成号翻页用自己的 OCR（先于下面 PREP_STEPS 的进展包装）
     if not getattr(prep.step3, "_hiro_snap", False):
         prep.step3 = _snap_step3(prep.step3)
@@ -463,17 +481,13 @@ def apply() -> None:
     win_desktop.apply()  # DMM 后台点击：桌面暂时不可用（UAC / 锁屏）时等它恢复，不让主循环连崩
     from hiro.loop import kaa_usage
 
-    _relax_step_indicators()  # 开局步骤条阈值 0.8 → 0.7（DMM 小窗口）
+    _relax_step_indicators(R)  # 开局步骤条阈值 0.8 → 0.7（DMM 小窗口）
     if os.environ.get("HIRO_OPENING_DRY_RUN") == "1":
-        from kaa.tasks import R
-
         R.Produce.Step4.ButtonProduceStart = _dry_run_start_button(R.Produce.Step4.ButtonProduceStart)
         logger.warning("HIRO_OPENING_DRY_RUN=1：开局只演练到第 4 步，不点プロデュース開始")
-    else:
-        from kaa.tasks import R
-
-        if not getattr(R.Produce.Step4.ButtonProduceStart, "_hiro_tracked", False):
-            R.Produce.Step4.ButtonProduceStart = _track_start_button(R.Produce.Step4.ButtonProduceStart)
-            R.Produce.Step4.ButtonProduceStart._hiro_tracked = True
+    elif not getattr(R.Produce.Step4.ButtonProduceStart, "_hiro_tracked", False):
+        R.Produce.Step4.ButtonProduceStart = _track_start_button(R.Produce.Step4.ButtonProduceStart)
     kaa_usage.install()  # 最后挂：数的是补丁之后还在跑的 KAA 代码（去 KAA 第 0 步，只记不改行为）
-    logger.info("已启用 KAA 补丁：locate_idol 改为上滑翻页；授業换卡放宽卡片定位、阶段 2 不换保护卡；H.I.F P 道具按实测位置点击；破弃对话框只点キャンセル")
+    logger.info(
+        "已启用 KAA 补丁：locate_idol 改为上滑翻页；授業换卡放宽卡片定位、阶段 2 不换保护卡；H.I.F P 道具按实测位置点击；破弃对话框只点キャンセル"
+    )
