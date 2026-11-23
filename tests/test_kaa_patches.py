@@ -781,12 +781,14 @@ def test_read_loaded_gives_up_when_no_progress():
 
 def test_step_indicator_threshold_relaxed():
     """11-21 DMM 541x961：第 2 步步骤条只有 0.77 分，阈值放到 0.7（别的步骤条同一帧最高 0.56）。"""
-    from kaa.tasks import R
-
     from hiro.loop import kaa_patches
 
-    kaa_patches._relax_step_indicators()
-    assert all(getattr(R.Produce, n).threshold == kaa_patches.STEP_INDICATOR_THRESHOLD for n in kaa_patches.STEP_INDICATORS)
+    from kaa.tasks import R
+
+    kaa_patches._relax_step_indicators(R)
+    assert all(
+        getattr(R.Produce, n).threshold == kaa_patches.STEP_INDICATOR_THRESHOLD for n in kaa_patches.STEP_INDICATORS
+    )
 
 
 def test_opening_dry_run_waits_then_refuses_click():

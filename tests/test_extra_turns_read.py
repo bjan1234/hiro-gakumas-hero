@@ -1,10 +1,10 @@
 """考试「残りターン」圆盘下的「+n」额外回合（11-19 实测：圆盘 12 +「+1」= 13 回合，没读时 UINet 以为倒数第二回合就是最后一回合）。
 最后一个普通回合结束后圆盘直接变成 n、胶囊消失（用户 11-21），所以剩余 = 圆盘 + n，n 不定死。"""
 
+from hiro.vision import hif
+
 import numpy as np
 import pytest
-
-from hiro.vision import hif
 
 
 def _img(pill: bool):

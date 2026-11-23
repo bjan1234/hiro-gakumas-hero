@@ -1,9 +1,9 @@
 """H.I.F 选行动页公开课：OCR 读成「レツスン」也认；某一格文字没认出时按色条补（11-21 DMM 麻央：主属性 Da 那格丢了几天）。"""
 
+from hiro.vision import action as A
+
 import cv2
 import numpy as np
-
-from hiro.vision import action as A
 
 ATTR_BGR = {"vo": (180, 80, 240), "da": (230, 140, 40), "vi": (40, 160, 245)}  # 粉 / 蓝 / 橙（饱和度够高）
 
@@ -20,7 +20,9 @@ def _ocr(texts):
 
 
 def test_tsu_variant_is_open_lesson(monkeypatch):
-    monkeypatch.setattr(A, "ocr_boxes", _ocr([("Vo.公開レッスン", 172), ("Da公開レッスン", 359), ("Vi公開レツスン", 544)]))
+    monkeypatch.setattr(
+        A, "ocr_boxes", _ocr([("Vo.公開レッスン", 172), ("Da公開レッスン", 359), ("Vi公開レツスン", 544)])
+    )
     got = [(o.kind, o.attr) for o in A._options(_frame())]
     assert got == [("open_lesson", "vo"), ("open_lesson", "da"), ("open_lesson", "vi")]
 

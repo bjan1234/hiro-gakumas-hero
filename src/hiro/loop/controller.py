@@ -632,7 +632,11 @@ class HiroController(ProduceController):
         boxes = self._ocr_boxes()
         low = [b.text for b in boxes if b.rect.center.y > 1050]
         tools = sum(1 for w in self.HOME_TOOLBAR if any(contains(t, w) for t in low))
-        home = tools >= 3 and any(contains(b.text, "プロデュース") and 900 < b.rect.center.y < 1120 for b in boxes)             and not any("再開" in b.text for b in boxes)
+        home = (
+            tools >= 3
+            and any(contains(b.text, "プロデュース") and 900 < b.rect.center.y < 1120 for b in boxes)
+            and not any("再開" in b.text for b in boxes)
+        )
         now = time.monotonic()
         if not home:
             self._home_since = None

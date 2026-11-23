@@ -149,5 +149,7 @@ def test_post_message_ignores_stale_last_error():
     class Bad:
         hwnd = 0x7FFFFFF0
 
-    with pytest.raises(Exception):
-        wd.post_message(Bad(), 0, 0, 0)  # 真失败：pywin32 自己抛
+    import pywintypes
+
+    with pytest.raises(pywintypes.error):
+        wd.post_message(Bad(), 0, 0, 0)  # 真失败：pywin32 自己抛 pywintypes.error

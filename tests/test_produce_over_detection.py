@@ -3,7 +3,6 @@
 from types import SimpleNamespace as NS
 
 import hiro  # noqa: F401  兼容层（先于 kaa）
-
 from hiro.loop.controller import HiroController
 
 
@@ -11,7 +10,14 @@ def _box(text, y, x=360):
     return NS(text=text, rect=NS(center=NS(x=x, y=y)))
 
 
-HOME = [_box("プロデュース", 1000), _box("コミュ", 1124), _box("ガシャ", 1125), _box("アイドル", 1176), _box("コンテスト", 1176), _box("ホーム", 1194)]
+HOME = [
+    _box("プロデュース", 1000),
+    _box("コミュ", 1124),
+    _box("ガシャ", 1125),
+    _box("アイドル", 1176),
+    _box("コンテスト", 1176),
+    _box("ホーム", 1194),
+]
 
 
 def _ctl(boxes, clock):

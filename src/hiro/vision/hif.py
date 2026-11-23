@@ -1067,7 +1067,7 @@ def read_extra_turns(img: MatLike, cache: RegionCache | None = None) -> int | No
 
     if white < EXTRA_WHITE_MIN:
         return 0  # 没有胶囊：不跑 OCR（稳定帧判断每帧都调）
-    text = cached(cache, "extra_turns", crop, ocr_text) if cache is not None else ocr_text()
+    text = str(cached(cache, "extra_turns", crop, ocr_text)) if cache is not None else ocr_text()
     m = re.search(r"\+\s*([1-9])", text)
     return int(m.group(1)) if m else None
 

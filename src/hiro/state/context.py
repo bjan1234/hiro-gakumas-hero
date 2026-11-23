@@ -166,14 +166,16 @@ def exam_brief(state: ProduceState, mode: str, position: int) -> dict:
     cfg = prev["source"]["battle_config"]
     req = {"Vo": cfg["vocal"], "Da": cfg["dance"], "Vi": cfg["visual"]}
     trend = _trend_or_none(state.idol_card_id)
-    split = dict(zip(trend[1], TURN_SPLIT[trend[0]][key])) if trend else None
+    order = trend[1] if trend else ()
+    split = dict(zip(order, TURN_SPLIT[trend[0]][key])) if trend else None
     baseline = multiplier.star_baseline(mode, position, state.idol_card_id, catalog())
     factor = multiplier.star_factor(state.star, baseline)
     final = multiplier.exam_bonus(mode, position, state.params, state.star, state.idol_card_id)
     out = {
         "场次": label,
         "日程位置": position,
-        "回合": f"{prev['turns']} 回合（" + " / ".join(f"{a} {split[a]}" for a in trend[1]) + "）" if split
+        "回合": f"{prev['turns']} 回合（" + " / ".join(f"{a} {split[a]}" for a in order) + "）"
+        if split
         else f"{prev['turns']} 回合（这名偶像没有流行顺序数据，各属性回合数未知）",
         "三项审查": {a: tier_gap(state.params[a], req[a]) for a in ATTRS},
         "星星": {"当前": state.star, "基准": baseline, "星星倍率": round(factor, 3)},

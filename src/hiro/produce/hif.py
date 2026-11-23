@@ -2152,12 +2152,19 @@ class HifCore:
         gone = 0
         while time.monotonic() < deadline:
             sleep(1.0)
-            on_result = any(button_text(t.text, "再挑戦") and t.rect.center.y > 900 for t in screen_texts(device.screenshot()))
+            on_result = any(
+                button_text(t.text, "再挑戦") and t.rect.center.y > 900 for t in screen_texts(device.screenshot())
+            )
             gone = 0 if on_result else gone + 1
             if gone >= 2:
                 return True
-        self.s.note(f"{label} 点了再挑戦但考试没重开（结算页还在），按没过线收尾")
-        logger.warning("%s 点了再挑戦但 %.0f 秒后结算页还在：再挑戦没生效，按没过线收尾", label, self.RETRY_EFFECT_WAIT if wait is None else wait)
+        if self.s is not None:
+            self.s.note(f"{label} 点了再挑戦但考试没重开（结算页还在），按没过线收尾")
+        logger.warning(
+            "%s 点了再挑戦但 %.0f 秒后结算页还在：再挑戦没生效，按没过线收尾",
+            label,
+            self.RETRY_EFFECT_WAIT if wait is None else wait,
+        )
         return False
 
     exam_restarted = False  # 刚点了再挑戦、同一场考试要重新进入（见 HiroController._rearm_exam）

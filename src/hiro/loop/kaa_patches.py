@@ -367,9 +367,7 @@ STEP_INDICATOR_THRESHOLD = 0.7
 STEP_INDICATORS = ("TextStepIndicator1", "TextStepIndicator2", "TextStepIndicator3", "TextStepIndicator4Or2")
 
 
-def _relax_step_indicators() -> None:
-    from kaa.tasks import R
-
+def _relax_step_indicators(R) -> None:
     for name in STEP_INDICATORS:
         prefab = getattr(R.Produce, name, None)
         if prefab is not None:
@@ -427,6 +425,8 @@ def _track_start_button(orig):
             return getattr(self.found, name)
 
     class TrackedStart:
+        _hiro_tracked = True  # 已经包过一层：apply() 重复调用时不再包
+
         @staticmethod
         def wait(*a, **k):
             return _Tracked(orig.wait(*a, **k))
@@ -481,18 +481,12 @@ def apply() -> None:
     win_desktop.apply()  # DMM 后台点击：桌面暂时不可用（UAC / 锁屏）时等它恢复，不让主循环连崩
     from hiro.loop import kaa_usage
 
-    _relax_step_indicators()  # 开局步骤条阈值 0.8 → 0.7（DMM 小窗口）
+    _relax_step_indicators(R)  # 开局步骤条阈值 0.8 → 0.7（DMM 小窗口）
     if os.environ.get("HIRO_OPENING_DRY_RUN") == "1":
-        from kaa.tasks import R
-
         R.Produce.Step4.ButtonProduceStart = _dry_run_start_button(R.Produce.Step4.ButtonProduceStart)
         logger.warning("HIRO_OPENING_DRY_RUN=1：开局只演练到第 4 步，不点プロデュース開始")
-    else:
-        from kaa.tasks import R
-
-        if not getattr(R.Produce.Step4.ButtonProduceStart, "_hiro_tracked", False):
-            R.Produce.Step4.ButtonProduceStart = _track_start_button(R.Produce.Step4.ButtonProduceStart)
-            R.Produce.Step4.ButtonProduceStart._hiro_tracked = True
+    elif not getattr(R.Produce.Step4.ButtonProduceStart, "_hiro_tracked", False):
+        R.Produce.Step4.ButtonProduceStart = _track_start_button(R.Produce.Step4.ButtonProduceStart)
     kaa_usage.install()  # 最后挂：数的是补丁之后还在跑的 KAA 代码（去 KAA 第 0 步，只记不改行为）
     logger.info(
         "已启用 KAA 补丁：locate_idol 改为上滑翻页；授業换卡放宽卡片定位、阶段 2 不换保护卡；H.I.F P 道具按实测位置点击；破弃对话框只点キャンセル"

@@ -173,7 +173,14 @@ def _assist_step(assist, img, boxes) -> bool:
 # （11-21 DMM 第 2 步：ButtonHome 0.40、ToolbarHome 0.92；原来只认 ButtonHome，于是点了灰色的「次へ」）
 HOME_TEMPLATES = ("Common.ButtonHome", "Common.ButtonToolbarHome")
 OPENING_HOME_POINT = (85, 1211)  # 开局准备页左下工具栏的首页图标（720x1280）
-OPENING_STEP_WORDS = ("アイドル選択", "サポート選択", "メモリー選択", "サポートカードを選択", "メモリーを選択", "プロデュース開始")
+OPENING_STEP_WORDS = (
+    "アイドル選択",
+    "サポート選択",
+    "メモリー選択",
+    "サポートカードを選択",
+    "メモリーを選択",
+    "プロデュース開始",
+)
 
 
 def is_opening_step(texts) -> bool:

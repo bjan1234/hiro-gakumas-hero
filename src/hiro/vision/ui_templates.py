@@ -140,7 +140,7 @@ THRESHOLD_OVERRIDE = {"Produce.TextStepIndicator1": 0.7, "Produce.TextStepIndica
 @cache
 def tpl(name: str) -> Template:
     e = _catalog()["templates"][name]
-    threshold = THRESHOLD_OVERRIDE.get(name, e.get("threshold", 0.8))
+    threshold = THRESHOLD_OVERRIDE[name] if name in THRESHOLD_OVERRIDE else e.get("threshold", 0.8)
     return Template(name, e["file"], _tuple(e.get("slice_rect")), threshold, e.get("fixed", False),
                     _tuple(e.get("region")), e.get("source", ""))  # fmt: skip
 

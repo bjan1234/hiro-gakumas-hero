@@ -298,7 +298,11 @@ def test_submenu_item_tolerates_ocr_misread():
 
     assert _is_submenu_item("プロデュース編成") and _is_submenu_item("プロデュース綿成")
     assert not _is_submenu_item("プロデュース編成・スキルカード") and not _is_submenu_item("プロデュース")
-    assert _is_panel("プロデュース編成・スキルカード") and _is_panel("プロデュース綿成・スキルカード") and not _is_panel("プロデュース綿成")
+    assert (
+        _is_panel("プロデュース編成・スキルカード")
+        and _is_panel("プロデュース綿成・スキルカード")
+        and not _is_panel("プロデュース綿成")
+    )
 
 
 def test_texts_fix_hen_misread():
