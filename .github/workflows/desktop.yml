@@ -1,6 +1,6 @@
 # 桌面程序「初星助手」（app/）的安装包：Windows 安装程序在 Ubuntu 上交叉编译（mygo 不用 cgo，NSIS 用 apt 的 makensis），
 # macOS 通用版磁盘镜像在 macOS runner 上打（dmg 要 macOS）。安装包由这里的 CI 从源码构建，
-# 代码签名（SignPath Foundation，见 docs/code-signing-policy.md）只签这里产出的文件。
+# 安装包目前没有代码签名；以后拿到证书也只签这里产出的文件（见 docs/code-signing-policy.md）。
 # 推 desktop-v* 标签时把安装包和 SHA256SUMS.txt 传到同名 Release；手动触发只留 Actions 产物。
 name: desktop
 on:
