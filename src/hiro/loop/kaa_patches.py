@@ -184,8 +184,6 @@ def _check_support(img) -> None:
     from hiro import kaa_env
     from hiro.produce import formation_steps
 
-    from kotonebot import device
-
     # 传 shoot / sleep：刚翻过编成号，等卡片动画停了再核对（原来没传，等待循环 0 次，只读翻号后那一帧，11-21 DMM 5 格全空停了）
     formation_steps.check_support(
         img, kaa_env.ACTIVE_PLAN, kaa_env.SUPPORT_SET, shoot=device.screenshot, sleep=time.sleep

@@ -131,8 +131,10 @@ def apply() -> bool:
     import win32gui
 
     try:
-        from kotonebot.interop.win.window import Win32Window
+        import importlib
 
+        # 按模块名导入：类型检查环境（CI 只装 .[dev]）没有 kotonebot，静态导入会报 reportMissingImports
+        Win32Window = importlib.import_module("kotonebot.interop.win.window").Win32Window
         Win32Window.post_message = post_message
     except Exception as e:  # noqa: BLE001
         logger.warning("没能替换 Win32Window.post_message：%r", e)
