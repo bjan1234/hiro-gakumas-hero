@@ -2,6 +2,11 @@ name: test
 on:
   push:
   pull_request:
+
+# 默认只读。actions 都钉到提交 SHA（注释里是对应版本），由 Dependabot 提升级 PR
+permissions:
+  contents: read
+
 jobs:
   pytest:
     runs-on: ubuntu-latest
@@ -9,10 +14,12 @@ jobs:
       matrix:
         python: ["3.10", "3.12"]
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: ${{ matrix.python }}
+          cache: pip                          # 按 pyproject.toml 缓存下载的包
+          cache-dependency-path: pyproject.toml
       - run: pip install -e ".[dev]"
       - name: pytest（带覆盖率）
         run: PYTHONPATH=src python -m pytest -q tests --cov=hiro --cov-report=term:skip-covered --cov-report=markdown:coverage.md
@@ -24,7 +31,7 @@ jobs:
             echo "CI 没装 KAA，依赖它的测试会跳过，这里的数字偏低。完整表格见运行附件 coverage-${{ matrix.python }}。" >> "$GITHUB_STEP_SUMMARY"
             grep -m1 '^| \*\*TOTAL' coverage.md >> "$GITHUB_STEP_SUMMARY" || true
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         if: always()
         with:
           name: coverage-${{ matrix.python }}
