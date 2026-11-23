@@ -20,7 +20,7 @@ import logging
 import os
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ MUMU_BASE_PORT, MUMU_PORT_STEP = 16384, 32  # MuMu 12 实例 N 的 adb 端口 = 
 Runner = Callable[[list[str]], int]
 
 
-def target(env: dict | None = None) -> str:
+def target(env: Mapping[str, str] | None = None) -> str:
     """HIRO_CLOSE_GAME → off / game / emulator。写错了按 off（记 WARNING），不猜。"""
     v = ((env if env is not None else os.environ).get("HIRO_CLOSE_GAME") or "off").strip().lower()
     if v in ("", "0", "off", "no", "false"):
@@ -50,12 +50,12 @@ def target(env: dict | None = None) -> str:
     return "off"
 
 
-def deferred_to_parent(env: dict | None = None) -> bool:
+def deferred_to_parent(env: Mapping[str, str] | None = None) -> bool:
     """由父进程（play_game）负责关：run_hif 子进程退出时不关。"""
     return (env if env is not None else os.environ).get("HIRO_CLOSE_GAME_BY_PARENT") == "1"
 
 
-def device_kind(env: dict | None = None) -> str:
+def device_kind(env: Mapping[str, str] | None = None) -> str:
     env = env if env is not None else os.environ
     d = (env.get("HIRO_DEVICE") or "auto").strip().lower()
     if d == "auto":
@@ -63,14 +63,14 @@ def device_kind(env: dict | None = None) -> str:
     return d
 
 
-def _instance(env: dict) -> int:
+def _instance(env: Mapping[str, str]) -> int:
     try:
         return int(env.get("HIRO_EMULATOR_INSTANCE") or 0)
     except ValueError:
         return 0
 
 
-def mumu_manager(env: dict | None = None, exists: Callable[[str], bool] = os.path.exists) -> str | None:
+def mumu_manager(env: Mapping[str, str] | None = None, exists: Callable[[str], bool] = os.path.exists) -> str | None:
     """MuMuManager.exe：HIRO_MUMU_MANAGER → HIRO_ADB_PATH 同目录 → 常见安装位置。"""
     env = env if env is not None else os.environ
     cands = [env.get("HIRO_MUMU_MANAGER")]
@@ -80,7 +80,9 @@ def mumu_manager(env: dict | None = None, exists: Callable[[str], bool] = os.pat
     return next((c for c in cands if c and exists(c)), None)
 
 
-def commands(kind: str, what: str, env: dict | None = None, exists: Callable[[str], bool] = os.path.exists) -> list[list[str]]:
+def commands(
+    kind: str, what: str, env: Mapping[str, str] | None = None, exists: Callable[[str], bool] = os.path.exists
+) -> list[list[str]]:
     """要跑的命令（按顺序，前一条失败照样跑后一条）。what：game / emulator。"""
     env = env if env is not None else os.environ
     inst = _instance(env)
@@ -121,7 +123,7 @@ def _run(cmd: list[str]) -> int:
     return r.returncode
 
 
-def close(what: str | None = None, *, why: str = "", env: dict | None = None, run: Runner = _run,
+def close(what: str | None = None, *, why: str = "", env: Mapping[str, str] | None = None, run: Runner = _run,
           exists: Callable[[str], bool] = os.path.exists) -> bool:  # fmt: skip
     """按 what（缺省读 HIRO_CLOSE_GAME）关游戏 / 模拟器。what 为 off 时什么都不做。返回有没有至少一条命令成功。"""
     env = env if env is not None else os.environ
@@ -133,10 +135,10 @@ def close(what: str | None = None, *, why: str = "", env: dict | None = None, ru
     if not cmds:
         return False
     logger.warning("关%s（%s 后端）%s", "模拟器" if what == "emulator" else "游戏", kind, f"：{why}" if why else "")
-    return any([run(c) == 0 for c in cmds])
+    return any([run(c) == 0 for c in cmds])  # noqa: C419  列表：每条关闭命令都要跑，不能遇到第一个成功就停
 
 
-def close_at_exit(*, why: str = "跑完了", env: dict | None = None, run: Runner = _run) -> bool:
+def close_at_exit(*, why: str = "跑完了", env: Mapping[str, str] | None = None, run: Runner = _run) -> bool:
     """进程收尾时调：开关开着、且不是交给父进程关的子进程，才关。"""
     env = env if env is not None else os.environ
     if deferred_to_parent(env):

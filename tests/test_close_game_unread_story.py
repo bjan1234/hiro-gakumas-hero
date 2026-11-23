@@ -1,10 +1,10 @@
 """跑完关游戏（hiro.runtime.close_game）+ 未读剧情停下等人（hiro.runtime.unread_story）。不碰设备：命令和截图都是假的。"""
 
-import pytest
-
-from hiro.runtime import close_game as cg
 from hiro.loop import pause_flag, skip_settings
+from hiro.runtime import close_game as cg
 from hiro.runtime import unread_story as us
+
+import pytest
 
 MGR = r"C:\Program Files\Netease\MuMuPlayer\nx_main\MuMuManager.exe"
 
@@ -16,9 +16,15 @@ def test_target(v, want):
 
 
 def test_mumu_emulator_uses_manager_shutdown():
-    env = {"HIRO_DEVICE": "mumu", "HIRO_ADB_PATH": r"C:\Program Files\Netease\MuMuPlayer\nx_main\adb.exe", "HIRO_EMULATOR_INSTANCE": "2"}
+    env = {
+        "HIRO_DEVICE": "mumu",
+        "HIRO_ADB_PATH": r"C:\Program Files\Netease\MuMuPlayer\nx_main\adb.exe",
+        "HIRO_EMULATOR_INSTANCE": "2",
+    }
     assert cg.commands("mumu", "emulator", env, exists=lambda p: p == MGR) == [[MGR, "control", "-v", "2", "shutdown"]]
-    assert cg.commands("mumu", "game", env, exists=lambda p: p == MGR) == [[MGR, "control", "-v", "2", "app", "close", "-pkg", cg.PACKAGE]]
+    assert cg.commands("mumu", "game", env, exists=lambda p: p == MGR) == [
+        [MGR, "control", "-v", "2", "app", "close", "-pkg", cg.PACKAGE]
+    ]
 
 
 def test_mumu_without_manager_falls_back_to_adb_force_stop():
@@ -30,7 +36,10 @@ def test_dmm_and_adb_commands():
     assert cg.commands("dmm", "game", {}) == [["taskkill", "/f", "/im", "gakumas.exe"]]
     assert cg.commands("dmm", "emulator", {})[-1] == ["taskkill", "/f", "/im", "DMMGamePlayer.exe"]
     ld = cg.commands("leidian", "emulator", {"HIRO_ADB": "127.0.0.1:5557", "HIRO_LDCONSOLE": "ld.exe"})
-    assert ld == [["adb", "-s", "127.0.0.1:5557", "shell", "am", "force-stop", cg.PACKAGE], ["ld.exe", "quit", "--index", "0"]]
+    assert ld == [
+        ["adb", "-s", "127.0.0.1:5557", "shell", "am", "force-stop", cg.PACKAGE],
+        ["ld.exe", "quit", "--index", "0"],
+    ]
     assert cg.commands("maatools", "emulator", {}) == []
 
 
@@ -38,7 +47,9 @@ def test_close_at_exit_respects_switch_and_parent():
     ran = []
     run = lambda c: ran.append(c) or 0  # noqa: E731
     assert not cg.close_at_exit(env={"HIRO_DEVICE": "dmm"}, run=run) and ran == []  # 开关没开
-    assert not cg.close_at_exit(env={"HIRO_DEVICE": "dmm", "HIRO_CLOSE_GAME": "game", "HIRO_CLOSE_GAME_BY_PARENT": "1"}, run=run)
+    assert not cg.close_at_exit(
+        env={"HIRO_DEVICE": "dmm", "HIRO_CLOSE_GAME": "game", "HIRO_CLOSE_GAME_BY_PARENT": "1"}, run=run
+    )
     assert ran == []  # play_game 的子进程不关
     assert cg.close_at_exit(env={"HIRO_DEVICE": "dmm", "HIRO_CLOSE_GAME": "game"}, run=run)
     assert ran == [["taskkill", "/f", "/im", "gakumas.exe"]]
@@ -57,7 +68,11 @@ def test_detectors():
 
 class Rig:
     def __init__(self, tmp_path, screens, *, delete_at=None, mode="stop", timeout="60"):
-        self.env = {"HIRO_UNREAD_STORY": mode, "HIRO_UNREAD_TIMEOUT_S": timeout, "HIRO_WAIT_FILE": str(tmp_path / "wait.txt")}
+        self.env = {
+            "HIRO_UNREAD_STORY": mode,
+            "HIRO_UNREAD_TIMEOUT_S": timeout,
+            "HIRO_WAIT_FILE": str(tmp_path / "wait.txt"),
+        }
         self.screens, self.delete_at, self.t, self.calls, self.notes = list(screens), delete_at, 0.0, [], []
         us._allow_until[0] = 0.0
 
@@ -132,7 +147,9 @@ def test_skip_settings_stop_mode_turns_unread_fast_forward_off():
 def test_flag_watcher_does_not_end_a_hold(tmp_path):
     """11-20 DMM 实测：等未读剧情时录屏看守看到「在暂停、但没有旗标」就当录屏恢复了，把等人的时间又算回看门狗。"""
     calls = []
-    flow = type("F", (), {"request_pause": lambda s: calls.append("pause"), "request_resume": lambda s: calls.append("resume")})()
+    flow = type(
+        "F", (), {"request_pause": lambda s: calls.append("pause"), "request_resume": lambda s: calls.append("resume")}
+    )()
     w = pause_flag.Watcher(flow, flag=tmp_path / "none.flag")
     with pause_flag.hold():
         w.tick()
