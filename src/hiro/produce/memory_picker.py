@@ -29,6 +29,7 @@ import cv2
 import numpy as np
 
 logger = logging.getLogger(__name__)
+PROGRESS_EVERY = 5  # 每读几页打一行进度
 
 COL_X = (140, 360, 580)
 CELL_W, CELL_H_MIN = 210, 100
@@ -580,6 +581,8 @@ def scan(picker: Picker, out: Path, *, max_pages: int = 600, on_entry: Callable[
                         on_entry(e)
                     save()
             pages += 1
+            if pages % PROGRESS_EVERY == 0:  # 初星助手的驾驶舱靠日志看进度
+                logger.info("回忆扫描：第 %d 页，已读 %d 格", pages, new)
             prev_img = picker.shoot()  # 读完重截：选中框状态和下一页一致
             prev, prev_base = page_rows(prev_img) or rows, row_base
             if not prev:  # 一行都没认出：不能直接算到底，按整块列表区像素看滑不滑得动
