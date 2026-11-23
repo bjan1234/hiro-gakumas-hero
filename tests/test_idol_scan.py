@@ -42,3 +42,12 @@ def test_scan_dedupes_until_two_idle_screens_then_backs_out():
     )
     assert [c["title"] for c in out["idols"]] == ["A卡", "B卡", "C卡"] and out["complete"] is True
     assert taps[-1] == m.BACK and len(swipes) == 2  # 第 1、2 屏没有新卡：两次空屏就停，不再滑
+
+
+def test_swipe_stays_inside_the_grid_and_overlaps():
+    """11-23 账号 2 实测：原来的滑动起点 (360,1000) 压在「プラン ALL」筛选按钮上，列表不动，只读到第一屏 8 张就当成到底。
+    滑动要在卡片网格里（避开 y≈975–1025、x≥205 的筛选按钮），而且一次挪动（实测约为手指距离的 1.5 倍）小于点击覆盖的高度，屏与屏有重叠。"""
+    x1, y1, _x2, y2 = m.SWIPE
+    in_filter_bar = 205 <= x1 <= 695 and 975 <= y1 <= 1025
+    assert not in_filter_bar and m.GRID_TOP < y2 < y1 < m.GRID_BOTTOM
+    assert (y1 - y2) * 1.5 < (m.ROW_Y[-1] - m.ROW_Y[0])
