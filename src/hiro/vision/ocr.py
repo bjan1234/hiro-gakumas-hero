@@ -10,7 +10,9 @@
 - ppocr5：rapidocr 包里的 PaddleOCR PP-OCRv5（中日英一个模型，onnxruntime），比 KAA 自带的 RapidOCR 模型新；
   Mac / Windows 结果一致。中日混合模型会把部分汉字认成简体（强化、交换済），按 _SIMPLIFIED 换回日文写法。
 
-HIRO_OCR=auto（缺省：macOS 且能导入 Vision → vision，否则 rapidocr）/ vision / rapidocr / winocr / ppocr5。
+- simd：可选的本机 SIMD PaddleOCR PP-OCRv6 medium，同时供 Hiro 与 KAA 使用（安装见 docs/assets.md）。
+
+HIRO_OCR=auto（缺省：macOS 且能导入 Vision → vision，否则 rapidocr）/ vision / rapidocr / winocr / ppocr5 / simd。
 rapidocr 的推理设备：HIRO_OCR_DEVICE=auto（缺省 CUDA → DirectML → CPU）/ cuda / dml / cpu；CPU 线程数 HIRO_OCR_THREADS（见 ocr_device_order）。
 """
 
@@ -30,7 +32,7 @@ from cv2.typing import MatLike
 
 logger = logging.getLogger(__name__)
 
-ENGINES = ("auto", "vision", "rapidocr", "winocr", "ppocr5")
+ENGINES = ("auto", "vision", "rapidocr", "winocr", "ppocr5", "simd")
 _engine: str | None = None
 
 
@@ -361,10 +363,14 @@ def ocr_boxes(
     弹窗标题条贴着画面底边，正文裁出空图，cv2.resize 报 !ssize.empty()，主循环崩溃）。"""
     if img is None or getattr(img, "size", 0) == 0 or min(img.shape[:2]) < 1:
         return []
+    eng = engine()
+    if eng == "simd":
+        from hiro.vision.simd_ocr import simd_engine
+
+        return simd_engine().read(img, scale=scale)
     h, w = img.shape[:2]
     if scale != 1:
         img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-    eng = engine()
     if eng == "vision":
         return _vision_raw(img, w, h, languages)
     if eng == "winocr":
@@ -376,6 +382,17 @@ def ocr_boxes(
 
 def ocr(img: MatLike, *, scale: float = 3.0, languages=("ja-JP", "en-US")) -> list[tuple[str, float]]:
     return [(t, c) for t, c, _ in ocr_boxes(img, scale=scale, languages=languages)]
+
+
+def ocr_line(img: MatLike, *, scale: float = 3.0, languages=("ja-JP", "en-US")) -> str:
+    """已知只有一行字的框（比如 HUD 上固定位置的数字）：SIMD 后端跳过文字检测、只跑识别。"""
+    if img is None or not img.size:
+        return ""
+    if engine() == "simd":
+        from hiro.vision.simd_ocr import simd_engine
+
+        return "".join(t for t, _, _ in simd_engine().read(img, scale=scale, only_rec=True))
+    return "".join(t for t, _ in ocr(img, scale=scale, languages=languages))
 
 
 # ---------------------------------------------------------------- 整帧 / 区域文字（页面判定、找按钮）

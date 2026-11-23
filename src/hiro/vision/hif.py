@@ -481,7 +481,13 @@ def read_finals_ranking(img: MatLike) -> dict:
         if x + FINALS_NPC_W > img.shape[1]:
             out["npc_scores"].append(None)
             continue
-        if ocr_engine() == "vision":
+        if ocr_engine() == "simd":
+            from hiro.vision.ocr import ocr_line
+
+            # 已知只有一行的框：不走文字检测，免得检测把六位数的 NPC 分数截短
+            t = ocr_line(img[y1:y2, x : x + FINALS_NPC_W + 5]).replace(",", "").replace(" ", "")
+            v = int(t) if re.fullmatch(r"[0-9]{6}", t) else None
+        elif ocr_engine() == "vision":
             v = _ocr_int(img, (x, y1, x + FINALS_NPC_W + 1, y2))
         else:
             # RapidOCR / Windows OCR 读这号小字有系统性错（596029→598029、460505→430505，换放大倍数多次读也一致地错，投票选不对），

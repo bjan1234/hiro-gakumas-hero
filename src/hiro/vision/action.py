@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass, field
 
 from hiro.vision.digits import read_number
 from hiro.vision.ocr import engine as ocr_engine
-from hiro.vision.ocr import ocr, ocr_boxes
+from hiro.vision.ocr import ocr, ocr_boxes, ocr_line
 
 import cv2
 import numpy as np
@@ -323,7 +323,7 @@ def read_stamina(img: MatLike) -> tuple[int, int] | None:
     crop = img[y1:y2, x1:x2]
     texts = []
     for scale in (4, 2):
-        text = "".join(t for t, _ in ocr(crop, scale=scale, languages=("en-US",)))
+        text = ocr_line(crop, scale=scale, languages=("en-US",))
         if m := re.search(r"(\d+)\s*/\s*(\d+)", text):
             cur, cap = int(m.group(1)), int(m.group(2))
             if cur <= cap:
@@ -371,10 +371,7 @@ def read_action_select(img: MatLike) -> ActionSelectState:
     days = next((int(d) for d in re.findall(r"(\d+)\s*日", header) if 1 <= int(d) <= 30), None)
     stamina = read_stamina(img)
     points = re.search(
-        r"\d+",
-        "".join(
-            t for t, _ in ocr(img[slice(*POINTS_BOX[1::2]), slice(*POINTS_BOX[::2])], scale=4, languages=("en-US",))
-        ),
+        r"\d+", ocr_line(img[slice(*POINTS_BOX[1::2]), slice(*POINTS_BOX[::2])], scale=4, languages=("en-US",))
     )
 
     def small_text(box) -> str:
