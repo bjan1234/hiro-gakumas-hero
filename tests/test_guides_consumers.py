@@ -33,10 +33,11 @@ ENTRIES = [
 def pack(monkeypatch, tmp_path):
     for mode in ("hajime", "nia"):
         (tmp_path / f"{mode}-t.json").write_text(
-            json.dumps({"schema": 1, "mode": mode, "version": "t", "entries": ENTRIES}, ensure_ascii=False)
+            json.dumps({"schema": 1, "mode": mode, "version": "t", "entries": ENTRIES}, ensure_ascii=False),
+            encoding="utf-8",
         )
     (tmp_path / "manifest.json").write_text(
-        json.dumps({"schema": 1, "packs": {m: {"name": f"{m}-t"} for m in ("hajime", "nia")}})
+        json.dumps({"schema": 1, "packs": {m: {"name": f"{m}-t"} for m in ("hajime", "nia")}}), encoding="utf-8"
     )
     monkeypatch.setenv("HIRO_GUIDES_DIR", str(tmp_path))
     monkeypatch.delenv("HIRO_GUIDES", raising=False)
@@ -132,8 +133,10 @@ def test_stat_upgrade_not_customize(monkeypatch, tmp_path):
         "content": {"prefer": [{"id": OTOME, "stat": {"share": 0.7}}]},
         "evidence": [{"kind": "ranking", "mode": "nia", "n": 100}],
     }
-    (tmp_path / "nia-s.json").write_text(json.dumps({"schema": 1, "entries": [e]}))
-    (tmp_path / "manifest.json").write_text(json.dumps({"schema": 1, "packs": {"nia": {"name": "nia-s"}}}))
+    (tmp_path / "nia-s.json").write_text(json.dumps({"schema": 1, "entries": [e]}), encoding="utf-8")
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"schema": 1, "packs": {"nia": {"name": "nia-s"}}}), encoding="utf-8"
+    )
     monkeypatch.setenv("HIRO_GUIDES_DIR", str(tmp_path))
     guides._load_pack.cache_clear()
     assert customize_plan("produce-004", FKTN) is None
@@ -154,8 +157,10 @@ def test_review_pack_protect_and_genki_cash(monkeypatch, tmp_path):
         "content": {"avoid": ["class:genki_cash"], "prefer": [KAIKA]},
         "evidence": [{"kind": "guide", "ref": "t"}],
     }
-    (tmp_path / "hajime-r.json").write_text(json.dumps({"schema": 1, "entries": [e]}))
-    (tmp_path / "manifest.json").write_text(json.dumps({"schema": 1, "packs": {"hajime": {"name": "hajime-r"}}}))
+    (tmp_path / "hajime-r.json").write_text(json.dumps({"schema": 1, "entries": [e]}), encoding="utf-8")
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"schema": 1, "packs": {"hajime": {"name": "hajime-r"}}}), encoding="utf-8"
+    )
     monkeypatch.setenv("HIRO_GUIDES_DIR", str(tmp_path))
     guides._load_pack.cache_clear()
     cards = [{"index": 0, "card_id": KAIKA}, {"index": 1, "card_id": genki}]

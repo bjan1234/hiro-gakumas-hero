@@ -109,9 +109,9 @@ def test_switches_and_pack(monkeypatch, tmp_path):
         "version": "20261120.1",
         "entries": [E("x", {"mode": "hajime"}).raw],
     }
-    (tmp_path / "hajime-20261120-1.json").write_text(json.dumps(pack))
+    (tmp_path / "hajime-20261120-1.json").write_text(json.dumps(pack), encoding="utf-8")
     (tmp_path / "manifest.json").write_text(
-        json.dumps({"schema": 1, "packs": {"hajime": {"name": "hajime-20261120-1"}}})
+        json.dumps({"schema": 1, "packs": {"hajime": {"name": "hajime-20261120-1"}}}), encoding="utf-8"
     )
     monkeypatch.setenv("HIRO_GUIDES_DIR", str(tmp_path))
     g._load_pack.cache_clear()
@@ -124,7 +124,7 @@ def test_switches_and_pack(monkeypatch, tmp_path):
     assert g.lookup(idol_card=FKTN, **q) == []
     monkeypatch.delenv("HIRO_GUIDES")
     pack["schema"] = 2
-    (tmp_path / "hajime-20261120-1.json").write_text(json.dumps(pack))
+    (tmp_path / "hajime-20261120-1.json").write_text(json.dumps(pack), encoding="utf-8")
     g._load_pack.cache_clear()
     assert g.lookup(idol_card=FKTN, **q) == []
     g._load_pack.cache_clear()
@@ -154,7 +154,7 @@ def test_refresh_if_stale(monkeypatch, tmp_path):
 
     assert g.refresh_if_stale(fetcher=ok) == "fetched" and calls == [1]  # 没有缓存
     man = tmp_path / "manifest.json"
-    man.write_text("{}")
+    man.write_text("{}", encoding="utf-8")
     assert g.refresh_if_stale(fetcher=ok) == "fresh" and calls == [1]  # 刚下过
     old = time.time() - 25 * 3600
     os.utime(man, (old, old))
