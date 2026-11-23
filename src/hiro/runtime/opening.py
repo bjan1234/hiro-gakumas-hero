@@ -201,12 +201,13 @@ IDOL_TRIES = 5
 
 
 def idol_selected(f, skin_id: str) -> bool:
-    """第 1 步左上「已选偶像」框里是不是 skin_id（偶像卡图库，hiro.vision.idols）。"""
+    """第 1 步左上「已选偶像」框里是不是 skin_id（偶像卡图库，hiro.vision.idols）；skin_id 带不带 skin- 都行。"""
+    from hiro.produce.idol_select import card_key
     from hiro.vision import idols
 
     x1, y1, x2, y2 = box("Produce.BoxSelectedIdol")
     hit = idols.query(f.img[y1:y2, x1:x2], threshold=IDOL_THRESHOLD)
-    return hit is not None and hit[0].startswith(skin_id)
+    return hit is not None and card_key(hit[0]) == card_key(skin_id)
 
 
 def _close_dialog(rt, f) -> bool:
