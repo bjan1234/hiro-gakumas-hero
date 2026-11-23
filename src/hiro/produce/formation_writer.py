@@ -129,7 +129,11 @@ def pick_support(dev: Device, target: str, *, read_list) -> None:
                 dev.sleep(0.8)
                 img2 = dev.shoot()
                 r2 = read_list(img2)
-                hit = find_support_tile((r2 or {}).get("cards") or [], target)
+                if r2 is None:
+                    # 游戏点卡就直接放进编成格、关了列表（11-23 Mac 初）：不点 cancel / 決定，交给写完后的回读核对
+                    dev.snap(img2, f"support-picked-closed-{target}")
+                    return
+                hit = find_support_tile(r2.get("cards") or [], target)
                 if hit is None or not hit.get("selected"):
                     dev.snap(img2, f"support-pick-unconfirmed-{target}")
                     dev.click(*controls["cancel"])

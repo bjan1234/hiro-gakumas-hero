@@ -414,3 +414,24 @@ def test_core_match_unread_timing_is_unknown():
     assert not fw._core_match(["p_card-00-men-3_005", 1, "start"], want)
     assert not fw._core_match(["p_card-00-men-3_005", 0, None], want)
     assert not fw._core_match([None, 1, "mid"], want) and not fw._core_match(None, want)
+
+
+def test_pick_support_list_closed_after_tap_is_not_an_error(monkeypatch):
+    """11-23 Mac 初 手毬：点了列表里的卡，游戏直接放进编成格、关了列表（不用按決定）。原来再读列表读不到选中就报错，
+    还在编成页上点了一次 cancel 的坐标。列表已经关了：不点 cancel、不按決定，交给写完后的回读核对。"""
+    clicks = []
+    shots = {"n": 0}
+    cards = [{"support_card_id": "s_card-3-0027", "center": (575, 730), "partial": False, "selected": False}]
+    controls = {"cancel": (130, 1180), "decide": (590, 1180), "next": (680, 700)}
+
+    def read_list(img):
+        return {"cards": cards, "controls": controls, "pages": 1} if img == "list" else None  # 点完以后列表没了
+
+    def shoot():
+        shots["n"] += 1
+        return "list" if shots["n"] == 1 else "formation"
+
+    monkeypatch.setattr(fw, "_list_to_top", lambda dev, rl: {"controls": controls, "pages": 1})
+    dev = fw.Device(shoot=shoot, click=lambda x, y: clicks.append((x, y)), swipe=lambda *a: None, sleep=lambda s: None)
+    fw.pick_support(dev, "s_card-3-0027", read_list=read_list)
+    assert clicks == [(575, 730)]  # 只点了卡；没点 cancel / 決定
