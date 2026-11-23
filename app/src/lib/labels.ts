@@ -135,6 +135,19 @@ export function actionLabel(a: string | null | undefined): string {
   return a ? (ACTION_LABEL[a] ?? a) : "";
 }
 
+/** 日志行去掉「[时间] [级别] [模块]」前缀，只留说明（驾驶舱、对局卡里给人看）。 */
+export function logText(s: string | null | undefined): string {
+  return (s ?? "").replace(/^\[\d{4}-\d\d-\d\d [\d:,.]+\]\s*\[[A-Z]+\]\s*\[[^\]]+\]\s*/, "");
+}
+
+/** 从 start 到 now（秒）过了多久：不到 1 分钟 / 12 分钟 / 1 小时 15 分。 */
+export function elapsed(start: number, now: number): string {
+  const m = Math.floor(Math.max(0, now - start) / 60);
+  if (m < 1) return "不到 1 分钟";
+  if (m < 60) return `${m} 分钟`;
+  return `${Math.floor(m / 60)} 小时 ${m % 60} 分`;
+}
+
 export function clock(t: number): string {
   const d = new Date(t * 1000);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;

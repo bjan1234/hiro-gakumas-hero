@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { Card } from "../lib/chat";
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { useHiro, type Envelope } from "../lib/hiro";
-import { ATTR_STYLE, KIND_LABEL, TIMING_LABEL, actionLabel, pageLabel, sourceLabel } from "../lib/labels";
+import { ATTR_STYLE, KIND_LABEL, TIMING_LABEL, actionLabel, logText, pageLabel, sourceLabel } from "../lib/labels";
 import { useJob } from "../lib/useJob";
 import { JobFrame, ScoreStrip, StatePill, lastReport } from "./Job";
 import { PlanView } from "./PlanView";
@@ -101,7 +101,7 @@ export function RunCard({ card, onOpen }: { card: Of<"run">; onOpen: (jobId: str
           recent.length === 0 &&
           logs.map((l) => (
             <span key={l.seq} className="truncate text-[12px] text-ink-2">
-              {l.text}
+              {logText(l.text)}
             </span>
           ))}
         {imported && <span className={cx("text-[12px]", imported.type === "import_failed" ? "text-critical" : "text-good")}>{imported.text}</span>}

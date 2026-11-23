@@ -56,10 +56,12 @@ export function useJob(jobId: string | null): JobView {
   }, [jobId, call, tick]);
 
   const steps = events.filter((e) => e.type === "step");
+  // 实时画面：最近一条带画面的事件（步骤，或初 / N.I.A 开局三步就有的 frame 事件）
   let lastFrame: string | null = null;
-  for (let i = steps.length - 1; i >= 0; i--) {
-    if (steps[i]!.frame) {
-      lastFrame = steps[i]!.frame!;
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]!;
+    if ((e.type === "step" || e.type === "frame") && e.frame) {
+      lastFrame = e.frame;
       break;
     }
   }
