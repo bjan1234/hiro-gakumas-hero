@@ -79,6 +79,33 @@ def exam_criteria(mode: str, idol_card_id: str | None, stage: str) -> dict | Non
     return {a: v / tot for a, v in w.items()}
 
 
+# 主数据 Produce.idolCardParameterGrowthLimit（初 REGULAR / PRO / MASTER）；没有主数据时用它
+PARAM_CAP_FALLBACK = {"produce-001": 1000, "produce-002": 1500, "produce-003": 1800}
+
+
+@cache
+def param_cap(mode: str) -> int | None:
+    """这个模式三属性的上限（到了再上这门课就白上，游戏会弹「レッスンパラメータ上限」）；查不到 None（不按上限过滤）。"""
+    try:
+        v = modes.master().one("Produce", mode).get("idolCardParameterGrowthLimit")
+        if v:
+            return int(v)
+    except Exception:  # noqa: BLE001  没有主数据
+        pass
+    return PARAM_CAP_FALLBACK.get(mode)
+
+
+def _uncapped(p: _Pick, cands: list[int]) -> list[int]:
+    """去掉属性已经到上限的课程；都到上限了原样返回（照原规则选，不卡住）。"""
+    cap = param_cap(p.st.mode)
+    if cap is None:
+        return cands
+    left = [i for i in cands if p.st.params.get(p.opts[i].get("attr"), 0) < cap]
+    if len(left) < len(cands):
+        p.notes.append(f"属性到上限 {cap} 的课程不选")
+    return left or cands
+
+
 def _customize_alert(mode: str) -> int:
     try:
         c = modes.master()
@@ -156,11 +183,11 @@ def _hajime(p: _Pick) -> tuple[int, str, list[str]]:
     st = p.st
     lessons = p.idx("training")
     oikomi = [i for i in lessons if p.opts[i].get("oikomi")]
-    if oikomi and st.criteria:
+    if oikomi and (crit := st.criteria):
         p.use("hajime.oikomi_bonus")
-        i = max(oikomi, key=lambda k: st.criteria.get(p.opts[k].get("attr"), 0))
+        i = max(_uncapped(p, oikomi), key=lambda k: crit.get(p.opts[k].get("attr"), 0))
         a = p.opts[i].get("attr")
-        return p.done(i, f"追い込みレッスン选审查基准最高的 {a}（{st.criteria.get(a, 0):.0%}）")
+        return p.done(i, f"追い込みレッスン选审查基准最高的 {a}（{crit.get(a, 0):.0%}）")
     lost = st.max_stamina - st.stamina
     tired = lost >= TIRED_LOST or st.stamina * 2 <= st.max_stamina
     if (lessons or p.idx("class")) and tired:
@@ -177,7 +204,7 @@ def _hajime(p: _Pick) -> tuple[int, str, list[str]]:
         if st.stamina < LOW_STAMINA and p.idx("rest") and _rest_ok(p):
             return p.done(p.idx("rest")[0], f"课程周体力只剩 {st.stamina}（< {LOW_STAMINA}），先休息")
         p.use("hajime.lesson_first")
-        i = _lesson(p, lessons, "main")
+        i = _lesson(p, _uncapped(p, lessons), "main")
         o = p.opts[i]
         return p.done(i, f"上课程 {o.get('attr')}{' SP' if o.get('sp') else ''}")
     if p.idx("class"):
