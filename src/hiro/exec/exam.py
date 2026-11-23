@@ -32,8 +32,8 @@ from hiro.produce import ops
 from hiro.recorder import Recorder
 from hiro.vision.hif import EXAM_CACHE, hand_cards
 from hiro.vision.ocr import Box, Text, find_text, screen_texts
-from hiro.vision.ui_templates import box, tap, tpl
 from hiro.vision.textnorm import contains  # OCR 容错匹配（用户 11-21）
+from hiro.vision.ui_templates import box, tap, tpl
 
 logger = logging.getLogger(__name__)
 

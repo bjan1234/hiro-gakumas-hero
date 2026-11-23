@@ -4,11 +4,15 @@ from hiro.vision.textnorm import contains, max_errors, same
 
 
 def test_error_budget_by_length():
-    assert [max_errors(w) for w in ("決定", "休む", "ジュエル", "キャンセル", "サポート編成", "サポートカードを選択")] == [0, 0, 0, 1, 1, 2]
+    assert [
+        max_errors(w) for w in ("決定", "休む", "ジュエル", "キャンセル", "サポート編成", "サポートカードを選択")
+    ] == [0, 0, 0, 1, 1, 2]
 
 
 def test_real_misreads_are_matched():
-    assert contains("メモリー綿成", "メモリー編成") and contains("サポート縞成", "サポート編成")  # DMM 小窗口 編 → 綿 / 縞
+    assert contains("メモリー綿成", "メモリー編成") and contains(
+        "サポート縞成", "サポート編成"
+    )  # DMM 小窗口 編 → 綿 / 縞
     assert not contains("縞成詳細", "編成詳細")  # 4 字词不容错（代价：短词读错一个字认不出，要靠更长的词或别的判据）
     assert contains("Vi公開レツスン", "公開レッスン") and contains("YO公開レッズン", "公開レッスン")  # ッ → ツ、ス → ズ
     assert contains("NskIp", "SKIP") and contains("AuTo", "AUTO")  # 大小写

@@ -1,6 +1,7 @@
 """续跑和结算收尾的纯判据（不依赖 KAA）：旧主循环的 hiro.loop.resume 和新主循环的 hiro.runtime.finish 共用。"""
 
 from __future__ import annotations
+
 from hiro.vision.textnorm import contains  # OCR 容错匹配（用户 11-21）
 
 DISCARD_TITLE = "プロデュースデータの破棄"
@@ -38,7 +39,9 @@ def reward_tap(boxes) -> tuple[int, int] | None:
     """领奖 / 活动获得画面 → 底部空白的点击位置；不是、有危险字样、或底部那块有文字（可能是按钮）时 None。
     boxes：.text / .rect.center（kotonebot ocr）。"""
     texts = [t.text.replace(" ", "") for t in boxes]
-    if not any(h in t for t in texts for h in REWARD_HINTS) or any(contains(t, d) for t in texts for d in REWARD_DANGER):
+    if not any(h in t for t in texts for h in REWARD_HINTS) or any(
+        contains(t, d) for t in texts for d in REWARD_DANGER
+    ):
         return None
     x, y = REWARD_TAP
     if any(abs(t.rect.center.x - x) <= 200 and abs(t.rect.center.y - y) <= 60 for t in boxes):

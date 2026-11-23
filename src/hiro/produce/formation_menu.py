@@ -49,7 +49,9 @@ def _texts(img, ocr) -> list[tuple[str, tuple]]:
 
 
 def _find(texts, word: str, *, y_min: int = 0, y_max: int = 1280):
-    return next((b for t, b in texts if contains(t, word) and y_min <= b[1] <= y_max), None)  # 容错：「メモリー綿成」也认（11-21）
+    return next(
+        (b for t, b in texts if contains(t, word) and y_min <= b[1] <= y_max), None
+    )  # 容错：「メモリー綿成」也认（11-21）
 
 
 def _is_submenu_item(t: str) -> bool:
