@@ -361,6 +361,53 @@ def _prep_progress(fn, name: str):
     return wrapped
 
 
+UNREAD_COMMU_MODULES = ("kaa.tasks.actions.commu", "kaa.tasks.produce.new.strategies.base", "kaa.tasks.produce.new.strategies.hif_grind",
+                        "kaa.tasks.produce.shared.common", "kaa.tasks.produce.shared.produce_end", "kaa.tasks.start_game")  # fmt: skip
+
+
+def _unread_commu(orig):
+    """KAA 的 handle_unread_commu 看到未读确认框（スキップ確認 / 快进确认）就点「はい」跳过。HIRO_UNREAD_STORY=stop 时改成
+    点キャンセル、停下等人（hiro.runtime.unread_story）；skip（缺省）照旧。SKIP / 快进按钮照常点：读过的剧情不弹框直接跳。"""
+
+    def wrapped(img=None):
+        from hiro.runtime import unread_story
+
+        if not unread_story.stopping():
+            return orig(img)
+        from kaa.game_ui import dialog  # type: ignore[import-not-found]
+        from kaa.tasks import R  # type: ignore[import-not-found]
+        from kotonebot import device  # type: ignore[import-not-found]
+
+        device.screenshot()
+        if R.Common.TextSkipCommuComfirmation.exists() or R.Common.TextFastforwardCommuDialogTitle.exists():
+            unread_story.handle(cancel=lambda: dialog.no(), confirm=lambda: dialog.yes(),
+                                texts=lambda: unread_story.read_screen(device.screenshot()),
+                                snap=device.screenshot)  # fmt: skip
+            return True
+        return orig(img)
+
+    wrapped._hiro_unread = True  # type: ignore[attr-defined]
+    return wrapped
+
+
+def _patch_unread_commu() -> None:
+    import importlib
+
+    base = importlib.import_module("kaa.tasks.actions.commu")
+    orig = base.handle_unread_commu
+    if getattr(orig, "_hiro_unread", False):
+        return
+    patched = _unread_commu(orig)
+    for name in UNREAD_COMMU_MODULES:
+        try:
+            mod = importlib.import_module(name)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("未读剧情补丁：导入 %s 失败：%r", name, e)
+            continue
+        if getattr(mod, "handle_unread_commu", None) is orig:
+            mod.handle_unread_commu = patched  # type: ignore[attr-defined]
+
+
 # 开局第 1–4 步左上角的步骤条（「2.サポート選択」等）：DMM 小窗口（541x961 放大）时正确的那个只有 0.77 分，
 # 原阈值 0.8 认不出，KAA 一直等第 2 步（11-21 麻央 卡在第 2 步 5 分钟）；别的步骤条在同一帧上最高 0.56
 STEP_INDICATOR_THRESHOLD = 0.7
@@ -476,6 +523,7 @@ def apply() -> None:
         fn = getattr(prep, name, None)
         if fn is not None and not getattr(fn, "_hiro_progress", False):
             setattr(prep, name, _prep_progress(fn, name))
+    _patch_unread_commu()  # HIRO_UNREAD_STORY=stop：未读剧情不跳，停下等人
     from hiro.loop import win_desktop
 
     win_desktop.apply()  # DMM 后台点击：桌面暂时不可用（UAC / 锁屏）时等它恢复，不让主循环连崩

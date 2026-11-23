@@ -810,7 +810,12 @@ class HiroController(ProduceController):
         hit = next((x for x in self.FIRST_RUN_SETTINGS if any(x[0] in t for t in texts)), None)
         if hit is None:
             return False
+        from hiro.runtime import unread_story
+
         from kotonebot import device
+
+        if hit[0] == "スキップ確認" and unread_story.stopping():
+            return self._unread_story(device)
 
         boxes = screen_texts(device.screenshot())
         opt = next((b for b in boxes if hit[1] in b.text), None) if hit[1] else None
@@ -827,6 +832,32 @@ class HiroController(ProduceController):
         logger.warning("一次性设置「%s」：选「%s」→「%s」", hit[0], hit[1], hit[2])
         if HiroController.session is not None:
             HiroController.session.recover("dialog", f"一次性设置「{hit[0]}」选「{hit[1]}」")
+        return True
+
+    def _unread_story(self, device) -> bool:
+        """HIRO_UNREAD_STORY=stop：未读剧情的「スキップ確認」框点キャンセル，停下等人（hiro.runtime.unread_story）。"""
+        from hiro.loop.skip_settings import is_ok_text
+        from hiro.runtime import unread_story
+
+        def tap(word: str):
+            def go():
+                boxes = screen_texts(device.screenshot())
+                btn = next(
+                    (b for b in boxes if b.text.strip() == word or (word == "決定" and is_ok_text(b.text))), None
+                )
+                if btn is None:
+                    raise RuntimeError(f"未读剧情确认框上没找到「{word}」")
+                device.click(*btn.rect.center)
+                time.sleep(0.8)
+
+            return go
+
+        got = unread_story.handle(cancel=tap("キャンセル"), confirm=tap("決定"),
+                                  texts=lambda: unread_story.read_screen(device.screenshot()),
+                                  snap=device.screenshot)  # fmt: skip
+        self._unknown_since = None
+        if HiroController.session is not None:
+            HiroController.session.recover("dialog", f"未读剧情：{got}")
         return True
 
     def _cancel_recover_dialog(self) -> bool:
