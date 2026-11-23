@@ -39,15 +39,33 @@ MENU_MARGIN = 6.0  # 大图标认卡：第一名领先这么多也算认出（82
 MENU_SCORE_MAX = 30.0
 SET_MAX_TAPS = 20
 WAIT_TRIES, WAIT_GAP = 12, 0.5
+ARROW_RETRIES = 2  # 翻编号的箭头点了没反应时再点几次
 
 
 # ---------------------------------------------------------------- 读页面
+# 窗口小时（DMM 541x961，11-21）OCR 常把「編」读成「綿」「縞」：菜单里只会出现「編」（編成 / 編成詳細），读到就改回来
+OCR_FIX = str.maketrans({"綿": "編", "縞": "編"})
+
+
 def _texts(img, ocr) -> list[tuple[str, tuple]]:
-    return [(t.replace(" ", ""), tuple(b)) for t, _c, b in ocr(img)]
+    return [(t.replace(" ", "").translate(OCR_FIX), tuple(b)) for t, _c, b in ocr(img)]
 
 
 def _find(texts, word: str, *, y_min: int = 0, y_max: int = 1280):
     return next((b for t, b in texts if word in t and y_min <= b[1] <= y_max), None)
+
+
+def _is_submenu_item(t: str) -> bool:
+    """子菜单里的「プロデュース編成」。OCR 会把「編」读成「綿」（11-21 DMM：「プロデュース綿成」，等了一轮就停下），
+    所以按「プロデュース」开头、两个字结尾、不带スキルカード 认。"""
+    t = t.replace(" ", "")
+    return t.startswith("プロデュース") and len(t) == 8 and t.endswith("成")
+
+
+def _is_panel(t: str) -> bool:
+    """面板按钮「プロデュース編成・スキルカード」（同样容忍「編」读错）。"""
+    t = t.replace(" ", "")
+    return t.startswith("プロデュース") and "スキル" in t
 
 
 def _center(b) -> tuple[int, int]:
@@ -160,10 +178,8 @@ class Menu:
         for _ in range(WAIT_TRIES * 2):
             if (m := read_menu(img, texts)) is not None:
                 return m
-            item = next((b for t, b in texts if t == "プロデュース編成"), None)  # 子菜单里的那一项（完全等于这几个字）
-            panel = next(
-                (b for t, b in texts if "プロデュース編成" in t and t != "プロデュース編成"), None
-            )  # 面板按钮「…・スキルカード」
+            item = next((b for t, b in texts if _is_submenu_item(t)), None)  # 子菜单里的那一项（只有这几个字）
+            panel = next((b for t, b in texts if _is_panel(t)), None)  # 面板按钮「…・スキルカード」
             if item is not None:
                 self.dev.click(*_center(item))
                 return self.wait_menu(why="プロデュース編成页")[1]
@@ -222,8 +238,18 @@ class Menu:
             cur = m["number"]
             if cur == number:
                 return m
-            self.dev.click(*ARROWS["next" if number > cur else "prev"])
-            _, m = self.wait_menu(lambda x, cur=cur: x["number"] != cur, why=f"编成号从 {cur} 变")
+            for attempt in range(ARROW_RETRIES + 1):
+                # DMM 后台点击偶尔丢一下（11-21：12→18 都翻了，18 这一下没反应）：编号没变就再点，最多 ARROW_RETRIES 次
+                self.dev.click(*ARROWS["next" if number > cur else "prev"])
+                try:
+                    _, m = self.wait_menu(lambda x, cur=cur: x["number"] != cur, why=f"编成号从 {cur} 变")
+                    break
+                except FormationWriteError:
+                    if attempt == ARROW_RETRIES:
+                        raise
+                    _, m = self.wait_menu(why="プロデュース編成页")
+                    if m["number"] != cur:
+                        break
         raise FormationWriteError(f"点了 {SET_MAX_TAPS} 次箭头还没到编成 {number}")
 
 

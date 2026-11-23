@@ -19,6 +19,7 @@
 """
 
 import importlib
+import os
 import time
 from collections.abc import Callable
 
@@ -183,7 +184,12 @@ def _check_support(img) -> None:
     from hiro import kaa_env
     from hiro.produce import formation_steps
 
-    formation_steps.check_support(img, kaa_env.ACTIVE_PLAN, kaa_env.SUPPORT_SET)
+    # 调用时按模块名取 device（测试会替换 kotonebot / kotonebot.device；CI 的类型检查环境没有 kotonebot，不能静态导入）
+    device = importlib.import_module("kotonebot").device
+    # 传 shoot / sleep：刚翻过编成号，等卡片动画停了再核对（原来没传，等待循环 0 次，只读翻号后那一帧，11-21 DMM 5 格全空停了）
+    formation_steps.check_support(
+        img, kaa_env.ACTIVE_PLAN, kaa_env.SUPPORT_SET, shoot=device.screenshot, sleep=time.sleep
+    )
 
 
 def _autofix_on() -> bool:
@@ -256,7 +262,7 @@ def _rent_step2(orig):
 
         from kotonebot import device
 
-        if not tpl("Produce.TextStepIndicator2").exists(device.screenshot()):
+        if not tpl("Produce.TextStepIndicator2").exists(device.screenshot(), threshold=STEP_INDICATOR_THRESHOLD):
             return False
         if set_number is not None:
             select_set(set_number)
@@ -355,6 +361,82 @@ def _prep_progress(fn, name: str):
     return wrapped
 
 
+# 开局第 1–4 步左上角的步骤条（「2.サポート選択」等）：DMM 小窗口（541x961 放大）时正确的那个只有 0.77 分，
+# 原阈值 0.8 认不出，KAA 一直等第 2 步（11-21 麻央 卡在第 2 步 5 分钟）；别的步骤条在同一帧上最高 0.56
+STEP_INDICATOR_THRESHOLD = 0.7
+STEP_INDICATORS = ("TextStepIndicator1", "TextStepIndicator2", "TextStepIndicator3", "TextStepIndicator4Or2")
+
+
+def _relax_step_indicators(R) -> None:
+    for name in STEP_INDICATORS:
+        prefab = getattr(R.Produce, name, None)
+        if prefab is not None:
+            prefab.threshold = STEP_INDICATOR_THRESHOLD
+
+
+from hiro.loop.errors import ResumeBlocked as _ResumeBlocked  # noqa: E402
+
+
+class OpeningDryRunDone(_ResumeBlocked):
+    """HIRO_OPENING_DRY_RUN=1：开局走到第 4 步「プロデュース開始」前停下（演练成功）。"""
+
+
+def _dry_run_start_button(orig):
+    """HIRO_OPENING_DRY_RUN=1（调试用，缺省关）：do_produce 最后 R.Produce.Step4.ButtonProduceStart.wait().click()。
+    wait 照常等到按钮出现（证明第 1–4 步都走通了），click 不点、抛 OpeningDryRunDone。不花 AP、不开局。"""
+
+    class _NoClick:
+        def __init__(self, found):
+            self.found = found
+
+        def click(self, *a, **k):
+            logger.warning(
+                "开局演练：走到第 4 步「プロデュース開始」（%s），按 HIRO_OPENING_DRY_RUN 不点，停下", self.found
+            )
+            raise OpeningDryRunDone("开局演练完成：第 1–4 步走通，没点プロデュース開始")
+
+    class DryRunStart:
+        @staticmethod
+        def wait(*a, **k):
+            return _NoClick(orig.wait(*a, **k))
+
+        def __getattr__(self, name):
+            return getattr(orig, name)
+
+    return DryRunStart()
+
+
+START_CLICKED = {"clicked": False}  # 这一次 do_produce 有没有点过「プロデュース開始」（run_hif 判异常时开没开局）
+
+
+def _track_start_button(orig):
+    """R.Produce.Step4.ButtonProduceStart：点的时候记一笔（START_CLICKED），行为不变。run_hif new 里 do_produce 抛异常时，
+    没点过开始 = 还在开局准备里，停下；点过才转 resume（11-21：租借列表滑动出错被当成培育中异常，resume 在开局页上乱点 97 下）。"""
+
+    class _Tracked:
+        def __init__(self, found):
+            self.found = found
+
+        def click(self, *a, **k):
+            START_CLICKED["clicked"] = True
+            return self.found.click(*a, **k)
+
+        def __getattr__(self, name):
+            return getattr(self.found, name)
+
+    class TrackedStart:
+        _hiro_tracked = True  # 已经包过一层：apply() 重复调用时不再包
+
+        @staticmethod
+        def wait(*a, **k):
+            return _Tracked(orig.wait(*a, **k))
+
+        def __getattr__(self, name):
+            return getattr(orig, name)
+
+    return TrackedStart()
+
+
 def apply() -> None:
 
     import kaa.game_ui.idols_overview as io
@@ -399,6 +481,12 @@ def apply() -> None:
     win_desktop.apply()  # DMM 后台点击：桌面暂时不可用（UAC / 锁屏）时等它恢复，不让主循环连崩
     from hiro.loop import kaa_usage
 
+    _relax_step_indicators(R)  # 开局步骤条阈值 0.8 → 0.7（DMM 小窗口）
+    if os.environ.get("HIRO_OPENING_DRY_RUN") == "1":
+        R.Produce.Step4.ButtonProduceStart = _dry_run_start_button(R.Produce.Step4.ButtonProduceStart)
+        logger.warning("HIRO_OPENING_DRY_RUN=1：开局只演练到第 4 步，不点プロデュース開始")
+    elif not getattr(R.Produce.Step4.ButtonProduceStart, "_hiro_tracked", False):
+        R.Produce.Step4.ButtonProduceStart = _track_start_button(R.Produce.Step4.ButtonProduceStart)
     kaa_usage.install()  # 最后挂：数的是补丁之后还在跑的 KAA 代码（去 KAA 第 0 步，只记不改行为）
     logger.info(
         "已启用 KAA 补丁：locate_idol 改为上滑翻页；授業换卡放宽卡片定位、阶段 2 不换保护卡；H.I.F P 道具按实测位置点击；破弃对话框只点キャンセル"

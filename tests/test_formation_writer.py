@@ -130,6 +130,22 @@ def test_fix_support_changes_only_wrong_slot_and_verifies():
     assert done == [{"slot": 2, "from": "x", "to": "c"}] and g.slots == ["a", "b", "c", "d", "e"]
 
 
+def test_fix_support_retaps_dropped_slot_click():
+    """11-21 DMM：点支援卡格的那一下丢了（画面还是编成页）：再点一次，不报「没打开支援卡选择列表」。"""
+    g = FakeGame(["a", "b", "x", "d", "e"], [[["c"]]])
+    real, dropped = g.click, []
+
+    def flaky(x, y):
+        if g.view == "step2" and not dropped:
+            dropped.append((x, y))
+            return
+        real(x, y)
+
+    g.click = flaky
+    fw.fix_support(g.device(), _plan(["a", "b", "c", "d", "e"]), read_formation=g.read_formation, read_list=g.read_list)
+    assert g.slots[2] == "c" and dropped
+
+
 def test_fix_support_finds_card_on_second_page():
     g = FakeGame(["a", "b", "x", "d", "e"], [[["p", "q"], ["r", "s"]], [["c", "t"]]])
     fw.fix_support(g.device(), _plan(["a", "b", "c", "d", "e"]), read_formation=g.read_formation, read_list=g.read_list)

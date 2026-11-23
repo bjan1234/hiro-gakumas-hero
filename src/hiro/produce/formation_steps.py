@@ -11,7 +11,7 @@ from hiro.produce.formation_check import FormationMismatch
 logger = logging.getLogger(__name__)
 
 
-SUPPORT_SETTLE_READS, SUPPORT_SETTLE_GAP_S = 8, 0.5  # 翻编成号后卡片还在动画里：最多读几次、每次隔多久
+SUPPORT_SETTLE_READS, SUPPORT_SETTLE_GAP_S = 12, 0.5  # 翻编成号后卡片还在动画里：最多读几次、每次隔多久
 
 
 def check_support(img, plan: dict | None, set_no=None, *, shoot=None, sleep=None) -> None:
@@ -34,7 +34,8 @@ def check_support(img, plan: dict | None, set_no=None, *, shoot=None, sleep=None
                 if (read or {}).get("view") == "step2"
                 else None
             )
-            if ids is not None and (all(ids) or ids == prev):
+            # 5 格都认出，或连续两次一样且至少认出一格才算稳；两次都一格认不出 = 还在动画里，接着等（11-21 DMM：翻号 2.5 秒后 5 格全空就判了）
+            if ids is not None and (all(ids) or (ids == prev and any(ids))):
                 break
             prev = ids
             (sleep or (lambda s: None))(SUPPORT_SETTLE_GAP_S)
@@ -123,7 +124,7 @@ MEMORY_MENU_HINT = (
 )
 
 
-STEP3_SETTLE_READS, STEP3_SETTLE_GAP_S = 8, 0.5
+STEP3_SETTLE_READS, STEP3_SETTLE_GAP_S = 12, 0.5
 
 
 def settled_step3(shoot, plan: dict, sleep=None):
@@ -141,7 +142,7 @@ def settled_step3(shoot, plan: dict, sleep=None):
         cur = [(r.get("card") if r.get("known") else None) for r in read_step3_icons(img)]
         if want and all(cur) and set(cur) <= want:
             return img
-        if cur == prev:
+        if cur == prev and any(cur):  # 两次都一格认不出 = 还在动画里，接着等（同第 2 步，11-21）
             return img
         prev = cur
         if i + 1 < STEP3_SETTLE_READS:

@@ -777,3 +777,74 @@ def test_read_loaded_gives_up_when_no_progress():
     finally:
         deck.read_card_dialog = orig
     assert calls["n"] == 1 + card_ops.CARD_ART_STALL
+
+
+def test_step_indicator_threshold_relaxed():
+    """11-21 DMM 541x961：第 2 步步骤条只有 0.77 分，阈值放到 0.7（别的步骤条同一帧最高 0.56）。"""
+    from hiro.loop import kaa_patches
+
+    from kaa.tasks import R
+
+    kaa_patches._relax_step_indicators(R)
+    assert all(
+        getattr(R.Produce, n).threshold == kaa_patches.STEP_INDICATOR_THRESHOLD for n in kaa_patches.STEP_INDICATORS
+    )
+
+
+def test_opening_dry_run_waits_then_refuses_click():
+    """HIRO_OPENING_DRY_RUN：等到第 4 步开始按钮（证明前面走通），click 不点、抛 OpeningDryRunDone（ResumeBlocked）。"""
+    from hiro.loop import kaa_patches
+    from hiro.loop.errors import ResumeBlocked
+
+    calls = []
+
+    class Orig:
+        @staticmethod
+        def wait(*a, **k):
+            calls.append("wait")
+            return "match"
+
+    btn = kaa_patches._dry_run_start_button(Orig)
+    got = btn.wait()
+    assert calls == ["wait"]
+    with pytest.raises(ResumeBlocked):
+        got.click()
+
+
+def test_go_home_on_opening_step_taps_toolbar_home_not_next():
+    """11-21：开局停在第 2 步时「先回首页」点了灰色的次へ。开局准备页认出来，只点工具栏首页。"""
+    from hiro.loop.resume import is_opening_step
+
+    assert is_opening_step(["2サポート選択", "3", "4"]) and is_opening_step(["サポートカードを選択してください"])
+    assert not is_opening_step(["プロデュース", "ホーム", "コンテスト"])
+
+
+def test_start_button_click_is_tracked():
+    """点「プロデュース開始」时记 START_CLICKED；run_hif 据此区分开局准备里出错（停下）和培育中出错（转 resume）。"""
+    from hiro.loop import kaa_patches
+
+    clicked = []
+
+    class Found:
+        def click(self):
+            clicked.append(1)
+
+    class Orig:
+        @staticmethod
+        def wait(*a, **k):
+            return Found()
+
+    btn = kaa_patches._track_start_button(Orig)
+    kaa_patches.START_CLICKED["clicked"] = False
+    m = btn.wait()
+    assert kaa_patches.START_CLICKED["clicked"] is False  # 只等到按钮不算
+    m.click()
+    assert kaa_patches.START_CLICKED["clicked"] is True and clicked == [1]
+
+
+def test_step_indicator_threshold_also_in_hiro_templates():
+    """新主循环（nav.find → ui_templates.tpl）也要放宽：11-22 DMM 新主循环同样卡在「等第 2 步」。"""
+    from hiro.vision.ui_templates import tpl
+
+    assert all(tpl(n).threshold == 0.7 for n in ("Produce.TextStepIndicator1", "Produce.TextStepIndicator2", "Produce.TextStepIndicator3",
+                                                  "Produce.TextStepIndicator4Or2"))  # fmt: skip

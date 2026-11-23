@@ -169,6 +169,26 @@ def _assist_step(assist, img, boxes) -> bool:
         return False
 
 
+# 回首页的按钮：普通页面的 ⌂ 是 Common.ButtonHome；开局准备页 / 编成页左下工具栏的 ⌂ 是 Common.ButtonToolbarHome
+# （11-21 DMM 第 2 步：ButtonHome 0.40、ToolbarHome 0.92；原来只认 ButtonHome，于是点了灰色的「次へ」）
+HOME_TEMPLATES = ("Common.ButtonHome", "Common.ButtonToolbarHome")
+OPENING_HOME_POINT = (85, 1211)  # 开局准备页左下工具栏的首页图标（720x1280）
+OPENING_STEP_WORDS = (
+    "アイドル選択",
+    "サポート選択",
+    "メモリー選択",
+    "サポートカードを選択",
+    "メモリーを選択",
+    "プロデュース開始",
+)
+
+
+def is_opening_step(texts) -> bool:
+    """开局准备页（第 1–4 步）：左上步骤条「N.xxx選択」或页面提示文字。"""
+    flat = [t.replace(" ", "") for t in texts]
+    return any(w in t for t in flat for w in OPENING_STEP_WORDS)
+
+
 def finish_produce_end(*, timeout: float = 180.0, go_home: bool = False) -> bool:
     """把培育结束后的结算画面（「プロデュース完了」、获得道具、升级、活动积分、关注制作人等）点回首页。
     KAA 的 goto_home 不认 H.I.F 的「プロデュース完了」页；这里按时间封顶（kotonebot Loop 不检查 timeout）。
@@ -198,7 +218,7 @@ def finish_produce_end(*, timeout: float = 180.0, go_home: bool = False) -> bool
             continue
         if go_home and any("開始確認" in t or "本戦へ" in t for t in texts):
             # run_hif new：要从首页走 KAA 的开局流程，这里自己回首页（不点「本戦へ」，开局由 KAA 走带回忆核对的 step4）
-            if not tap("Common.ButtonHome", img, dev.click):
+            if not any(tap(n, img, dev.click) for n in HOME_TEMPLATES):
                 dev.click(85, 1185)  # 左下角首页图标
             time.sleep(1.0)
             continue
@@ -222,7 +242,14 @@ def finish_produce_end(*, timeout: float = 180.0, go_home: bool = False) -> bool
             logger.info("回忆照片确认：点「決定」")
             time.sleep(1.5)
             continue
-        if go_home and tap("Common.ButtonHome", img, dev.click):
+        if go_home and is_opening_step(texts):
+            # 开局准备页（1.アイドル選択 … 4）：上一次开局中途停了。只点左下工具栏的首页，绝不点「次へ」（11-21 灰色的次へ 点了 3 分钟）
+            if not any(tap(n, img, dev.click) for n in HOME_TEMPLATES):
+                dev.click(*OPENING_HOME_POINT)
+            logger.info("开局前停在开局准备页（%s）：点首页", " / ".join(texts[:2]))
+            time.sleep(1.5)
+            continue
+        if go_home and any(tap(n, img, dev.click) for n in HOME_TEMPLATES):
             # 不在结算画面、而在带底栏的普通页面（第二十局开局：每日跑完停在サークル页，下面的点中央 / 次へ 都没用，空等 180s）：直接点首页
             logger.info("开局前不在首页（%s）：点底栏首页", " / ".join(texts[:2]))
             time.sleep(1.5)
