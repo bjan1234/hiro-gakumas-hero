@@ -1,0 +1,55 @@
+# Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+This policy covers the installers of the desktop app **初星助手** (Hatsuboshi Assistant, `app/` in this repository) published on the
+[GitHub Releases](https://github.com/matto49/hiro-gakumas-hero/releases) page under `desktop-v*` tags.
+
+## What gets signed
+
+- Only files built by the [`desktop` GitHub Actions workflow](../.github/workflows/desktop.yml) from the source code in this repository:
+  the Windows installer `chu-xing-zhu-shou-setup-<version>-amd64.exe` and the app executable inside it.
+- The installer also contains [uv](https://github.com/astral-sh/uv) (Apache-2.0 / MIT), downloaded unmodified from its official releases by
+  `app/scripts/fetch-uv.mjs`. It is an upstream binary and is not signed with this project's certificate.
+- Every signing request is approved manually by an approver (below) after checking that the build comes from a commit on `main`.
+
+## Team roles
+
+The project is maintained by one person.
+
+- Committers and reviewers: [matto49](https://github.com/matto49) (repository owner). Pull requests from anyone else are reviewed by the owner before merging.
+- Approvers: [matto49](https://github.com/matto49).
+
+All team members use multi-factor authentication for GitHub and SignPath.
+
+## Privacy policy
+
+This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
+
+What the app does over the network, all started by the user:
+
+- On first setup it downloads this repository from GitHub, a Python runtime and Python packages (from PyPI, or the mirrors
+  `pypi.tuna.tsinghua.edu.cn` and `registry.npmmirror.com` when PyPI is slow), and public game data and models from GitHub releases.
+- While playing, it sends the current game state (text and screenshots of the game) to the large language model provider the user
+  configures (for example DeepSeek), using the user's own API key. Nothing is sent when no provider is configured.
+- It reads public strategy data from [gakumas.wiki](https://gakumas.wiki/). It does not upload anything there.
+
+The app does not collect telemetry. API keys stay on the user's computer.
+
+## Uninstall
+
+On Windows, uninstall 初星助手 from Settings → Apps (the NSIS installer registers `Uninstall.exe` under
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall`). On macOS, move the app to the Trash.
+The downloaded program, its Python environment and settings live in `%APPDATA%\hiro-console` (Windows) or
+`~/Library/Application Support/hiro-console` (macOS); delete that folder to remove them as well.
+
+---
+
+## 代码签名政策（中文）
+
+Windows 安装包由 [SignPath.io](https://about.signpath.io/) 免费提供代码签名，证书由 [SignPath Foundation](https://signpath.org/) 签发，签名者显示为 SignPath Foundation。
+
+- 只签本仓库 `desktop` 工作流从源码构建出的安装包和其中的程序；随包的 uv 是上游原样的二进制，不用本项目的证书签。
+- 每次签名都由维护者人工批准。
+- 卸载：Windows 在「设置 → 应用」里卸载；下载的程序、Python 环境和设置在 `%APPDATA%\hiro-console`（Mac 是 `~/Library/Application Support/hiro-console`），删掉这个目录即可。
+- 隐私：程序只在用户操作时联网——下载本仓库、Python 和依赖、公开的游戏数据和模型；玩的时候把游戏画面和状态发给用户自己配置的大模型服务；不收集使用数据，API Key 只存在本机。

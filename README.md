@@ -243,6 +243,15 @@ open /tmp/hiro-view/demo-run.html
 | `vendor/kaa` | KAA（kotones-auto-assistant），子模块，固定版本 |
 | `.github/workflows/` | 测试（带覆盖率）、代码检查 + 格式 + 类型检查（`lint.yml`）；考试引擎 Rust 预编译包（Windows / macOS / Linux，发到 Release） |
 
+## 桌面程序（初星助手）
+
+不想敲命令的话，可以用桌面程序「初星助手」（源码在 `app/`）：从 [Releases](https://github.com/matto49/hiro-gakumas-hero/releases) 下载
+`desktop-v*` 的安装包（Windows 安装程序、macOS 磁盘镜像），第一次打开时它会下载本仓库、装好 Python 环境。
+安装包由 GitHub Actions（`.github/workflows/desktop.yml`）从源码构建。
+
+**Code signing policy**：Windows 安装包的签名、团队分工和隐私说明见 [docs/code-signing-policy.md](docs/code-signing-policy.md)。
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
 ## 致谢与许可
 
 - 识别层的部分逻辑基于 [KAA（kotones-auto-assistant）](https://github.com/XcantloadX/kotones-auto-assistant) 的识别接口、主数据与界面模板；
