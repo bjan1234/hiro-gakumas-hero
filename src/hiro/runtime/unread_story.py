@@ -19,12 +19,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from hiro.loop.errors import ResumeBlocked
@@ -46,7 +47,7 @@ class UnreadStoryTimeout(ResumeBlocked):
     """未读剧情等人超时，已关游戏。"""
 
 
-def mode(env: dict | None = None) -> str:
+def mode(env: Mapping[str, str] | None = None) -> str:
     v = ((env if env is not None else os.environ).get("HIRO_UNREAD_STORY") or "skip").strip().lower()
     if v not in ("skip", "stop"):
         logger.warning("HIRO_UNREAD_STORY=%r 不认识（skip / stop），按 skip", v)
@@ -54,18 +55,18 @@ def mode(env: dict | None = None) -> str:
     return v
 
 
-def stopping(env: dict | None = None) -> bool:
+def stopping(env: Mapping[str, str] | None = None) -> bool:
     return mode(env) == "stop"
 
 
-def timeout_s(env: dict | None = None) -> float:
+def timeout_s(env: Mapping[str, str] | None = None) -> float:
     try:
         return max(15.0, float((env if env is not None else os.environ).get("HIRO_UNREAD_TIMEOUT_S") or 60))
     except ValueError:
         return 60.0
 
 
-def wait_file(env: dict | None = None) -> Path:
+def wait_file(env: Mapping[str, str] | None = None) -> Path:
     env = env if env is not None else os.environ
     if env.get("HIRO_WAIT_FILE"):
         return Path(env["HIRO_WAIT_FILE"])
@@ -132,7 +133,9 @@ GAME_PAGE_WORDS = ("レッスン", "ドリンク", "残りターン", "スキル
                    # 剧情结束直接进考试（11-20 DMM：第 2 回 選抜試験 的开场剧情 → Now loading → 考试开始页，没认出来，干等 60 秒关了游戏）
                    "スター性", "ターン", "オーディション", "ステージ", "NOWLOADING", "LOADING")  # fmt: skip
 KANA_MIN = 8  # 没命中上面的词时：假名至少这么多字、又没有简体中文专用字，也算日文原版页面
-SIMPLIFIED_ONLY = set("的了们这个说吗么没时对还会为过让给现样着里么么吧呢该么点关开发东车门间问")  # 汉化插件译文常见、日文里不用的简体字
+SIMPLIFIED_ONLY = set(
+    "的了们这个说吗么没时对还会为过让给现样着里么么吧呢该么点关开发东车门间问"
+)  # 汉化插件译文常见、日文里不用的简体字
 
 
 def _kana(text: str) -> int:
@@ -211,7 +214,7 @@ def _save_frame(snap) -> None:
         logger.warning("未读剧情：存帧失败：%r", e)
 
 
-def _show_game(env: dict, why: str = "未读剧情") -> None:
+def _show_game(env: Mapping[str, str], why: str = "未读剧情") -> None:
     """DMM 版：后台点击把游戏窗口挪到了点击点落在光标下的位置，常常半个窗口在屏幕外，人没法看剧情。挪到屏幕正中（用户 11-20）。"""
     if (env.get("HIRO_DEVICE") or "").strip().lower() != "dmm" or sys.platform != "win32":
         return
@@ -228,7 +231,7 @@ def handle(*, cancel: Callable[[], object], confirm: Callable[[], object], texts
            snap: Callable[[], object] | None = None,
            sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic,
            close: Callable[..., object] | None = None, notifier: Callable[[str, str], None] = notify,
-           env: dict | None = None) -> str:  # fmt: skip
+           env: Mapping[str, str] | None = None) -> str:  # fmt: skip
     """未读确认框在屏幕上时调。skip 模式 / 刚同意过跳过：点「決定」返回 "skipped"。
     stop 模式：点「キャンセル」，等人；返回 "user"（删了等人文件）/ "left"（剧情页不在了）；超时关游戏并抛 UnreadStoryTimeout。"""
     env = env if env is not None else os.environ
@@ -248,7 +251,10 @@ def handle(*, cancel: Callable[[], object], confirm: Callable[[], object], texts
         logger.warning("写等人文件 %s 失败：%r", path, e)
     logger.warning("未读剧情：点了キャンセル，暂停等人（%s；剧情 %.0f 秒没推进就关游戏）", path, limit)
     _save_frame(snap)
-    notifier("数字小广：遇到未读剧情", f"已暂停。看完会自动继续；删掉 {path.name} 就跳过；剧情 {limit:.0f} 秒没推进会关闭游戏。")
+    notifier(
+        "数字小广：遇到未读剧情",
+        f"已暂停。看完会自动继续；删掉 {path.name} 就跳过；剧情 {limit:.0f} 秒没推进会关闭游戏。",
+    )
     from hiro.loop.pause_flag import hold
 
     with hold():
@@ -289,10 +295,8 @@ def handle(*, cancel: Callable[[], object], confirm: Callable[[], object], texts
                         last_change, last_text = clock(), text
             if clock() - last_change >= limit:
                 break
-    try:
+    with contextlib.suppress(OSError):
         path.write_text(msg + f"{time.strftime('%H:%M:%S')} 超时没人管，已关闭游戏。\n", encoding="utf-8")
-    except OSError:
-        pass
     from hiro.runtime import close_game
 
     what = close_game.target(env)

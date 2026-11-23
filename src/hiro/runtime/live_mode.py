@@ -16,10 +16,11 @@ SKIP 按钮：横屏帧右上区域 OCR 认到「SKIP」才点；认不到时每
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 from hiro.loop.errors import ResumeBlocked
 
@@ -42,7 +43,7 @@ class LiveWatchTimeout(ResumeBlocked):
     """LIVE 开始前等人超时，已关游戏。"""
 
 
-def mode(env: dict | None = None) -> str:
+def mode(env: Mapping[str, str] | None = None) -> str:
     v = ((env if env is not None else os.environ).get("HIRO_LIVE") or "play").strip().lower()
     if v not in MODES:
         logger.warning("HIRO_LIVE=%r 不认识（%s），按 play", v, " / ".join(MODES))
@@ -50,12 +51,12 @@ def mode(env: dict | None = None) -> str:
     return v
 
 
-def photo_override(env: dict | None = None) -> str | None:
+def photo_override(env: Mapping[str, str] | None = None) -> str | None:
     """LIVE 模式定下的照片选法：watch / pick → stop（自己选），auto → auto（默认那张）；play → None（按 HIRO_PHOTO_PICK）。"""
     return {"watch": "stop", "pick": "stop", "auto": "auto"}.get(mode(env))
 
 
-def timeout_s(env: dict | None = None) -> float:
+def timeout_s(env: Mapping[str, str] | None = None) -> float:
     try:
         return max(15.0, float((env if env is not None else os.environ).get("HIRO_LIVE_TIMEOUT_S") or 60))
     except ValueError:
@@ -98,26 +99,31 @@ def find_confirm(items: Items) -> tuple[int, int] | None:
 
 def watch_wait(*, items: Callable[[], tuple[int, int, Items]], sleep: Callable[[float], None] = time.sleep,
                clock: Callable[[], float] = time.monotonic, close: Callable[..., object] | None = None,
-               notifier: Callable[[str, str], None] | None = None, env: dict | None = None) -> str:  # fmt: skip
+               notifier: Callable[[str, str], None] | None = None, env: Mapping[str, str] | None = None) -> str:  # fmt: skip
     """曲目页上、watch 模式时调。items() → (宽, 高, [(文字, 中心)])。返回 "user"（你点了开始）/ "file"（删了等人文件：不看了）；
     曲目页一直在到超时：关游戏并抛 LiveWatchTimeout。"""
-    from hiro.runtime import unread_story
     from hiro.loop.pause_flag import hold
+    from hiro.runtime import unread_story
 
     env = env if env is not None else os.environ
     notifier = notifier or unread_story.notify
     path = unread_story.wait_file(env)
     limit = timeout_s(env)
     unread_story._show_game(env, "LIVE")
-    msg = (f"{time.strftime('%Y-%m-%d %H:%M:%S')} LIVE 要开始了，已暂停。\n"
-           f"在游戏里点开始看 LIVE，看完程序会自己继续；删掉这个文件 = 这场不看（程序跳过）；{limit:.0f} 秒没人点开始会关闭游戏。\n")
+    msg = (
+        f"{time.strftime('%Y-%m-%d %H:%M:%S')} LIVE 要开始了，已暂停。\n"
+        f"在游戏里点开始看 LIVE，看完程序会自己继续；删掉这个文件 = 这场不看（程序跳过）；{limit:.0f} 秒没人点开始会关闭游戏。\n"
+    )
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(msg, encoding="utf-8")
     except OSError as e:
         logger.warning("写等人文件 %s 失败：%r", path, e)
     logger.warning("LIVE：开始前暂停等人（%s；%.0f 秒没人点开始就关游戏）", path, limit)
-    notifier("数字小广：LIVE 要开始了", f"已暂停，请在游戏里点开始。删掉 {path.name} 就跳过；{limit:.0f} 秒没人点会关闭游戏。")
+    notifier(
+        "数字小广：LIVE 要开始了",
+        f"已暂停，请在游戏里点开始。删掉 {path.name} 就跳过；{limit:.0f} 秒没人点会关闭游戏。",
+    )
     with hold():
         start, away = clock(), 0
         while clock() - start < limit:
@@ -135,10 +141,8 @@ def watch_wait(*, items: Callable[[], tuple[int, int, Items]], sleep: Callable[[
                 path.unlink(missing_ok=True)
                 logger.warning("LIVE：开始了，你在看；演出完程序接着走")
                 return "user"
-    try:
+    with contextlib.suppress(OSError):
         path.write_text(msg + f"{time.strftime('%H:%M:%S')} 超时没人点开始，已关闭游戏。\n", encoding="utf-8")
-    except OSError:
-        pass
     from hiro.runtime import close_game
 
     what = close_game.target(env)
@@ -149,7 +153,7 @@ def watch_wait(*, items: Callable[[], tuple[int, int, Items]], sleep: Callable[[
 class LiveDriver:
     """横屏 LIVE 的一拍：两套主循环（hiro.loop.controller、hiro.runtime）共用。"""
 
-    def __init__(self, env: dict | None = None, clock: Callable[[], float] = time.monotonic, **wait_kw):
+    def __init__(self, env: Mapping[str, str] | None = None, clock: Callable[[], float] = time.monotonic, **wait_kw):
         self.env, self.clock, self.wait_kw = env, clock, wait_kw
         self._reset(None)
 
@@ -187,7 +191,11 @@ class LiveDriver:
             tap(*p)
             logger.info("LIVE 曲目页：点 %s 开始演出", p)
             return "start"
-        if skipping and self.reveals < REVEAL_MAX and now - (now if self.reveal_at is None else self.reveal_at) >= REVEAL_S:
+        if (
+            skipping
+            and self.reveals < REVEAL_MAX
+            and now - (now if self.reveal_at is None else self.reveal_at) >= REVEAL_S
+        ):
             self.reveal_at, self.reveals = now, self.reveals + 1
             tap(w // 2, h // 2)
             logger.info("LIVE：没认到 SKIP，点一下画面中间调出菜单（第 %d 次）", self.reveals)

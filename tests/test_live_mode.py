@@ -1,9 +1,9 @@
 """LIVE 看 / 跳 / 照片谁选：HIRO_LIVE=play|watch|pick|auto（hiro.runtime.live_mode）。"""
 
-import pytest
-
 from hiro.runtime import live_mode as lm
 from hiro.runtime import photo_pick
+
+import pytest
 
 W, H = 1280, 720
 SONG = [("Campus mode!!", (640, 200)), ("作詞 某某", (640, 400)), ("TAP TO START", (640, 650))]
@@ -31,8 +31,12 @@ def _driver(env, clk, frames=(), closed=None):
     seq = iter(frames)
     shots = lambda: (W, H, next(seq, frames[-1] if frames else PLAYING))  # noqa: E731
     d = lm.LiveDriver(env=env, clock=clk)
-    d.wait_kw = {"sleep": clk.sleep, "clock": clk, "notifier": lambda *a: None,
-                 "close": (lambda what, why=None: closed.append(what)) if closed is not None else (lambda *a, **k: None)}
+    d.wait_kw = {
+        "sleep": clk.sleep,
+        "clock": clk,
+        "notifier": lambda *a: None,
+        "close": (lambda what, why=None: closed.append(what)) if closed is not None else (lambda *a, **k: None),
+    }
     return d, shots
 
 

@@ -12,10 +12,9 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +79,7 @@ def desired(stop_story: bool | None = None) -> dict[str, str | None]:
         stop_story = stopping()
     if not stop_story:
         return {}
-    return {"unread_ff": "OFF", **{k: None for k in STORY_TOGGLES}}
+    return {"unread_ff": "OFF", **dict.fromkeys(STORY_TOGGLES)}
 
 
 def read(boxes, stop_story: bool | None = None) -> dict | None:
@@ -108,7 +107,9 @@ def read(boxes, stop_story: bool | None = None) -> dict | None:
     option = None
     if spec["option"] is not None:
         want, avoid = spec["option"]
-        option = next((_center(b) for t, _, b in boxes if want in _norm(t) and not any(a in _norm(t) for a in avoid)), None)
+        option = next(
+            (_center(b) for t, _, b in boxes if want in _norm(t) and not any(a in _norm(t) for a in avoid)), None
+        )
     ok = next((_center(b) for t, _, b in boxes if is_ok_text(t)), None)
     return {"kind": kind, "items": items, "off": off, "option": option, "ok": ok}
 
@@ -147,5 +148,7 @@ def handle(boxes, *, shoot: Callable, ocr: Callable, click: Callable[[int, int],
         return {"kind": kind, "items": r["items"], "option": picked, "clicked": clicked, "ok": False}
     click(*r["ok"])
     sleep(1.0)
-    logger.warning("%s（设置被重置）：选项 %s，拨了 %d 个开关 → 決定；%s", kind, "已选" if picked else "-", clicked, r["items"])
+    logger.warning(
+        "%s（设置被重置）：选项 %s，拨了 %d 个开关 → 決定；%s", kind, "已选" if picked else "-", clicked, r["items"]
+    )
     return {"kind": kind, "items": r["items"], "option": picked, "clicked": clicked, "ok": True}
