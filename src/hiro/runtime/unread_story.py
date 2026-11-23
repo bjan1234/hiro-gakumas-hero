@@ -214,7 +214,7 @@ def _save_frame(snap) -> None:
         logger.warning("未读剧情：存帧失败：%r", e)
 
 
-def _show_game(env: Mapping[str, str]) -> None:
+def _show_game(env: Mapping[str, str], why: str = "未读剧情") -> None:
     """DMM 版：后台点击把游戏窗口挪到了点击点落在光标下的位置，常常半个窗口在屏幕外，人没法看剧情。挪到屏幕正中（用户 11-20）。"""
     if (env.get("HIRO_DEVICE") or "").strip().lower() != "dmm" or sys.platform != "win32":
         return
@@ -222,9 +222,9 @@ def _show_game(env: Mapping[str, str]) -> None:
         from hiro.devices import win_window
 
         pos = win_window.center()
-        logger.info("未读剧情：游戏窗口挪到屏幕正中 %s", pos)
+        logger.info("%s：游戏窗口挪到屏幕正中 %s", why, pos)
     except Exception as e:  # noqa: BLE001
-        logger.warning("未读剧情：挪游戏窗口失败：%r", e)
+        logger.warning("%s：挪游戏窗口失败：%r", why, e)
 
 
 def handle(*, cancel: Callable[[], object], confirm: Callable[[], object], texts: Callable[[], list],
