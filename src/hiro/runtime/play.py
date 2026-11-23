@@ -206,7 +206,7 @@ def build(args, session, device):
     # 横屏 LIVE 黑屏切全屏只在 Mac PlayCover（MaaTools）上做；其他设备只用 in_live 让看门狗别在 LIVE 里停（同旧主循环）
     guard = LandscapeGuard(active=getattr(device, "name", "") == "maatools")
     return core, Runtime(raw_device=device, classify=classify, handlers=make_handlers(core), advance=advance, session=session,
-                         landscape=guard, idle_stop_s=IDLE_STOP_S)  # fmt: skip
+                         landscape=guard, idle_stop_s=IDLE_STOP_S, rescue=not args.no_llm)  # fmt: skip
 
 
 def recover_date_change(rt, session) -> None:

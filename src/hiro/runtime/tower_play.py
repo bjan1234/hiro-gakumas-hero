@@ -646,7 +646,7 @@ def run(args) -> int:
     device = open_device()
     device.connect()
     rt = Runtime(raw_device=device, classify=tower_classify, handlers=tp.handlers(), advance=play.advance, session=session,
-                 dialog_words=DIALOG_WORDS, idle_stop_s=IDLE_STOP_S)  # fmt: skip
+                 dialog_words=DIALOG_WORDS, idle_stop_s=IDLE_STOP_S, rescue=not args.no_llm)  # fmt: skip
     active.use(rt)
     try:
         rt.run(until=lambda: tp.finished)

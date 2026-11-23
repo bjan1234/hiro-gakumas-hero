@@ -383,7 +383,7 @@ def run(args) -> int:
     device = open_device()
     device.connect()
     rt = Runtime(raw_device=device, classify=sampler, handlers={**make_handlers(core), **nia_pages.handlers()}, advance=make_advance(sampler),
-                 session=session,
+                 session=session, rescue=not args.no_llm,
                  landscape=LandscapeGuard(active=getattr(device, "name", "") == "maatools"), idle_stop_s=play.IDLE_STOP_S)  # fmt: skip
     active.use(rt)
     logger.info("N.I.A 采样：%s（%s），帧存到 %s", args.difficulty, mode, sampler.out)

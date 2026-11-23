@@ -12,6 +12,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from hiro.loop import pause_flag
 from hiro.loop.errors import ResumeBlocked
@@ -103,6 +104,21 @@ def stop(reason: str) -> Outcome:
 Handler = Callable[["Runtime", Frame, PageHit], Outcome]
 
 
+class _Rescuer(Protocol):
+    """hiro.loop.rescue.Rescuer 里主循环用到的部分（测试可以换成假的）。"""
+
+    @property
+    def pending(self) -> bool: ...
+
+    def due(self, stuck_s: float, *, dialog: bool = False, img=None) -> bool: ...
+
+    def begin(self, img, context: dict, boxes=None) -> dict | None: ...
+
+    def poll(self) -> dict | None: ...
+
+    def progressed(self) -> None: ...
+
+
 @dataclass
 class Runtime:
     """一局的运行环境。device 是原始设备（hiro.devices），对外给的 self.device 是带拦截的。"""
@@ -127,6 +143,8 @@ class Runtime:
     dialog_words: tuple[
         str, ...
     ] = ()  # 模式自带的弹窗危险词（GuardedDevice 第 3 条；偶像之路用 hiro.runtime.tower.DIALOG_WORDS）
+    rescue: bool = False  # 没有处理器的页长时间没操作时交 LLM 看图（hiro.loop.rescue）；各模式按 --no-llm 传，HIRO_RESCUE_LLM=0 也关
+    rescuer: _Rescuer | None = None  # 测试注入；None 且 rescue 开着时按本局的截图 / OCR / 带拦截的点击建一个
 
     def __post_init__(self) -> None:
         self.screen = Screen(self.raw_device, self.clock)
@@ -138,6 +156,8 @@ class Runtime:
         self._acted_at: float | None = None  # 最近一次有操作（处理器 DONE / advance 点了 / 中断处理）的时刻
         self._idle_warned = False  # 进入 LIVE 演出（横屏 / 黑屏 / 全屏）的时刻：这期间看门狗不按「没变化 / 认不出」停机
         self._err: tuple[str, int] | None = None  # 上一个接住的异常（签名, 连续次数）
+        if self.rescuer is None and self.rescue:
+            self.rescuer = _make_rescuer(self)
 
     # ---------------------------------------------------------------- 等待
     def checkpoint(self) -> None:
@@ -314,9 +334,38 @@ class Runtime:
             # 按处理器返回时的时刻记（LIVE 演出里本来就不点：不算没进展）。原来记的是进处理器前那帧的时刻：考试处理器跑了 5 分钟，
             # 出来第一帧是结算后的过场，马上判成「284s 没有任何操作」停机（初 PRO 最終 11-18）
             self._mark_acted(self.clock() if handler is not None else f.t)
+            if self.rescuer is not None:
+                self.rescuer.progressed()
+        elif handler is None and self._rescue(f, hit):
+            self._mark_acted(self.clock())
         else:
             self._check_idle(hit, f.t, handler is not None)
         return out
+
+    def _rescue(self, f: Frame, hit: PageHit) -> bool:
+        """没有处理器、advance 也没点的页：没操作够久就把截图交给 LLM（后台问，主循环照常跑），回复到了按它点 / 等。
+        返回这一拍有没有做事（点了 / 等了）。LLM 说停 / 被拦截：报警放手，仍由 idle_stop_s 停机。"""
+        r = self.rescuer
+        if r is None:
+            return False
+        idle = 0.0 if self._acted_at is None else f.t - self._acted_at
+        try:
+            if r.pending:
+                rec = r.poll()
+                if rec is None:
+                    return False
+            else:
+                if not r.due(idle, dialog=hit.name == "DIALOG", img=f.img):
+                    return False
+                logger.info("页面 %s：%.0fs 没有操作、没有处理器，截图交给 LLM 看（后台）", hit.name, idle)
+                rec = r.begin(f.img, {"page": hit.name, "idle_s": round(idle)})
+                if rec is None:
+                    return False
+        except Exception as e:  # noqa: BLE001  兜底出错：照旧按空闲计时
+            logger.warning("LLM 兜底出错：%r", e)
+            return False
+        a = (rec.get("action") or {}).get("action")
+        return a in ("tap_box", "tap_blank", "wait") and not rec.get("blocked") and not rec.get("skipped")
 
     def _mark_acted(self, t: float) -> None:
         self._acted_at, self._idle_warned = t, False
@@ -385,3 +434,20 @@ class Runtime:
         finally:
             watcher.stop()
         return n
+
+
+def _make_rescuer(rt: Runtime):
+    """本局的 LLM 兜底：截图 / OCR 用 runtime 的，点击走带拦截的设备（危险词同样拦）。HIRO_RESCUE_LLM=0 时不建。"""
+    from hiro.loop import rescue
+
+    if not rescue.LLM_UNKNOWN:
+        return None
+
+    def ocr(img):
+        from hiro.vision.ocr import screen_texts
+
+        return [(t.text, 1.0, tuple(int(v) for v in t.rect)) for t in screen_texts(img)]
+
+    return rescue.Rescuer(
+        ocr=ocr, shoot=lambda: rt.screen.shot().img, click=rt.device.tap, sleep=rt.sleep, clock=rt.clock
+    )
