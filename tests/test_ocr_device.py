@@ -1,8 +1,8 @@
 """RapidOCR 推理设备选择（HIRO_OCR_DEVICE）：auto 按 CUDA → DirectML → CPU，装了哪种 onnxruntime 就有哪种；最后总有 CPU 兜底。"""
 
-import pytest
-
 from hiro.vision import ocr
+
+import pytest
 
 CPU = ["CPUExecutionProvider"]
 DML = ["DmlExecutionProvider", "CPUExecutionProvider"]

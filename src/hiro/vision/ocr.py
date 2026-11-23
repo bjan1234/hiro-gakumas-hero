@@ -120,14 +120,18 @@ def ocr_device_order(want: str | None = None, available: list[str] | None = None
     DirectML 要 onnxruntime-directml（Windows，任意显卡）。三者互斥，同一个环境只能装一种。"""
     want = (want if want is not None else os.environ.get("HIRO_OCR_DEVICE", "auto")).strip().lower() or "auto"
     if available is None:
-        import onnxruntime
+        import importlib
 
-        available = onnxruntime.get_available_providers()
+        # 按模块名导入：类型检查环境（CI 只装 .[dev]）没有 onnxruntime
+        available = list(importlib.import_module("onnxruntime").get_available_providers())
+    providers: list[str] = available
     if want not in ("auto", *OCR_DEVICES):
         raise ValueError(f"HIRO_OCR_DEVICE 只能是 auto / cuda / dml / cpu，不是 {want!r}")
-    order = [d for d in (OCR_DEVICES if want == "auto" else (want,)) if _EP[d] in available]
+    order = [d for d in (OCR_DEVICES if want == "auto" else (want,)) if _EP[d] in providers]
     if want not in ("auto", "cpu") and not order:
-        logger.warning("HIRO_OCR_DEVICE=%s，但 onnxruntime 没有 %s（现有 %s），文字识别用 CPU", want, _EP[want], available)
+        logger.warning(
+            "HIRO_OCR_DEVICE=%s，但 onnxruntime 没有 %s（现有 %s），文字识别用 CPU", want, _EP[want], providers
+        )
     return order if "cpu" in order else [*order, "cpu"]
 
 
@@ -156,7 +160,11 @@ def _rapid_engine(languages):
         threads = _ocr_threads()
         engine = None
         for dev in ocr_device_order():
-            flags = {f"{part}_{k}": dev == d for part in ("det", "rec") for k, d in (("use_cuda", "cuda"), ("use_dml", "dml"))}
+            flags = {
+                f"{part}_{k}": dev == d
+                for part in ("det", "rec")
+                for k, d in (("use_cuda", "cuda"), ("use_dml", "dml"))
+            }
             engine = RapidOCR(rec_model_path=str(_rapid_model(tag)), use_det=True, use_cls=False, use_rec=True,
                               det_intra_op_num_threads=threads, rec_intra_op_num_threads=threads, **flags)  # fmt: skip
             got = _session_device(engine)
