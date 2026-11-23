@@ -36,7 +36,7 @@ def hif_other(mode_id: str | None, idol_card: str | None, env: dict | None = Non
 def _mode_diff(mode_id: str | None) -> tuple[str | None, str | None]:
     """produce-00x → (攻略的 mode, difficulty)。H.I.F 要开 HIRO_HIF_GUIDES（攻略包的 H.I.F 条目不分选拔 / 本战，difficulty 给 None）；
     别的返回 (None, None)。"""
-    from hiro.state.modes import HAJIME, HIF, NIA, MODES
+    from hiro.state.modes import HAJIME, HIF, MODES, NIA
 
     m = MODES.get(mode_id or "")
     if m is not None and m.family == HIF and hif_on():
@@ -74,7 +74,7 @@ class CardKnow:
         if f.get("weight") is not None:
             return int(f["weight"])
         share = (f.get("stat") or {}).get("share")
-        return int(round(float(share) * 100)) if share is not None else 0
+        return int(round(float(share) * 100)) if share is not None else 0  # noqa: RUF046
 
     def strong(self, cid: str) -> bool:
         return self.weight(cid) >= STRONG

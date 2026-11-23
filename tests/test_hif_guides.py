@@ -3,13 +3,18 @@
 
 import json
 
-import pytest
-
 from hiro.brain import guides
+
+import pytest
 
 FKTN = "i_card-fktn-3-000"
 HIRO = "i_card-shro-3-007"
-TEBYOSHI, IMETORE, KAIKA, BASIC = "p_card-02-act-1_003", "p_card-02-men-2_008", "p_card-02-act-3_038", "p_card-00-act-0_001"
+TEBYOSHI, IMETORE, KAIKA, BASIC = (
+    "p_card-02-act-1_003",
+    "p_card-02-men-2_008",
+    "p_card-02-act-3_038",
+    "p_card-00-act-0_001",
+)
 OTOME, MINNA = "p_card-02-men-2_060", "p_card-02-act-2_049"
 ENTRIES = [
     {"id": "hif.idol.fktn.card_pick.test", "kind": "written", "scope": {"mode": "hif", "idol_card": FKTN}, "decision": "card_pick",
@@ -27,7 +32,9 @@ ENTRIES = [
 def pack(monkeypatch, tmp_path):
     (tmp_path / "hif-t.json").write_text(json.dumps({"schema": 1, "mode": "hif", "version": "t", "entries": ENTRIES}, ensure_ascii=False),
                                          encoding="utf-8")  # fmt: skip
-    (tmp_path / "manifest.json").write_text(json.dumps({"schema": 1, "packs": {"hif": {"name": "hif-t"}}}), encoding="utf-8")
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"schema": 1, "packs": {"hif": {"name": "hif-t"}}}), encoding="utf-8"
+    )
     monkeypatch.setenv("HIRO_GUIDES_DIR", str(tmp_path))
     monkeypatch.setenv("HIRO_HIF_GUIDES", "1")
     monkeypatch.delenv("HIRO_GUIDES", raising=False)
@@ -49,6 +56,7 @@ def _prod(idol=FKTN, mode="produce-007", deck=(), p=160):
             "growth_permil": {}, "rerolls_left": 2, "excludes_left": 2, "deck": [{"card_id": c, "upgrade": 0} for c in deck]}  # fmt: skip
 
 
+@pytest.mark.master  # 判流派（flows.flow）要查主数据 game.db；CI 没有主数据时跳过
 def test_switch_and_who():
     from hiro.brain.idol_know import hif_other
 
@@ -73,7 +81,10 @@ def test_select_card_uses_guide_not_hiro_musts(pack):
     from hiro.brain.deciders import action_key
     from hiro.contracts import GameState
 
-    d = _pd().decide("SELECT_CARD", GameState(produce=_prod(), page_fields={"candidates": [{"card_id": TEBYOSHI}, {"card_id": IMETORE}]}))
+    d = _pd().decide(
+        "SELECT_CARD",
+        GameState(produce=_prod(), page_fields={"candidates": [{"card_id": TEBYOSHI}, {"card_id": IMETORE}]}),
+    )
     assert action_key(d.action) == "pick:1" and "攻略" in d.reason and "必拿" not in d.reason
 
 
@@ -83,7 +94,9 @@ def test_remove_card_uses_guide(pack):
     from hiro.contracts import GameState
 
     cards = [{"index": 0, "card_id": BASIC}, {"index": 1, "card_id": OTOME}, {"index": 2, "card_id": IMETORE}]
-    d = _pd().decide("SKILL_CARD_REMOVAL", GameState(produce=_prod(deck=[BASIC, OTOME, IMETORE]), page_fields={"cards": cards}))
+    d = _pd().decide(
+        "SKILL_CARD_REMOVAL", GameState(produce=_prod(deck=[BASIC, OTOME, IMETORE]), page_fields={"cards": cards})
+    )
     assert d.action.args.get("card_id") == OTOME and "攻略" in d.reason, (action_key(d.action), d.reason)
 
 
@@ -92,7 +105,9 @@ def test_enhance_by_upgrade_share(pack):
     from hiro.contracts import GameState
 
     cards = [{"index": 0, "card_id": KAIKA}, {"index": 1, "card_id": MINNA}, {"index": 2, "card_id": BASIC}]
-    d = _pd().decide("SKILL_CARD_ENHANCE", GameState(produce=_prod(deck=[KAIKA, MINNA, BASIC]), page_fields={"cards": cards}))
+    d = _pd().decide(
+        "SKILL_CARD_ENHANCE", GameState(produce=_prod(deck=[KAIKA, MINNA, BASIC]), page_fields={"cards": cards})
+    )
     assert d.action.args.get("card_id") == MINNA and "攻略" in d.reason, d.reason
 
 
@@ -103,7 +118,13 @@ def test_prune_old_packs(tmp_path):
     removed = guides.prune_old(tmp_path, {"hif": "hif-20261120-5", "nia": "nia-20261120-7"})
     assert removed == ["hif-20261119-3.json", "nia-20261119-1.json"]
     left = sorted(p.name for p in tmp_path.iterdir())
-    assert left == ["hif-20261120-5.json", "hif-notes.txt", "idolroad-20261119-1.json", "manifest.json", "nia-20261120-7.json"]
+    assert left == [
+        "hif-20261120-5.json",
+        "hif-notes.txt",
+        "idolroad-20261119-1.json",
+        "manifest.json",
+        "nia-20261120-7.json",
+    ]
 
 
 def test_fetch_downloads_hif_and_prunes(tmp_path, monkeypatch):
@@ -111,7 +132,12 @@ def test_fetch_downloads_hif_and_prunes(tmp_path, monkeypatch):
     import urllib.request
 
     body = json.dumps({"schema": 1, "entries": []}).encode()
-    man = {"schema": 1, "packs": {m: {"name": f"{m}-20261121-1", "sha256": hashlib.sha256(body).hexdigest()} for m in ("hajime", "nia", "hif")}}
+    man = {
+        "schema": 1,
+        "packs": {
+            m: {"name": f"{m}-20261121-1", "sha256": hashlib.sha256(body).hexdigest()} for m in ("hajime", "nia", "hif")
+        },
+    }
     (tmp_path / "hif-20261120-5.json").write_text("{}", encoding="utf-8")
 
     class R:
@@ -127,7 +153,11 @@ def test_fetch_downloads_hif_and_prunes(tmp_path, monkeypatch):
         def __exit__(self, *a):
             return False
 
-    monkeypatch.setattr(urllib.request, "urlopen", lambda url, timeout=None: R(json.dumps(man).encode() if url.endswith("manifest") else body))
+    monkeypatch.setattr(
+        urllib.request,
+        "urlopen",
+        lambda url, timeout=None: R(json.dumps(man).encode() if url.endswith("manifest") else body),
+    )
     monkeypatch.setenv("HIRO_GUIDES_DIR", str(tmp_path))
     out = guides.fetch()
     assert out["hif"] == "hif-20261121-1" and out["removed"] == ["hif-20261120-5.json"]
