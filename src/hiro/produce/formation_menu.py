@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Callable
-
-import cv2
+from collections.abc import Callable
 
 from hiro.produce.formation_writer import Device, FormationWriteError, fix_memory, fix_plan, fix_support
+
+import cv2
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,11 @@ def read_mode(texts) -> str | None:
 def _orange_ratio(img, b) -> float:
     x1, y1, x2, y2 = (int(v) for v in b)
     hsv = cv2.cvtColor(img[y1:y2, x1:x2], cv2.COLOR_BGR2HSV)
-    return float(((hsv[..., 0] >= 5) & (hsv[..., 0] <= 25) & (hsv[..., 1] >= 120) & (hsv[..., 2] >= 180)).mean()) if hsv.size else 0.0
+    return (
+        float(((hsv[..., 0] >= 5) & (hsv[..., 0] <= 25) & (hsv[..., 1] >= 120) & (hsv[..., 2] >= 180)).mean())
+        if hsv.size
+        else 0.0
+    )
 
 
 def read_menu(img, texts) -> dict | None:
@@ -104,7 +108,13 @@ def read_memory_icons(img) -> list[dict]:
             out.append({"slot": i, "card": None, "known": False, "empty": True})
             continue
         r = memory_icons.read_icon(icon)
-        if not r["known"] and r["card"] and r["margin"] is not None and r["margin"] >= MENU_MARGIN and r["score"] <= MENU_SCORE_MAX:
+        if (
+            not r["known"]
+            and r["card"]
+            and r["margin"] is not None
+            and r["margin"] >= MENU_MARGIN
+            and r["score"] <= MENU_SCORE_MAX
+        ):
             r["known"] = True
         out.append(dict(r, slot=i))
     return out
@@ -126,7 +136,7 @@ class Menu:
 
     def wait_menu(self, ok: Callable[[dict], bool] = lambda m: True, why: str = "编成菜单"):
         for _ in range(WAIT_TRIES):
-            img, texts, m = self.look()
+            img, texts, m = self.look()  # noqa: RUF059
             if m is not None and ok(m):
                 return img, m
             self.dev.sleep(WAIT_GAP)
@@ -140,7 +150,10 @@ class Menu:
         img, texts, m = self.look()
         if m is not None:
             return m
-        if not (_find(texts, "ホーム", y_min=1050) and _find(texts, "コンテスト", y_min=1050)) and _find(texts, "プロデュース編成") is None:
+        if (
+            not (_find(texts, "ホーム", y_min=1050) and _find(texts, "コンテスト", y_min=1050))
+            and _find(texts, "プロデュース編成") is None
+        ):
             self.dev.snap(img, "menu-not-home")
             raise FormationWriteError("不在主页也不在プロデュース編成页：请先回主页再运行")
         tapped_idol = tapped_panel = False
@@ -148,7 +161,9 @@ class Menu:
             if (m := read_menu(img, texts)) is not None:
                 return m
             item = next((b for t, b in texts if t == "プロデュース編成"), None)  # 子菜单里的那一项（完全等于这几个字）
-            panel = next((b for t, b in texts if "プロデュース編成" in t and t != "プロデュース編成"), None)  # 面板按钮「…・スキルカード」
+            panel = next(
+                (b for t, b in texts if "プロデュース編成" in t and t != "プロデュース編成"), None
+            )  # 面板按钮「…・スキルカード」
             if item is not None:
                 self.dev.click(*_center(item))
                 return self.wait_menu(why="プロデュース編成页")[1]
@@ -245,7 +260,9 @@ def write_memory(dev: Device, plan: dict, make_picker, *, dry_run: bool = False)
     if dry_run or not moves:
         done = []
     else:
-        done = fix_memory(dev, plan, read_icons=lambda img: read_memory_icons(img), make_picker=make_picker, slots=MEMORY_TILES)
+        done = fix_memory(
+            dev, plan, read_icons=lambda img: read_memory_icons(img), make_picker=make_picker, slots=MEMORY_TILES
+        )
     if not dry_run:
         left = memory_diff(plan, _settle_icons(dev))
         if left:
@@ -298,7 +315,17 @@ def run(dev: Device, plan: dict, mode: str, *, what: tuple[str, ...] = ("support
     return out
 
 
-__all__ = ["Menu", "read_menu", "read_mode", "read_memory_icons", "memory_diff", "support_diff", "write_memory", "write_support", "run"]
+__all__ = [
+    "Menu",
+    "memory_diff",
+    "read_memory_icons",
+    "read_menu",
+    "read_mode",
+    "run",
+    "support_diff",
+    "write_memory",
+    "write_support",
+]
 
 
 PICKER_TRIES = 4  # 点格子后最多看几次列表开没开（每次 1.5 秒，第一次和中途各点一次）
