@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +25,11 @@ AWAY_S = 15.0  # 不在结算页也不在考试里持续这么久，才算你已
 PLAY_MAX_S = 45 * 60  # 亲手打一场考试最多等这么久
 
 
-def enabled(env: dict | None = None) -> bool:
+def enabled(env: Mapping[str, str] | None = None) -> bool:
     return (env if env is not None else os.environ).get("HIRO_RETRY_HANDOFF", "0") == "1"
 
 
-def timeout_s(env: dict | None = None) -> float:
+def timeout_s(env: Mapping[str, str] | None = None) -> float:
     try:
         return max(15.0, float((env if env is not None else os.environ).get("HIRO_RETRY_HANDOFF_TIMEOUT_S") or 60))
     except ValueError:
@@ -38,26 +38,30 @@ def timeout_s(env: dict | None = None) -> float:
 
 def wait(label: str, *, look: Callable[[], str], sleep: Callable[[float], None] = time.sleep,
          clock: Callable[[], float] = time.monotonic, notifier: Callable[[str, str], None] | None = None,
-         env: dict | None = None) -> str:  # fmt: skip
+         env: Mapping[str, str] | None = None) -> str:  # fmt: skip
     """结算页上、要不要再挑戦之前调。look() 返回当前画面："result"（带再挑戦的结算页）/ "exam"（考试中）/ "other"。
     返回 "user"（你处理过了，程序从当前画面接着走）/ "auto"（交回程序按规则决定再挑戦）。"""
-    from hiro.runtime import unread_story
     from hiro.loop.pause_flag import hold
+    from hiro.runtime import unread_story
 
     env = env if env is not None else os.environ
     notifier = notifier or unread_story.notify  # 通知 / 等人文件 / DMM 窗口居中 复用未读剧情那套
     path = unread_story.wait_file(env)
     unread_story._show_game(env)
     limit = timeout_s(env)
-    msg = (f"{time.strftime('%Y-%m-%d %H:%M:%S')} {label} 没过线，再挑戦交给你：{limit:.0f} 秒内点「再挑戦」就亲手打这一场，"
-           f"程序等你打完再接着走；{limit:.0f} 秒没人动就交回程序。\n")
+    msg = (
+        f"{time.strftime('%Y-%m-%d %H:%M:%S')} {label} 没过线，再挑戦交给你：{limit:.0f} 秒内点「再挑戦」就亲手打这一场，"
+        f"程序等你打完再接着走；{limit:.0f} 秒没人动就交回程序。\n"
+    )
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(msg, encoding="utf-8")
     except OSError as e:
         logger.warning("写等人文件 %s 失败：%r", path, e)
     logger.warning("%s 没过线：再挑戦交给人（%.0f 秒内没人动就交回程序）", label, limit)
-    notifier("数字小广：考试没过线", f"{label}：{limit:.0f} 秒内点「再挑戦」就亲手打，打完程序接着走；没人动就交回程序。")
+    notifier(
+        "数字小广：考试没过线", f"{label}：{limit:.0f} 秒内点「再挑戦」就亲手打，打完程序接着走；没人动就交回程序。"
+    )
     result = "auto"
     with hold():
         idle_since, away_since, play_since, played = clock(), None, None, False
@@ -97,7 +101,9 @@ def wait(label: str, *, look: Callable[[], str], sleep: Callable[[float], None] 
                 continue
             away_since = now if away_since is None else away_since  # other：确认框 / 读取画面 / 你点了次へ
             if now - away_since >= AWAY_S:
-                logger.warning("%s 画面已经离开结算页（%s），程序从当前画面接着走", label, "你打完了" if played else "你没再挑戦")
+                logger.warning(
+                    "%s 画面已经离开结算页（%s），程序从当前画面接着走", label, "你打完了" if played else "你没再挑戦"
+                )
                 result = "user"
                 break
     path.unlink(missing_ok=True)

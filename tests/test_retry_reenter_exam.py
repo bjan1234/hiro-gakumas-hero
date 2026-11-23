@@ -3,11 +3,11 @@
 _dispatch 只在「上一页不是 EXAM」时进 on_exam_entered → 主循环空转（两次各卡 18 / 7 分钟）。
 策略置 exam_restarted 后，下一次看到考试页要重新进入 on_exam_entered，且只进一次。"""
 
-import pytest
 import hiro  # noqa: F401  兼容层（先于 kaa）
-from kaa.tasks.produce.new.consts import Scene, SceneType
-
 from hiro.loop.controller import HiroController
+
+import pytest
+from kaa.tasks.produce.new.consts import Scene, SceneType
 
 
 class Strategy:
@@ -69,12 +69,15 @@ def test_strategy_sets_flag_on_finals_retry(monkeypatch):
     st = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
     st.s = NS(note=lambda *a: None)
     st.rec = NS(log=lambda *a, **k: None)
-    monkeypatch.setattr(pages, "classify_page", lambda img: ("HIF_FINALS_RANKING", {"kind": "final", "rank": 2, "outcome": "敗退"}))
+    monkeypatch.setattr(
+        pages, "classify_page", lambda img: ("HIF_FINALS_RANKING", {"kind": "final", "rank": 2, "outcome": "敗退"})
+    )
     from hiro.vision.ocr import Box, Text
 
     btn = Text("再挑戦", Box(290, 1090, 310, 1110))
     monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [btn])
     st._click_retry = lambda label, b, texts, **kw: "free"
+    st._retry_took_effect = lambda label, **kw: True  # 考试重开的核对另有测试（test_produce_over_detection）
     assert st._finals_retry(None, "r2") is True and st.exam_restarted is True
 
 
@@ -125,7 +128,9 @@ def test_comm_error_after_retry_not_counted(monkeypatch):
     st._retries_so_far = lambda label: 0
     monkeypatch.setattr(hif, "device", NS(click=lambda *a: None, screenshot=lambda: None))
     monkeypatch.setattr(hif, "sleep", lambda s: None)
-    monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [NS(text="通信エラー"), NS(text="リトライしますか?"), NS(text="はい")])
+    monkeypatch.setattr(
+        hif, "screen_texts", lambda *a, **k: [NS(text="通信エラー"), NS(text="リトライしますか?"), NS(text="はい")]
+    )
     from hiro.vision.ocr import Box, Text
 
     btn = Text("再挑戦", Box(290, 1090, 310, 1110))
@@ -228,6 +233,7 @@ def _gap_strategy(monkeypatch, page):
     monkeypatch.setattr(pages, "classify_page", lambda img: ("HIF_FINALS_RANKING", page))
     monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [Text("再挑戦", Box(290, 1090, 310, 1110))])
     st._click_retry = lambda label, b, texts: calls.append(label) or "ticket"
+    st._retry_took_effect = lambda label, **kw: True
     return st, notes, calls
 
 
@@ -241,19 +247,19 @@ def test_finals_retry_skipped_when_far_behind_first(monkeypatch):
 
 def test_finals_retry_kept_when_close_to_first(monkeypatch):
     """mainverify4（11-17）：离第 1 约 9 千，照常重打。"""
-    st, notes, calls = _gap_strategy(monkeypatch, _final_page(1071491, 400000, 1080506))
+    st, _notes, calls = _gap_strategy(monkeypatch, _final_page(1071491, 400000, 1080506))
     assert st._finals_retry(None, "r2") is True and calls == ["r2"]
 
 
 def test_finals_retry_gap_unreadable_keeps_old_rule(monkeypatch):
     page = _final_page(846075, None, 1080506)  # 本轮分没读到：算不了差距，按原规则重打
-    st, notes, calls = _gap_strategy(monkeypatch, page)
+    st, _notes, _calls = _gap_strategy(monkeypatch, page)
     assert st._finals_retry(None, "r2") is True
 
 
 def test_finals_retry_gap_threshold_env(monkeypatch):
     monkeypatch.setenv("HIRO_RETRY_GAP_MAX", "1.0")  # 放宽到 100%：65% 的差距也重打
-    st, notes, calls = _gap_strategy(monkeypatch, _final_page(846075, 362089, 1080506))
+    st, _notes, _calls = _gap_strategy(monkeypatch, _final_page(846075, 362089, 1080506))
     assert st._finals_retry(None, "r2") is True
 
 
@@ -289,12 +295,14 @@ def test_retry_cap_one_blocks_second_retry(tmp_path, monkeypatch):
 
 def test_retry_cap_one_ignores_daily_shared_count(tmp_path, monkeypatch):
     """用户 11-21：「あと N回」是当天全局共用的。画面あと1回、这一场本局没重试过 → 照样重试一次（会去点按钮）。"""
-    st, notes, hif = _cap1(tmp_path, monkeypatch, 1)
+    st, _notes, hif = _cap1(tmp_path, monkeypatch, 1)
 
     class Clicked(Exception):
         pass
 
-    monkeypatch.setattr(hif, "device", type("D", (), {"click": staticmethod(lambda *a: (_ for _ in ()).throw(Clicked()))}))
+    monkeypatch.setattr(
+        hif, "device", type("D", (), {"click": staticmethod(lambda *a: (_ for _ in ()).throw(Clicked()))})
+    )
     btn = type("B", (), {"rect": type("R", (), {"center": (360, 1100)})()})()
     with pytest.raises(Clicked):
         st._click_retry("qualify-2", btn, [])

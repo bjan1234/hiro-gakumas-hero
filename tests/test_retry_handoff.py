@@ -20,7 +20,9 @@ class Rig:
         return self.screens.pop(0) if len(self.screens) > 1 else self.screens[0]
 
     def run(self):
-        return rh.wait("qualify-2", look=self.look, sleep=self.sleep, clock=lambda: self.t, notifier=lambda *a: None, env=self.env)
+        return rh.wait(
+            "qualify-2", look=self.look, sleep=self.sleep, clock=lambda: self.t, notifier=lambda *a: None, env=self.env
+        )
 
 
 def test_defaults():
