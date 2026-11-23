@@ -35,3 +35,18 @@
 - 修掉了基线里的错误，跑 `basedpyright --writebaseline` 更新基线（只会变少，提交时一起带上）。
 - 分析环境以 CI 为准：Linux、Python 3.10、只装 `.[dev]`（没有 KAA 等实机依赖）。本机 `.venv` 装了 `.[play]`，能解析出更多类型，偶尔会多报几条 CI 不报的；要复现 CI 的结果，另建一个只装 `.[dev]` 的环境跑。
 - 目前只检查 `src/`。
+
+## CI 与依赖安全
+
+| 工作流 | 什么时候跑 | 做什么 |
+|---|---|---|
+| `test` | 推送、PR | pytest（3.10 / 3.12），覆盖率写进运行摘要 |
+| `lint` | 推送、PR | ruff 检查 + 格式、basedpyright（只拦新增） |
+| `security` | 推送、PR、每周一 | `pip-audit` 查基础依赖和 dev 依赖的已知漏洞；PR 上 `dependency-review` 拦新加 / 升级的有漏洞依赖（中危及以上） |
+| `codeql` | 推 main、PR、每周一 | CodeQL 扫 Python、桌面程序的 TS / JS 和工作流本身，结果在 Security → Code scanning |
+| `engine-wheels` | 引擎源码在 main 上变了 | 编四个平台的引擎 wheel 发 Release |
+
+- **actions 一律钉提交 SHA**，后面注释写版本，例如 `actions/checkout@fbc6…  # v5.1.0`。不要写 `@v5` 这种标签：标签能被改指向别的代码。
+- **Dependabot**（`.github/dependabot.yml`）每周提升级 PR：actions、pip、`app/` 的 bun 和 Go 依赖。同一生态的小版本合成一个 PR。`vendor/` 不管，跟着上游走。
+- **pip 缓存**：各工作流的 `setup-python` 按 `pyproject.toml` 缓存下载的包，依赖没变时装得快。
+- `pip-audit` 只查 `.[dev]` 和基础依赖；`play` / `bench` 里有 git 依赖和 KAA 子模块，CI 不装。
