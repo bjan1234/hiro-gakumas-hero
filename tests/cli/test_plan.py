@@ -30,7 +30,7 @@ CANNED = {
                 "why": ["事件 Da+20"],
             }
         ],
-        "rental": {"name": "あなたにも作ってあげる！", "value": 20, "attr": "Da"},
+        "rental": {"support_card_id": "s_card-3-0000", "name": "あなたにも作ってあげる！", "value": 20, "attr": "Da"},
         "rental_estimated": True,
     },
     "memory": {
@@ -109,6 +109,7 @@ def test_plan_uses_latest_inventories_and_writes_the_plan_file(run_cli, hiro_hom
         "why": ["事件 Da+20"],
     }
     assert s["support"]["rental"]["estimated"] is True
+    assert s["support"]["rental"]["id"] == "s_card-3-0000"  # 界面按编号配中文名和卡面
     assert s["memory"]["chosen"][0]["name"] == "ワクワクが止まらない" and s["memory"]["chosen"][0]["upgrade"] == 1
     assert s["report"] == "# 方案\n"
     code, env2 = run_cli("plan", "show")

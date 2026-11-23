@@ -7,6 +7,7 @@ import { modelAgent, modelLabel, modelReady, useAssistant, type Settings } from 
 import type { Thread } from "./lib/chat";
 import { cardsFor } from "./lib/quick";
 import { data, useHiro, type Envelope, type Job, type Summary } from "./lib/hiro";
+import { useDevice } from "./lib/device";
 import { STATE_LABEL } from "./lib/labels";
 import { pollWhileVisible } from "./lib/poll";
 import { useThreads } from "./lib/threads";
@@ -100,6 +101,7 @@ export function App({ agent: agentProp, initialView }: { agent?: Agent; initialV
   const [view, setView] = useState<View>(initialView ?? { name: "chat" });
   const [thinking, setThinking] = useState(false);
   const { current, summary } = useStatus();
+  const [device, probeDevice] = useDevice(call, current !== null);
   const thread = t.threads.find((x) => x.id === t.active) ?? t.threads[0]!;
 
   const askWith = useCallback(
@@ -150,7 +152,8 @@ export function App({ agent: agentProp, initialView }: { agent?: Agent; initialV
         liveJob={current?.id ?? null}
         summary={summary}
         model={agent.label}
-        device=""
+        device={device}
+        onProbe={probeDevice}
         onNew={() => {
           t.create();
           setView({ name: "chat" });

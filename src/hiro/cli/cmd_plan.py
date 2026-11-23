@@ -46,6 +46,7 @@ def summarize(plan: dict) -> dict:
             "rental": None
             if not rental and not sup.get("rental_rule")
             else {
+                "id": (rental or {}).get("support_card_id"),
                 "name": (rental or {}).get("name"),
                 "attr": (rental or {}).get("attr") or (sup.get("rental_rule") or {}).get("attr"),
                 "value": (rental or {}).get("value"),
