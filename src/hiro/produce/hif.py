@@ -2128,6 +2128,8 @@ class HifCore:
             self.s.note(f"{label} 敗退（{res.get('score')} Pt），没有再挑戦按钮，结束培育")
             logger.warning("%s 敗退，没有再挑戦按钮", label)
             return False
+        if self._handoff_retry(label):
+            return False  # 人处理过了（亲手再挑戦打完 / 不打）：从当前画面接着收尾
         kind = self._click_retry(label, btn, texts)
         if kind is None:
             return False
@@ -2141,6 +2143,29 @@ class HifCore:
         type(self).exams_done = self.exam_count
         self.rec.log("exam_retry", exam=label, retry_kind=kind)
         return True
+
+    def _handoff_retry(self, label: str) -> bool:
+        """HIRO_RETRY_HANDOFF=1：没过线时把再挑戦交给人（hiro.runtime.retry_handoff）。返回 True = 人处理过了，程序不再挑戦；
+        False = 开关没开 / 交回程序按规则决定。"""
+        from hiro.runtime import retry_handoff
+
+        if not retry_handoff.enabled():
+            return False
+
+        from hiro.vision.hif import is_hif_exam
+
+        def look() -> str:
+            img = device.screenshot()
+            if is_hif_exam(img):
+                return "exam"
+            if any(button_text(t.text, "再挑戦") and t.rect.center.y > 900 for t in screen_texts(img)):
+                return "result"
+            return "other"
+
+        got = retry_handoff.wait(label, look=look)
+        if self.s is not None:
+            self.s.note(f"{label} 没过线，再挑戦交给人：{'人处理过了' if got == 'user' else '交回程序'}")
+        return got == "user"
 
     RETRY_EFFECT_WAIT = 15.0  # 点了再挑戦之后最多等这么久看考试有没有重开
 
@@ -2176,7 +2201,21 @@ class HifCore:
     RETRY_CONFIRM_TAPS = 3
     retries_used: dict = {}  # {"free": n, "ticket": n}（进程内，复盘统计）  # noqa: RUF012
 
-    MAX_RETRIES_PER_EXAM = 3  # 同一场考试最多再挑戦几次（含续跑前的段）：打法 / 引擎没改时重复挑戦只花时间
+    MAX_RETRIES_PER_EXAM = 3  # 游戏规则：同一场考试最多再挑戦 3 次（画面「あと N回」按这个算已用次数）
+    # 我们自己的上限另由 HIRO_RETRY_MAX 定（retry_cap，缺省同游戏 3 次）：打法 / 引擎没改时重复挑戦只花时间
+
+    def retry_cap(self) -> int:
+        """同一场考试最多再挑戦几次：HIRO_RETRY_MAX（0–3，缺省 3）。用户 11-20：失败后最多重试 1 次，别把次数用光。"""
+        import os
+
+        try:
+            n = int(os.environ.get("HIRO_RETRY_MAX") or self.MAX_RETRIES_PER_EXAM)
+        except ValueError:
+            logger.warning(
+                "HIRO_RETRY_MAX=%r 不是整数，按 %d", os.environ.get("HIRO_RETRY_MAX"), self.MAX_RETRIES_PER_EXAM
+            )
+            n = self.MAX_RETRIES_PER_EXAM
+        return max(0, min(n, self.MAX_RETRIES_PER_EXAM))
 
     def _retries_so_far(self, label: str) -> int:
         """本局（同一 trace 基名的各段）已对 label 用过几次再挑戦：数 trace 里的「使用再挑戦」说明。"""
@@ -2212,10 +2251,22 @@ class HifCore:
         if left is not None and left > self.MAX_RETRIES_PER_EXAM:
             logger.warning("%s 画面「あと %d回」超过上限 %d，按 trace 记录计数", label, left, self.MAX_RETRIES_PER_EXAM)
             left = None
-        used = self.MAX_RETRIES_PER_EXAM - left if left is not None else self._retries_so_far(label)
-        if used >= self.MAX_RETRIES_PER_EXAM:
-            self.s.note(f"{label} 已再挑戦 {used} 次，到上限 {self.MAX_RETRIES_PER_EXAM}，不再挑戦")
-            logger.warning("%s 已再挑戦 %d 次（上限 %d），不再挑戦", label, used, self.MAX_RETRIES_PER_EXAM)
+        cap = self.retry_cap()
+        if cap < self.MAX_RETRIES_PER_EXAM:
+            # 收紧了上限（HIRO_RETRY_MAX）：「あと N回」是当天全局共用的次数（每天重置，用户 11-21），不代表这一场用了几次，
+            # 按本局 trace 记录数这一场的；画面剩 0 次就不点（再点只会弹ジュエル确认）
+            # 11-21 麻央：当天别的局用掉 2 次，画面「あと1回」，按旧算法当成这一场已用 2 次，一次都没重试就结束了
+            used = self._retries_so_far(label)
+            if left == 0:
+                if self.s is not None:
+                    self.s.note(f"{label} 当天的再挑戦次数用完（画面あと0回），不再挑戦")
+                logger.warning("%s 当天的再挑戦次数用完（画面「あと0回」），不再挑戦", label)
+                return None
+        else:
+            used = self.MAX_RETRIES_PER_EXAM - left if left is not None else self._retries_so_far(label)
+        if used >= cap:
+            self.s.note(f"{label} 已再挑戦 {used} 次，到上限 {cap}，不再挑戦")
+            logger.warning("%s 已再挑戦 %d 次（上限 %d），不再挑戦", label, used, cap)
             return None
         free_hint = any("無料" in t.text for t in texts)
         device.click(*btn.rect.center)
@@ -2330,6 +2381,9 @@ class HifCore:
         page_key = (label, f.get("score"), f.get("round_score"))
         if page_key == self._retry_declined:
             return False  # 这张结算页已经决定不再挑戦：别再点开确认框，让调用方点「次へ」收尾
+        if self._handoff_retry(label):
+            self._retry_declined = page_key
+            return False  # 人处理过了：从当前画面接着收尾
         if (gap := self._gap_to_first(f)) is not None and gap[1] > self._retry_gap_max():
             # 离第 1 太远：重打 R2 只是在原分数附近波动，追不上，还会把更好的一次覆盖掉、多花券（mainz4 11-18：差 23.4 万 = 本轮分 65%，
             # 四次 R2 本轮分 33–38 万；用户 11-18「差距很大就不要重打」）
