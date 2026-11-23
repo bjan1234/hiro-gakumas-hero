@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $deps = if ($env:HIRO_SIMD_DEPS) { $env:HIRO_SIMD_DEPS } else { Join-Path $root '.deps' }
 $ocr = Join-Path $deps 'SimdPaddleOCR'

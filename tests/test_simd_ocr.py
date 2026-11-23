@@ -69,6 +69,22 @@ def test_merged_select_uses_only_verified_button_position(monkeypatch):
     assert _select_markers(screen, [merged]) == []
 
 
+def test_select_candidate_ocr_failure_does_not_abort_card_play(monkeypatch):
+    """SIMD 辅助进程两次都失败时 ocr_line 会抛异常：这一个候选当作读不出，跳过，不能打断出牌（CodeRabbit #36）。"""
+    from hiro.exec.exam import _select_markers
+    from hiro.vision import ocr
+
+    def broken(crop):
+        raise RuntimeError("SIMD 辅助进程已退出")
+
+    monkeypatch.setattr(ocr, "engine", lambda: "simd")
+    monkeypatch.setattr(ocr, "ocr_line", broken)
+    merged = ocr.Text("カード名 SELECT", ocr.Box(100, 1096, 390, 1124))
+    screen = np.zeros((1280, 720, 3), dtype=np.uint8)
+    screen[1104:1120, 320:380] = (0, 150, 255)
+    assert _select_markers(screen, [merged]) == []
+
+
 def _reader(starts, request):
     """不起真进程的 SimdOcr：_start 只记次数、换一个活着的假进程；_request 由用例给。"""
     from threading import RLock

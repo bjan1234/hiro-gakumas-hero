@@ -225,7 +225,14 @@ def _select_markers(img, boxes: list[Text]) -> list[Text]:
         if not crop.size:
             continue
         orange = cv2.inRange(cv2.cvtColor(crop, cv2.COLOR_BGR2HSV), (14, 130, 178), (30, 255, 255))
-        if cv2.countNonZero(orange) > 200 and _is_select(ocr_line(crop)):
+        if cv2.countNonZero(orange) <= 200:
+            continue
+        try:
+            crop_text = ocr_line(crop)
+        except Exception:  # noqa: BLE001  识别出错（辅助进程重启后仍失败）不能打断出牌：这个候选当作读不出
+            logger.warning("局部 OCR 出错（SELECT 候选 y %d–%d）", y1, y2, exc_info=True)
+            continue
+        if _is_select(crop_text):
             hits.append(Text("SELECT", Box(x1, y1, x2, y2)))
     return hits
 
