@@ -43,3 +43,14 @@ def test_exam_rank_real_fail_page_hidden_self_row():
         pytest.skip("需要实机截图 pages/hajime-exam-fail-6th-hidden.jpg")
     r = hv.exam_rank(cv2.imread(str(path)))
     assert r is not None and r["failed"] is True and r["retry"] == {"left": 1, "free": True}
+
+
+@pytest.mark.synthetic
+def test_need_rank_final_only():
+    """--final-rank 1（初星課題「最終試験で1位」/ 星南亲爱度 9「プロ最終試験 1位」）：只收紧期末，其它考试仍按过线名次。"""
+    from hiro.runtime import hajime
+
+    assert hajime.need_rank("hajime-final", 3, 1) == 1
+    assert hajime.need_rank("hajime-mid1", 3, 1) == 3
+    assert hajime.need_rank("hajime-final", 3, None) == 3
+    assert hajime.need_rank("hajime-final", 3, 5) == 3  # 不会放宽过线名次

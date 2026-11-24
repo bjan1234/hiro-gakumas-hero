@@ -34,6 +34,15 @@ DIFFICULTY_WORDS = {"regular": ("レギュラー", "REGULAR"), "pro": ("プロ",
 DEFAULT_OUT = Path(".temp") / "hajime-mac" / "frames"  # 相对仓库根目录（已被 .gitignore 挡住）
 LESSON_END_S = 2.0  # 练习课 HUD（CLEARまで / PERFECTまで）连续消失这么久算练习课结束（出牌动画不会盖住它）
 RESULT_WAIT_S = 12.0  # 考试打完后等结算名次页出来
+FINAL_LABEL = "hajime-final"
+
+
+def need_rank(label: str, pass_rank: int, final_rank: int | None) -> int:
+    """这场考试要到的名次：默认过线名次（初前 3）；--final-rank N 只收紧期末（初星課題「最終試験で1位」、
+    偶像亲爱度「プロ最終試験 1位」：没到就和落选一样用再挑戦，次数 / ジュエル 规则不变），不会放宽。"""
+    if label == FINAL_LABEL and final_rank:
+        return min(pass_rank, final_rank)
+    return pass_rank
 
 
 def new_produce(rt, difficulty: str, **prep) -> None:
@@ -346,7 +355,7 @@ def hajime_core(scenario_mode: str):
                         logger.warning("%s 打完 %.0fs 没等到结算名次页，交回主循环", label, timeout)
                         return False
                     active.sleep(0.5)
-            need = modes.mode(scenario_mode).pass_rank
+            need = need_rank(label, modes.mode(scenario_mode).pass_rank, getattr(self, "final_rank", None))
             passed = hv.result_passed(res, need)
             self.rec.log("exam_result", image=img, exam=label, result={**res, "passed": passed})
             self.s.observe(scene="HIF_EXAM_RESULT", img=img, fields={"score": res.get("score"), "rank": res["rank"], "passed": passed,
@@ -434,6 +443,7 @@ def run(args) -> int:
         "llm_spec": args.llm,
         "main_attr": args.main_attr,
         "exams_done": 0,
+        "final_rank": args.final_rank,
     }.items():
         setattr(Core, k, v)
     core = Core(scenario="qualify", idol=args.idol)
@@ -496,6 +506,9 @@ def main(argv=None) -> int:
     ap.add_argument("--support-set", type=int, default=None)
     ap.add_argument("--memory-set", type=int, default=None)
     ap.add_argument("--no-llm", action="store_true")
+    ap.add_argument(
+        "--final-rank", type=int, default=None, help="期末要到第几名，没到就用再挑戦（免费 / チケット，规则同落选）"
+    )
     ap.add_argument("--llm", default=os.environ.get("HIRO_LLM"))
     ap.add_argument("--trace", default=None)
     ap.add_argument("--out", default=str(DEFAULT_OUT), help="存帧目录")
