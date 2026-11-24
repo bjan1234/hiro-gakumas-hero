@@ -435,3 +435,27 @@ def test_pick_support_list_closed_after_tap_is_not_an_error(monkeypatch):
     dev = fw.Device(shoot=shoot, click=lambda x, y: clicks.append((x, y)), swipe=lambda *a: None, sleep=lambda s: None)
     fw.pick_support(dev, "s_card-3-0027", read_list=read_list)
     assert clicks == [(575, 730)]  # 只点了卡；没点 cancel / 決定
+
+
+def test_fix_support_waits_while_list_is_still_opening():
+    """Mac 11-24 16:15（初星助手写编成）：第 1 格改完，点第 2 格后画面在过场（既不是编成页也不是列表），
+    原来直接往下走、读一次列表读不到就报「没打开支援卡选择列表」。过场时接着等，列表出来再选。"""
+    g = FakeGame(["a", "b", "x", "y", "e"], [[["c", "d"]]])
+    real_click, real_shoot = g.click, g.shoot
+    left = {"n": 0}
+
+    def click(x, y):
+        was = g.view
+        real_click(x, y)
+        if was == "step2" and g.view == "list":
+            left["n"] = 9  # 列表要过 9 张截图（约 4 秒）才出来，比原来等的 6 张长
+
+    def shoot():
+        if left["n"] > 0:
+            left["n"] -= 1
+            return "loading"
+        return real_shoot()
+
+    g.click, g.shoot = click, shoot
+    fw.fix_support(g.device(), _plan(["a", "b", "c", "d", "e"]), read_formation=g.read_formation, read_list=g.read_list)
+    assert g.slots == ["a", "b", "c", "d", "e"]

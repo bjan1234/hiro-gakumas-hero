@@ -442,6 +442,7 @@ class Job:
         if self._llm_off:
             env.pop("HIRO_LLM", None)
         env.update({"HIRO_PAUSE_FLAG": str(self.flag), "PYTHONUNBUFFERED": "1", "PYTHONUTF8": "1"})
+        env.setdefault("HIRO_CALIB_DIR", str(self.dir / "calib"))  # 排查截图跟着任务走（hiro.imgio.calib_root）
         src = str(REPO / "src")
         env["PYTHONPATH"] = src + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
         return env
