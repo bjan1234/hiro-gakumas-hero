@@ -7,6 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/matto49/hiro-gakumas-hero/app/hiroapi"
 	"github.com/matto49/hiro-gakumas-hero/app/plugin"
 	"github.com/matto49/hiro-gakumas-hero/app/plugins/plugintest"
 )
@@ -58,3 +59,22 @@ func TestContextSummarizesPlan(t *testing.T) {
 		}
 	}
 }
+
+// CR#11：对话里出了新的编成卡后，面板要重新读，不能还显示旧方案。
+func TestPanelReloadsAfterNewFormationCard(t *testing.T) {
+	h, p := host(), New()
+	tt := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "") }), 520, 900)
+	h.Resp["plan show"] = okRes(strings.Replace(planJSON, "2026-11-23 20:00", "2026-11-24 09:00", 1))
+	var card map[string]any
+	_ = decode(strings.Replace(planJSON, "2026-11-23 20:00", "2026-11-24 09:00", 1), &card)
+	cv := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Children(func() { p.Cards["formation"](c, h, plugin.Card{"type": "formation", "plan": card}) })
+	}, 600, 600)
+	_ = cv
+	tt.Frame()
+	if !tt.HasText("出方案时间 2026-11-24 09:00") {
+		t.Errorf("面板没换成新方案：%q", tt.Texts())
+	}
+}
+
+func okRes(s string) hiroapi.Result { return hiroapi.Result{OK: true, Data: []byte(s)} }

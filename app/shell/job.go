@@ -57,7 +57,7 @@ func (a *App) PollJobs() {
 	}
 	var wants []want
 	for id, v := range a.jobs {
-		if !v.Loaded || v.Live() || id == a.live {
+		if !v.Final || v.Live() || id == a.live {
 			wants = append(wants, want{id, v.Next})
 		}
 	}
@@ -132,11 +132,14 @@ func (a *App) PollJobs() {
 				if ev.State != "" {
 					v.State = ev.State
 				}
+				if ev.State != "" && !plugin.LiveStates[ev.State] {
+					v.Final = true
+				}
 			}
 			busy := a.live != ""
 			for id, v := range a.jobs {
 				a.notify(id, before[id], v)
-				if !v.Loaded {
+				if !v.Final {
 					busy = true
 				}
 			}

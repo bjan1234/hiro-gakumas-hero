@@ -34,16 +34,16 @@ func main() {
 	}))
 
 	// 外部插件的网页面板：hiroplug://localhost/<插件 id>/<文件>（只给已启用插件目录里的文件，带 CSP）
-	mygo.Protocol.Handle("hiroplug", pluginFiles(func(id string) string {
+	web := &webPanels{}
+	mygo.Protocol.Handle("hiroplug", pluginFilesFor(func(id string) string {
 		if plugins == nil {
 			return ""
 		}
 		return plugins.Dir(id)
-	}))
+	}, web.ownerOf))
 
 	mygo.App.WhenReady(func() {
 		runner := &lateRunner{}
-		web := &webPanels{}
 		app := buildApp(appDeps{Home: home, Call: hiro.Call, Hiro: hiro, Assistant: assistant, Bootstrap: &Bootstrap{Home: home, Hiro: hiro}, Run: runner, Web: web})
 		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:     AppName,

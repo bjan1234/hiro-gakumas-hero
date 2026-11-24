@@ -98,3 +98,11 @@ func TestNoModelExplainsAndRunsChip(t *testing.T) {
 		t.Errorf("快捷指令得到确认卡：%+v", last.Cards)
 	}
 }
+
+// CR#13：存档里有 null 消息时照样能启动（跳过那条）。
+func TestNullMessageDoesNotCrash(t *testing.T) {
+	a, _ := newTestApp(newMem(`{"id":"t-n","title":"x","updatedAt":1,"messages":[null,{"id":"m","role":"user","text":"hi","at":1}]}`), &fakeCall{}, nil, nil)
+	if len(a.Threads()) != 1 || len(a.Threads()[0].Messages) != 1 {
+		t.Errorf("读出 %+v", a.Threads())
+	}
+}

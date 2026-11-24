@@ -34,7 +34,11 @@ func webURL(scheme, rel, goos string) string {
 }
 
 // pluginFiles 是 hiroplug:// 的处理：/<插件 id>/<文件>，只给插件目录里的文件，带 CSP。
-func pluginFiles(dirOf func(id string) string) http.Handler {
+func pluginFiles(dirOf func(id string) string) http.Handler { return pluginFilesFor(dirOf, nil) }
+
+// pluginFilesFor 同 pluginFiles，另外只给发请求的那个插件页面它自己目录里的文件（ownerOf 认出是哪个插件的页面；
+// 认不出的一律不给）。各插件页面在 Windows 上同源，不这样插件 A 能读到插件 B 的文件。
+func pluginFilesFor(dirOf func(id string) string, ownerOf func(r *http.Request) string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
 		if p != path.Clean(p) || strings.Contains(p, "..") {
@@ -42,6 +46,10 @@ func pluginFiles(dirOf func(id string) string) http.Handler {
 			return
 		}
 		id, rel, ok := strings.Cut(strings.TrimPrefix(p, "/"), "/")
+		if ownerOf != nil && ownerOf(r) != id {
+			http.NotFound(w, r)
+			return
+		}
 		dir := dirOf(id)
 		if !ok || dir == "" || rel == "" {
 			http.NotFound(w, r)
@@ -59,9 +67,18 @@ func pluginFiles(dirOf func(id string) string) http.Handler {
 
 // webPanels 按地址缓存网页视图（每个地址一个，换页不重载）。
 type webPanels struct {
-	mu    sync.Mutex
-	win   *mygo.Window
-	views map[string]*mygo.WebView
+	mu     sync.Mutex
+	win    *mygo.Window
+	views  map[string]*mygo.WebView
+	owners map[*mygo.Page]string // 插件网页 → 插件 id
+}
+
+// ownerOf 是发请求的页面属于哪个插件（hiroplug 协议用）。
+func (wp *webPanels) ownerOf(r *http.Request) string {
+	p := mygo.CallerPage(r.Context())
+	wp.mu.Lock()
+	defer wp.mu.Unlock()
+	return wp.owners[p]
 }
 
 func (wp *webPanels) setWindow(w *mygo.Window) {
@@ -71,7 +88,10 @@ func (wp *webPanels) setWindow(w *mygo.Window) {
 }
 
 // show 在面板里画一个本机页面；页面只能留在自己的源上，跳别处一律拦下。
-func (wp *webPanels) show(c *ui.Context, url string) {
+func (wp *webPanels) show(c *ui.Context, url string) { wp.showFor(c, url, "") }
+
+// showFor 同 show，owner 是插件 id（插件网页面板）：记下这个页面属于哪个插件。
+func (wp *webPanels) showFor(c *ui.Context, url, owner string) {
 	if url == "" {
 		kit.Note(c, "没有这个页面")
 		return
@@ -101,6 +121,12 @@ func (wp *webPanels) show(c *ui.Context, url string) {
 		})
 		wp.mu.Lock()
 		wp.views[url] = nv
+		if owner != "" {
+			if wp.owners == nil {
+				wp.owners = map[*mygo.Page]string{}
+			}
+			wp.owners[nv.Page()] = owner
+		}
 		wp.mu.Unlock()
 		v = nv
 	}
@@ -132,18 +158,19 @@ func pluginWebURL(dir, file string) string {
 func (wp *webPanels) hook(dirOf func(id string) string) {
 	cockpit.ReviewView = func(c *ui.Context, _ plugin.Host, jobID string) { wp.show(c, reviewURL(jobID)) }
 	extplugin.WebPanel = func(c *ui.Context, _ plugin.Host, file string, _ bool) {
-		wp.show(c, pluginFileURL(dirOf, file))
+		url, owner := pluginFileURL(dirOf, file)
+		wp.showFor(c, url, owner)
 	}
 }
 
-// pluginFileURL 找出文件属于哪个插件目录，给出 hiroplug 地址。
-func pluginFileURL(dirOf func(id string) string, file string) string {
+// pluginFileURL 找出文件属于哪个插件目录，给出 hiroplug 地址和插件 id。
+func pluginFileURL(dirOf func(id string) string, file string) (string, string) {
 	for dir := filepath.Dir(file); dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
 		if id := filepath.Base(dir); dirOf(id) == dir {
-			return pluginWebURL(dir, file)
+			return pluginWebURL(dir, file), id
 		}
 	}
-	return ""
+	return "", ""
 }
 
 func runtimeGOOS() string { return runtime.GOOS }

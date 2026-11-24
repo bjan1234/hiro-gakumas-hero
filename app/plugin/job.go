@@ -45,8 +45,10 @@ type JobView struct {
 	Events []JobEvent
 	// Next 是下次 run events 的 --since。
 	Next int
-	// Loaded 是读到过一次事件（结束了的任务读到一次就不再查）。
+	// Loaded 是读到过一次事件。
 	Loaded bool
+	// Final 是任务结束之后成功读过一次事件（最后几步、成绩都拿到了），之后不再查。
+	Final bool
 }
 
 // Copy 是一份独立的拷贝（后台线程读用）。

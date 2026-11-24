@@ -85,6 +85,9 @@ func New() *plugin.Plugin {
 				if json.Unmarshal(b, &p) != nil {
 					return
 				}
+				if s.plan != nil && (p.Created != s.plan.Created || p.Idol.ID != s.plan.Idol.ID) {
+					s.plan, s.err = nil, "" // 对话里出了新方案：面板下次重新读
+				}
 				kit.Card(c).MaxWidth(620).Children(func() {
 					ui.Text(c, "开局编成方案").FontSize(kit.FSmall).FontWeight(600).TextColor(kit.Ink)
 					view(c, h, &p, true)
@@ -214,6 +217,10 @@ func (s *state) panel(c *ui.Context, h plugin.Host) {
 	}
 	if s.err != "" {
 		kit.Note(c, s.err)
+	}
+	if kit.Ghost(c, "刷新").Key("plan-reload").Clicked() {
+		s.err = ""
+		s.load(h)
 	}
 	if s.plan != nil {
 		view(c, h, s.plan, false)

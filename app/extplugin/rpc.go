@@ -16,8 +16,8 @@ import (
 // IdleTimeout 是插件进程多久没请求就关掉（下次用时再起）。
 const IdleTimeout = 60 * time.Second
 
-// CallTimeout 是一次请求最多等多久。
-const CallTimeout = 15 * time.Second
+// CallTimeout 是一次请求最多等多久（包括往插件 stdin 写）。测试里可以改短。
+var CallTimeout = 15 * time.Second
 
 type rpcMsg struct {
 	JSONRPC string          `json:"jsonrpc"`
@@ -88,8 +88,13 @@ func (c *client) startLocked() error {
 	c.cmd, c.stdin = cmd, in
 	c.gen++
 	gen := c.gen
-	go c.read(out, gen)
+	readDone := make(chan struct{})
 	go func() {
+		c.read(out, gen)
+		close(readDone)
+	}()
+	go func() {
+		<-readDone // 先把 stdout 读完（插件可能写完回复就退出），再 Wait：Wait 会关掉管道
 		_ = cmd.Wait()
 		c.mu.Lock()
 		if c.gen == gen {
@@ -191,8 +196,26 @@ func (c *client) Call(ctx context.Context, method string, params, out any) error
 	c.waiting[id] = ch
 	c.last = time.Now()
 	c.mu.Unlock()
-	if err := c.write(rpcMsg{ID: id, Method: method, Params: p}); err != nil {
-		return err
+	drop := func() {
+		c.mu.Lock()
+		delete(c.waiting, id)
+		c.mu.Unlock()
+	}
+	// 写也要受超时管：插件不读 stdin 时写会卡住，超时就把这个进程退掉（下次重起一个干净的）
+	wrote := make(chan error, 1)
+	go func() { wrote <- c.write(rpcMsg{ID: id, Method: method, Params: p}) }()
+	select {
+	case err := <-wrote:
+		if err != nil {
+			drop()
+			return err
+		}
+	case <-ctx.Done():
+		drop()
+		c.mu.Lock()
+		c.killLocked()
+		c.mu.Unlock()
+		return fmt.Errorf("插件 %s 没在 %v 内收下请求", method, CallTimeout)
 	}
 	select {
 	case m := <-ch:
@@ -207,9 +230,7 @@ func (c *client) Call(ctx context.Context, method string, params, out any) error
 		}
 		return nil
 	case <-ctx.Done():
-		c.mu.Lock()
-		delete(c.waiting, id)
-		c.mu.Unlock()
+		drop()
 		return fmt.Errorf("插件 %s 没在 %v 内回应", method, CallTimeout)
 	}
 }

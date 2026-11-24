@@ -42,7 +42,7 @@ type Manager struct {
 func (m *Manager) dir() string           { return filepath.Join(m.Home, "plugins") }
 func (m *Manager) approvalsPath() string { return filepath.Join(m.dir(), "approved.json") }
 
-// Load 读出已装的插件，同意过（且清单没变出同意范围）的注册进注册表。
+// Load 读出已装的插件，同意过（且清单没变出同意范围）的注册进注册表；不再符合的停掉、注销；没变的不重启。
 func (m *Manager) Load() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -53,9 +53,10 @@ func (m *Manager) Load() {
 	if b, err := os.ReadFile(m.approvalsPath()); err == nil {
 		_ = json.Unmarshal(b, &m.approvals)
 	}
+	eligible := map[string]bool{}
 	entries, _ := os.ReadDir(m.dir())
 	for _, en := range entries {
-		if !en.IsDir() {
+		if !en.IsDir() || strings.HasPrefix(en.Name(), ".") {
 			continue
 		}
 		man, err := LoadManifest(filepath.Join(m.dir(), en.Name()))
@@ -65,18 +66,42 @@ func (m *Manager) Load() {
 		}
 		m.installed[man.ID] = man
 		if ap, ok := m.approvals[man.ID]; ok && ap.Covers(man) {
+			eligible[man.ID] = true
 			m.enableLocked(man, ap)
+		}
+	}
+	for id, e := range m.exts {
+		if !eligible[id] {
+			e.Close()
+			delete(m.exts, id)
+			m.Reg.Remove(id)
 		}
 	}
 }
 
+// enableLocked 启用一个插件；已经在跑、清单和同意都没变的就留着（不打断它手上的请求）。
 func (m *Manager) enableLocked(man *Manifest, ap Approval) {
 	if old := m.exts[man.ID]; old != nil {
+		if sameManifest(old.m, man) && sameApproval(old.ap, ap) {
+			return
+		}
 		old.Close()
 	}
 	e := New(man, ap, m.Home)
 	m.exts[man.ID] = e
 	m.Reg.Add(e.Plugin())
+}
+
+func sameManifest(a, b *Manifest) bool {
+	ja, _ := json.Marshal(a)
+	jb, _ := json.Marshal(b)
+	return a.Dir == b.Dir && string(ja) == string(jb)
+}
+
+func sameApproval(a, b Approval) bool {
+	ja, _ := json.Marshal(a)
+	jb, _ := json.Marshal(b)
+	return string(ja) == string(jb)
 }
 
 func (m *Manager) saveApprovals() error {
@@ -87,30 +112,74 @@ func (m *Manager) saveApprovals() error {
 	return os.WriteFile(m.approvalsPath(), b, 0o600)
 }
 
-// Install 从本机文件夹装一个插件：校验清单、复制到 HIRO_HOME/plugins/<id>（覆盖旧版）。装上后要同意才启用。
+// Install 从本机文件夹装一个插件：校验清单、先复制到临时目录再校验一遍，没问题才换掉旧版。
+// 装上后（包括同一个 id 换了新包）都要重新同意才启用。
 func (m *Manager) Install(src string) (*Manifest, error) {
-	man, err := LoadManifest(src)
+	real, err := filepath.EvalSymlinks(src)
+	if err != nil {
+		return nil, fmt.Errorf("找不到插件文件夹：%w", err)
+	}
+	if abs, err := filepath.Abs(real); err == nil {
+		real = abs
+	}
+	plugins, _ := filepath.Abs(m.dir())
+	if rp, err := filepath.EvalSymlinks(plugins); err == nil {
+		plugins = rp
+	}
+	if rel, err := filepath.Rel(plugins, real); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil, fmt.Errorf("不能从已安装插件的目录里安装：%s", src)
+	}
+	man, err := LoadManifest(real)
 	if err != nil {
 		return nil, err
 	}
+	if err := os.MkdirAll(m.dir(), 0o755); err != nil {
+		return nil, err
+	}
 	dst := filepath.Join(m.dir(), man.ID)
+	stage := filepath.Join(m.dir(), "."+man.ID+".installing")
+	_ = os.RemoveAll(stage)
+	if err := copyDir(real, stage); err != nil {
+		_ = os.RemoveAll(stage)
+		return nil, fmt.Errorf("复制插件失败：%w", err)
+	}
+	if staged, err := LoadManifest(stage); err != nil || staged.ID != man.ID {
+		_ = os.RemoveAll(stage)
+		return nil, fmt.Errorf("复制过去的插件不完整：%v", err)
+	}
 	m.mu.Lock()
 	if e := m.exts[man.ID]; e != nil {
 		e.Close()
 		delete(m.exts, man.ID)
 		m.Reg.Remove(man.ID)
 	}
+	delete(m.approvals, man.ID) // 新包要重新同意
+	saveErr := m.saveApprovals()
 	m.mu.Unlock()
-	if err := os.RemoveAll(dst); err != nil {
+	if saveErr != nil {
+		_ = os.RemoveAll(stage)
+		return nil, saveErr
+	}
+	old := filepath.Join(m.dir(), "."+man.ID+".old")
+	_ = os.RemoveAll(old)
+	if _, err := os.Stat(dst); err == nil {
+		if err := os.Rename(dst, old); err != nil {
+			_ = os.RemoveAll(stage)
+			return nil, err
+		}
+	}
+	if err := os.Rename(stage, dst); err != nil {
+		_ = os.Rename(old, dst)
 		return nil, err
 	}
-	if err := copyDir(man.Dir, dst); err != nil {
-		return nil, fmt.Errorf("复制插件失败：%w", err)
-	}
+	_ = os.RemoveAll(old)
 	m.Load()
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.installed[man.ID], nil
+	if got := m.installed[man.ID]; got != nil {
+		return got, nil
+	}
+	return nil, fmt.Errorf("装完读不到插件 %s 的清单", man.ID)
 }
 
 // copyDir 复制目录（跳过符号链接，免得把目录外的东西带进来）。
@@ -165,7 +234,7 @@ func (m *Manager) Approve(id string) error {
 	return nil
 }
 
-// Remove 卸载：停掉、从注册表去掉、删目录和同意记录。
+// Remove 卸载：先删目录（删不了就原样报错，列表里还在，可以再点），再停掉、注销、去掉同意记录。
 func (m *Manager) Remove(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -174,12 +243,12 @@ func (m *Manager) Remove(id string) error {
 		delete(m.exts, id)
 	}
 	m.Reg.Remove(id)
-	delete(m.approvals, id)
-	delete(m.installed, id)
-	if err := m.saveApprovals(); err != nil {
-		return err
+	if err := os.RemoveAll(filepath.Join(m.dir(), id)); err != nil {
+		return fmt.Errorf("删不掉插件目录：%w", err)
 	}
-	return os.RemoveAll(filepath.Join(m.dir(), id))
+	delete(m.installed, id)
+	delete(m.approvals, id)
+	return m.saveApprovals()
 }
 
 // Dir 是已启用插件的目录（网页面板用）；没启用的为 ""。
@@ -231,6 +300,21 @@ func (m *Manager) AgentTools() []AgentTool {
 					return e.CallTool(ctx, h, name, args)
 				},
 			})
+		}
+	}
+	return uniqueTools(out)
+}
+
+// uniqueTools 去掉撞名的工具（两个插件拼出同一个工具名时都不给，免得模型选错）。
+func uniqueTools(in []AgentTool) []AgentTool {
+	n := map[string]int{}
+	for _, t := range in {
+		n[t.Name]++
+	}
+	var out []AgentTool
+	for _, t := range in {
+		if n[t.Name] == 1 {
+			out = append(out, t)
 		}
 	}
 	return out

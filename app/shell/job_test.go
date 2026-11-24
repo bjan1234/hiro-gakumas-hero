@@ -180,3 +180,21 @@ func TestNoPinnedCardWhenRunCardInThread(t *testing.T) {
 		t.Error("对话里有这局的对局卡时不钉顶")
 	}
 }
+
+// CR#12：任务结束那一轮读事件失败了，下一轮还要再读（最后几步、成绩不能丢）。
+func TestFinalEventsRetriedAfterFailure(t *testing.T) {
+	call := liveCall("running")
+	a, run := newTestApp(newMem(), call, nil, nil)
+	a.PollJobs()
+	run.Drain()
+	call.resp["run status"] = ok(`{"current":null,"recent":[{"id":"j7","kind":"hajime","state":"done","started_at":1}]}`)
+	call.resp["run events"] = hiroapi.Result{OK: false, Error: &hiroapi.CliError{Code: "x", Message: "暂时读不到"}}
+	a.PollJobs()
+	run.Drain()
+	call.resp["run events"] = ok(`{"state":"done","events":[{"seq":1,"t":3,"type":"report","exams":[{"label":"最终","score":100}]}]}`)
+	a.PollJobs()
+	run.Drain()
+	if len(a.Job("j7").Report()) == 0 {
+		t.Error("结束后的成绩没再读到")
+	}
+}

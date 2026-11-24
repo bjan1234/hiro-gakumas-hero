@@ -61,11 +61,17 @@ func loadThreads(store ThreadStore) []*Thread {
 		if json.Unmarshal(raw, &t) != nil || t.ID == "" {
 			continue
 		}
+		msgs := t.Messages[:0]
 		for _, m := range t.Messages {
+			if m == nil { // 坏掉的存档（null 消息）：跳过这条，别让程序起不来
+				continue
+			}
 			if m.Cards == nil {
 				m.Cards = []plugin.Card{}
 			}
+			msgs = append(msgs, m)
 		}
+		t.Messages = msgs
 		out = append(out, &t)
 	}
 	return out

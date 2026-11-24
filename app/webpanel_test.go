@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -52,11 +53,28 @@ func TestPluginFileURLFindsPluginDir(t *testing.T) {
 		}
 		return ""
 	}
-	got := pluginFileURL(dirOf, filepath.Join(dir, "web", "report.html"))
-	if got != webURL("hiroplug", "demo/web/report.html", runtimeGOOS()) {
-		t.Errorf("地址 %q", got)
+	got, owner := pluginFileURL(dirOf, filepath.Join(dir, "web", "report.html"))
+	if got != webURL("hiroplug", "demo/web/report.html", runtimeGOOS()) || owner != "demo" {
+		t.Errorf("地址 %q %q", got, owner)
 	}
-	if pluginFileURL(dirOf, "/etc/passwd") != "" {
+	if u, _ := pluginFileURL(dirOf, "/etc/passwd"); u != "" {
 		t.Error("插件目录外的文件不给地址")
+	}
+}
+
+// CR#14：插件 A 的网页不能读插件 B 目录里的文件。
+func TestPluginFilesOnlyForOwnPage(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "r.html"), []byte("b"), 0o644)
+	h := pluginFilesFor(func(id string) string {
+		if id == "b" {
+			return dir
+		}
+		return ""
+	}, func(*http.Request) string { return "a" })
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "hiroplug://localhost/b/r.html", nil))
+	if rec.Code != 404 {
+		t.Errorf("A 的页面读到了 B 的文件：%d", rec.Code)
 	}
 }
