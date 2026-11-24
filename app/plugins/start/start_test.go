@@ -62,7 +62,7 @@ func TestExplainOtherKinds(t *testing.T) {
 
 func TestPanelStartsWithChosenIdol(t *testing.T) {
 	h, p := host(), New()
-	tt := ui.NewTester(func(c *ui.Context) { p.Panel(c, h, "") }, 560, 760)
+	tt := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "") }), 560, 760)
 	if err := tt.Click("初"); err != nil {
 		t.Fatal(err)
 	}

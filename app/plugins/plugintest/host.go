@@ -4,9 +4,12 @@ package plugintest
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/egoist/mygo/ui"
 
 	"github.com/matto49/hiro-gakumas-hero/app/hiroapi"
 	"github.com/matto49/hiro-gakumas-hero/app/plugin"
@@ -86,3 +89,21 @@ func (h *Host) Home() string    { return h.HomeDir }
 func (h *Host) Now() time.Time  { return h.At }
 
 var _ plugin.Host = (*Host)(nil)
+
+// Panel 把插件面板包成和宿主里一样的竖排容器（测试用）。
+func PanelView(f func(c *ui.Context)) func(c *ui.Context) {
+	return func(c *ui.Context) {
+		ui.Column(c).Fill().Padding(14, 16).Gap(12).Children(func() { f(c) })
+	}
+}
+
+// ClickButton 按读屏看到的按钮名字点（名字和别的文字重了时用，比 Tester.Click 准）。
+func ClickButton(tt *ui.Tester, name string) error {
+	a, ok := tt.AccessByRole(ui.RoleButton, name)
+	if !ok {
+		return fmt.Errorf("没有叫 %q 的按钮", name)
+	}
+	b := a.Bounds
+	tt.ClickAt(b.X+b.W/2, b.Y+b.H/2)
+	return nil
+}

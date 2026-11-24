@@ -53,7 +53,7 @@ func TestRunCardStreamsSteps(t *testing.T) {
 
 func TestPanelHasFrameControlsButNoSteps(t *testing.T) {
 	h, p := liveHost(), New()
-	tt := ui.NewTester(func(c *ui.Context) { p.Panel(c, h, "") }, 520, 760)
+	tt := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "") }), 520, 760)
 	if tt.HasText("声乐课「レッスン」：声乐离上限还差 210") {
 		t.Error("右侧面板不放步骤")
 	}
