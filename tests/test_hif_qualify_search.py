@@ -1,7 +1,5 @@
 """H.I.F 选拔考试走 GNRPA（HIRO_EXAM_SEARCH_HIF，缺省关）：开关、场次换算、倍率要三项都读到。"""
 
-from types import SimpleNamespace as NS
-
 from hiro.bench_bridge import advisor as A
 
 
