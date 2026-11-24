@@ -25,6 +25,14 @@ type JobEvent struct {
 	Source string   `json:"source,omitempty"`
 	Frame  string   `json:"frame,omitempty"`
 	Notes  []string `json:"notes,omitempty"`
+	// Exams 是 report 事件里每场考试的分数。
+	Exams []ExamScore `json:"exams,omitempty"`
+}
+
+// ExamScore 是一场考试的成绩。
+type ExamScore struct {
+	Label string   `json:"label"`
+	Score *float64 `json:"score"`
 }
 
 // LiveStates 是还活着的任务状态。
@@ -61,4 +69,14 @@ func (v *JobView) LastFrame() string {
 		}
 	}
 	return ""
+}
+
+// Report 是最近一条 report 事件里的成绩（没有为 nil）。
+func (v *JobView) Report() []ExamScore {
+	for i := len(v.Events) - 1; i >= 0; i-- {
+		if v.Events[i].Type == "report" && len(v.Events[i].Exams) > 0 {
+			return v.Events[i].Exams
+		}
+	}
+	return nil
 }

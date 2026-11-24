@@ -1,0 +1,407 @@
+// Package cockpit 是内置的「游戏运行现状」插件（原驾驶舱）：对话里的对局卡和流式步骤、钉顶对局卡、
+// 右侧面板的实时画面和控制（设计稿 §4、§6.3）。
+package cockpit
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/egoist/mygo/ui"
+
+	"github.com/matto49/hiro-gakumas-hero/app/kit"
+	"github.com/matto49/hiro-gakumas-hero/app/labels"
+	"github.com/matto49/hiro-gakumas-hero/app/plugin"
+)
+
+// MaxStreamSteps 是对话里对局卡最多列多少步（更早的折叠成一行）。
+const MaxStreamSteps = 30
+
+type state struct {
+	busy    map[string]bool // 正在发控制命令的任务
+	review  map[string]string
+	reviewE map[string]string
+}
+
+// New 建游戏运行现状插件。
+func New() *plugin.Plugin {
+	s := &state{busy: map[string]bool{}, review: map[string]string{}, reviewE: map[string]string{}}
+	return &plugin.Plugin{
+		ID:    "cockpit",
+		Name:  "游戏运行现状",
+		Icon:  kit.IcGauge,
+		Tools: []string{"run events", "run review", "run pause", "run resume", "run stop", "run takeover"},
+		Cards: map[string]plugin.CardView{
+			"run":        func(c *ui.Context, h plugin.Host, card plugin.Card) { s.runCard(c, h, jobID(card)) },
+			"run-pinned": func(c *ui.Context, h plugin.Host, card plugin.Card) { s.pinned(c, h, jobID(card)) },
+		},
+		Panel:        func(c *ui.Context, h plugin.Host, route string) { s.panel(c, h, route) },
+		ContextTitle: "游戏运行现状",
+		Context:      func(ctx context.Context, h plugin.Host) string { return s.context(ctx, h) },
+	}
+}
+
+func jobID(card plugin.Card) string {
+	id, _ := card["jobId"].(string)
+	return id
+}
+
+func title(v *plugin.JobView, id string) string {
+	if v != nil && v.Job != nil {
+		if v.Job.Summary != "" {
+			return v.Job.Summary
+		}
+		return labels.Kind(v.Job.Kind)
+	}
+	return "对局 " + id
+}
+
+func elapsed(h plugin.Host, v *plugin.JobView) string {
+	if v == nil || v.Job == nil || v.Job.StartedAt == 0 {
+		return ""
+	}
+	end := float64(h.Now().Unix())
+	if v.Job.EndedAt != nil {
+		end = *v.Job.EndedAt
+	}
+	return labels.Elapsed(v.Job.StartedAt, end)
+}
+
+func stats(h plugin.Host, v *plugin.JobView) string {
+	parts := []string{fmt.Sprintf("%d 步", len(v.Steps()))}
+	if e := elapsed(h, v); e != "" {
+		if v.Live() {
+			parts = append(parts, "已打 "+e)
+		} else {
+			parts = append(parts, "用时 "+e)
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+// ---- 对话里的对局卡：摘要 + 流式步骤 ----
+
+func (s *state) runCard(c *ui.Context, h plugin.Host, id string) {
+	v := h.Job(id)
+	steps := v.Steps()
+	ui.Column(c).MaxWidth(640).Radius(kit.R16).Background(kit.CardBg).Border(kit.Hair, kit.LineStr).Clip().Children(func() {
+		head := ui.ButtonBase(c).Key("run-head-"+id).Label(title(v, id)).Justify(ui.Start).AlignItems(ui.Center).Gap(10).Padding(10, 12).
+			BorderColor(kit.Line).BorderWidth(0, 0, kit.Hair, 0)
+		if head.Hovered() {
+			head = head.Background(kit.Surface2)
+		}
+		if head.Children(func() {
+			kit.Thumb(c, v.LastFrame(), 27, 48, 5)
+			ui.Column(c).Gap(3).Shrink(1).Children(func() {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, title(v, id)).FontSize(kit.FSmall).FontWeight(600).TextColor(kit.Ink)
+					kit.StatePill(c, v.State)
+				})
+				ui.Text(c, stats(h, v)).FontSize(kit.FNote).TextColor(kit.Ink3)
+			})
+			ui.Spacer(c)
+			ui.Text(c, "看画面 ›").FontSize(kit.FNote).TextColor(kit.Ink3)
+		}).Clicked() {
+			h.OpenPanel("cockpit", "")
+		}
+		ui.Column(c).Padding(4, 8, 8, 8).Children(func() {
+			if len(steps) == 0 {
+				msg := "还没有步骤"
+				if v.Live() {
+					msg = "正在连游戏、开局…"
+				}
+				ui.Text(c, msg).FontSize(kit.FNote).TextColor(kit.Ink3).Padding(8, 6)
+				return
+			}
+			if n := len(steps) - MaxStreamSteps; n > 0 {
+				ui.Text(c, fmt.Sprintf("前面还有 %d 步（完整的在复盘里）", n)).FontSize(kit.FNote).TextColor(kit.Ink3).Padding(6, 6)
+				steps = steps[n:]
+			}
+			for i, e := range steps {
+				stepRow(c, e, i == len(steps)-1 && v.Live())
+			}
+		})
+	})
+}
+
+func stepRow(c *ui.Context, e plugin.JobEvent, now bool) {
+	r := ui.Row(c).Key(fmt.Sprintf("step-%d", e.Seq)).Gap(10).Padding(8, 6).Radius(kit.R8)
+	if now {
+		r = r.Background(kit.BrandT)
+	}
+	r.Children(func() {
+		t := labels.Clock(e.T)
+		if now {
+			t = "现在"
+		}
+		ui.Text(c, t).FontSize(11.5).TextColor(kit.Ink3).Width(36).Shrink(0)
+		ui.Column(c).Gap(3).Shrink(1).Children(func() {
+			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, labels.Page(e.Page)).FontSize(12.5).FontWeight(600).TextColor(kit.Ink)
+				if a := labels.Action(e.Action); a != "" && a != labels.Page(e.Page) {
+					ui.Text(c, "· "+a).FontSize(12).TextColor(kit.Ink3)
+				}
+				kit.SourceTag(c, e.Source)
+			})
+			text := e.Text
+			if text == "" {
+				text = "（没写理由）"
+			}
+			ui.Text(c, text).FontSize(kit.FNote).TextColor(kit.Ink2).Wrap()
+		})
+	})
+}
+
+// ---- 钉顶对局卡 ----
+
+func (s *state) pinned(c *ui.Context, h plugin.Host, id string) {
+	v := h.Job(id)
+	steps := v.Steps()
+	b := ui.ButtonBase(c).Key("pinned-"+id).Label(title(v, id)).Justify(ui.Start).AlignItems(ui.Center).Gap(12).Padding(10, 12).
+		Radius(kit.R16-2).Background(kit.CardBg).Border(kit.Hair, kit.LineStr).Shadow(0, 4, 16, 0, ui.RGBA(120, 60, 10, 0.06))
+	if b.Children(func() {
+		kit.Thumb(c, v.LastFrame(), 30, 54, 5)
+		ui.Column(c).Gap(4).Grow(1).Shrink(1).Children(func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				ui.Box(c).Size(7, 7).Radius(4).Background(kit.Brand)
+				ui.Text(c, title(v, id)).FontSize(kit.FSmall).FontWeight(600).TextColor(kit.Ink)
+				ui.Text(c, stats(h, v)).FontSize(kit.FNote).TextColor(kit.Ink3)
+			})
+			last := "正在连游戏、开局…"
+			if n := len(steps); n > 0 {
+				last = "刚才：" + labels.Page(steps[n-1].Page) + "，" + steps[n-1].Text
+			}
+			ui.Text(c, last).FontSize(12.5).TextColor(kit.Ink2).MaxLines(1).Ellipsis("…")
+		})
+		s.controls(c, h, v, id, true)
+	}).Clicked() {
+		h.OpenPanel("cockpit", "")
+	}
+}
+
+// controls 是暂停 / 接手 / 继续 / 停止；compact 时只有图标。
+func (s *state) controls(c *ui.Context, h plugin.Host, v *plugin.JobView, id string, compact bool) {
+	if !v.Live() {
+		return
+	}
+	pausable := v.Job == nil || v.Job.Pausable == nil || *v.Job.Pausable
+	type btn struct {
+		action, label string
+		icon          *ui.SVG
+	}
+	var bs []btn
+	switch v.State {
+	case "running":
+		if pausable {
+			bs = append(bs, btn{"pause", "暂停", kit.IcPause})
+			if !compact {
+				bs = append(bs, btn{"takeover", "我来接手", nil})
+			}
+		}
+	case "paused", "takeover":
+		bs = append(bs, btn{"resume", "继续自动打", kit.IcPlay})
+	}
+	bs = append(bs, btn{"stop", "停止", kit.IcStop})
+	ui.Row(c).Gap(6).Wrap().Children(func() {
+		for _, b := range bs {
+			var el ui.Element
+			if compact && b.icon != nil {
+				el = kit.IconButton(c, b.icon, b.label)
+			} else if b.action == "resume" {
+				el = kit.Primary(c, b.label)
+			} else {
+				el = kit.Secondary(c, b.label)
+			}
+			if el.Key("ctl-" + id + "-" + b.action).Disabled(s.busy[id]).Clicked() {
+				s.control(h, id, b.action)
+			}
+		}
+	})
+}
+
+func (s *state) control(h plugin.Host, id, action string) {
+	s.busy[id] = true
+	h.Go(func() func() {
+		_ = h.Call(context.Background(), []string{"run", action, "--job", id})
+		return func() { delete(s.busy, id) }
+	})
+}
+
+// ---- 右侧面板：实时画面、控制、几行数、成绩（不放步骤） ----
+
+func (s *state) panel(c *ui.Context, h plugin.Host, route string) {
+	if strings.HasPrefix(route, "review:") {
+		s.reviewPanel(c, h, strings.TrimPrefix(route, "review:"))
+		return
+	}
+	id := h.LiveJob()
+	if id == "" {
+		kit.Note(c, "现在没有在跑的对局。在对话里说「帮我用某某打一把初」就能开一局。")
+		return
+	}
+	v := h.Job(id)
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, title(v, id)).FontSize(15).FontWeight(650).TextColor(kit.Ink)
+		kit.StatePill(c, v.State)
+	})
+	ui.Row(c).Gap(16).AlignItems(ui.Start).Children(func() {
+		frame(c, v.LastFrame(), v.Live(), 190)
+		ui.Column(c).Gap(12).Grow(1).Children(func() {
+			ui.Column(c).Gap(6).Children(func() {
+				kv := func(k, val string) {
+					ui.Row(c).Children(func() {
+						ui.Text(c, k).FontSize(kit.FNote).TextColor(kit.Ink3)
+						ui.Spacer(c)
+						ui.Text(c, val).FontSize(kit.FNote).FontWeight(600).TextColor(kit.Ink)
+					})
+				}
+				kv("步数", fmt.Sprint(len(v.Steps())))
+				if e := elapsed(h, v); e != "" {
+					kv("已打", e)
+				}
+				if st := v.Steps(); len(st) > 0 {
+					kv("现在", labels.Page(st[len(st)-1].Page))
+				}
+			})
+			s.controls(c, h, v, id, false)
+			if v.State == "takeover" {
+				kit.Note(c, "自动操作已停下。你在游戏里点完，按「继续自动打」，初星助手会从当前画面接着打。")
+			}
+			kit.Note(c, "每一步做了什么、为什么，在左边对话里那张对局卡下面。")
+		})
+	})
+	if exams := v.Report(); len(exams) > 0 {
+		kit.Section(c, "成绩")
+		scoreStrip(c, exams)
+		s.reviewButton(c, h, id)
+	}
+}
+
+func frame(c *ui.Context, path string, live bool, w float32) {
+	hgt := w * 16 / 9
+	if b := kit.Bitmap(path); b != nil {
+		ui.Image(c, b).Size(w, hgt).Fit(ui.Cover).Radius(10).Shrink(0)
+		return
+	}
+	msg := "没有画面"
+	if live {
+		msg = "等第一张画面"
+	}
+	ui.Column(c).Size(w, hgt).Radius(10).Background(kit.Surface2).Center().Shrink(0).Children(func() {
+		ui.Text(c, msg).FontSize(kit.FNote).TextColor(kit.Ink3)
+	})
+}
+
+func scoreStrip(c *ui.Context, exams []plugin.ExamScore) {
+	ui.Row(c).Gap(24).Wrap().AlignItems(ui.End).Children(func() {
+		for i, e := range exams {
+			if e.Score == nil {
+				continue
+			}
+			label := e.Label
+			if j := strings.Index(label, "#"); j >= 0 {
+				label = label[:j]
+			}
+			if label == "" {
+				label = fmt.Sprintf("第 %d 场", i+1)
+			}
+			ui.Column(c).Gap(2).Children(func() {
+				ui.Text(c, label).FontSize(11).TextColor(kit.Ink3)
+				size, col := float32(20), kit.Ink
+				if i == len(exams)-1 {
+					size, col = 28, kit.WarnInk
+				}
+				ui.Text(c, thousands(int64(*e.Score))).FontSize(size).FontWeight(700).Italic().TextColor(col)
+			})
+		}
+	})
+}
+
+func thousands(n int64) string {
+	s := fmt.Sprint(n)
+	var b strings.Builder
+	for i, r := range s {
+		if i > 0 && (len(s)-i)%3 == 0 && r != '-' {
+			b.WriteByte(',')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+func (s *state) reviewButton(c *ui.Context, h plugin.Host, id string) {
+	label := "看复盘"
+	if s.busy["review-"+id] {
+		label = "生成中…"
+	}
+	if kit.Secondary(c, label).Key("review-" + id).Disabled(s.busy["review-"+id]).Clicked() {
+		s.busy["review-"+id] = true
+		h.Go(func() func() {
+			var d struct {
+				Path string `json:"path"`
+			}
+			err := h.Call(context.Background(), []string{"run", "review", "--job", id}).Decode(&d)
+			return func() {
+				delete(s.busy, "review-"+id)
+				if err != nil {
+					s.reviewE[id] = err.Error()
+					return
+				}
+				s.review[id] = d.Path
+				h.OpenPanel("cockpit", "review:"+id)
+			}
+		})
+	}
+	if e := s.reviewE[id]; e != "" {
+		ui.Text(c, e).FontSize(kit.FNote).TextColor(kit.Bad)
+	}
+}
+
+// reviewPanel 是复盘页；网页视图见 kit.WebPanel（任务 16），这里先给本机路径。
+func (s *state) reviewPanel(c *ui.Context, h plugin.Host, id string) {
+	if ReviewView != nil {
+		ReviewView(c, h, s.review[id])
+		return
+	}
+	kit.Note(c, "复盘页在："+s.review[id])
+}
+
+// ReviewView 画复盘页（main 里接上网页视图）。
+var ReviewView func(c *ui.Context, h plugin.Host, path string)
+
+// ---- 上下文 ----
+
+func (s *state) context(ctx context.Context, h plugin.Host) string {
+	var b strings.Builder
+	if id := h.LiveJob(); id != "" {
+		v := h.Job(id)
+		b.WriteString("正在跑：" + title(v, id) + "（" + labels.State(v.State) + "，" + stats(h, v) + "）\n")
+		st := v.Steps()
+		if n := len(st); n > 0 {
+			b.WriteString("最近几步：\n")
+			for _, e := range st[max(0, n-5):] {
+				b.WriteString("- " + labels.Page(e.Page) + "（" + labels.Source(e.Source) + "）：" + e.Text + "\n")
+			}
+		}
+	} else {
+		b.WriteString("现在没有在跑的对局。\n")
+	}
+	var stt struct {
+		Recent []plugin.Job `json:"recent"`
+	}
+	if h.Call(ctx, []string{"run", "status"}).Decode(&stt) == nil && len(stt.Recent) > 0 {
+		b.WriteString("最近几局：\n")
+		for i, j := range stt.Recent {
+			if i >= 3 {
+				break
+			}
+			name := j.Summary
+			if name == "" {
+				name = labels.Kind(j.Kind)
+			}
+			b.WriteString("- " + time.Unix(int64(j.StartedAt), 0).Format("01-02 15:04") + " " + name + " · " + labels.State(j.State) + "\n")
+		}
+	}
+	return b.String()
+}
