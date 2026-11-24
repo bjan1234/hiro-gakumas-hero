@@ -248,3 +248,40 @@ def test_render_index_keeps_hand_built_cache_without_stamp(fresh_render):
 
     _fake_build([])(card_icon_render.CACHE)  # 无 stamp
     assert memory_icons._render_index() is not None and calls == []
+
+
+@pytest.mark.synthetic
+def test_render_index_rebuilds_when_png_overwritten(fresh_render):
+    """#59 CodeRabbit：素材更新只覆盖已有 png（文件数不变、目录修改时间不变）也要重建。"""
+    import os
+
+    calls, cards = fresh_render
+    memory_icons._render_index()
+    st = os.stat(cards)
+    (cards / "a.png").write_bytes(b"xyz")  # 同名覆盖：大小 / 修改时间变了
+    os.utime(cards / "a.png", (st.st_atime + 100, st.st_mtime + 100))
+    os.utime(cards, (st.st_atime, st.st_mtime))  # 目录时间改回去，模拟只覆盖文件
+    memory_icons._render_index.cache_clear()
+    memory_icons._render_index()
+    assert len(calls) == 2
+
+
+@pytest.mark.synthetic
+def test_art_index_stamp_changes_when_png_overwritten(tmp_path, monkeypatch):
+    """插画退路的缓存指纹同理。"""
+    import os
+
+    from hiro.vision import assets
+
+    cards = tmp_path / "cards"
+    cards.mkdir()
+    for n in ("img_general_skillcard_act-1_001", "img_general_skillcard_men-1_002"):
+        cv2.imwrite(str(cards / f"{n}.png"), np.full((40, 40, 3), 120, np.uint8))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(assets, "card_art_dir", lambda: cards)
+    first = memory_icons._art_stamp(str(cards))
+    st = os.stat(cards)
+    cv2.imwrite(str(cards / "img_general_skillcard_act-1_001.png"), np.full((40, 40, 3), 30, np.uint8))
+    os.utime(cards / "img_general_skillcard_act-1_001.png", (st.st_atime + 100, st.st_mtime + 100))
+    os.utime(cards, (st.st_atime, st.st_mtime))
+    assert memory_icons._art_stamp(str(cards)) != first

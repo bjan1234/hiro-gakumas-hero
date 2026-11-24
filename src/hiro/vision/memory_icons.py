@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import re
 from functools import lru_cache
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -64,6 +65,13 @@ def _render_index() -> tuple[list[str], list[str], np.ndarray, np.ndarray] | Non
     return names, [card_key(n) or n for n in names], feats, mask
 
 
+def _art_stamp(folder: str) -> str:
+    """插画索引缓存的指纹：png 数 + 最新修改时间 + 总大小（覆盖已有卡面也会重建）+ 特征尺寸。"""
+    from hiro.vision.card_icon_render import png_stamp
+
+    return f"{png_stamp(Path(folder), skip='_mid-')}-{SIZE_ART}"
+
+
 @lru_cache(maxsize=1)
 def _art_index() -> tuple[list[str], list[str], np.ndarray]:
     """退路：卡面目录的整张插画（四边不裁），24×24 Lab。按目录文件数 / 修改时间缓存到 cache/。没有卡面目录时为空。"""
@@ -74,7 +82,7 @@ def _art_index() -> tuple[list[str], list[str], np.ndarray]:
         return [], [], np.zeros((0, SIZE_ART * SIZE_ART, 3), np.float32)
     folder = str(root)
     files = sorted(n for n in os.listdir(folder) if n.endswith(".png") and "_mid-" not in n)
-    stamp = f"{len(files)}-{int(os.path.getmtime(folder))}-{SIZE_ART}"
+    stamp = _art_stamp(folder)
     if os.path.exists(ART_CACHE):
         data = np.load(ART_CACHE, allow_pickle=False)
         if str(data["stamp"]) == stamp:
