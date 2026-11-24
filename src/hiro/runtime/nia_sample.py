@@ -417,17 +417,25 @@ def run(args) -> int:
         sampler.save(f.img, PageHit("opening", "opening"))
         return f
 
-    try:
+    def start_new():
         rt.screen.shot = opening_shot
-        if args.command == "new":
-            finish.finish_produce_end(rt, go_home=True)
-            new_produce(rt, args.difficulty, idol=args.idol, support_set=support_set, memory_set=memory_set, plan=kaa_env.ACTIVE_PLAN,
-                        rental_attr=args.main_attr, main_attr=args.main_attr)  # fmt: skip
-        else:
-            finish.resume_produce(rt)
+        finish.finish_produce_end(rt, go_home=True)
+        new_produce(rt, args.difficulty, idol=args.idol, support_set=support_set, memory_set=memory_set, plan=kaa_env.ACTIVE_PLAN,
+                    rental_attr=args.main_attr, main_attr=args.main_attr)  # fmt: skip
+
+    def resume():
+        rt.screen.shot = opening_shot
+        finish.resume_produce(rt)
+
+    def play_until():
         rt.screen.shot = raw_shot
         set_mode(session, mode)
         rt.run(until=lambda: getattr(rt, "finished", False))
+
+    try:
+        # 日切换（日本时间 5 点）：回首页后重新开局 / 续跑（同 H.I.F），不再整段 traceback 退出
+        play.segment_with_date_changes(rt, session, new=start_new if args.command == "new" else None, resume=resume,
+                                       play_until=play_until)  # fmt: skip
         return 0
     except ResumeBlocked as e:
         logger.error("%s", e)
