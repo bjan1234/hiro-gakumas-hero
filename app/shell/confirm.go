@@ -128,6 +128,13 @@ func (a *App) confirmCard(c *ui.Context, m *Message, card plugin.Card) {
 	if !ok {
 		e = plugin.Explained{Title: p.Summary, Rows: [][2]string{{"命令", p.Command}}, Cost: "会操作游戏"}
 	}
+	if from, _ := card["from"].(string); from != "" {
+		src := "来自插件「" + from + "」"
+		if e.Subtitle != "" {
+			src += " · " + e.Subtitle
+		}
+		e.Subtitle = src
+	}
 	busy := a.ui.resolving[p.ID]
 	ui.Column(c).MaxWidth(560).Radius(kit.R20).Background(kit.CardBg).Border(1, kit.Warn).Clip().
 		Shadow(0, 8, 28, 0, ui.RGBA(120, 60, 10, 0.08)).Children(func() {

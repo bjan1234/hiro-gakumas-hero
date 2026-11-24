@@ -249,3 +249,27 @@ func TestCLIAgentPromptUsesContextInsteadOfStatus(t *testing.T) {
 		t.Errorf("有上下文时不再单独查 run status：%v", got)
 	}
 }
+
+func TestAgentCallsPluginTool(t *testing.T) {
+	h, calls := recordingHiro(t)
+	srv, _ := fakeLLM(t,
+		`{"role":"assistant","content":"","tool_calls":[{"id":"c1","type":"function","function":{"name":"plugin_demo_echo","arguments":"{\"text\":\"你好\"}"}}]}`,
+		`{"role":"assistant","content":"插件说了你好。"}`)
+	a := newTestAgent(h, srv.URL)
+	var got map[string]any
+	a.Ext = []ExtTool{{Spec: ToolSpec{Name: "plugin demo echo", ToolName: "plugin_demo_echo", Help: "回声", Agent: true, Args: []ToolArg{{Name: "text", Type: "string", Required: true}}},
+		Run: func(_ context.Context, args map[string]any) Result {
+			got = args
+			return Result{OK: true, Data: json.RawMessage(`{"said":"你好"}`)}
+		}}}
+	r, err := a.Ask(context.Background(), nil, "让插件说你好")
+	if err != nil || r.Text != "插件说了你好。" {
+		t.Fatalf("%v %q", err, r.Text)
+	}
+	if got["text"] != "你好" {
+		t.Errorf("插件工具参数 %v", got)
+	}
+	if len(calls()) != 0 {
+		t.Error("插件工具不该走 hiro 命令行")
+	}
+}

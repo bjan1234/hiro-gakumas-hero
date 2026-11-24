@@ -95,6 +95,8 @@ type Agent struct {
 	Hiro     *Hiro
 	Tools    []ToolSpec
 	Provider ChatProvider
+	// Ext 是外部插件给 agent 的工具（不走 hiro 命令行）。
+	Ext []ExtTool
 	// Extra 是这一轮的「现在的情况」（各插件的上下文），接在系统提示词后面。
 	Extra string
 	// OnTool 在每次调完工具时调用：工具名和一句结果（「3 条」「等你确认」「出错：…」）。
@@ -227,7 +229,14 @@ var infoTitles = map[string]string{
 
 // Ask 跑一轮：history 是之前的对话，text 是玩家这次说的话。
 func (a *Agent) Ask(ctx context.Context, history []Turn, text string) (Reply, error) {
-	defs := toolDefs(a.Tools)
+	specs := append([]ToolSpec{}, a.Tools...)
+	ext := map[string]ExtTool{}
+	for _, t := range a.Ext {
+		t.Spec.Agent = true
+		specs = append(specs, t.Spec)
+		ext[t.Spec.ToolName] = t
+	}
+	defs := toolDefs(specs)
 	byName := map[string]ToolSpec{}
 	for _, t := range a.Tools {
 		if t.Agent {
@@ -258,7 +267,16 @@ func (a *Agent) Ask(ctx context.Context, history []Turn, text string) (Reply, er
 		var pendings []*Pending
 		for _, c := range m.ToolCalls {
 			a.last = nil
-			content, card, pending := a.runTool(ctx, byName, c)
+			var (
+				content string
+				card    map[string]any
+				pending *Pending
+			)
+			if et, ok := ext[c.Function.Name]; ok {
+				content = a.runExt(ctx, et, c.Function.Arguments)
+			} else {
+				content, card, pending = a.runTool(ctx, byName, c)
+			}
 			msgs = append(msgs, chatMessage{Role: "tool", ToolCallID: c.ID, Content: content})
 			if a.OnTool != nil {
 				a.OnTool(c.Function.Name, toolSummary(a.last, content, pending))
@@ -282,6 +300,12 @@ func (a *Agent) Ask(ctx context.Context, history []Turn, text string) (Reply, er
 		}
 	}
 	return Reply{Text: "这件事我绕了好几圈还没办完，换个说法再试一次？", Cards: cards}, nil
+}
+
+// ExtTool 是外部插件的一个工具。
+type ExtTool struct {
+	Spec ToolSpec
+	Run  func(ctx context.Context, args map[string]any) Result
 }
 
 // toolSummary 把工具结果缩成一句给人看的话。
@@ -311,6 +335,24 @@ func toolSummary(r *Result, content string, pending *Pending) string {
 		return fmt.Sprintf("%d 条", len(d.Items))
 	}
 	return "完成"
+}
+
+// runExt 跑外部插件的工具：参数原样交给插件，结果截断后交回模型。
+func (a *Agent) runExt(ctx context.Context, t ExtTool, arguments string) string {
+	var args map[string]any
+	if strings.TrimSpace(arguments) != "" {
+		if err := json.Unmarshal([]byte(arguments), &args); err != nil {
+			return `{"ok":false,"error":{"code":"bad_args","message":"参数不是 JSON"}}`
+		}
+	}
+	r := t.Run(ctx, args)
+	a.last = &r
+	b, _ := json.Marshal(r)
+	content := string(b)
+	if len(content) > maxToolResult {
+		content = content[:maxToolResult] + "…（太长，截断了）"
+	}
+	return content
 }
 
 func (a *Agent) runTool(ctx context.Context, byName map[string]ToolSpec, c toolCall) (string, map[string]any, *Pending) {

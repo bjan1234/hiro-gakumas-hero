@@ -112,3 +112,16 @@ func TestExpiredConfirmShowsExpired(t *testing.T) {
 		t.Error("过期的不该确认")
 	}
 }
+
+func TestConfirmCardSaysWhichPlugin(t *testing.T) {
+	call := &fakeCall{}
+	a, run := newTestApp(newMem(), call, nil, viewReg())
+	card := ConfirmCard(hiroapi.Pending{ID: "p5", Command: "hiro run start daily", Summary: "领日常", ExpiresAt: 4102444800})
+	card["from"] = "示例插件"
+	a.Post("插件「示例插件」想要：领日常", card)
+	run.Drain()
+	tt := ui.NewTester(a.View, 1280, 800)
+	if !tt.HasText("来自插件「示例插件」") {
+		t.Errorf("确认卡没写来源：%q", tt.Texts())
+	}
+}

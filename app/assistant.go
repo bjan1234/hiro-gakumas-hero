@@ -164,6 +164,8 @@ type Assistant struct {
 	Home string   `json:"-"`
 	Keys KeyStore `json:"-"`
 	Hiro *Hiro    `json:"-"`
+	// ExtTools 是外部插件给内置 agent 的工具（命令行 agent 用不了）。
+	ExtTools func() []ExtTool `json:"-"`
 }
 
 func (a *Assistant) settingsPath() string { return filepath.Join(a.Home, "settings.json") }
@@ -324,7 +326,11 @@ func (a *Assistant) AskWith(ctx context.Context, history []Turn, text, extra str
 	if err != nil {
 		return Reply{}, fmt.Errorf("工具层不可用：%w", err)
 	}
-	return (&Agent{Hiro: a.Hiro, Tools: tools, Provider: p, Extra: extra, OnTool: onTool}).Ask(ctx, history, text)
+	var ext []ExtTool
+	if a.ExtTools != nil {
+		ext = a.ExtTools()
+	}
+	return (&Agent{Hiro: a.Hiro, Tools: tools, Provider: p, Extra: extra, OnTool: onTool, Ext: ext}).Ask(ctx, history, text)
 }
 
 // ---------------------------------------------------------------------------- 命令行 agent

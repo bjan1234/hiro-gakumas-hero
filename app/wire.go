@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"os/exec"
+	"strings"
+	"sync"
 
+	"github.com/matto49/hiro-gakumas-hero/app/extplugin"
 	"github.com/matto49/hiro-gakumas-hero/app/hiroapi"
 	"github.com/matto49/hiro-gakumas-hero/app/plugin"
 	"github.com/matto49/hiro-gakumas-hero/app/plugins/cockpit"
@@ -31,14 +34,31 @@ type appDeps struct {
 // buildApp 注册内置插件，搭出主界面。
 func buildApp(d appDeps) *shell.App {
 	reg := &plugin.Registry{}
-	set := settings.New(settingsDeps(d))
+	mgr := &extplugin.Manager{Home: d.Home, Reg: reg, IsRead: readOnly(d.Call)}
+	sd := settingsDeps(d)
+	sd.PluginsPanel = mgr.Panel
+	set := settings.New(sd)
 	reg.Add(start.New())
 	reg.Add(plan.New())
 	reg.Add(library.New())
 	reg.Add(cockpit.New())
 	reg.Add(set.Plugin())
+	mgr.Load() // 同意过的外部插件排在内置插件后面
 	a := d.Assistant
-	return shell.New(shell.Deps{
+	var app *shell.App
+	a.ExtTools = func() []ExtTool {
+		var out []ExtTool
+		for _, t := range mgr.AgentTools() {
+			spec := ToolSpec{Name: t.Name, ToolName: t.Name, Risk: "read", Help: "（插件「" + t.Plugin + "」）" + t.Tool.Help, Agent: true}
+			for _, arg := range t.Tool.Args {
+				spec.Args = append(spec.Args, ToolArg{Name: arg.Name, Help: arg.Help, Type: arg.Type, Required: arg.Required, Choices: arg.Choices})
+			}
+			run := t.Run
+			out = append(out, ExtTool{Spec: spec, Run: func(ctx context.Context, args map[string]any) Result { return run(ctx, app, args) }})
+		}
+		return out
+	}
+	app = shell.New(shell.Deps{
 		Call:    d.Call,
 		Threads: &Threads{Home: d.Home},
 		Run:     d.Run,
@@ -58,6 +78,34 @@ func buildApp(d appDeps) *shell.App {
 		HasModel: func() bool { return hasModel(a.Settings()) },
 		Gate:     set.Gate,
 	}, reg)
+	return app
+}
+
+// readOnly 是「这条工具层命令只读吗」：按 hiro tools 的风险等级（第一次用时读一次）。外部插件调只读命令不用写进 acts。
+func readOnly(call hiroapi.Caller) func(args []string) bool {
+	var (
+		once sync.Once
+		risk map[string]string
+	)
+	return func(args []string) bool {
+		once.Do(func() {
+			risk = map[string]string{}
+			var d struct {
+				Tools []ToolSpec `json:"tools"`
+			}
+			if call(context.Background(), []string{"tools"}).Decode(&d) == nil {
+				for _, t := range d.Tools {
+					risk[t.Name] = t.Risk
+				}
+			}
+		})
+		for n := min(len(args), 3); n > 0; n-- {
+			if r, ok := risk[strings.Join(args[:n], " ")]; ok {
+				return r == "read" && !strings.HasPrefix(args[0], "secret") && args[0] != "confirm" && args[0] != "cancel"
+			}
+		}
+		return false
+	}
 }
 
 // hasModel 是现在能不能直接和 agent 说话。
