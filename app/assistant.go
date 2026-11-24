@@ -302,6 +302,11 @@ func (a *Assistant) Test(ctx context.Context) TestResult {
 
 // Ask 让初星助手回答一句话（history 是之前的对话）。
 func (a *Assistant) Ask(ctx context.Context, history []Turn, text string) (Reply, error) {
+	return a.AskWith(ctx, history, text, "", nil)
+}
+
+// AskWith 同 Ask，另带这一轮的上下文 extra 和工具进度回调 onTool（原生界面用）。
+func (a *Assistant) AskWith(ctx context.Context, history []Turn, text, extra string, onTool func(name, summary string)) (Reply, error) {
 	s := a.Settings()
 	switch s.Provider {
 	case "codex", "claude":
@@ -309,7 +314,7 @@ func (a *Assistant) Ask(ctx context.Context, history []Turn, text string) (Reply
 		if err != nil {
 			return Reply{}, fmt.Errorf("找不到 %s 命令：先装好并登录，或到设置里换服务商", s.Provider)
 		}
-		return CLIAgent{Kind: s.Provider, Bin: bin, Hiro: a.Hiro, Home: a.Home}.Ask(ctx, history, text)
+		return CLIAgent{Kind: s.Provider, Bin: bin, Hiro: a.Hiro, Home: a.Home, Extra: extra}.Ask(ctx, history, text)
 	}
 	p, err := a.provider()
 	if err != nil {
@@ -319,17 +324,19 @@ func (a *Assistant) Ask(ctx context.Context, history []Turn, text string) (Reply
 	if err != nil {
 		return Reply{}, fmt.Errorf("工具层不可用：%w", err)
 	}
-	return (&Agent{Hiro: a.Hiro, Tools: tools, Provider: p}).Ask(ctx, history, text)
+	return (&Agent{Hiro: a.Hiro, Tools: tools, Provider: p, Extra: extra, OnTool: onTool}).Ask(ctx, history, text)
 }
 
 // ---------------------------------------------------------------------------- 命令行 agent
 
 // CLIAgent 用用户已登录的 claude / codex 命令行当 agent：它们按说明自己调 hiro 命令。
 type CLIAgent struct {
-	Kind string // claude / codex
-	Bin  string
-	Hiro *Hiro
-	Home string
+	// Extra 是这一轮的「现在的情况」（各插件的上下文）。
+	Extra string
+	Kind  string // claude / codex
+	Bin   string
+	Hiro  *Hiro
+	Home  string
 }
 
 const cliRules = `
@@ -422,12 +429,20 @@ func (c CLIAgent) status(ctx context.Context) string {
 	return "（现在在跑：" + d.Current.Summary + "，状态 " + d.Current.State + "）\n"
 }
 
+// fullPrompt 是交给命令行 agent 的整段话：这一轮的上下文（没有时退回只写当前任务）+ 对话。
+func (c CLIAgent) fullPrompt(ctx context.Context, history []Turn, text string) string {
+	if strings.TrimSpace(c.Extra) != "" {
+		return c.Extra + "\n\n" + c.prompt(history, text)
+	}
+	return c.status(ctx) + c.prompt(history, text)
+}
+
 func (c CLIAgent) Ask(ctx context.Context, history []Turn, text string) (Reply, error) {
 	bin, err := c.shim()
 	if err != nil {
 		return Reply{}, err
 	}
-	prompt := c.status(ctx) + c.prompt(history, text)
+	prompt := c.fullPrompt(ctx, history, text)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 	lastFile := filepath.Join(c.Home, "codex-last.txt")

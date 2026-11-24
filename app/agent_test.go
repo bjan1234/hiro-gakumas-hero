@@ -215,3 +215,37 @@ echo '{"ok":true,"data":{"idol":{"name":"Campus mode!!"},"main_attr":"Da","suppo
 		t.Fatalf("plan %v", plan)
 	}
 }
+
+func TestAgentReportsToolsAndUsesContext(t *testing.T) {
+	h, _ := recordingHiro(t)
+	srv, reqs := fakeLLM(t,
+		`{"role":"assistant","content":"","tool_calls":[{"id":"c1","type":"function","function":{"name":"info_supports","arguments":"{\"rarity\":\"SSR\"}"}}]}`,
+		`{"role":"assistant","content":"有 1 张。"}`)
+	var tools []string
+	a := newTestAgent(h, srv.URL)
+	a.Extra = "## 现在的情况（11-24 01:30）\n### 账号\nPLv 52"
+	a.OnTool = func(name, summary string) { tools = append(tools, name+"|"+summary) }
+	if _, err := a.Ask(context.Background(), nil, "我的 SSR 支援卡"); err != nil {
+		t.Fatal(err)
+	}
+	if len(tools) != 1 || tools[0] != "info_supports|1 条" {
+		t.Errorf("工具进度 %q", tools)
+	}
+	msgs, _ := (*reqs)[0]["messages"].([]any)
+	sys, _ := msgs[0].(map[string]any)["content"].(string)
+	if !strings.Contains(sys, "PLv 52") || !strings.HasPrefix(sys, SystemPrompt) {
+		t.Errorf("系统提示词没接上下文：%q", sys[max(0, len(sys)-80):])
+	}
+}
+
+func TestCLIAgentPromptUsesContextInsteadOfStatus(t *testing.T) {
+	h, calls := recordingHiro(t)
+	c := CLIAgent{Kind: "claude", Hiro: h, Extra: "## 现在的情况\n学マス已连上"}
+	p := c.fullPrompt(context.Background(), nil, "你好")
+	if !strings.Contains(p, "学マス已连上") || !strings.Contains(p, "你好") {
+		t.Errorf("提示词 %q", p)
+	}
+	if got := calls(); len(got) != 0 {
+		t.Errorf("有上下文时不再单独查 run status：%v", got)
+	}
+}

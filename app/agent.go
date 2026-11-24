@@ -95,6 +95,11 @@ type Agent struct {
 	Hiro     *Hiro
 	Tools    []ToolSpec
 	Provider ChatProvider
+	// Extra 是这一轮的「现在的情况」（各插件的上下文），接在系统提示词后面。
+	Extra string
+	// OnTool 在每次调完工具时调用：工具名和一句结果（「3 条」「等你确认」「出错：…」）。
+	OnTool func(name, summary string)
+	last   *Result // 最近一次工具调用的完整结果（toolSummary 用，交给模型的可能被截断）
 }
 
 // ---------------------------------------------------------------------------- 工具描述
@@ -229,7 +234,11 @@ func (a *Agent) Ask(ctx context.Context, history []Turn, text string) (Reply, er
 			byName[t.ToolName] = t
 		}
 	}
-	msgs := []chatMessage{{Role: "system", Content: SystemPrompt}}
+	sys := SystemPrompt
+	if strings.TrimSpace(a.Extra) != "" {
+		sys += "\n\n" + a.Extra
+	}
+	msgs := []chatMessage{{Role: "system", Content: sys}}
 	for _, h := range history {
 		if h.Role == "user" || h.Role == "assistant" {
 			msgs = append(msgs, chatMessage{Role: h.Role, Content: h.Content})
@@ -248,8 +257,12 @@ func (a *Agent) Ask(ctx context.Context, history []Turn, text string) (Reply, er
 		msgs = append(msgs, chatMessage{Role: "assistant", Content: m.Content, ToolCalls: m.ToolCalls})
 		var pendings []*Pending
 		for _, c := range m.ToolCalls {
+			a.last = nil
 			content, card, pending := a.runTool(ctx, byName, c)
 			msgs = append(msgs, chatMessage{Role: "tool", ToolCallID: c.ID, Content: content})
+			if a.OnTool != nil {
+				a.OnTool(c.Function.Name, toolSummary(a.last, content, pending))
+			}
 			if card != nil {
 				cards = append(cards, card)
 			}
@@ -271,6 +284,35 @@ func (a *Agent) Ask(ctx context.Context, history []Turn, text string) (Reply, er
 	return Reply{Text: "这件事我绕了好几圈还没办完，换个说法再试一次？", Cards: cards}, nil
 }
 
+// toolSummary 把工具结果缩成一句给人看的话。
+func toolSummary(r *Result, content string, pending *Pending) string {
+	if pending != nil {
+		return "等你确认"
+	}
+	if r == nil {
+		var e struct {
+			Error *CliError `json:"error"`
+		}
+		if json.Unmarshal([]byte(content), &e) == nil && e.Error != nil {
+			return "出错：" + e.Error.Message
+		}
+		return ""
+	}
+	if !r.OK {
+		if r.Error != nil {
+			return "出错：" + r.Error.Message
+		}
+		return "出错了"
+	}
+	var d struct {
+		Items []json.RawMessage `json:"items"`
+	}
+	if json.Unmarshal(r.Data, &d) == nil && d.Items != nil {
+		return fmt.Sprintf("%d 条", len(d.Items))
+	}
+	return "完成"
+}
+
 func (a *Agent) runTool(ctx context.Context, byName map[string]ToolSpec, c toolCall) (string, map[string]any, *Pending) {
 	t, ok := byName[c.Function.Name]
 	if !ok {
@@ -282,6 +324,7 @@ func (a *Agent) runTool(ctx context.Context, byName map[string]ToolSpec, c toolC
 		return string(b), nil, nil
 	}
 	r := a.Hiro.Call(ctx, argv)
+	a.last = &r
 	b, _ := json.Marshal(r)
 	content := string(b)
 	if len(content) > maxToolResult {
