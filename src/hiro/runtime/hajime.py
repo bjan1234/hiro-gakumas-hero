@@ -347,7 +347,7 @@ def hajime_core(scenario_mode: str):
                         return False
                     active.sleep(0.5)
             need = modes.mode(scenario_mode).pass_rank
-            passed = res["rank"] <= need
+            passed = hv.result_passed(res, need)
             self.rec.log("exam_result", image=img, exam=label, result={**res, "passed": passed})
             self.s.observe(scene="HIF_EXAM_RESULT", img=img, fields={"score": res.get("score"), "rank": res["rank"], "passed": passed,
                                                                       "retry": res.get("retry")})  # fmt: skip
