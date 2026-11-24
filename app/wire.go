@@ -29,6 +29,8 @@ type appDeps struct {
 	Run       shell.Runner
 	// Ready 盖掉 Bootstrap 的「环境装好没」（测试用）；nil 时用 Bootstrap.Status。
 	Ready func(ctx context.Context) bool
+	// Web 是侧边面板的网页视图（nil：测试里不接）。
+	Web *webPanels
 }
 
 // buildApp 注册内置插件，搭出主界面。
@@ -44,6 +46,10 @@ func buildApp(d appDeps) *shell.App {
 	reg.Add(cockpit.New())
 	reg.Add(set.Plugin())
 	mgr.Load() // 同意过的外部插件排在内置插件后面
+	plugins = mgr
+	if d.Web != nil {
+		d.Web.hook(mgr.Dir)
+	}
 	a := d.Assistant
 	var app *shell.App
 	a.ExtTools = func() []ExtTool {
@@ -107,6 +113,9 @@ func readOnly(call hiroapi.Caller) func(args []string) bool {
 		return false
 	}
 }
+
+// plugins 是外部插件管理（hiroplug:// 协议找插件目录用）。
+var plugins *extplugin.Manager
 
 // hasModel 是现在能不能直接和 agent 说话。
 func hasModel(s Settings) bool {

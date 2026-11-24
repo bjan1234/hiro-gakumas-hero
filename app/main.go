@@ -33,9 +33,18 @@ func main() {
 		return nil
 	}))
 
+	// 外部插件的网页面板：hiroplug://localhost/<插件 id>/<文件>（只给已启用插件目录里的文件，带 CSP）
+	mygo.Protocol.Handle("hiroplug", pluginFiles(func(id string) string {
+		if plugins == nil {
+			return ""
+		}
+		return plugins.Dir(id)
+	}))
+
 	mygo.App.WhenReady(func() {
 		runner := &lateRunner{}
-		app := buildApp(appDeps{Home: home, Call: hiro.Call, Hiro: hiro, Assistant: assistant, Bootstrap: &Bootstrap{Home: home, Hiro: hiro}, Run: runner})
+		web := &webPanels{}
+		app := buildApp(appDeps{Home: home, Call: hiro.Call, Hiro: hiro, Assistant: assistant, Bootstrap: &Bootstrap{Home: home, Hiro: hiro}, Run: runner, Web: web})
 		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:     AppName,
 			Width:     1280,
@@ -45,6 +54,7 @@ func main() {
 			StateKey:  "main",
 			Content:   ui.View(app.View),
 		})
+		web.setWindow(win)
 		runner.set(shell.WindowRunner{Update: win.Update})
 		app.StartPolling(make(chan struct{}))
 	})

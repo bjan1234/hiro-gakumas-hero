@@ -181,7 +181,7 @@ func (e *Ext) draw(c *ui.Context, h plugin.Host, key, method string, params map[
 	switch {
 	case s.err != "":
 		ui.Text(c, "插件「"+e.m.Name+"」出错："+s.err).FontSize(kit.FNote).TextColor(kit.Bad).Wrap()
-		if kit.Ghost(c, "重试").Key(key+"-retry").Clicked() {
+		if kit.Ghost(c, "重试").Key(key + "-retry").Clicked() {
 			s.err = ""
 		}
 		return

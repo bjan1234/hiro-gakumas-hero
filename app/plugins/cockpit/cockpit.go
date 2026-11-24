@@ -361,14 +361,14 @@ func (s *state) reviewButton(c *ui.Context, h plugin.Host, id string) {
 // reviewPanel 是复盘页；网页视图见 kit.WebPanel（任务 16），这里先给本机路径。
 func (s *state) reviewPanel(c *ui.Context, h plugin.Host, id string) {
 	if ReviewView != nil {
-		ReviewView(c, h, s.review[id])
+		ReviewView(c, h, id)
 		return
 	}
 	kit.Note(c, "复盘页在："+s.review[id])
 }
 
-// ReviewView 画复盘页（main 里接上网页视图）。
-var ReviewView func(c *ui.Context, h plugin.Host, path string)
+// ReviewView 画某局的复盘页（main 里接上网页视图）。
+var ReviewView func(c *ui.Context, h plugin.Host, jobID string)
 
 // ---- 上下文 ----
 

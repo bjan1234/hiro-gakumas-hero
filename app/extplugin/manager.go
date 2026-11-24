@@ -181,6 +181,16 @@ func (m *Manager) Remove(id string) error {
 	return os.RemoveAll(filepath.Join(m.dir(), id))
 }
 
+// Dir 是已启用插件的目录（网页面板用）；没启用的为 ""。
+func (m *Manager) Dir(id string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if e := m.exts[id]; e != nil {
+		return e.m.Dir
+	}
+	return ""
+}
+
 // Close 关掉所有插件进程。
 func (m *Manager) Close() {
 	m.mu.Lock()
@@ -276,7 +286,7 @@ func (m *Manager) Panel(c *ui.Context, h plugin.Host) {
 						m.note = err.Error()
 					}
 				}
-				if kit.Secondary(c, "卸载").Key("remove-"+id).Clicked() {
+				if kit.Secondary(c, "卸载").Key("remove-" + id).Clicked() {
 					if err := m.Remove(id); err != nil {
 						m.note = err.Error()
 					}
