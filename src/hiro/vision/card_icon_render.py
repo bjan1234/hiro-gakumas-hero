@@ -253,8 +253,10 @@ def build(out: Path = CACHE, stamp: str | None = None) -> int:
         names.append(png.stem)
         imgs.append(render(cv2.imread(str(png)), rc[0], rc[1], sprites))
     out.parent.mkdir(parents=True, exist_ok=True)
-    extra = {"stamp": np.array(stamp)} if stamp is not None else {}
-    np.savez_compressed(out, names=np.array(names), imgs=np.stack(imgs), **extra)
+    if stamp is None:
+        np.savez_compressed(out, names=np.array(names), imgs=np.stack(imgs))
+    else:
+        np.savez_compressed(out, names=np.array(names), imgs=np.stack(imgs), stamp=np.array(stamp))
     return len(names)
 
 
