@@ -30,6 +30,8 @@ PARAMS = (
     "memory_set",
     "difficulty",
     "items",
+    "chapter",
+    "until",
 )
 
 
@@ -211,7 +213,7 @@ def _first_reason(out: str) -> str:
 @command(
     "run start",
     Risk.ACT,
-    "开一个任务（同一时间只能一个）：hif H.I.F 培育、hajime「初」培育、nia N.I.A 培育、tower 偶像之路、daily 日常、scan-supports / scan-memories 扫描、selftest 自检。"
+    "开一个任务（同一时间只能一个）：hif H.I.F 培育、hajime「初」培育、nia N.I.A 培育、tower 偶像之路、daily 日常、main-task 初星課題（关完成弹窗、读 NEXT）、story 看初星コミュ（逐话再生并跳过）、scan-supports / scan-memories 扫描、selftest 自检。"
     "会动游戏，第一次返回待确认，用户同意后才开始。",
     args=(
         Arg("kind", "任务种类", choices=tuple(KINDS)),
@@ -227,6 +229,8 @@ def _first_reason(out: str) -> str:
             "daily：只领这几项（逗号分隔：activity_funds、presents、assignment、contest、mission_reward、club_reward）",
         ),
         Arg("--layers", "tower：打几层", type="int"),
+        Arg("--chapter", "story：初星コミュ第几章（缺省 1）", type="int"),
+        Arg("--until", "story：看到第几话为止（缺省看完所有解锁的新话）", type="int"),
         Arg("--seconds", "selftest：跑几秒", type="int"),
         Arg("--no-llm", "决策只用规则和算法，不调用模型", type="bool"),
         Arg("--scenario", "write-formation：写哪个模式的编成", choices=("hif", "hajime", "nia")),

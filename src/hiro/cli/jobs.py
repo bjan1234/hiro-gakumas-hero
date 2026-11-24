@@ -292,6 +292,23 @@ KINDS: dict[str, Kind] = {
         lambda p: "调整 DMM 游戏窗口大小",
         pausable=False,
     ),
+    "main-task": Kind(
+        "main-task",
+        "初星課題：回主页关掉课题完成弹窗（奖励自动到账，记下完成了哪几步），再进课题页读 NEXT（编号、要求、进度）",
+        lambda p, d: [_PY, "-m", "hiro.daily.main_task", "--out", str(d / "out.json")],
+        lambda p: "看初星課題（关完成弹窗、读 NEXT）",
+        pausable=False,
+    ),
+    "story": Kind(
+        "story",
+        "看初星コミュ：N 章里没看过的话逐话再生并跳过（跳过也算看过），直到 --until 或遇到锁着的话",
+        lambda p, d: (
+            [_PY, "-m", "hiro.daily.story", "--out", str(d / "out.json"), "--chapter", str(p.get("chapter") or 1)]
+            + (["--until", str(p["until"])] if p.get("until") else [])
+        ),
+        lambda p: f"看初星コミュ {p.get('chapter') or 1}章" + (f"（到第 {p['until']} 话）" if p.get("until") else ""),
+        pausable=False,
+    ),
     "scan-account": Kind(
         "scan-account",
         "读首页顶栏的 PLv、AP、ジュエル（只截一张图，不点）",
