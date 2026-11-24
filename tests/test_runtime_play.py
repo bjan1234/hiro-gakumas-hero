@@ -6,6 +6,7 @@ from hiro.runtime import play, scenes
 from hiro.vision.ocr import Box, Text
 
 import numpy as np
+import pytest
 
 
 def T(text, x, y):
@@ -199,3 +200,45 @@ def test_produce_end_pages_hand_off_to_finish_and_stop(monkeypatch):
     assert play.advance(rt2, frame([T("次へ", 360, 1160)]), NS(name="unknown")) is False and not getattr(
         rt2, "finished", False
     )
+
+
+def _segment(monkeypatch, new_effects, run_effects, *, resume_only=False):
+    """play.segment_with_date_changes（初 / N.I.A 的开局 + 主循环外壳）：按顺序抛 DateChanged 或正常返回。"""
+    from hiro.loop.date_change import DateChanged
+
+    calls = []
+
+    def effect(seq, name):
+        def f():
+            calls.append(name)
+            if seq and seq.pop(0) == "date":
+                raise DateChanged("日付変更")
+
+        return f
+
+    monkeypatch.setattr(play, "recover_date_change", lambda rt, session: calls.append("recover"))
+    play.segment_with_date_changes(
+        NS(), NS(), new=None if resume_only else effect(list(new_effects), "new"),
+        resume=lambda: calls.append("resume"), play_until=effect(list(run_effects), "run"),
+    )  # fmt: skip
+    return calls
+
+
+def test_segment_date_change_before_opening_reopens(monkeypatch):
+    """11-25 账号 3：开「初」时正赶上日本时间 5 点日切换，开局前的结算收尾就抛 DateChanged，hajime.run 没接、整个 traceback 退出。"""
+    assert _segment(monkeypatch, ["date", "ok"], ["ok"]) == ["new", "recover", "new", "run"]
+
+
+def test_segment_date_change_during_play_resumes(monkeypatch):
+    assert _segment(monkeypatch, ["ok"], ["date", "ok"]) == ["new", "run", "recover", "resume", "run"]
+
+
+def test_segment_resume_command(monkeypatch):
+    assert _segment(monkeypatch, [], ["ok"], resume_only=True) == ["resume", "run"]
+
+
+def test_segment_too_many_date_changes_stops(monkeypatch):
+    from hiro.loop.errors import ResumeBlocked
+
+    with pytest.raises(ResumeBlocked, match="日切换"):
+        _segment(monkeypatch, ["date"] * 5, ["ok"])

@@ -224,6 +224,30 @@ def recover_date_change(rt, session) -> None:
         raise ResumeBlocked("日切换后没回到首页，停机")
 
 
+def segment_with_date_changes(rt, session, *, new, resume, play_until) -> None:
+    """一段培育的外壳（初 / N.I.A 用；H.I.F 的 run 同样的规则）：new 开局（None = 续跑段）、resume 续跑、play_until 打到结束。
+    日切换（日本时间 5 点「日付変更」，只有「タイトルへ」）：回首页后，还没开成就重新开局，已经在培育里就续跑；最多 MAX_DATE_CHANGES 次。
+    11-25 账号 3：开「初」正赶上日切换，开局前的结算收尾抛 DateChanged，hajime.run 没接住，整段 traceback 退出。"""
+    from hiro.loop.date_change import DateChanged
+
+    started = new is None
+    for attempt in range(MAX_DATE_CHANGES + 1):
+        try:
+            if not started:
+                new()
+                started = True
+            elif attempt or new is None:
+                resume()
+            play_until()
+            return
+        except DateChanged:
+            if attempt >= MAX_DATE_CHANGES:
+                raise ResumeBlocked(f"一段里日切换超过 {MAX_DATE_CHANGES} 次，停机") from None
+            logger.warning("日切换（第 %d 次，%s）：回首页后%s", attempt + 1, "已开局" if started else "还没开局",
+                           "续跑" if started else "重新开局")  # fmt: skip
+            recover_date_change(rt, session)
+
+
 def run(args, session) -> int:
     """跑一段：new = 开局后打到结束；resume = 续跑到结束。返回退出码（0 正常，3 停机交给人）。
     日切换在开局或打的过程中都可能出现：回首页后，开局没开成就重新开局，已经在培育里就续跑；一段最多 MAX_DATE_CHANGES 次。
