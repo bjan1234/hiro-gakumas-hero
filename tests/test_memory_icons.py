@@ -172,3 +172,79 @@ def test_render_shape_and_mask():
             assert im.shape == (48, 48, 3) and im.dtype == np.uint8
     m = overlay_mask(48)
     assert m.shape == (48, 48) and 0.05 < m.mean() < 0.7  # 角标区域遮掉，中间的插画留下
+
+
+def _fake_build(calls):
+    """假的 card_icon_render.build：写一个 2 张图标的渲染库（同真库的字段），记调用次数。"""
+
+    def build(out, stamp=None):
+        calls.append(out)
+        imgs = np.stack([np.full((48, 48, 3), v, np.uint8) for v in (40, 200)])
+        out.parent.mkdir(parents=True, exist_ok=True)
+        extra = {"stamp": np.array(stamp)} if stamp is not None else {}
+        np.savez_compressed(out, names=np.array(["img_general_skillcard_act-1_001", "img_general_skillcard_men-1_002"]),
+                            imgs=imgs, **extra)  # fmt: skip
+        return 2
+
+    return build
+
+
+@pytest.fixture
+def fresh_render(tmp_path, monkeypatch):
+    """在空目录里跑（没有 cache/card_icons.npz），卡面目录指向 tmp 下 2 个 png；清掉 _render_index 的缓存。"""
+    from hiro.vision import assets, card_icon_render
+
+    cards = tmp_path / "cards"
+    cards.mkdir()
+    for n in ("a", "b"):
+        (cards / f"{n}.png").write_bytes(b"x")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(assets, "card_art_dir", lambda: cards)
+    calls = []
+    monkeypatch.setattr(card_icon_render, "build", _fake_build(calls))
+    memory_icons._render_index.cache_clear()
+    yield calls, cards
+    memory_icons._render_index.cache_clear()
+
+
+@pytest.mark.synthetic
+def test_render_index_builds_missing_cache(fresh_render):
+    """11-25 账号 3：初星助手的工作目录里从来没有 cache/card_icons.npz（只能手动 build），回忆认卡一直走插画退路，
+    写编成后核对「act-1_028 和第二名只差 2.2」判成认不出、停下。缺渲染库时要自己建一次。"""
+    calls, _ = fresh_render
+    assert memory_icons._render_index() is not None and memory_icons.method() == "render"
+    assert len(calls) == 1
+    memory_icons._render_index.cache_clear()
+    assert memory_icons._render_index() is not None and len(calls) == 1  # 建好了就不再建
+
+
+@pytest.mark.synthetic
+def test_render_index_rebuilds_when_card_dir_changes(fresh_render):
+    calls, cards = fresh_render
+    memory_icons._render_index()
+    (cards / "c.png").write_bytes(b"x")  # 素材包更新：多了一张卡
+    memory_icons._render_index.cache_clear()
+    memory_icons._render_index()
+    assert len(calls) == 2
+
+
+@pytest.mark.synthetic
+def test_render_index_falls_back_when_build_impossible(fresh_render, monkeypatch):
+    """素材不齐（build 抛 SystemExit）：照旧退回插画，不报错。"""
+    from hiro.vision import card_icon_render
+
+    def broken(out, stamp=None):
+        raise SystemExit("素材目录 sprites/ 缺精灵图")
+
+    monkeypatch.setattr(card_icon_render, "build", broken)
+    assert memory_icons._render_index() is None and memory_icons.method() == "art"
+
+
+@pytest.mark.synthetic
+def test_render_index_keeps_hand_built_cache_without_stamp(fresh_render):
+    """开发者以前手动 build 的库（没有 stamp 字段）照用，不重建。"""
+    calls, _ = fresh_render
+    from hiro.vision import card_icon_render
+
+    _fake_build([])(card_icon_render.CACHE)  # 无 stamp
+    assert memory_icons._render_index() is not None and calls == []

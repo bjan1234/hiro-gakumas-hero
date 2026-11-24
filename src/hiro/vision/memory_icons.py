@@ -50,11 +50,12 @@ def _lab(img: MatLike) -> np.ndarray:
 
 @lru_cache(maxsize=1)
 def _render_index() -> tuple[list[str], list[str], np.ndarray, np.ndarray] | None:
-    """(素材名, 卡键, Lab 特征 N×P×3, 参与比对的像素掩码)。cache/card_icons.npz 不存在时 None。"""
-    from hiro.vision.card_icon_render import CACHE, overlay_mask
+    """(素材名, 卡键, Lab 特征 N×P×3, 参与比对的像素掩码)。cache/card_icons.npz 缺了 / 过期了现建；素材不齐建不了时 None。"""
+    from hiro.vision import card_icon_render
+    from hiro.vision.card_icon_render import overlay_mask
 
-    path = CACHE
-    if not path.exists():
+    path = card_icon_render.ensure(card_icon_render.CACHE)
+    if path is None:
         return None
     data = np.load(path, allow_pickle=False)
     names = [str(n) for n in data["names"]]
