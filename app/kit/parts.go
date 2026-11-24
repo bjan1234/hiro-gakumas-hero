@@ -21,7 +21,11 @@ func Secondary(c *ui.Context, label string) ui.Element {
 
 // Ghost 是没底没框的小按钮（面板头、行内操作）。
 func Ghost(c *ui.Context, label string) ui.Element {
-	return ui.Button(c, label).FontSize(FNote).Padding(4, 8).Radius(R8).Background(ui.RGBA(0, 0, 0, 0)).TextColor(Ink2)
+	b := ui.ButtonBase(c).Label(label).Padding(4, 6).Radius(R8).AlignSelf(ui.Start)
+	if b.Hovered() {
+		b = b.Background(Surface2)
+	}
+	return b.Children(func() { ui.Text(c, label).FontSize(FNote).FontWeight(600).TextColor(WarnInk).SingleLine() })
 }
 
 // Tag 是一个小标签。
