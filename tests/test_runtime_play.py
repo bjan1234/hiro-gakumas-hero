@@ -76,15 +76,15 @@ def test_advance_only_bursts_on_safe_pages(monkeypatch):
     assert len(calls) == 2
 
 
-def test_run_hif_own_branch_skips_kaa_init(monkeypatch, tmp_path):
+def test_run_hif_always_runs_new_runtime_without_kaa(monkeypatch, tmp_path):
+    """run_hif 只剩新主循环（KAA 主循环 2026-11-24 删了）：HIRO_RUNTIME=kaa 也照样走 hiro.runtime.play，且不 import KAA。"""
     import sys
 
     import hiro.run_hif as rh
 
-    monkeypatch.setenv("HIRO_RUNTIME", "own")
+    monkeypatch.setenv("HIRO_RUNTIME", "kaa")
     monkeypatch.chdir(tmp_path)
     called = {}
-    monkeypatch.setattr(rh, "init_kaa", lambda *a, **k: called.setdefault("init_kaa", True))
     monkeypatch.setattr("hiro.runtime.play.run", lambda args, session: called.setdefault("play", args.command) and 0)
     monkeypatch.setattr(
         rh.manifest_mod, "collect", lambda: NS(problems=[], to_dict=dict, exam_state_source="x", exam_advisor="y")
@@ -93,6 +93,7 @@ def test_run_hif_own_branch_skips_kaa_init(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "argv", ["run_hif", "resume", "--mode", "main", "--trace", "t-own"])
     assert rh.main() == 0
     assert called == {"play": "resume", "report": "t-own"}
+    assert not hasattr(rh, "init_kaa") and not hasattr(rh, "HiroController")
 
 
 def _run_with(monkeypatch, new_effects, run_effects, command="new"):
@@ -173,7 +174,6 @@ def test_session_classify_uses_runtime_device_under_own(monkeypatch):
 
     rt, seen = FakeRt(), []
     monkeypatch.setattr(scene, "classify_scene", lambda img: seen.append(img.shape) or NS(name="LIVE", area="produce"))
-    monkeypatch.setattr(active, "_kb", lambda: (_ for _ in ()).throw(AssertionError("不该走 kotonebot")))
     active.use(rt)
     try:
         r = scene.classify_current()

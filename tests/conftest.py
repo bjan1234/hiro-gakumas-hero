@@ -3,7 +3,7 @@
 - 识别层很多用例读 tests/fixtures/ 下的实机截图。截图属于游戏画面，仓库不带；把自己的截图按同样的相对路径放进
   tests/fixtures/（或设 HIRO_FIXTURES 指向一个同结构目录，会软链过来）就能跑。没有样例目录时这些用例跳过。
 - 识别层依赖 KAA（可选组 play：pip install -e '.[play]'，子模块 vendor/kaa）。导入不了 kotonebot / kaa 时跳过。
-- 个别用例引到操作层 / 策略层（hiro.loop.controller、hiro.produce、hiro.brain.*）或不开源的模拟器（hiro.sim）；
+- 个别用例引到操作层 / 策略层（hiro.produce、hiro.brain.*）或不开源的模拟器（hiro.sim）；
   这些模块不在时，整个文件跳过。
 """
 
@@ -34,7 +34,7 @@ if os.environ.get("HIRO_KAA_GAME_DATA"):
     except Exception:  # noqa: BLE001 没装识别依赖：照常收集
         pass
 
-OPTIONAL_LAYERS = ("hiro.loop.controller", "hiro.loop.kaa_patches", "hiro.produce", "hiro.brain.state", "hiro.brain.cards",
+OPTIONAL_LAYERS = ("hiro.produce", "hiro.brain.state", "hiro.brain.cards",
                    "hiro.brain.deciders", "hiro.brain.rules", "hiro.brain.replay", "hiro.sim")  # fmt: skip
 KAA_USERS = re.compile(r"hiro\.(?:vision|perception)(?:\.(\w+))?")
 KAA_FREE = {"assets", "layout", "items", "region_cache"}  # 导入时不碰 KAA 的识别层模块（items 只在读饮料时才导入 KAA）

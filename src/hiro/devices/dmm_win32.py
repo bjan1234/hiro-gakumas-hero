@@ -6,8 +6,8 @@
                  游戏以管理员运行，hiro 也要以管理员跑（点击本来就要），2026-11-11 管理员下约 0.19 秒一张。
     gdi          BitBlt 窗口 DC。2026-11-11 普通权限实测约 11 ms 一张、画面正常；窗口被挡住 / 挪出屏幕的部分截不到，先作实验选项。
 点击 / 滑动：DMM 版游戏认的是真实光标位置。做法同 KAA（SendMessageImpl）：等光标停稳 → 把窗口挪到「目标点落在光标下」→
-    PostMessage 发鼠标消息，不动真实鼠标。滑动到终点原地停 hold 秒再松手（列表不按松手速度惯性多滑，见 hiro.loop.win_desktop）。
-    读光标报「拒绝访问」（UAC / 锁屏 / 远程切桌面）时等桌面恢复再做这一下，最多 hiro.loop.win_desktop.DESKTOP_WAIT_S 秒。
+    PostMessage 发鼠标消息，不动真实鼠标。滑动到终点原地停 hold 秒再松手（列表不按松手速度惯性多滑，原 hiro.loop.win_desktop 的做法）。
+    读光标报「拒绝访问」（UAC / 锁屏 / 远程切桌面）时等桌面恢复再做这一下，最多 hiro.devices.desktop.DESKTOP_WAIT_S 秒。
 
 截图给窗口原生尺寸，LogicalScreen 一次拉伸到 720x1280（同 KAA）；点击按比例换回原生像素 = 客户区坐标。
 
@@ -72,7 +72,7 @@ class Win32:
     def _err(self, what: str) -> OSError:
         code = self._ct.get_last_error()
         e = OSError(code, f"{what} 失败（错误码 {code}）")
-        e.winerror = code  # type: ignore[attr-defined]  hiro.loop.win_desktop.access_denied 按它认「拒绝访问」
+        e.winerror = code  # type: ignore[attr-defined]  hiro.devices.desktop.access_denied 按它认「拒绝访问」
         return e
 
     def find(self, title: str) -> int | None:
@@ -112,7 +112,7 @@ class Win32:
         return p.x, p.y
 
     def post(self, hwnd: int, msg: int, wparam: int, lparam: int) -> None:
-        # 成功时 PostMessage 不清错误码，只看返回值（hiro.loop.win_desktop.post_message 的教训）
+        # 成功时 PostMessage 不清错误码，只看返回值（原 hiro.loop.win_desktop.post_message 的教训）
         if not self.user32.PostMessageW(hwnd, msg, wparam, lparam):
             raise self._err("PostMessage")
 
@@ -256,8 +256,8 @@ class DmmWin32Device:
         return self.screen.to_native(x, y)
 
     def _cursor(self) -> tuple[int, int]:
-        """读真实光标；桌面暂时不可用（拒绝访问）时等它恢复，等不到抛 DesktopUnavailable（同 hiro.loop.win_desktop）。"""
-        from hiro.loop.win_desktop import DESKTOP_WAIT_S, DesktopUnavailable, access_denied, wait_desktop
+        """读真实光标；桌面暂时不可用（拒绝访问）时等它恢复，等不到抛 DesktopUnavailable（hiro.devices.desktop）。"""
+        from hiro.devices.desktop import DESKTOP_WAIT_S, DesktopUnavailable, access_denied, wait_desktop
 
         a = self.api()
         try:
@@ -291,7 +291,7 @@ class DmmWin32Device:
 
     def _input(self, what: str, fn: Callable[[int], None]) -> None:
         """发一组输入；失败时重新找窗口再来一次。窗口没了抛 DeviceGone。"""
-        from hiro.loop.win_desktop import DesktopUnavailable
+        from hiro.devices.desktop import DesktopUnavailable
 
         err: Exception | None = None
         for _ in (0, 1):

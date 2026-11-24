@@ -205,11 +205,6 @@ def test_maatools_empty_frames_retry_then_black_then_gone(monkeypatch):
         dev.screenshot()
 
 
-def test_old_device_module_reexports_maatools_client():
-    pytest.importorskip("kotonebot")
-    import hiro.device as old
-
-    assert old.MaaToolsImpl is MaaToolsImpl and old.MAATOOLS_PORT == 1717
 
 
 # ---------------------------------------------------------------- adb（假 adb 命令）

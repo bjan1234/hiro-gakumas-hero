@@ -136,7 +136,7 @@ def test_capture_failure_retries_once_then_reports_gone_or_unavailable():
 
 
 def test_tap_waits_while_desktop_is_unavailable():
-    """UAC / 锁屏 / 远程切桌面时读光标报「拒绝访问」：等桌面恢复再点，不让主循环连崩（同 hiro.loop.win_desktop）。"""
+    """UAC / 锁屏 / 远程切桌面时读光标报「拒绝访问」：等桌面恢复再点，不让主循环连崩（hiro.devices.desktop）。"""
     api = FakeWin32()
     dev = device(api)
     dev.connect()

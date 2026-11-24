@@ -3,7 +3,6 @@
 
 from pathlib import Path
 
-from hiro.loop import kaa_patches as kp  # noqa: F401
 from hiro.produce import card_ops
 from hiro.vision.deck import read_card_dialog
 

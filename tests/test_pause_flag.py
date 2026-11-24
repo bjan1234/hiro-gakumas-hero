@@ -132,37 +132,6 @@ def test_watchdog_does_not_fire_across_pause(monkeypatch):
 
 
 @NEED_KAA
-def test_finish_loop_stops_at_checkpoint_and_timeout_excludes_pause(monkeypatch):
-    """收尾循环（finish_produce_end）每轮截图 = kotonebot 检查点，暂停时停在那里；超时按扣掉暂停的时钟算。"""
-    from types import SimpleNamespace as NS
-
-    import hiro.loop.resume as rs
-
-    t = [0.0]
-    monkeypatch.setattr(rp.time, "monotonic", lambda: t[0])
-    shots = []
-
-    def screenshot():
-        shots.append(t[0])
-        if len(shots) == 2:  # 第二轮截图时录屏中断：暂停 300s（比收尾超时 180s 还长）
-            rp._mark(True)
-            t[0] += 300
-            rp._mark(False)
-        t[0] += 1
-        return None
-
-    monkeypatch.setattr(
-        "kotonebot.device", NS(screenshot=screenshot, click=lambda *a: None, click_center=lambda: None), raising=False
-    )
-    monkeypatch.setattr(rs, "at_home", lambda: len(shots) >= 5)
-    monkeypatch.setattr(rs, "screen_texts", lambda *a, **k: [])
-    monkeypatch.setattr(rs, "tap", lambda name, img, click: False)  # 画面上什么模板都没有
-    monkeypatch.setattr(rs, "tpl", lambda name: NS(exists=lambda img: False))
-    monkeypatch.setattr(rs.time, "sleep", lambda s: t.__setitem__(0, t[0] + s))
-    assert rs.finish_produce_end(timeout=180.0) is True  # 墙钟过了 300s 以上，但暂停不计，没超时
-
-
-@NEED_KAA
 def test_real_flow_controller_blocks_checkpoint(tmp_path):
     """真实 kotonebot FlowController：旗标出现后，工作线程停在 check()；旗标消失后继续。"""
     import threading
