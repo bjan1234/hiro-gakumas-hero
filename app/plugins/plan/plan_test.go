@@ -78,3 +78,30 @@ func TestPanelReloadsAfterNewFormationCard(t *testing.T) {
 }
 
 func okRes(s string) hiroapi.Result { return hiroapi.Result{OK: true, Data: []byte(s)} }
+
+// CR2#4：对话里旧的编成卡一直在画，也不能把面板里新的方案清掉。
+func TestOldFormationCardDoesNotClearNewerPlan(t *testing.T) {
+	h, p := host(), New()
+	newer := strings.Replace(planJSON, "2026-11-23 20:00", "2026-11-24 09:00", 1)
+	h.Resp["plan show"] = okRes(newer)
+	var old map[string]any
+	_ = decode(planJSON, &old)
+	n := 0
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Fill().Children(func() {
+			p.Cards["formation"](c, h, plugin.Card{"type": "formation", "plan": old})
+			p.Panel(c, h, "")
+		})
+	}, 600, 1400)
+	for i := 0; i < 3; i++ {
+		tt.Frame()
+	}
+	for _, c := range h.Calls {
+		if strings.Join(c, " ") == "plan show" {
+			n++
+		}
+	}
+	if n > 1 || !tt.HasText("出方案时间 2026-11-24 09:00") {
+		t.Errorf("plan show 读了 %d 次，面板：%v", n, tt.HasText("出方案时间 2026-11-24 09:00"))
+	}
+}

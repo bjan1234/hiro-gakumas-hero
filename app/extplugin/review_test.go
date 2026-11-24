@@ -137,3 +137,58 @@ func TestCallTimesOutWhenPluginStopsReading(t *testing.T) {
 		t.Errorf("还剩 %d 个等待者", n)
 	}
 }
+
+// CR2#1：源目录把 plugins 目录包在里面时也要拒（否则复制会套娃）。
+func TestInstallFromAncestorOfPluginsRejected(t *testing.T) {
+	t.Setenv("EXTPLUGIN_FAKE", "1")
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	src := fakeManifest(t).Dir
+	// 把清单放到 root（它包含 home/plugins）
+	b, _ := os.ReadFile(filepath.Join(src, "plugin.json"))
+	_ = os.WriteFile(filepath.Join(root, "plugin.json"), b, 0o644)
+	m := &Manager{Home: home, Reg: &plugin.Registry{}}
+	if _, err := m.Install(root); err == nil {
+		t.Error("包含 plugins 目录的源应该拒")
+	}
+}
+
+// CR2#2：插件进程退出但留下占着 stdout 的子进程时，也要很快认出它退出了。
+func TestExitDetectedWhileChildHoldsStdout(t *testing.T) {
+	c := newClient(t.TempDir(), []string{"sh", "-c", "sleep 8 2>/dev/null & exit 0"}, os.Environ(), nil)
+	defer c.Close()
+	c.mu.Lock()
+	if err := c.startLocked(); err != nil {
+		c.mu.Unlock()
+		t.Fatal(err)
+	}
+	c.mu.Unlock()
+	deadline := time.Now().Add(DrainGrace + 3*time.Second)
+	for time.Now().Before(deadline) {
+		c.mu.Lock()
+		gone := c.cmd == nil
+		c.mu.Unlock()
+		if gone {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Error("父进程退出了，客户端还当它在跑")
+}
+
+// CR2#3：写超时只杀它当时写的那一代进程，不误杀新起的。
+func TestTimeoutKillsOnlyItsGeneration(t *testing.T) {
+	c := newClient(t.TempDir(), []string{"sleep", "30"}, os.Environ(), nil)
+	defer c.Close()
+	c.mu.Lock()
+	_ = c.startLocked()
+	gen := c.gen
+	c.gen++ // 假装中间换了一代
+	newer := c.cmd
+	c.killGenLocked(gen)
+	still := c.cmd == newer && c.cmd != nil
+	c.mu.Unlock()
+	if !still {
+		t.Error("杀掉了别的一代")
+	}
+}

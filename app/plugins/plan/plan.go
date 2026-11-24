@@ -85,8 +85,8 @@ func New() *plugin.Plugin {
 				if json.Unmarshal(b, &p) != nil {
 					return
 				}
-				if s.plan != nil && (p.Created != s.plan.Created || p.Idol.ID != s.plan.Idol.ID) {
-					s.plan, s.err = nil, "" // 对话里出了新方案：面板下次重新读
+				if s.plan != nil && p.Created > s.plan.Created {
+					s.plan, s.err = nil, "" // 对话里出了比面板上更新的方案：面板下次重新读（旧卡不动缓存）
 				}
 				kit.Card(c).MaxWidth(620).Children(func() {
 					ui.Text(c, "开局编成方案").FontSize(kit.FSmall).FontWeight(600).TextColor(kit.Ink)

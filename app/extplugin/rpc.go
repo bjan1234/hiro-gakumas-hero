@@ -16,6 +16,9 @@ import (
 // IdleTimeout 是插件进程多久没请求就关掉（下次用时再起）。
 const IdleTimeout = 60 * time.Second
 
+// DrainGrace 是插件进程退出后，最多再等多久把它写在管道里的回复读完。
+var DrainGrace = 2 * time.Second
+
 // CallTimeout 是一次请求最多等多久（包括往插件 stdin 写）。测试里可以改短。
 var CallTimeout = 15 * time.Second
 
@@ -78,13 +81,18 @@ func (c *client) startLocked() error {
 	if err != nil {
 		return err
 	}
-	out, err := cmd.StdoutPipe()
+	// stdout 用自己开的管道（*os.File）：Wait 只等父进程退出，不等占着管道的子孙进程，也不会替我们关读端
+	out, w, err := os.Pipe()
 	if err != nil {
 		return err
 	}
+	cmd.Stdout = w
 	if err := cmd.Start(); err != nil {
+		out.Close()
+		w.Close()
 		return fmt.Errorf("插件起不来：%w", err)
 	}
+	w.Close()
 	c.cmd, c.stdin = cmd, in
 	c.gen++
 	gen := c.gen
@@ -94,8 +102,13 @@ func (c *client) startLocked() error {
 		close(readDone)
 	}()
 	go func() {
-		<-readDone // 先把 stdout 读完（插件可能写完回复就退出），再 Wait：Wait 会关掉管道
-		_ = cmd.Wait()
+		_ = cmd.Wait() // 父进程一退出就返回
+		// 它退出前写的回复先读完；子孙进程占着管道时最多等 DrainGrace，然后不再读
+		select {
+		case <-readDone:
+		case <-time.After(DrainGrace):
+		}
+		out.Close()
 		c.mu.Lock()
 		if c.gen == gen {
 			c.cmd, c.stdin = nil, nil
@@ -192,6 +205,7 @@ func (c *client) Call(ctx context.Context, method string, params, out any) error
 	}
 	c.next++
 	id := c.next
+	myGen := c.gen
 	ch := make(chan rpcMsg, 1)
 	c.waiting[id] = ch
 	c.last = time.Now()
@@ -213,7 +227,7 @@ func (c *client) Call(ctx context.Context, method string, params, out any) error
 	case <-ctx.Done():
 		drop()
 		c.mu.Lock()
-		c.killLocked()
+		c.killGenLocked(myGen) // 只杀这次写的那一代；中间换过进程就不动新的
 		c.mu.Unlock()
 		return fmt.Errorf("插件 %s 没在 %v 内收下请求", method, CallTimeout)
 	}
@@ -258,6 +272,13 @@ func (c *client) killLocked() {
 		_ = c.stdin.Close()
 	}
 	c.cmd, c.stdin = nil, nil
+}
+
+// killGenLocked 只在当前还是第 gen 代进程时杀掉它。
+func (c *client) killGenLocked(gen int) {
+	if c.gen == gen {
+		c.killLocked()
+	}
 }
 
 // Close 关掉插件进程，不再起。

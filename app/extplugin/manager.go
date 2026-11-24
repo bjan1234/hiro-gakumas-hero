@@ -122,12 +122,12 @@ func (m *Manager) Install(src string) (*Manifest, error) {
 	if abs, err := filepath.Abs(real); err == nil {
 		real = abs
 	}
-	plugins, _ := filepath.Abs(m.dir())
-	if rp, err := filepath.EvalSymlinks(plugins); err == nil {
-		plugins = rp
-	}
-	if rel, err := filepath.Rel(plugins, real); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	plugins := resolvedPath(m.dir())
+	if inside(plugins, real) {
 		return nil, fmt.Errorf("不能从已安装插件的目录里安装：%s", src)
+	}
+	if inside(real, plugins) {
+		return nil, fmt.Errorf("插件文件夹不能包含初星助手的数据目录：%s", src)
 	}
 	man, err := LoadManifest(real)
 	if err != nil {
@@ -180,6 +180,30 @@ func (m *Manager) Install(src string) (*Manifest, error) {
 		return got, nil
 	}
 	return nil, fmt.Errorf("装完读不到插件 %s 的清单", man.ID)
+}
+
+// resolvedPath 是 p 的绝对路径，能解开的符号链接都解开（p 不存在时解开最近的上级）。
+func resolvedPath(p string) string {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return p
+	}
+	rest := ""
+	for cur := abs; ; cur = filepath.Dir(cur) {
+		if r, err := filepath.EvalSymlinks(cur); err == nil {
+			return filepath.Join(r, rest)
+		}
+		if filepath.Dir(cur) == cur {
+			return abs
+		}
+		rest = filepath.Join(filepath.Base(cur), rest)
+	}
+}
+
+// inside 是 child 是否就是 parent 或在它里面。
+func inside(parent, child string) bool {
+	rel, err := filepath.Rel(parent, child)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
 // copyDir 复制目录（跳过符号链接，免得把目录外的东西带进来）。
