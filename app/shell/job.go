@@ -197,4 +197,3 @@ func (a *App) pinned(c *ui.Context) {
 		}
 	})
 }
-

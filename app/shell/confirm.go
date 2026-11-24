@@ -161,11 +161,11 @@ func (a *App) confirmCard(c *ui.Context, m *Message, card plugin.Card) {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, e.Cost).FontSize(kit.FNote).TextColor(kit.Ink3).Shrink(1)
 				ui.Spacer(c)
-				if kit.Secondary(c, "先不").Key("cancel-"+p.ID).Disabled(busy).Clicked() {
+				if kit.Secondary(c, "先不").Key("cancel-" + p.ID).Disabled(busy).Clicked() {
 					a.resolve(m, card, "cancel")
 				}
 				ui.Text(c, "Esc").FontSize(10.5).TextColor(kit.Ink3)
-				if kit.Primary(c, "开始").Key("confirm-"+p.ID).Disabled(busy).Clicked() {
+				if kit.Primary(c, "开始").Key("confirm-" + p.ID).Disabled(busy).Clicked() {
 					a.resolve(m, card, "confirm")
 				}
 				ui.Text(c, "↵").FontSize(12).TextColor(kit.Ink3)
