@@ -213,7 +213,7 @@ def _first_reason(out: str) -> str:
 @command(
     "run start",
     Risk.ACT,
-    "开一个任务（同一时间只能一个）：hif H.I.F 培育、hajime「初」培育、nia N.I.A 培育、tower 偶像之路、daily 日常、main-task 初星課題（关完成弹窗、读 NEXT）、story 看初星コミュ（逐话再生并跳过）、scan-supports / scan-memories 扫描、selftest 自检。"
+    "开一个任务（同一时间只能一个）：hif H.I.F 培育、hajime「初」培育、nia N.I.A 培育、tower 偶像之路、daily 日常、main-task 初星課題（关完成弹窗、读 NEXT）、story 看初星コミュ（逐话再生并跳过）、contest-unit 竞赛编队（おまかせ重排、读总合力）、scan-supports / scan-memories 扫描、selftest 自检。"
     "会动游戏，第一次返回待确认，用户同意后才开始。",
     args=(
         Arg("kind", "任务种类", choices=tuple(KINDS)),
@@ -235,7 +235,7 @@ def _first_reason(out: str) -> str:
         Arg("--no-llm", "决策只用规则和算法，不调用模型", type="bool"),
         Arg("--scenario", "write-formation：写哪个模式的编成", choices=("hif", "hajime", "nia")),
         Arg("--what", "write-formation：写哪些（support / memory，逗号分隔，缺省都写）"),
-        Arg("--dry-run", "write-formation：只看差在哪几格，不改", type="bool"),
+        Arg("--dry-run", "write-formation：只看差在哪几格，不改；contest-unit：只读总合力，不重排", type="bool"),
     ),
     confirm_summary=_summary,
     precheck=_precheck,

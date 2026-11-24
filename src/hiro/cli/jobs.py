@@ -309,6 +309,16 @@ KINDS: dict[str, Kind] = {
         lambda p: f"看初星コミュ {p.get('chapter') or 1}章" + (f"（到第 {p['until']} 话）" if p.get("until") else ""),
         pausable=False,
     ),
+    "contest-unit": Kind(
+        "contest-unit",
+        "竞赛编队：コンテスト → ユニット編成，用「おまかせ」按现有回忆重排，读出総合力合計（--dry-run 只读不重排）",
+        lambda p, d: (
+            [_PY, "-m", "hiro.daily.contest_unit", "--out", str(d / "out.json")]
+            + (["--read-only"] if p.get("dry_run") else [])
+        ),
+        lambda p: "看竞赛编队总合力" + ("（只读）" if p.get("dry_run") else "（おまかせ重排）"),
+        pausable=False,
+    ),
     "scan-account": Kind(
         "scan-account",
         "读首页顶栏的 PLv、AP、ジュエル（只截一张图，不点）",
