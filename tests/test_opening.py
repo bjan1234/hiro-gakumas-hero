@@ -610,9 +610,12 @@ def test_step1_idol_switch_dialog_keeps_chosen_card(monkeypatch):
     _step1(monkeypatch, None)
     s1 = frame({"Produce.TextStepIndicator1": (93, 49), "Produce.Step1.ButtonNext": (353, 1093)})
     s1.selected = True
-    dlg = frame({}, [Text("×切り替えない", OBox(130, 1140, 330, 1180)), Text("✓切り替える", OBox(400, 1140, 620, 1180))])
+    dlg = frame(
+        {}, [Text("×切り替えない", OBox(130, 1140, 330, 1180)), Text("✓切り替える", OBox(400, 1140, 620, 1180))]
+    )
     dlg.__dict__.update(
-        has_dialog=True, dialog={"kind": "other", "title": "プロデュースアイドル変更", "danger": False, "y": 590, "body": ""}
+        has_dialog=True,
+        dialog={"kind": "other", "title": "プロデュースアイドル変更", "danger": False, "y": 590, "body": ""},
     )
     s2 = frame({"Produce.TextStepIndicator2": (1, 1)})
     rt, _ = rig(monkeypatch, [s1], on_tap=lambda taps: [dlg] if len(taps) == 1 else [s2])
