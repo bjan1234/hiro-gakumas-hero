@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 
 from hiro.cli import client
 from hiro.cli.jobs import KINDS, LIVE, LLM_VARS
@@ -62,12 +63,100 @@ def _precheck(a: dict) -> None:
             )
     if a["kind"] == "nia" and a.get("difficulty") == "regular":
         raise CliError("bad_args", "N.I.A 没有 REGULAR，只有 pro / master", "改成 --difficulty pro", exit_code=2)
+    _check_formation_plan(a)
     del sys
+
+
+FORMATION_KINDS = ("hif", "hajime", "nia")  # 开局要走编成步骤（第 2、3 步）的模式
+
+
+def _check_formation_plan(a: dict) -> None:
+    """新开一局（H.I.F 只算选拔）又没指定编成号时，要有给这位偶像出的开局编成方案，否则任务进了游戏流程才报
+    「开局要编成号」退出（Mac 11-24：方案是给月村手毬的，H.I.F、藤田ことね的「初」都这样白开了一次）。"""
+    from hiro.cli import paths
+    from hiro.cli.home import hiro_home
+
+    kind = a["kind"]
+    if kind not in FORMATION_KINDS or (a.get("command") or "new") != "new":
+        return
+    if kind == "hif" and (a.get("mode") or "qualify") == "main":
+        return  # 本战不走编成步骤，用的是选拔得到的回忆
+    if (
+        a.get("support_set")
+        or a.get("memory_set")
+        or os.environ.get("HIRO_SUPPORT_SET")
+        or os.environ.get("HIRO_MEMORY_SET")
+    ):
+        return
+    env_plan = os.environ.get("HIRO_FORMATION_PLAN")
+    if env_plan == "off":
+        return
+    path = Path(env_plan) if env_plan else paths.plan_path(hiro_home())
+    idol = (a.get("idol") or "").replace("i_card-skin-", "i_card-")
+    hint = (
+        f"先给这位偶像出编成方案：hiro plan formation --idol {idol or '<偶像卡编号>'}；"
+        f"再写进游戏：hiro run start write-formation --scenario {kind}；然后再开局。"
+        "也可以用 --support-set / --memory-set 指定游戏里已经编好的编成号"
+    )
+    if not path.is_file():
+        raise CliError("no_plan", "还没有开局编成方案，不知道这局用哪套支援卡和回忆", hint)
+    try:
+        plan = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise CliError("no_plan", "开局编成方案读不出来", hint) from None
+    want = (plan.get("idol") or {}).get("idol_card_id")
+    if idol and want and idol != want:
+        name = (plan.get("idol") or {}).get("name") or want
+        raise CliError("plan_other_idol", f"现在的编成方案是给「{name}」出的，这局是 {idol}", hint)
+
+
+EXAM_KINDS = ("hif", "hajime", "nia", "tower")  # 有考试、出牌靠算法的任务
 
 
 def _summary(a: dict) -> str:
     kind = KINDS.get(a["kind"])
-    return kind.summary(_params(a)) if kind else f"开始任务 {a['kind']}"
+    text = kind.summary(_params(a)) if kind else f"开始任务 {a['kind']}"
+    if a["kind"] in EXAM_KINDS and (why := exam_algo_problem()):
+        text += f"\n⚠ 考试出牌只能用规则打，分数会明显低：出牌算法没加载上（{why}）"
+    return text
+
+
+_exam_algo_checked: list = []
+
+
+def exam_algo_problem() -> str | None:
+    """任务环境里考试出牌算法（hiro.bench_bridge，缺省 uinet）能不能加载；不能时返回一句原因。
+    在任务同样的环境里跑一次 `python -m hiro.bench_bridge check`（不下载），同一进程只查一次。
+    Mac 11-24 18:27：测试目录缺主数据，uinet 没加载上，整局考试退回规则，只有日志里一行 WARNING。"""
+    if _exam_algo_checked:
+        return _exam_algo_checked[0]
+    import subprocess
+
+    from hiro.cli import paths
+    from hiro.cli.home import hiro_home
+    from hiro.cli.jobs import REPO
+
+    env = paths.apply_defaults(os.environ.copy(), hiro_home())
+    src = str(REPO / "src")
+    env["PYTHONPATH"] = src + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    env["PYTHONUTF8"] = "1"
+    try:
+        r = subprocess.run(
+            [sys.executable, "-m", "hiro.bench_bridge", "check"],
+            env=env, capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL,
+        )  # fmt: skip
+        why = None if r.returncode == 0 else _first_reason(r.stdout + r.stderr)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        why = f"检查没跑完：{type(e).__name__}"
+    _exam_algo_checked.append(why)
+    return why
+
+
+def _first_reason(out: str) -> str:
+    """bench_bridge check 的输出里挑写给人看的那句（「缺 Python 模块 …」/「下载失败 …」），没有就第一行。"""
+    lines = [x.strip() for x in out.splitlines() if x.strip()]
+    pick = next((x for x in lines if x.startswith(("缺 ", "下载失败", "模型校验"))), lines[0] if lines else "原因不明")
+    return pick[:160]
 
 
 @command(
