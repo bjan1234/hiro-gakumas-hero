@@ -25,6 +25,8 @@ var kinds = map[string]string{
 	"nia":             "N.I.A",
 	"tower":           "偶像之路",
 	"daily":           "日常",
+	"main-task":       "初星課題",
+	"story":           "看初星コミュ",
 	"scan-idols":      "扫描偶像卡",
 	"scan-supports":   "扫描支援卡",
 	"scan-memories":   "扫描回忆",
