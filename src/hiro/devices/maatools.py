@@ -194,7 +194,9 @@ def port_open(port: int = MAATOOLS_PORT, timeout: float = 1.0) -> bool:
 # 原来直接抛 DeviceUnavailable，整局崩掉）。先重试 EMPTY_RETRY_S；还是空就给一张和上一帧同尺寸的黑帧（这一拍当没截到：横屏时
 # LandscapeGuard 当黑屏处理、主循环不点）；连续 EMPTY_MAX_S 秒都是空帧才报 DeviceGone。
 EMPTY_RETRY_S, EMPTY_RETRY_GAP_S = 3.0, 0.3
-EMPTY_MAX_S = 30.0
+EMPTY_MAX_S = (
+    90.0  # 要比 LandscapeGuard 退全屏晚（进全屏 30s 后 + 黑屏 8s）：11-25 空帧 30s 先报 DeviceGone，guard 没机会退全屏
+)
 
 
 class MaaToolsDevice:
