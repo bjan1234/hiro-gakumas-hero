@@ -16,6 +16,8 @@ type viewState struct {
 	list        ui.ListState
 	md          markdown.Options
 	resolving   map[string]bool // 正在确认 / 取消的待确认编号（防重复）
+	autoOpened  map[string]bool // 已自动打开过游戏运行现状的任务
+	chatPct     float32
 }
 
 // SidebarWidth 是左侧栏宽度（§4）。
@@ -28,13 +30,30 @@ func (a *App) View(c *ui.Context) {
 	if c.Shortcut(ui.Cmd, ui.KeyN) {
 		a.NewThread()
 	}
+	if c.Shortcut(ui.Cmd, ui.KeyBackslash) {
+		a.TogglePanel()
+	}
+	a.hidden.Store(c.WindowHidden())
+	w, _ := c.Size()
 	ui.Row(c).Fill().Background(kit.Bg).AlignItems(ui.Stretch).Children(func() {
 		a.sidebar(c)
-		ui.Column(c).Grow(1).MinWidth(MinChatWidth).FillHeight().Children(func() {
-			a.header(c)
-			a.transcript(c)
-			a.composer(c)
-		})
+		chat := func() {
+			ui.Column(c).Fill().Children(func() {
+				a.header(c)
+				a.pinned(c)
+				a.transcript(c)
+				a.composer(c)
+			})
+		}
+		if !a.ui.panelOpen {
+			ui.Column(c).Grow(1).FillHeight().Children(chat)
+			return
+		}
+		if a.ui.chatPct == 0 {
+			a.ui.chatPct = DefaultChatPercent
+		}
+		a.ui.chatPct = ClampChatPercent(a.ui.chatPct, w-SidebarWidth)
+		ui.SplitPercent(c, &a.ui.chatPct, chat, func() { a.panel(c) }).SplitReset(DefaultChatPercent).Grow(1).FillHeight()
 	})
 }
 

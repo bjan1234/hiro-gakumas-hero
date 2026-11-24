@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/matto49/hiro-gakumas-hero/app/hiroapi"
@@ -50,6 +51,11 @@ type App struct {
 
 	input string
 	ui    viewState
+
+	jobs    map[string]*plugin.JobView
+	live    string // 活着的任务编号
+	polling bool
+	hidden  atomic.Bool // 窗口隐藏（轮询降速）
 }
 
 // New 建主界面，读出已存的对话。

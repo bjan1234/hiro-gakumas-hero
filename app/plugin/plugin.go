@@ -27,6 +27,12 @@ type Host interface {
 	RunArgs(label string, args []string)
 	// OpenPanel 在右侧边面板打开某插件的某页。
 	OpenPanel(pluginID, route string)
+	// Job 是宿主盯着的某个任务（第一次问就开始盯；还没数据时 Job 为 nil）。
+	Job(id string) *JobView
+	// LiveJob 是现在活着的任务编号（没有为 ""）。
+	LiveJob() string
+	// ClosePanel 关掉侧边面板。
+	ClosePanel()
 	// Home 是 HIRO_HOME（读本机图片用）。
 	Home() string
 	// Now 是现在（测试可换）。

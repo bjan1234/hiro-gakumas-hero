@@ -36,7 +36,6 @@ func (a *App) transcript(c *ui.Context) {
 		}
 		a.thinking(c)
 	}).Grow(1).Padding(20, a.chatPad()).Gap(14).Children(func() {
-		a.pinned(c)
 		if rows == 0 {
 			ui.Column(c).Margin(ui.Auto).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, "想做什么？").FontSize(18).FontWeight(600).TextColor(kit.Ink)
