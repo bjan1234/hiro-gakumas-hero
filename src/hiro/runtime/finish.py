@@ -8,6 +8,7 @@ AllowanceContext.claim）。跑在 hiro.runtime.Runtime 上，判据和旧版同
 from __future__ import annotations
 
 import logging
+import re
 
 from hiro.loop import resume_rules as rr
 from hiro.runtime import nav, photo_pick
@@ -101,6 +102,9 @@ def resume_produce(rt, timeout: float = RESUME_TIMEOUT) -> str:
     return rt.drive(step, timeout, "续跑进培育")
 
 
+_BUTTON_ARROWS = re.compile(r"^[→＞>›»➡︎]+")
+
+
 def finish_produce_end(rt, *, go_home: bool = False, timeout: float = FINISH_TIMEOUT) -> bool:
     """培育结束后的结算画面（プロデュース完了、获得道具、升级、活动积分、回忆照片…）点回首页。返回 True：回到首页，或停在了
     开始确认页（go_home=False 时到此为止，是否开下一局由上层决定）。超时抛 ResumeBlocked。"""
@@ -108,7 +112,8 @@ def finish_produce_end(rt, *, go_home: bool = False, timeout: float = FINISH_TIM
 
     def first(f, words, *, exact=True, min_y=0):
         for b in f.texts:
-            s = b.text.replace(" ", "").strip()
+            # 按钮左边的箭头图标常被 OCR 读进来（11-25 账号 3 初结算总览页「→完了する」，精确比对不上，一直点空白 180 秒停机）
+            s = _BUTTON_ARROWS.sub("", b.text.replace(" ", "").strip())
             if (s in words if exact else any(w in s for w in words)) and b.rect.center.y > min_y:
                 return b
         return None
