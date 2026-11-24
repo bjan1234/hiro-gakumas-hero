@@ -239,3 +239,22 @@ func Elapsed(start, now float64) string {
 
 // Clock 是秒级时间戳的「时:分」（本地时区）。
 func Clock(t float64) string { return time.Unix(int64(t), 0).Format("15:04") }
+
+var tools = map[string]string{
+	"info_summary": "看了账号概况", "info_supports": "查了支援卡", "info_memories": "查了回忆", "info_idols": "查了偶像卡",
+	"info_affection": "查了好感度", "info_formations": "查了编成位", "info_game_settings": "查了游戏设置",
+	"catalog_search": "搜了资料库", "catalog_get": "查了资料库", "catalog_supports": "查了支援卡资料", "catalog_sync": "同步了资料库",
+	"plan_formation": "出了编成方案", "plan_show": "看了编成方案", "write_formation": "准备写编成", "scan_formations": "准备读编成位",
+	"run_start": "发起开局", "run_status": "看了任务状态", "run_events": "看了对局步骤", "doctor": "检查了环境", "tools": "看了能用的工具",
+}
+
+// Tool 是 agent 工具名（info_idols…）给玩家看的说法；插件的工具统称「用了插件工具」。
+func Tool(name string) string {
+	if v, ok := tools[name]; ok {
+		return v
+	}
+	if strings.HasPrefix(name, "plugin_") {
+		return "用了插件工具"
+	}
+	return name
+}

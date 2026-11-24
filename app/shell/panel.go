@@ -9,16 +9,28 @@ import (
 // MinChatWidth 是中间对话最少留多宽（§4）。
 const MinChatWidth float32 = 400
 
-// DefaultChatPercent 是面板打开时对话占的比例（面板初始 45%）。
-const DefaultChatPercent float32 = 55
+// DefaultPanelWidth 是面板打开时的宽度（用户 11-24：一半太宽了，收窄，仍可拖宽）。
+const DefaultPanelWidth float32 = 380
 
-// ClampChatPercent 把对话占比夹在：面板最多 70%（对话 ≥30%）、对话至少 400 px、面板至少 20%。
+// MinPanelWidth 是面板最窄多少。
+const MinPanelWidth float32 = 300
+
+// DefaultChatPercent 是主区宽 mainWidth 时，面板为 DefaultPanelWidth 的对话占比。
+func DefaultChatPercent(mainWidth float32) float32 {
+	if mainWidth <= 0 {
+		return 65
+	}
+	return ClampChatPercent(100-DefaultPanelWidth/mainWidth*100, mainWidth)
+}
+
+// ClampChatPercent 把对话占比夹在：面板最多 70%（对话 ≥30%）、对话至少 400 px、面板至少 300 px。
 func ClampChatPercent(p, mainWidth float32) float32 {
 	lo := float32(30)
+	hi := float32(80)
 	if mainWidth > 0 {
 		lo = max(lo, MinChatWidth/mainWidth*100)
+		hi = 100 - MinPanelWidth/mainWidth*100
 	}
-	hi := float32(80)
 	if p > hi {
 		p = hi
 	}

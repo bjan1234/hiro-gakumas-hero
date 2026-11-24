@@ -15,6 +15,9 @@ import (
 	"github.com/matto49/hiro-gakumas-hero/app/plugin"
 )
 
+// PanelFrameWidth 是右侧面板里实时画面的宽（9:16；面板缺省 380 宽）。
+const PanelFrameWidth float32 = 260
+
 // MaxStreamSteps 是对话里对局卡最多列多少步（更早的折叠成一行）。
 const MaxStreamSteps = 30
 
@@ -248,32 +251,29 @@ func (s *state) panel(c *ui.Context, h plugin.Host, route string) {
 		ui.Text(c, title(v, id)).FontSize(15).FontWeight(650).TextColor(kit.Ink)
 		kit.StatePill(c, v.State)
 	})
-	ui.Row(c).Gap(16).AlignItems(ui.Start).Children(func() {
-		frame(c, v.LastFrame(), v.Live(), 190)
-		ui.Column(c).Gap(12).Grow(1).Children(func() {
-			ui.Column(c).Gap(6).Children(func() {
-				kv := func(k, val string) {
-					ui.Row(c).Children(func() {
-						ui.Text(c, k).FontSize(kit.FNote).TextColor(kit.Ink3)
-						ui.Spacer(c)
-						ui.Text(c, val).FontSize(kit.FNote).FontWeight(600).TextColor(kit.Ink)
-					})
-				}
-				kv("步数", fmt.Sprint(len(v.Steps())))
-				if e := elapsed(h, v); e != "" {
-					kv("已打", e)
-				}
-				if st := v.Steps(); len(st) > 0 {
-					kv("现在", labels.Page(st[len(st)-1].Page))
-				}
+	// 竖着排：画面在上（面板窄），下面几行数和控制
+	ui.Column(c).AlignItems(ui.Center).Children(func() { frame(c, v.LastFrame(), v.Live(), PanelFrameWidth) })
+	ui.Column(c).Gap(6).Children(func() {
+		kv := func(k, val string) {
+			ui.Row(c).Children(func() {
+				ui.Text(c, k).FontSize(kit.FNote).TextColor(kit.Ink3)
+				ui.Spacer(c)
+				ui.Text(c, val).FontSize(kit.FNote).FontWeight(600).TextColor(kit.Ink)
 			})
-			s.controls(c, h, v, id, false)
-			if v.State == "takeover" {
-				kit.Note(c, "自动操作已停下。你在游戏里点完，按「继续自动打」，初星助手会从当前画面接着打。")
-			}
-			kit.Note(c, "每一步做了什么、为什么，在左边对话里那张对局卡下面。")
-		})
+		}
+		kv("步数", fmt.Sprint(len(v.Steps())))
+		if e := elapsed(h, v); e != "" {
+			kv("已打", e)
+		}
+		if st := v.Steps(); len(st) > 0 {
+			kv("现在", labels.Page(st[len(st)-1].Page))
+		}
 	})
+	s.controls(c, h, v, id, false)
+	if v.State == "takeover" {
+		kit.Note(c, "自动操作已停下。你在游戏里点完，按「继续自动打」，初星助手会从当前画面接着打。")
+	}
+	kit.Note(c, "每一步做了什么、为什么，在左边对话里那张对局卡下面。")
 	if exams := v.Report(); len(exams) > 0 {
 		kit.Section(c, "成绩")
 		scoreStrip(c, exams)

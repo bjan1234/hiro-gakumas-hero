@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo/ui/markdown"
 
 	"github.com/matto49/hiro-gakumas-hero/app/kit"
+	"github.com/matto49/hiro-gakumas-hero/app/labels"
 	"github.com/matto49/hiro-gakumas-hero/app/plugin"
 )
 
@@ -65,7 +66,7 @@ func toolLine(c *ui.Context, line string) {
 	ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
 		ui.Icon(c, kit.IcCheck).FontSize(13).TextColor(kit.Ink3)
 		name, rest, _ := strings.Cut(line, " · ")
-		ui.Text(c, name).Font(kit.Mono).FontSize(kit.FNote).TextColor(kit.Ink3)
+		ui.Text(c, labels.Tool(name)).FontSize(kit.FNote).TextColor(kit.Ink3)
 		if rest != "" {
 			ui.Text(c, rest).FontSize(kit.FNote).TextColor(kit.Ink3).MaxLines(1).Ellipsis("…")
 		}

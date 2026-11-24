@@ -96,3 +96,13 @@ func TestPanelShowsEndedJobScores(t *testing.T) {
 		}
 	}
 }
+
+// 面板窄时竖着排：画面在上，按钮在画面下面。
+func TestPanelIsVertical(t *testing.T) {
+	h, p := liveHost(), New()
+	tt := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "") }), 380, 900)
+	pause, ok := tt.AccessByRole(ui.RoleButton, "暂停")
+	if !ok || pause.Bounds.Y < 380 {
+		t.Errorf("暂停按钮应在画面下面：%+v", pause.Bounds)
+	}
+}

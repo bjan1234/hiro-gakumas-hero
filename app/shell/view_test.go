@@ -130,3 +130,15 @@ func TestSubmitNeedsExactCommand(t *testing.T) {
 		t.Error("精确的命令名要打开面板")
 	}
 }
+
+// 工具行写成玩家看得懂的话，不露内部工具名。
+func TestToolLineIsReadable(t *testing.T) {
+	a, _ := newTestApp(newMem(), &fakeCall{}, nil, viewReg())
+	a.NewThread()
+	a.Post("找到了", nil)
+	a.Current().Messages[0].Tools = []string{"info_idols · 1 条"}
+	tt := ui.NewTester(a.View, 1280, 800)
+	if !tt.HasText("查了偶像卡") || tt.HasText("info_idols") {
+		t.Errorf("工具行：%q", tt.Texts())
+	}
+}

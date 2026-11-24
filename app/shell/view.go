@@ -56,11 +56,12 @@ func (a *App) View(c *ui.Context) {
 			ui.Column(c).Grow(1).FillHeight().Children(chat)
 			return
 		}
+		main := w - SidebarWidth
 		if a.ui.chatPct == 0 {
-			a.ui.chatPct = DefaultChatPercent
+			a.ui.chatPct = DefaultChatPercent(main)
 		}
-		a.ui.chatPct = ClampChatPercent(a.ui.chatPct, w-SidebarWidth)
-		ui.SplitPercent(c, &a.ui.chatPct, chat, func() { a.panel(c) }).SplitReset(DefaultChatPercent).Grow(1).FillHeight()
+		a.ui.chatPct = ClampChatPercent(a.ui.chatPct, main)
+		ui.SplitPercent(c, &a.ui.chatPct, chat, func() { a.panel(c) }).SplitReset(DefaultChatPercent(main)).Grow(1).FillHeight()
 	})
 }
 

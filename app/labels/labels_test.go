@@ -43,3 +43,11 @@ func TestNames(t *testing.T) {
 		t.Error("属性")
 	}
 }
+
+func TestToolNames(t *testing.T) {
+	for in, want := range map[string]string{"info_idols": "查了偶像卡", "info_supports": "查了支援卡", "run_start": "发起开局", "plan_formation": "出了编成方案", "plugin_demo_echo": "用了插件工具", "weird_tool": "weird_tool"} {
+		if got := Tool(in); got != want {
+			t.Errorf("Tool(%q) = %q，要 %q", in, got, want)
+		}
+	}
+}

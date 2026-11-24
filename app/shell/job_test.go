@@ -12,10 +12,10 @@ import (
 
 func TestClampChatPercent(t *testing.T) {
 	for _, c := range []struct{ p, w, want float32 }{
-		{55, 1048, 55},                 // 默认：面板 45%
-		{10, 1048, 400.0 / 1048 * 100}, // 对话至少 400 px
-		{20, 2000, 30},                 // 面板最多 70%
-		{95, 1048, 80},                 // 面板至少留一点（不会被拖没）
+		{55, 1048, 55},                   // 默认：面板 45%
+		{10, 1048, 400.0 / 1048 * 100},   // 对话至少 400 px
+		{20, 2000, 30},                   // 面板最多 70%
+		{95, 1048, 100 - 300.0/1048*100}, // 面板最窄 300 px
 	} {
 		if got := ClampChatPercent(c.p, c.w); got < c.want-0.01 || got > c.want+0.01 {
 			t.Errorf("ClampChatPercent(%v, %v) = %v，要 %v", c.p, c.w, got, c.want)
@@ -146,5 +146,37 @@ func TestContextHostIsSnapshot(t *testing.T) {
 	a.live = ""
 	if h.LiveJob() != "j7" || len(h.Job("j7").Steps()) != 1 {
 		t.Error("快照跟着变了")
+	}
+}
+
+// 面板默认约 380 px 宽（不是窗口的一半）。
+func TestDefaultPanelIsNarrow(t *testing.T) {
+	for _, w := range []float32{1048, 1500} {
+		p := DefaultChatPercent(w)
+		panel := w * (100 - p) / 100
+		if panel < 360 || panel > 400 {
+			t.Errorf("主区 %v 时面板 %v px", w, panel)
+		}
+	}
+	if got := ClampChatPercent(90, 1048); 1048*(100-got)/100 < 299 {
+		t.Errorf("面板最窄 300 px，得到 %v%%", got)
+	}
+}
+
+// 当前对话里已经有这局的对局卡时，不再在顶上钉一张（不重复、不压住对话）。
+func TestNoPinnedCardWhenRunCardInThread(t *testing.T) {
+	reg := viewReg()
+	a, run := newTestApp(newMem(), liveCall("running"), nil, reg)
+	a.NewThread()
+	a.PollJobs()
+	run.Drain()
+	tt := ui.NewTester(a.View, 1280, 800)
+	if !tt.HasText("初 · 月村手毬") {
+		t.Fatal("别的对话里要钉顶")
+	}
+	a.Post("", plugin.Card{"type": "run", "jobId": "j7"})
+	tt.Frame()
+	if a.showPinned() {
+		t.Error("对话里有这局的对局卡时不钉顶")
 	}
 }

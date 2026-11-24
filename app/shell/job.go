@@ -233,9 +233,26 @@ func (a *App) onJobStarted(card map[string]any) {
 	}
 }
 
+// showPinned 是要不要钉顶：有活任务，且当前对话里没有这局的对局卡（有的话那张卡就在对话里，不重复、不压住对话）。
+func (a *App) showPinned() bool {
+	if a.live == "" {
+		return false
+	}
+	if a.cur != nil {
+		for _, m := range a.cur.Messages {
+			for _, c := range m.Cards {
+				if c["type"] == "run" && c["jobId"] == a.live {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
 // pinned 是钉在对话顶上的对局卡（有活着的任务时，每个对话都有）。
 func (a *App) pinned(c *ui.Context) {
-	if a.live == "" {
+	if !a.showPinned() {
 		return
 	}
 	card := plugin.Card{"type": "run-pinned", "jobId": a.live}
