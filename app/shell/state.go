@@ -269,6 +269,9 @@ func (a *App) Home() string { return a.d.Home }
 // Now 是现在。
 func (a *App) Now() time.Time { return a.d.Now() }
 
+// RunArgs 以用户身份跑一条命令（见上面）；这里满足 plugin.Host。
+var _ plugin.Host = (*App)(nil)
+
 // OpenPanel 在侧边面板打开某插件的某页。
 func (a *App) OpenPanel(pluginID, route string) {
 	a.ui.panelOpen, a.ui.panelPlugin, a.ui.panelRoute = true, pluginID, route

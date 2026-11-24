@@ -16,7 +16,7 @@ func Primary(c *ui.Context, label string) ui.Element {
 
 // Secondary 是描边按钮。
 func Secondary(c *ui.Context, label string) ui.Element {
-	return ui.Button(c, label).FontSize(FSmall).Padding(7, 12).Radius(9).Background(Bg).Border(Hair, LineStr).TextColor(Ink)
+	return ui.Button(c, label).FontSize(FSmall).Padding(7, 12).Radius(9).Background(CardBg).Border(Hair, LineStr).TextColor(Ink)
 }
 
 // Ghost 是没底没框的小按钮（面板头、行内操作）。
@@ -100,7 +100,7 @@ func Code(c *ui.Context, s string) ui.Element {
 
 // Card 是白底细线卡片的外框。
 func Card(c *ui.Context) ui.Element {
-	return ui.Column(c).Gap(8).Padding(12).Radius(R12).Background(Bg).Border(Hair, Line)
+	return ui.Column(c).Gap(8).Padding(12).Radius(R12).Background(CardBg).Border(Hair, Line)
 }
 
 // Section 是面板里的小节标题。
@@ -156,6 +156,18 @@ func Thumb(c *ui.Context, path string, w, h, r float32) {
 
 // IconButton 是方形图标按钮（暂停、停止、关面板）。Label 给测试和读屏用。
 func IconButton(c *ui.Context, ic *ui.SVG, label string) ui.Element {
-	return ui.Button(c, "").Label(label).Tooltip(label).Size(28, 28).Padding(0).Radius(R8).Background(Bg).Border(Hair, Line).TextColor(Ink2).
+	return ui.Button(c, "").Label(label).Tooltip(label).Size(28, 28).Padding(0).Radius(R8).Background(CardBg).Border(Hair, Line).TextColor(Ink2).
 		Children(func() { ui.Icon(c, ic).FontSize(13) })
+}
+
+// RowButton 是没外框的整行按钮（侧栏、命令列表）：左对齐，选中或悬停时浅底。label 给测试和读屏。
+func RowButton(c *ui.Context, key, label string, on bool) ui.Element {
+	b := ui.ButtonBase(c).Key(key).Label(label).Justify(ui.Start).AlignItems(ui.Center).Gap(9).Padding(7, 8).Radius(R8)
+	switch {
+	case on:
+		b = b.Background(Surface2)
+	case b.Hovered():
+		b = b.Background(ui.RGBA(120, 70, 20, 0.06))
+	}
+	return b
 }

@@ -23,6 +23,8 @@ type Host interface {
 	Ask(text string)
 	// Post 往当前对话加一张卡（以初星助手的身份）。
 	Post(text string, card Card)
+	// RunArgs 以用户身份跑一条工具层命令（label 是显示成用户说的话），结果做成卡片。
+	RunArgs(label string, args []string)
 	// OpenPanel 在右侧边面板打开某插件的某页。
 	OpenPanel(pluginID, route string)
 	// Home 是 HIRO_HOME（读本机图片用）。
@@ -78,6 +80,8 @@ type Plugin struct {
 	// Panel 画侧边面板的一页；route 是插件自己的子页（"" 为首页）。
 	Panel    func(c *ui.Context, h Host, route string)
 	Settings func(c *ui.Context, h Host)
+	// Footer 画在侧栏底部（游戏连接、模型这类一直要看到的小状态）。
+	Footer func(c *ui.Context, h Host)
 	// Context 是给 agent 的「现在的情况」里的一段；ContextTitle 是小标题（空则用 Name）。
 	Context      func(ctx context.Context, h Host) string
 	ContextTitle string
