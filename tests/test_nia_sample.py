@@ -27,6 +27,25 @@ def test_choose_difficulty_master(monkeypatch):
     assert rt.raw_device.taps == [(540, 876)]
 
 
+def test_choose_difficulty_locked_stops_with_reason(monkeypatch):
+    """11-25 账号 3：初的「プロ」还锁着（剧本页说明行「初星課題40達成で解放」、按钮上有锁），以前每 2 秒点一次直到超时。
+    点了不前进、画面上有「…解放」：停下，原因带上解放条件。"""
+    page = frame({}, _texts(("初星課題40達成で解放", 360, 627), ("レギュラー", 228, 881), ("プロ", 494, 881)))
+    rt, _ = rig(monkeypatch, [page], on_tap=lambda taps: [page])
+    with pytest.raises(ResumeBlocked, match="初星課題40達成で解放"):
+        ns.choose_difficulty(rt, "pro")
+    assert 1 <= len(rt.raw_device.taps) <= 2
+
+
+def test_choose_difficulty_unlock_text_but_progress_is_fine(monkeypatch):
+    """画面上有「解放」字样，但点了就进第 1 步（别的模式的说明行）：照常走，不误停。"""
+    page = frame({}, _texts(("N.I.A 解放まであと3", 360, 627), ("プロ", 494, 881)))
+    step1 = frame({"Produce.TextStepIndicator1": (93, 49)})
+    rt, _ = rig(monkeypatch, [page], on_tap=lambda taps: [step1])
+    ns.choose_difficulty(rt, "pro")
+    assert rt.raw_device.taps == [(494, 881)]
+
+
 def _rt(tmp_path, now):
     from hiro.runtime.frame import Frame
 

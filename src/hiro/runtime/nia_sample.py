@@ -43,6 +43,14 @@ STAGES = ("nia-mid1", "nia-mid2", "nia-final")
 
 
 # ---------------------------------------------------------------- 开局
+LOCKED_AFTER_TAPS = 2  # 点了这么多次还在剧本页，就看是不是难度还锁着
+
+
+def _unlock_hint(f) -> str | None:
+    """剧本页上的解放条件说明（「初星課題40達成で解放」这类）；没有 None。"""
+    return next((t.text.replace(" ", "") for t in f.texts if "解放" in t.text), None)
+
+
 def choose_difficulty(
     rt, difficulty: str, timeout: float = opening.MODE_TIMEOUT, *, words: tuple[str, ...] | None = None
 ) -> None:
@@ -51,7 +59,7 @@ def choose_difficulty(
     from hiro.loop import ap_refill
 
     words = words or DIFFICULTY_WORDS[difficulty]
-    state = {"refilled": False}
+    state = {"refilled": False, "taps": 0}
 
     def step(f):
         if nav.find(f, "Produce.TextStepIndicator1") is not None:
@@ -71,8 +79,12 @@ def choose_difficulty(
             None,
         )
         if btn is not None:
+            if state["taps"] >= LOCKED_AFTER_TAPS and (lock := _unlock_hint(f)) is not None:
+                # 难度还锁着（按钮上有锁，说明行「初星課題40達成で解放」）：点了不会进第 1 步，停下说清原因（11-25 账号 3 初 プロ）
+                raise ResumeBlocked(f"难度「{btn.text}」还没解放：{lock}")
             logger.info("剧本页难度：点「%s」%s", btn.text, tuple(btn.rect.center))
             rt.device.tap(*btn.rect.center)
+            state["taps"] += 1
             rt.sleep(1.5)
         return None
 
