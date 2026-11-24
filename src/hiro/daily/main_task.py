@@ -113,15 +113,21 @@ def close_popups(rt, limit: int = 30) -> list[dict]:
     return closed
 
 
-def enter(rt):
-    """首页 → 课题页，返回课题页那一帧。"""
+def enter(rt, closed: list[dict] | None = None):
+    """首页 → 课题页，返回课题页那一帧。途中弹出的课题完成弹窗（回首页后常晚一拍才弹）点 ✕ 关掉，记进 closed。"""
     nav.goto_home(rt)
 
     def step(f):
         if at_task_page(f.boxes):
             return f
-        if cleared_popup(f.boxes) is not None:
-            return None  # 弹窗由调用方先关；这里只等
+        if (p := cleared_popup(f.boxes)) is not None:
+            if p["kind"] == "clear":
+                logger.info("初星課題：第 %s 步完成「%s」（奖励自动到账）", p["number"], p["text"])
+            if closed is not None:
+                closed.append(p)
+            rt.device.tap(*POPUP_CLOSE)
+            rt.sleep(1.5)
+            return None
         if nav.at_home(f):
             rt.device.tap(*HOME_BANNER)
             rt.sleep(1.5)
@@ -132,9 +138,11 @@ def enter(rt):
 
 def run(rt) -> dict:
     """回主页、关掉课题完成弹窗（记下完成了哪几步），再进课题页读 NEXT。返回 {cleared: [...], next: {...}}。"""
-    nav.goto_home(rt)
+    # 弹窗盖在首页上时 goto_home 认不出首页、会直接点 ✕（Common.ButtonIconClose），记不下完成了哪一步：先自己关一遍
     cleared = close_popups(rt)
-    f = enter(rt)
+    nav.goto_home(rt)
+    cleared += close_popups(rt)
+    f = enter(rt, closed=cleared)
     nxt = parse(f.boxes)
     logger.info("初星課題：NEXT 第 %s 步「%s」进度 %s，总进度 %s/%s", nxt["number"], nxt["text"], nxt["progress"],
                 nxt["done"], nxt["total"])  # fmt: skip

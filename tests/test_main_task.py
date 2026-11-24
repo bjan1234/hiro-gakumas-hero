@@ -91,3 +91,35 @@ def test_progress_with_thousands_separator():
     """第 48 步「コンテストのユニット総合力を25,000以上」：本步进度是「20,640/25,000」这类带逗号的数（11-25 实机读成 None）。"""
     boxes = [b for b in PAGE37 if b[0] != "0/1"] + [("20,640/25,000", 0.9, (180, 649, 340, 673))]
     assert main_task.parse(boxes)["progress"] == [20640, 25000]
+
+
+def test_enter_closes_popup_that_appears_late(monkeypatch):
+    """11-25 实机：回到首页后「課題CLEAR」晚一拍才弹出，close_popups 已经跑过，enter 只等不关 → 30 秒超时。"""
+    from types import SimpleNamespace as NS
+
+    from hiro.runtime import nav
+
+    clear48 = [("課題CLEAR", 0.9, (184, 322, 548, 396)), ("48", 0.9, (63, 508, 117, 543)),
+               ("コンテストのユニット総合力を", 0.9, (141, 491, 532, 519)), ("25,000以上にしよう", 0.9, (137, 526, 400, 564)),
+               ("報酬は自動で受け取られます", 0.9, (220, 1071, 500, 1096))]  # fmt: skip
+    home = [("ホーム", 0.9, (329, 1185, 389, 1204))]
+    screens = [clear48]
+    taps = []
+
+    def tap(x, y):
+        taps.append((x, y))
+        screens[0] = home if (x, y) == main_task.POPUP_CLOSE else PAGE37
+
+    def drive(step, timeout, what, every=0.5):
+        for _ in range(10):
+            if (r := step(NS(boxes=screens[0]))) is not None:
+                return r
+        raise AssertionError(what)
+
+    monkeypatch.setattr(nav, "goto_home", lambda rt: None)
+    monkeypatch.setattr(nav, "at_home", lambda f: f.boxes is home)
+    closed = []
+    rt = NS(device=NS(tap=tap), sleep=lambda s: None, drive=drive)
+    f = main_task.enter(rt, closed=closed)
+    assert main_task.at_task_page(f.boxes)
+    assert taps == [main_task.POPUP_CLOSE, main_task.HOME_BANNER] and closed[0]["number"] == 48
