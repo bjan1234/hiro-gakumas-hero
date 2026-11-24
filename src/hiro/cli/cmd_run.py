@@ -51,6 +51,8 @@ def _precheck(a: dict) -> None:
 
         if not paths.plan_path(hiro_home()).is_file():
             raise CliError("no_plan", "还没有编成方案，没东西可写", "先出一份：hiro plan formation --idol <偶像卡编号>")
+        if not a.get("dry_run") and "memory" in (a.get("what") or "support,memory"):
+            _check_memory_freshness(paths.plan_path(hiro_home()), hiro_home())
     if a["kind"] in ("hajime", "nia") and (a.get("command") or "new") == "new" and not a.get("idol"):
         raise CliError(
             "bad_args", "开新的一局要指定偶像卡", "加 --idol <偶像卡编号>，例如 i_card-skin-shro-3-007", exit_code=2
@@ -68,6 +70,53 @@ def _precheck(a: dict) -> None:
 
 
 FORMATION_KINDS = ("hif", "hajime", "nia")  # 开局要走编成步骤（第 2、3 步）的模式
+
+
+def _check_memory_freshness(plan_path: Path, home: Path) -> None:
+    """写回忆编成靠方案里记的库存位置（第几行第几列，按库存扫描时数的）：
+    - 回忆扫描之后又打完过培育：每局多一份回忆，列表位置变了（Mac 11-24 16:44：11-23 11:22 扫的库存，
+      20:33 那局「初」之后再写，翻了 28 格没找到才停）；
+    - 方案比最近一次回忆扫描还早：方案里的位置是旧库存的。
+    两种都在写之前说清楚，不进游戏。没有回忆扫描记录（导入的库存）时不判断。"""
+    from datetime import datetime
+
+    from hiro.cli.jobs import jobs_dir
+    from hiro.cli.store import Store
+
+    db = home / "hiro.db"
+    if not db.is_file():
+        return
+    history = Store(db).history("memories")
+    if not history:
+        return
+    scanned = history[0]["scanned_at"]
+    try:
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        scanned_ts = datetime.strptime(scanned, "%Y-%m-%d %H:%M:%S").timestamp()
+    except (OSError, ValueError):
+        return
+    idol = (plan.get("idol") or {}).get("idol_card_id") or "<偶像卡编号>"
+    replan = f"重新出方案：hiro plan formation --idol {idol}；再写编成"
+    played = []
+    for p in jobs_dir(home).glob("*/job.json"):
+        try:
+            j = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if j.get("kind") in FORMATION_KINDS and j.get("state") == "done" and (j.get("ended_at") or 0) > scanned_ts:
+            played.append(j)
+    if played:
+        raise CliError(
+            "inventory_stale",
+            f"回忆库存是 {scanned} 扫的，之后又打完了 {len(played)} 局培育（每局会多一份回忆，列表位置变了）",
+            f"先重扫回忆：hiro run start scan-memories；{replan}",
+        )
+    if (plan.get("created") or "") < scanned:
+        raise CliError(
+            "plan_stale",
+            f"编成方案是 {plan.get('created') or '?'} 出的，之后回忆库存重扫过（{scanned}），方案里记的位置是旧的",
+            replan,
+        )
 
 
 def _check_formation_plan(a: dict) -> None:

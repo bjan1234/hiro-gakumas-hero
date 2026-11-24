@@ -65,3 +65,61 @@ def test_confirm_summary_warns_when_exam_algo_is_missing(run_cli, hiro_home, mon
     code, env = run_cli("run", "start", "hajime", "--idol", KOTONE)
     summary = env["data"]["pending"]["summary"]
     assert code == 3 and "考试出牌只能用规则" in summary and "gkbench" in summary
+
+
+# ---------------------------------------------------------------- 写编成：库存 / 方案过期
+def _write_setup(home, *, mem_scanned, plan_created, produce_ended=None):
+    from datetime import datetime
+
+    from hiro.cli.store import Store
+
+    home.mkdir(parents=True, exist_ok=True)
+    plan = {
+        "created": plan_created,
+        "idol": {"idol_card_id": "i_card-fktn-3-000"},
+        "memory": {"chosen": [{"cell": [128, 2]}]},
+    }
+    (home / "formation-plan.json").write_text(json.dumps(plan), encoding="utf-8")
+    Store(home / "hiro.db").save_snapshot(
+        "memories", [{"id": "m1"}], source="scan:x", scanned_at=mem_scanned, complete=True
+    )
+    if produce_ended:
+        d = home / "jobs" / "20261123-203335-07cd"
+        d.mkdir(parents=True)
+        ended = datetime.strptime(produce_ended, "%Y-%m-%d %H:%M:%S").timestamp()
+        (d / "job.json").write_text(
+            json.dumps({"kind": "hajime", "state": "done", "ended_at": ended}), encoding="utf-8"
+        )
+
+
+def test_write_refused_when_a_produce_finished_after_memory_scan(run_cli, hiro_home):
+    """Mac 11-24 16:44：回忆库存 11-23 11:22 扫的，11-23 20:33 那局「初」打完又多了一份回忆、列表位置变了，
+    写编成翻了 28 格没找到方案里的回忆才停。现在写之前就说清楚：先重扫回忆、重出方案。"""
+    _write_setup(hiro_home, mem_scanned="2026-11-23 11:22:48", plan_created="2026-11-24 16:40:00",
+                 produce_ended="2026-11-23 21:23:10")  # fmt: skip
+    _code, env = run_cli("run", "start", "write-formation", "--scenario", "hajime")
+    assert env["ok"] is False and env["error"]["code"] == "inventory_stale"
+    assert "scan-memories" in env["error"]["hint"] and "plan formation" in env["error"]["hint"]
+
+
+def test_write_refused_when_plan_is_older_than_memory_scan(run_cli, hiro_home):
+    _write_setup(hiro_home, mem_scanned="2026-11-24 18:09:09", plan_created="2026-11-24 16:40:00")
+    _code, env = run_cli("run", "start", "write-formation", "--scenario", "hajime")
+    assert env["ok"] is False and env["error"]["code"] == "plan_stale"
+    assert "plan formation --idol i_card-fktn-3-000" in env["error"]["hint"]
+
+
+def test_write_allowed_when_scan_and_plan_are_fresh(run_cli, hiro_home):
+    """Mac 11-24 18:09 重扫回忆、18:09:37 出方案、18:10 写编成成功：这种顺序放行。"""
+    _write_setup(hiro_home, mem_scanned="2026-11-24 18:09:09", plan_created="2026-11-24 18:09:37",
+                 produce_ended="2026-11-23 21:23:10")  # fmt: skip
+    code, env = run_cli("run", "start", "write-formation", "--scenario", "hajime")
+    assert code == 3 and env["data"]["pending"]
+
+
+def test_write_support_only_or_dry_run_skip_memory_freshness(run_cli, hiro_home):
+    _write_setup(hiro_home, mem_scanned="2026-11-23 11:22:48", plan_created="2026-11-24 16:40:00",
+                 produce_ended="2026-11-23 21:23:10")  # fmt: skip
+    for extra in (("--what", "support"), ("--dry-run",)):
+        code, env = run_cli("run", "start", "write-formation", "--scenario", "hajime", *extra)
+        assert code == 3 and env["data"]["pending"], extra
