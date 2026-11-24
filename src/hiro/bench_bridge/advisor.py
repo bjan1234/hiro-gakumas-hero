@@ -938,6 +938,10 @@ class BenchAdvisor:
             return None, "画面还没读到倍率"
         if len(seen) == 3:
             return seen, "画面三项都读到了"
+        if str(self.label or "").split("#", 1)[0].lower() in HIF_QUALIFY_ROUNDS:
+            # H.I.F 的倍率含回忆 / 亲爱度等加成，实读和粗算的比例三项差很多（11-19 选拔第 3 场：画面 [26000, 23000, 11610]、
+            # 粗算 [4990, 6390, 3150]，比例 5.2 / 3.6 / 3.7），按比例推会差 40%：要三项都读到（画面一般第一步就全有）
+            return None, f"H.I.F 倍率要三项都读到（现在 {sorted(seen)}）"
         if not all(calc.get(a) for a in ("Vo", "Da", "Vi")):
             return None, f"画面只读到 {sorted(seen)}、三属性没记账推不出其余"
         rs = sorted(seen[a] / calc[a] for a in seen)
