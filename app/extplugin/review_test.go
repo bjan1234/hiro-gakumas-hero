@@ -148,8 +148,12 @@ func TestInstallFromAncestorOfPluginsRejected(t *testing.T) {
 	b, _ := os.ReadFile(filepath.Join(src, "plugin.json"))
 	_ = os.WriteFile(filepath.Join(root, "plugin.json"), b, 0o644)
 	m := &Manager{Home: home, Reg: &plugin.Registry{}}
-	if _, err := m.Install(root); err == nil {
-		t.Error("包含 plugins 目录的源应该拒")
+	_, err := m.Install(root)
+	if err == nil || !strings.Contains(err.Error(), "不能包含初星助手的数据目录") {
+		t.Fatalf("要在复制前按「包含数据目录」拒掉，得到 %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "plugins", ".demo.installing")); !os.IsNotExist(err) {
+		t.Error("拒掉之前不该建临时目录")
 	}
 }
 
