@@ -202,8 +202,19 @@ def card_dir_stamp() -> str | None:
     cards = assets.card_art_dir()
     if cards is None:
         return None
-    n = sum(1 for p in Path(cards).iterdir() if p.suffix == ".png")
-    return f"{n}-{int(Path(cards).stat().st_mtime)}"
+    return png_stamp(Path(cards))
+
+
+def png_stamp(folder: Path, skip: str | None = None) -> str:
+    """目录里 png 的指纹：文件数 + 最新修改时间 + 总大小（同名覆盖时文件数和目录修改时间都不变，#59 CodeRabbit）。
+    skip：文件名含这段的不算（插画索引不收 _mid- 的）。"""
+    n = newest = size = 0
+    for p in folder.iterdir():
+        if p.suffix != ".png" or (skip and skip in p.name):
+            continue
+        st = p.stat()
+        n, newest, size = n + 1, max(newest, int(st.st_mtime)), size + st.st_size
+    return f"{n}-{newest}-{size}"
 
 
 def ensure(out: Path = CACHE) -> Path | None:
