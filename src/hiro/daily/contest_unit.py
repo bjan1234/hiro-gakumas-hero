@@ -104,7 +104,9 @@ def omakase(rt) -> None:
         if at_unit_page(b):
             if state["asked"]:
                 return f
-            rt.device.tap(*find(b, "おまかせ", y_min=1000))
+            if (p := find(b, "おまかせ", y_min=1000)) is None:
+                return None
+            rt.device.tap(*p)
             state["asked"] = True
             rt.sleep(1.5)
         return None
