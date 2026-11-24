@@ -33,7 +33,7 @@ def test_choose_difficulty_locked_stops_with_reason(monkeypatch):
     page = frame({}, _texts(("レギュラー", 228, 881), ("プロ", 494, 881)))
     toast = frame({}, _texts(("初星課題40達成で解放", 360, 627), ("レギュラー", 228, 881), ("プロ", 494, 881)))
     rt, _ = rig(monkeypatch, [page], on_tap=lambda taps: [toast if len(taps) == 1 else page])
-    with pytest.raises(ResumeBlocked, match="还没解放.*初星課題40達成で解放"):
+    with pytest.raises(ResumeBlocked, match=r"还没解放.*初星課題40達成で解放"):
         ns.choose_difficulty(rt, "pro")
     assert len(rt.raw_device.taps) == ns.LOCKED_AFTER_TAPS
 
