@@ -32,7 +32,7 @@ POPUP_CLOSE = (360, 1188)  # 弹窗中下的 ✕
 CLEARED_ROW_Y = (470, 580)  # 「課題CLEAR」里完成的那一步：编号圆在左（x<130），要求文字在右
 TIMEOUT = 30.0
 
-_FRACTION = re.compile(r"(\d+)\s*/\s*(\d+)")
+_FRACTION = re.compile(r"(\d[\d,]*)\s*/\s*(\d[\d,]*)")  # 「20,640/25,000」带千分位逗号
 
 
 def _center(box) -> tuple[int, int]:
@@ -62,13 +62,13 @@ def parse(boxes) -> dict:
             and cx <= TEXT_X_MAX
             and (m := _FRACTION.fullmatch(t.strip()))
         ):
-            progress = [int(m.group(1)), int(m.group(2))]
+            progress = [int(m.group(1).replace(",", "")), int(m.group(2).replace(",", ""))]
             break
     done = total = None
     for t, _, b in boxes:
         cx, cy = _center(b)
         if OVERALL_Y[0] <= cy <= OVERALL_Y[1] and cx >= OVERALL_X_MIN and (m := _FRACTION.search(t)):
-            done, total = int(m.group(1)), int(m.group(2))
+            done, total = int(m.group(1).replace(",", "")), int(m.group(2).replace(",", ""))
             break
     number = None
     for t, _, b in boxes:

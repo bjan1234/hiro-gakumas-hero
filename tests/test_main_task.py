@@ -85,3 +85,9 @@ def test_close_popups_taps_x_until_gone(monkeypatch):
     monkeypatch.setattr(common, "frame", lambda rt: NS(boxes=screens[0]))
     closed = main_task.close_popups(rt)
     assert [c["kind"] for c in closed] == ["clear", "reward"] and taps == [main_task.POPUP_CLOSE] * 2
+
+
+def test_progress_with_thousands_separator():
+    """第 48 步「コンテストのユニット総合力を25,000以上」：本步进度是「20,640/25,000」这类带逗号的数（11-25 实机读成 None）。"""
+    boxes = [b for b in PAGE37 if b[0] != "0/1"] + [("20,640/25,000", 0.9, (180, 649, 340, 673))]
+    assert main_task.parse(boxes)["progress"] == [20640, 25000]
