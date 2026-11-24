@@ -175,7 +175,7 @@ func (a *App) pinned(c *ui.Context) {
 		return
 	}
 	card := plugin.Card{"type": "run-pinned", "jobId": a.live}
-	ui.Column(c).Shrink(0).Padding(14, a.chatPad(), 0, a.chatPad()).Children(func() {
+	ui.Column(c).Shrink(0).Padding(14, a.chatPad(), 8, a.chatPad()).BorderColor(kit.Line).BorderWidth(0, 0, kit.Hair, 0).Children(func() {
 		if _, v := a.reg.CardView("run-pinned"); v != nil {
 			v(c, a, card)
 			return
