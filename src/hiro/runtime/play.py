@@ -233,7 +233,7 @@ def segment_with_date_changes(rt, session, *, new, resume, play_until) -> None:
     started = new is None
     for attempt in range(MAX_DATE_CHANGES + 1):
         try:
-            if not started:
+            if not started and new is not None:
                 new()
                 started = True
             elif attempt or new is None:
