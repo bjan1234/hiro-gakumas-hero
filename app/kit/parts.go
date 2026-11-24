@@ -117,10 +117,34 @@ func Note(c *ui.Context, s string) ui.Element {
 	return ui.Text(c, s).FontSize(FNote).TextColor(Ink3).Wrap()
 }
 
+// MaxBitmaps 是位图缓存最多留几张（超了丢最久没用的）：长局每一步一张截图，不能一直攒。
+const MaxBitmaps = 96
+
 var (
-	bmMu  sync.Mutex
-	bmMap = map[string]*ui.Bitmap{}
+	bmMu    sync.Mutex
+	bmMap   = map[string]*ui.Bitmap{}
+	bmOrder []string // 最近用过的在最后
 )
+
+func bitmapCount() int {
+	bmMu.Lock()
+	defer bmMu.Unlock()
+	return len(bmMap)
+}
+
+func touch(key string) {
+	for i, k := range bmOrder {
+		if k == key {
+			bmOrder = append(bmOrder[:i], bmOrder[i+1:]...)
+			break
+		}
+	}
+	bmOrder = append(bmOrder, key)
+	for len(bmOrder) > MaxBitmaps {
+		delete(bmMap, bmOrder[0])
+		bmOrder = bmOrder[1:]
+	}
+}
 
 // Bitmap 读一张本机图（png / jpg / webp），按路径和修改时间缓存；读不到返回 nil。
 func Bitmap(path string) *ui.Bitmap {
@@ -135,6 +159,7 @@ func Bitmap(path string) *ui.Bitmap {
 	bmMu.Lock()
 	defer bmMu.Unlock()
 	if b, ok := bmMap[key]; ok {
+		touch(key)
 		return b
 	}
 	data, err := os.ReadFile(path)
@@ -146,6 +171,7 @@ func Bitmap(path string) *ui.Bitmap {
 		return nil
 	}
 	bmMap[key] = b
+	touch(key)
 	return b
 }
 

@@ -103,7 +103,7 @@ func (s *state) runCard(c *ui.Context, h plugin.Host, id string) {
 			ui.Spacer(c)
 			ui.Text(c, "看画面 ›").FontSize(kit.FNote).TextColor(kit.Ink3)
 		}).Clicked() {
-			h.OpenPanel("cockpit", "")
+			h.OpenPanel("cockpit", "job:"+id)
 		}
 		ui.Column(c).Padding(4, 8, 8, 8).Children(func() {
 			if len(steps) == 0 {
@@ -236,6 +236,9 @@ func (s *state) panel(c *ui.Context, h plugin.Host, route string) {
 		return
 	}
 	id := h.LiveJob()
+	if strings.HasPrefix(route, "job:") {
+		id = strings.TrimPrefix(route, "job:") // 对话里某张对局卡点进来的：结束了也能看成绩和复盘
+	}
 	if id == "" {
 		kit.Note(c, "现在没有在跑的对局。在对话里说「帮我用某某打一把初」就能开一局。")
 		return

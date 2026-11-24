@@ -53,9 +53,6 @@ type Ext struct {
 	home string
 	c    *client
 
-	// IsRead 是工具层命令是不是只读（只读的不用写在 acts 里）；nil 时都不算只读。
-	IsRead func(args []string) bool
-
 	mu      sync.Mutex
 	h       plugin.Host
 	screens map[string]*screen
@@ -64,15 +61,21 @@ type Ext struct {
 // New 建一个外部插件（进程用到时才起）。
 func New(m *Manifest, ap Approval, home string) *Ext {
 	e := &Ext{m: m, ap: ap, home: home, screens: map[string]*screen{}}
-	env := []string{"HIRO_HOME=" + home, "HIRO_PLUGIN_ID=" + m.ID, "PATH=" + os.Getenv("PATH"), "PYTHONUTF8=1"}
-	for _, k := range []string{"EXTPLUGIN_FAKE", "SYSTEMROOT", "TEMP", "TMP", "HOME", "USERPROFILE"} {
+	argv := append([]string{}, m.Command...)
+	e.c = newClient(m.Dir, argv, pluginEnv(home, m.ID), e.serve)
+	return e
+}
+
+// pluginEnv 是插件进程的环境：只带起程序要的系统变量和 HIRO_HOME / HIRO_PLUGIN_ID；模型 Key 之类一概不带。
+func pluginEnv(home, id string) []string {
+	env := []string{"HIRO_HOME=" + home, "HIRO_PLUGIN_ID=" + id, "PYTHONUTF8=1"}
+	for _, k := range []string{"PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "EXTPLUGIN_FAKE",
+		"SYSTEMROOT", "SystemRoot", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA"} {
 		if v, ok := os.LookupEnv(k); ok {
 			env = append(env, k+"="+v)
 		}
 	}
-	argv := append([]string{}, m.Command...)
-	e.c = newClient(m.Dir, argv, env, e.serve)
-	return e
+	return env
 }
 
 // Manifest 是插件清单。
@@ -108,7 +111,7 @@ func (e *Ext) serve(ctx context.Context, method string, params json.RawMessage) 
 	if h == nil || forbiddenAct(p.Args) {
 		return deny, nil
 	}
-	if !ActAllowed(e.ap.Acts, p.Args) && (e.IsRead == nil || !e.IsRead(p.Args)) {
+	if !ActAllowed(e.ap.Acts, p.Args) && !ReadAllowed(p.Args) {
 		return deny, nil
 	}
 	r := h.Call(ctx, p.Args)

@@ -79,3 +79,20 @@ func TestContextHasLiveJobAndRecentSteps(t *testing.T) {
 		}
 	}
 }
+
+// I5：对局结束后，面板还能看到这局的成绩和复盘。
+func TestPanelShowsEndedJobScores(t *testing.T) {
+	h, p := liveHost(), New()
+	score := 4820.0
+	v := h.Job("j7")
+	v.State = "done"
+	v.Job.State = "done"
+	v.Events = append(v.Events, plugin.JobEvent{Seq: 9, Type: "report", Exams: []plugin.ExamScore{{Label: "最终试验", Score: &score}}})
+	h.Live = ""
+	tt := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "job:j7") }), 520, 900)
+	for _, s := range []string{"初 · 月村手毬", "4,820", "看复盘"} {
+		if !tt.HasText(s) {
+			t.Errorf("结束后的面板没有 %q：%q", s, tt.Texts())
+		}
+	}
+}

@@ -111,6 +111,13 @@ func (a *App) keyOnEmptyInput(key ui.Key) bool {
 	if card == nil {
 		return false
 	}
+	// 只认初星助手自己回的、已经出现 1 秒以上的那张：插件随时能塞新卡进来，不能让用户按到一张没看见的
+	if from, _ := card["from"].(string); from != "" {
+		return false
+	}
+	if a.d.Now().UnixMilli()-m.At < 1000 {
+		return false
+	}
 	switch key {
 	case ui.KeyEnter:
 		a.resolve(m, card, "confirm")

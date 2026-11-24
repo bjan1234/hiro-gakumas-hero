@@ -3,6 +3,7 @@ package shell
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -73,7 +74,8 @@ func TestConfirmCardShowsExplanationAndStarts(t *testing.T) {
 }
 
 func TestEnterOnEmptyInputConfirmsLatest(t *testing.T) {
-	_, run, call, tt := confirmApp(t, 4102444800)
+	a, run, call, tt := confirmApp(t, 4102444800)
+	a.d.Now = func() time.Time { return fixedNow.Add(2 * time.Second) } // 卡出现 1 秒以后
 	tt.Key(0, ui.KeyEnter)
 	run.Drain()
 	if !call.called("confirm p1") {
@@ -83,6 +85,7 @@ func TestEnterOnEmptyInputConfirmsLatest(t *testing.T) {
 
 func TestEscCancels(t *testing.T) {
 	a, run, call, tt := confirmApp(t, 4102444800)
+	a.d.Now = func() time.Time { return fixedNow.Add(2 * time.Second) }
 	tt.Key(0, ui.KeyEscape)
 	run.Drain()
 	tt.Frame()
@@ -123,5 +126,31 @@ func TestConfirmCardSaysWhichPlugin(t *testing.T) {
 	tt := ui.NewTester(a.View, 1280, 800)
 	if !tt.HasText("来自插件「示例插件」") {
 		t.Errorf("确认卡没写来源：%q", tt.Texts())
+	}
+}
+
+// I3：按键只认初星助手自己回的、出现超过 1 秒的那张；插件塞进来的卡只能点按钮。
+func TestKeysIgnorePluginCardsAndFreshCards(t *testing.T) {
+	call := &fakeCall{}
+	a, run := newTestApp(newMem(), call, nil, viewReg())
+	card := ConfirmCard(hiroapi.Pending{ID: "p5", Command: "hiro run start daily", Summary: "领日常", ExpiresAt: 4102444800})
+	card["from"] = "示例插件"
+	a.Post("", card)
+	run.Drain()
+	if a.keyOnEmptyInput(ui.KeyEnter) {
+		t.Error("插件的卡不该被 Enter 确认")
+	}
+	own := ConfirmCard(hiroapi.Pending{ID: "p6", Command: "hiro run start daily", Summary: "领日常", ExpiresAt: 4102444800})
+	a.Post("", own)
+	if a.keyOnEmptyInput(ui.KeyEnter) {
+		t.Error("刚出现的卡不该被 Enter 确认")
+	}
+	a.d.Now = func() time.Time { return fixedNow.Add(2 * time.Second) }
+	if !a.keyOnEmptyInput(ui.KeyEnter) {
+		t.Error("出现超过 1 秒的自家卡可以 Enter")
+	}
+	run.Drain()
+	if !call.called("confirm p6") || call.called("confirm p5") {
+		t.Errorf("确认了 %v", call.calls)
 	}
 }

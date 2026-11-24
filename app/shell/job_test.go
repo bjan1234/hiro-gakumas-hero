@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -86,5 +87,64 @@ func TestConfirmStartOpensPanelOnce(t *testing.T) {
 	a.onJobStarted(plugin.Card{"type": "run", "jobId": "j7"})
 	if a.ui.panelOpen {
 		t.Error("同一局关掉后不再自动打开")
+	}
+}
+
+// I4：结束了的任务读到一次之后就不再查事件，即使一条事件都没有。
+func TestEndedJobWithoutEventsStopsPolling(t *testing.T) {
+	call := &fakeCall{resp: map[string]hiroapi.Result{
+		"run status": ok(`{"current":null,"recent":[{"id":"j9","kind":"daily","state":"done","started_at":1}]}`),
+		"run events": ok(`{"state":"done","events":[]}`),
+	}}
+	a, run := newTestApp(newMem(), call, nil, nil)
+	a.Job("j9")
+	a.PollJobs()
+	run.Drain()
+	n := len(call.calls)
+	for i := 0; i < 3; i++ {
+		a.PollJobs()
+		run.Drain()
+	}
+	for _, c := range call.calls[n:] {
+		if c[0] == "run" && c[1] == "events" {
+			t.Fatalf("结束的任务还在被查：%v", c)
+		}
+	}
+}
+
+// M13：任务停下要用户管时（接手、出错、结束），在对话里冒一条消息，只冒一次。
+func TestJobStateChangePostsOnce(t *testing.T) {
+	call := liveCall("running")
+	a, run := newTestApp(newMem(), call, nil, nil)
+	a.NewThread()
+	a.PollJobs()
+	run.Drain()
+	call.resp["run status"] = ok(`{"current":null,"recent":[{"id":"j7","kind":"hajime","state":"failed","summary":"初 · 月村手毬","started_at":1}]}`)
+	call.resp["run events"] = ok(`{"state":"failed","events":[]}`)
+	for i := 0; i < 3; i++ {
+		a.PollJobs()
+		run.Drain()
+	}
+	n := 0
+	for _, m := range a.Current().Messages {
+		if strings.Contains(m.Text, "出错停下") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("出错消息 %d 条", n)
+	}
+}
+
+// I1：算上下文用的是界面线程上拍下的快照，后台读不到之后的修改。
+func TestContextHostIsSnapshot(t *testing.T) {
+	a, run := newTestApp(newMem(), liveCall("running"), nil, nil)
+	a.PollJobs()
+	run.Drain()
+	h := a.snapshotHost()
+	a.jobs["j7"].Events = nil
+	a.live = ""
+	if h.LiveJob() != "j7" || len(h.Job("j7").Steps()) != 1 {
+		t.Error("快照跟着变了")
 	}
 }

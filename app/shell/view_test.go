@@ -2,6 +2,7 @@ package shell
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -94,5 +95,38 @@ func TestHasModelFalseMeansQuickOnly(t *testing.T) {
 	run.Drain()
 	if asked || a.Current().Messages[1].Text != NoModelText {
 		t.Error("没配模型时不该问 agent")
+	}
+}
+
+// I6：对话多了，插件入口还在（不被裁掉）。
+func TestSidebarKeepsPluginsWithManyThreads(t *testing.T) {
+	var raw []string
+	for i := 0; i < 40; i++ {
+		raw = append(raw, fmt.Sprintf(`{"id":"t-%d","title":"对话 %d","updatedAt":1,"messages":[{"id":"m","role":"user","text":"x","cards":[],"at":1}]}`, i, i))
+	}
+	a, _ := newTestApp(newMem(raw...), &fakeCall{}, nil, viewReg())
+	tt := ui.NewTester(a.View, 1280, 800)
+	info, ok := tt.AccessByRole(ui.RoleButton, "资料库")
+	if !ok || info.Bounds.H < 10 || info.Bounds.Y > 800 {
+		t.Errorf("插件入口被挤掉了：%+v %v", info.Bounds, ok)
+	}
+}
+
+// M7：提交时 "/" 后面要精确是命令名，「/ 帮我…」照常发给 agent。
+func TestSubmitNeedsExactCommand(t *testing.T) {
+	asked := ""
+	ask := func(_ context.Context, _ []Turn, text, _ string, _ func(string, string)) (Reply, error) {
+		asked = text
+		return Reply{}, nil
+	}
+	a, run := newTestApp(newMem(), &fakeCall{}, ask, viewReg())
+	a.submit("/开 帮我打一把")
+	run.Drain()
+	if a.ui.panelOpen || asked != "/开 帮我打一把" {
+		t.Errorf("前缀不该触发命令：panel=%v asked=%q", a.ui.panelOpen, asked)
+	}
+	a.submit("/开局")
+	if !a.ui.panelOpen || a.ui.panelPlugin != "start" {
+		t.Error("精确的命令名要打开面板")
 	}
 }

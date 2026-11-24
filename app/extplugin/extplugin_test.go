@@ -325,3 +325,65 @@ func (p *pluginRegistry) r() *plugin.Registry {
 	}
 	return p.reg
 }
+
+// I2：只读放行是显式白名单；会动游戏的 READ 命令（run pause / stop / doctor --probe…）和塞空格的参数都不行。
+func TestReadWhitelist(t *testing.T) {
+	for _, c := range []struct {
+		args []string
+		ok   bool
+	}{
+		{[]string{"info", "supports"}, true},
+		{[]string{"catalog", "search", "好調"}, true},
+		{[]string{"run", "status"}, true},
+		{[]string{"plan", "show"}, true},
+		{[]string{"run", "pause", "--job", "j1"}, false},
+		{[]string{"run", "stop", "--job", "j1"}, false},
+		{[]string{"doctor", "--probe"}, false},
+		{[]string{"catalog", "sync"}, false},
+		{[]string{"plan", "formation", "--idol", "x"}, false},
+		{[]string{"pending list"}, false},
+		{[]string{"info supports"}, false},
+	} {
+		if got := ReadAllowed(c.args); got != c.ok {
+			t.Errorf("ReadAllowed(%q) = %v，要 %v", c.args, got, c.ok)
+		}
+	}
+	if ActAllowed([]string{"run start daily"}, []string{"run start daily"}) {
+		t.Error("一个参数里塞空格不算")
+	}
+}
+
+// M1：工具名不合法的清单直接拒，免得一个插件把整个对话搞坏。
+func TestBadToolNameRejected(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, map[string]any{"id": "ok-1", "name": "x", "command": []string{"x"},
+		"contributes": map[string]any{"tools": []any{map[string]any{"name": "查 卡"}}}})
+	if _, err := LoadManifest(dir); err == nil {
+		t.Error("工具名有空格、中文应报错")
+	}
+}
+
+// I9：插件进程的环境里带上 Windows 起程序要的变量（有的话）。
+func TestPluginEnvKeepsWindowsBasics(t *testing.T) {
+	t.Setenv("PATHEXT", ".EXE;.BAT")
+	t.Setenv("LOCALAPPDATA", `C:\Users\x\AppData\Local`)
+	env := pluginEnv("/home", "demo")
+	got := strings.Join(env, "\n")
+	for _, k := range []string{"PATHEXT=", "LOCALAPPDATA=", "HIRO_HOME=/home", "HIRO_PLUGIN_ID=demo"} {
+		if !strings.Contains(got, k) {
+			t.Errorf("环境里没有 %s", k)
+		}
+	}
+	for _, e := range env {
+		if strings.HasPrefix(e, "OPENAI_API_KEY") || strings.HasPrefix(e, "HIRO_LLM") {
+			t.Errorf("模型 Key 不该给插件：%s", e)
+		}
+	}
+}
+
+// M12：同意页要说实话：插件以你的权限运行，不是沙箱。
+func TestPluginConsentCopyIsHonest(t *testing.T) {
+	if !strings.Contains(PluginTrustNote, "你本人的权限") {
+		t.Errorf("文案：%q", PluginTrustNote)
+	}
+}

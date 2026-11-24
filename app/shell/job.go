@@ -57,7 +57,7 @@ func (a *App) PollJobs() {
 	}
 	var wants []want
 	for id, v := range a.jobs {
-		if v.Job == nil || len(v.Events) == 0 || v.Live() || id == a.live {
+		if !v.Loaded || v.Live() || id == a.live {
 			wants = append(wants, want{id, v.Next})
 		}
 	}
@@ -91,6 +91,10 @@ func (a *App) PollJobs() {
 		}
 		return func() {
 			a.polling = false
+			before := map[string]string{}
+			for id, v := range a.jobs {
+				before[id] = v.State
+			}
 			a.live = ""
 			jobs := append([]plugin.Job{}, st.Recent...)
 			if st.Current != nil {
@@ -124,12 +128,72 @@ func (a *App) PollJobs() {
 					}
 				}
 				v.Next = last + 1
+				v.Loaded = true
 				if ev.State != "" {
 					v.State = ev.State
 				}
 			}
+			busy := a.live != ""
+			for id, v := range a.jobs {
+				a.notify(id, before[id], v)
+				if !v.Loaded {
+					busy = true
+				}
+			}
+			a.busyJobs.Store(busy)
 		}
 	})
+}
+
+// notify 在任务从「活着」变成要用户管的状态（接手、出错、结束、中断）时，在对话里冒一条消息（每局每种状态一次）。
+func (a *App) notify(id, before string, v *plugin.JobView) {
+	if !plugin.LiveStates[before] || before == v.State || v.State == "running" || v.State == "stopping" {
+		return
+	}
+	if a.notified == nil {
+		a.notified = map[string]bool{}
+	}
+	key := id + "|" + v.State
+	if a.notified[key] {
+		return
+	}
+	a.notified[key] = true
+	name := id
+	if v.Job != nil {
+		name = v.Job.Summary
+		if name == "" {
+			name = labels.Kind(v.Job.Kind)
+		}
+	}
+	var text string
+	switch v.State {
+	case "takeover":
+		text = "「" + name + "」停下来等你接手了：在游戏里处理完，到游戏运行现状点「继续自动打」。"
+	case "paused":
+		text = "「" + name + "」已暂停。"
+	case "done":
+		text = "「" + name + "」打完了，成绩和复盘在游戏运行现状里。"
+	default:
+		text = "「" + name + "」" + labels.State(v.State) + "了，原因在对局卡下面的最后几步里。"
+	}
+	t := a.threadOfJob(id)
+	m := a.addTo(t, "agent", text, nil)
+	_ = m
+	a.save(t)
+}
+
+// threadOfJob 是有这局对局卡的对话（没有就用当前对话）。
+func (a *App) threadOfJob(id string) *Thread {
+	for _, t := range a.threads {
+		for _, m := range t.Messages {
+			for _, c := range m.Cards {
+				if c["type"] == "run" && c["jobId"] == id {
+					return t
+				}
+			}
+		}
+	}
+	return a.ensureThread()
 }
 
 // StartPolling 在后台一直轮询，直到 stop 关上。
@@ -138,7 +202,7 @@ func (a *App) StartPolling(stop <-chan struct{}) {
 		for {
 			a.d.Run.Post(a.PollJobs)
 			d := time.Second
-			if a.hidden.Load() {
+			if a.hidden.Load() || !a.busyJobs.Load() {
 				d = 5 * time.Second
 			}
 			select {

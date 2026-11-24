@@ -32,6 +32,7 @@ jobs:
       - run: go test ./...
 
   build:
+    needs: test
     strategy:
       fail-fast: false
       matrix:

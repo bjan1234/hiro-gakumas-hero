@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"os/exec"
-	"strings"
 	"sync"
+	"time"
 
 	"github.com/matto49/hiro-gakumas-hero/app/extplugin"
 	"github.com/matto49/hiro-gakumas-hero/app/hiroapi"
@@ -36,8 +36,9 @@ type appDeps struct {
 // buildApp 注册内置插件，搭出主界面。
 func buildApp(d appDeps) *shell.App {
 	reg := &plugin.Registry{}
-	mgr := &extplugin.Manager{Home: d.Home, Reg: reg, IsRead: readOnly(d.Call)}
-	sd := settingsDeps(d)
+	mgr := &extplugin.Manager{Home: d.Home, Reg: reg}
+	cache := &settingsCache{a: d.Assistant}
+	sd := settingsDeps(d, cache)
 	sd.PluginsPanel = mgr.Panel
 	set := settings.New(sd)
 	reg.Add(start.New())
@@ -75,56 +76,77 @@ func buildApp(d appDeps) *shell.App {
 				h[i] = Turn{Role: t.Role, Content: t.Content}
 			}
 			r, err := a.AskWith(ctx, h, text, extra, onTool)
-			cards := make([]plugin.Card, len(r.Cards))
-			for i, c := range r.Cards {
-				cards[i] = c
-			}
-			return shell.Reply{Text: r.Text, Cards: cards}, err
+			return shell.Reply{Text: r.Text, Cards: jsonCards(r.Cards)}, err
 		},
-		HasModel: func() bool { return hasModel(a.Settings()) },
+		HasModel: func() bool { return cache.hasModel() },
 		Gate:     set.Gate,
 	}, reg)
 	return app
 }
 
-// readOnly 是「这条工具层命令只读吗」：按 hiro tools 的风险等级（第一次用时读一次）。外部插件调只读命令不用写进 acts。
-func readOnly(call hiroapi.Caller) func(args []string) bool {
-	var (
-		once sync.Once
-		risk map[string]string
-	)
-	return func(args []string) bool {
-		once.Do(func() {
-			risk = map[string]string{}
-			var d struct {
-				Tools []ToolSpec `json:"tools"`
-			}
-			if call(context.Background(), []string{"tools"}).Decode(&d) == nil {
-				for _, t := range d.Tools {
-					risk[t.Name] = t.Risk
-				}
-			}
-		})
-		for n := min(len(args), 3); n > 0; n-- {
-			if r, ok := risk[strings.Join(args[:n], " ")]; ok {
-				return r == "read" && !strings.HasPrefix(args[0], "secret") && args[0] != "confirm" && args[0] != "cancel"
-			}
-		}
-		return false
-	}
-}
-
 // plugins 是外部插件管理（hiroplug:// 协议找插件目录用）。
 var plugins *extplugin.Manager
 
+// jsonCards 把 agent 回的卡片（里面有 *Pending、*CliError 这类结构体）变成和存盘一样的 JSON 形状，界面只认这种。
+func jsonCards(in []map[string]any) []plugin.Card {
+	out := make([]plugin.Card, 0, len(in))
+	for _, c := range in {
+		var m map[string]any
+		convert(c, &m)
+		if m != nil {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// settingsCache 缓存 settings.json（界面每帧都要问）：2 秒内不重读，保存后立刻失效；命令行 agent 找没找到也一起缓存。
+type settingsCache struct {
+	a    *Assistant
+	mu   sync.Mutex
+	val  Settings
+	at   time.Time
+	look map[string]bool
+}
+
+const settingsTTL = 2 * time.Second
+
+func (c *settingsCache) Get() Settings {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.at.IsZero() || time.Since(c.at) > settingsTTL {
+		c.val, c.at, c.look = c.a.Settings(), time.Now(), nil
+	}
+	return c.val
+}
+
+func (c *settingsCache) Save(s Settings, key string) error {
+	err := c.a.Save(s, key)
+	c.mu.Lock()
+	c.at = time.Time{}
+	c.mu.Unlock()
+	return err
+}
+
 // hasModel 是现在能不能直接和 agent 说话。
-func hasModel(s Settings) bool {
+func (c *settingsCache) hasModel() bool {
+	s := c.Get()
 	switch s.Provider {
 	case "none":
 		return false
 	case "codex", "claude":
-		_, err := exec.LookPath(s.Provider)
-		return err == nil
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if c.look == nil {
+			c.look = map[string]bool{}
+		}
+		ok, seen := c.look[s.Provider]
+		if !seen {
+			_, err := exec.LookPath(s.Provider)
+			ok = err == nil
+			c.look[s.Provider] = ok
+		}
+		return ok
 	}
 	return s.HasKey
 }
@@ -134,18 +156,18 @@ func convert(from, to any) {
 	_ = json.Unmarshal(b, to)
 }
 
-func settingsDeps(d appDeps) settings.Deps {
+func settingsDeps(d appDeps, cache *settingsCache) settings.Deps {
 	a, boot := d.Assistant, d.Bootstrap
 	return settings.Deps{
 		Settings: func() settings.Settings {
 			var s settings.Settings
-			convert(a.Settings(), &s)
+			convert(cache.Get(), &s)
 			return s
 		},
 		Save: func(s settings.Settings, key string) error {
 			var m Settings
 			convert(s, &m)
-			return a.Save(m, key)
+			return cache.Save(m, key)
 		},
 		Providers: func() []settings.Preset {
 			out := make([]settings.Preset, len(Presets))

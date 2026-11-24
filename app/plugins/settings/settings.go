@@ -5,6 +5,7 @@ package settings
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -74,6 +75,7 @@ type S struct {
 	d Deps
 
 	boot      *BootStatus
+	bootKnown bool // 环境状态读回来过（之前什么都不画，免得启动时闪一下「第一次使用」）
 	bootLines []string
 	booting   bool
 	step      int
@@ -96,7 +98,8 @@ type S struct {
 	secretSet  map[string]bool
 	secretNote string
 
-	// 游戏连接
+	// 游戏连接（Context 在后台线程读，改和读都要拿 devMu）
+	devMu    sync.Mutex
 	device   string
 	deviceOK *bool
 	probedAt time.Time
@@ -143,13 +146,17 @@ func (s *S) Probe(h plugin.Host) {
 		return
 	}
 	s.probing = true
+	s.devMu.Lock()
 	s.device = "正在试连游戏…"
+	s.devMu.Unlock()
 	h.Go(func() func() {
 		var d struct {
 			Items []doctorItem `json:"items"`
 		}
 		err := h.Call(context.Background(), []string{"doctor", "--probe"}).Decode(&d)
 		return func() {
+			s.devMu.Lock()
+			defer s.devMu.Unlock()
 			s.probing = false
 			s.probedAt = h.Now()
 			ok := false
@@ -173,6 +180,8 @@ func (s *S) Probe(h plugin.Host) {
 }
 
 func (s *S) deviceContext() string {
+	s.devMu.Lock()
+	defer s.devMu.Unlock()
 	if s.deviceOK == nil {
 		return "还没试连过游戏。"
 	}
@@ -219,7 +228,7 @@ func (s *S) footer(c *ui.Context, h plugin.Host) {
 func (s *S) Recheck(h plugin.Host) {
 	h.Go(func() func() {
 		st := s.d.BootStatus(context.Background())
-		return func() { s.boot = &st }
+		return func() { s.boot, s.bootKnown = &st, true }
 	})
 }
 
@@ -228,6 +237,10 @@ func (s *S) Gate(c *ui.Context, h plugin.Host) bool {
 	if s.boot == nil {
 		s.boot = &BootStatus{Ready: false}
 		s.Recheck(h)
+	}
+	if !s.bootKnown {
+		ui.Box(c).Fill().Background(kit.Bg) // 还在检查：先空着
+		return true
 	}
 	if s.boot.Ready && s.d.Settings().WizardDone {
 		return false

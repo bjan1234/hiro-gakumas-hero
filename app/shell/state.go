@@ -56,10 +56,12 @@ type App struct {
 	input string
 	ui    viewState
 
-	jobs    map[string]*plugin.JobView
-	live    string // 活着的任务编号
-	polling bool
-	hidden  atomic.Bool // 窗口隐藏（轮询降速）
+	jobs     map[string]*plugin.JobView
+	live     string // 活着的任务编号
+	polling  bool
+	hidden   atomic.Bool // 窗口隐藏（轮询降速）
+	busyJobs atomic.Bool // 有活任务或没读过的任务（每秒查；否则 5 秒）
+	notified map[string]bool
 }
 
 // New 建主界面，读出已存的对话。
@@ -208,8 +210,9 @@ func (a *App) Send(text string) {
 	a.save(t)
 	a.busy, a.tools = true, nil
 	ask, run, reg := a.d.Ask, a.d.Run, a.reg
+	snap := a.snapshotHost()
 	a.d.Run.Go(func() func() {
-		extra := plugin.Gather(a.ctx, reg, a, a.d.Now(), plugin.ContextTimeout)
+		extra := plugin.Gather(a.ctx, reg, snap, a.d.Now(), plugin.ContextTimeout)
 		var tools []string
 		reply, err := ask(a.ctx, hist, text, extra, func(name, summary string) {
 			line := name
@@ -293,3 +296,42 @@ var _ plugin.Host = (*App)(nil)
 func (a *App) OpenPanel(pluginID, route string) {
 	a.ui.panelOpen, a.ui.panelPlugin, a.ui.panelRoute = true, pluginID, route
 }
+
+// snapHost 是给后台线程用的宿主：任务数据是界面线程上拍下的快照；会改界面状态的动作都排回界面线程。
+type snapHost struct {
+	a    *App
+	jobs map[string]*plugin.JobView
+	live string
+}
+
+// snapshotHost 在界面线程上拍一份快照（算上下文时用，免得后台读到正在改的 map）。
+func (a *App) snapshotHost() plugin.Host {
+	jobs := make(map[string]*plugin.JobView, len(a.jobs))
+	for id, v := range a.jobs {
+		jobs[id] = v.Copy()
+	}
+	return &snapHost{a: a, jobs: jobs, live: a.live}
+}
+
+func (s *snapHost) Call(ctx context.Context, args []string) hiroapi.Result {
+	return s.a.d.Call(ctx, args)
+}
+func (s *snapHost) Go(work func() func()) { s.a.d.Run.Go(work) }
+func (s *snapHost) Ask(text string)       { s.a.d.Run.Post(func() { s.a.Send(text) }) }
+func (s *snapHost) Post(text string, card plugin.Card) {
+	s.a.d.Run.Post(func() { s.a.Post(text, card) })
+}
+func (s *snapHost) RunArgs(label string, args []string) {
+	s.a.d.Run.Post(func() { s.a.RunArgs(label, args) })
+}
+func (s *snapHost) OpenPanel(id, route string) { s.a.d.Run.Post(func() { s.a.OpenPanel(id, route) }) }
+func (s *snapHost) ClosePanel()                { s.a.d.Run.Post(s.a.ClosePanel) }
+func (s *snapHost) Job(id string) *plugin.JobView {
+	if v, ok := s.jobs[id]; ok {
+		return v
+	}
+	return &plugin.JobView{}
+}
+func (s *snapHost) LiveJob() string { return s.live }
+func (s *snapHost) Home() string    { return s.a.d.Home }
+func (s *snapHost) Now() time.Time  { return s.a.d.Now() }

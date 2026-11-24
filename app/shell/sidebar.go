@@ -21,14 +21,16 @@ func (a *App) sidebar(c *ui.Context) {
 		}).Clicked() {
 			a.NewThread()
 		}
-		ui.Column(c).Grow(1).Shrink(1).ClipY().Gap(2).Children(func() {
-			sideHead(c, "对话")
+		sideHead(c, "对话")
+		ui.Scroll(c).Grow(1).Shrink(1).Gap(2).Children(func() {
 			for _, t := range a.threads {
 				if len(t.Messages) == 0 && t != a.cur {
 					continue
 				}
 				a.threadItem(c, t)
 			}
+		})
+		ui.Column(c).Shrink(0).Gap(2).Children(func() {
 			sideHead(c, "插件")
 			for _, p := range a.reg.All() {
 				for _, n := range p.Navs() {

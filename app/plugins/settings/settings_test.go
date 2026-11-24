@@ -111,3 +111,37 @@ func flat(cs [][]string) []string {
 	}
 	return out
 }
+
+// M5：环境状态还没回来时不画「第一次使用」（免得每次启动闪一下）。
+func TestGateDoesNotFlashWizardWhileChecking(t *testing.T) {
+	f := &fake{secrets: map[string]string{}, ready: true}
+	f.s.WizardDone = true
+	h := plugintest.New(nil)
+	s := New(f.deps())
+	var queued []func() func()
+	hh := &deferHost{Host: h, q: &queued}
+	tt := ui.NewTester(func(c *ui.Context) {
+		if !s.Gate(c, hh) {
+			ui.Text(c, "主界面")
+		}
+	}, 800, 600)
+	if tt.HasText("第一次使用 · 六步") {
+		t.Error("还在检查时不该画第一次使用")
+	}
+	for _, w := range queued {
+		if a := w(); a != nil {
+			a()
+		}
+	}
+	tt.Frame()
+	if !tt.HasText("主界面") {
+		t.Errorf("检查完进主界面：%q", tt.Texts())
+	}
+}
+
+type deferHost struct {
+	*plugintest.Host
+	q *[]func() func()
+}
+
+func (d *deferHost) Go(work func() func()) { *d.q = append(*d.q, work) }

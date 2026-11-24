@@ -71,7 +71,10 @@ type Manifest struct {
 	Dir string `json:"-"`
 }
 
-var idRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+var (
+	idRe   = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+	toolRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,40}$`)
+)
 
 // builtinIDs 是内置插件的 ID，外部插件不能用。
 var builtinIDs = map[string]bool{"start": true, "plan": true, "library": true, "cockpit": true, "settings": true}
@@ -99,6 +102,11 @@ func LoadManifest(dir string) (*Manifest, error) {
 	for _, a := range m.Acts {
 		if forbiddenAct(strings.Fields(a)) {
 			return nil, fmt.Errorf("acts 里有不允许插件发起的命令：%q", a)
+		}
+	}
+	for _, t := range m.Contributes.Tools {
+		if !toolRe.MatchString(t.Name) {
+			return nil, fmt.Errorf("工具名 %q 不合法：只能用英文字母、数字、_ 和 -，最多 40 个字", t.Name)
 		}
 	}
 	for _, p := range m.Contributes.Panels {

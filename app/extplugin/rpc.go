@@ -73,6 +73,7 @@ func (c *client) startLocked() error {
 	cmd.Dir = c.dir
 	cmd.Env = c.env
 	cmd.Stderr = os.Stderr
+	hide(cmd)
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return err

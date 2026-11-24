@@ -45,6 +45,22 @@ type JobView struct {
 	Events []JobEvent
 	// Next 是下次 run events 的 --since。
 	Next int
+	// Loaded 是读到过一次事件（结束了的任务读到一次就不再查）。
+	Loaded bool
+}
+
+// Copy 是一份独立的拷贝（后台线程读用）。
+func (v *JobView) Copy() *JobView {
+	if v == nil {
+		return nil
+	}
+	c := *v
+	if v.Job != nil {
+		j := *v.Job
+		c.Job = &j
+	}
+	c.Events = append([]JobEvent(nil), v.Events...)
+	return &c
 }
 
 // Live 是任务还在跑。

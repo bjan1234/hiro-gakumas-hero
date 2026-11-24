@@ -31,3 +31,37 @@ func TestBuildAppShowsBuiltinPlugins(t *testing.T) {
 		}
 	}
 }
+
+// C1：真 Agent 回来的卡片里 pending 是 *Pending 结构体，交给界面前要变成和存盘一样的 JSON 形状。
+func TestAgentCardsBecomeJSONShape(t *testing.T) {
+	cards := jsonCards([]map[string]any{
+		{"type": "confirm", "pending": &Pending{ID: "p1", Command: "hiro run start hajime", Summary: "初", ExpiresAt: 4102444800}, "status": "waiting"},
+		{"type": "error", "error": &CliError{Code: "x", Message: "坏了"}},
+	})
+	p, ok := cards[0]["pending"].(map[string]any)
+	if !ok || p["id"] != "p1" || p["expires_at"].(float64) != 4102444800 {
+		t.Fatalf("pending 形状 %#v", cards[0]["pending"])
+	}
+	if e, ok := cards[1]["error"].(map[string]any); !ok || e["message"] != "坏了" {
+		t.Errorf("error 形状 %#v", cards[1]["error"])
+	}
+}
+
+// I7：设置每帧都要问，读盘要有缓存，保存后立刻失效。
+func TestSettingsCacheInvalidatesOnSave(t *testing.T) {
+	home := t.TempDir()
+	a := &Assistant{Home: home, Keys: fileKeys{Path: filepath.Join(home, "model-keys.json")}}
+	c := &settingsCache{a: a}
+	_ = c.Save(Settings{Provider: "deepseek", Model: "m1"}, "")
+	if c.Get().Model != "m1" {
+		t.Fatal("读不到")
+	}
+	_ = a.Save(Settings{Provider: "deepseek", Model: "外面改的"}, "") // 绕过缓存改盘：缓存期内还是旧的
+	if c.Get().Model != "m1" {
+		t.Error("缓存期内不该每次读盘")
+	}
+	_ = c.Save(Settings{Provider: "deepseek", Model: "m2"}, "")
+	if c.Get().Model != "m2" {
+		t.Error("保存后要立刻生效")
+	}
+}

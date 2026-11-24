@@ -55,9 +55,12 @@ func (a *App) submit(text string) {
 	text = strings.TrimSpace(text)
 	a.input = ""
 	if strings.HasPrefix(text, "/") {
-		if cmds := a.reg.Commands(strings.Fields(text + " ")[0]); len(cmds) > 0 {
-			a.runCommand(cmds[0])
-			return
+		name := strings.TrimPrefix(text, "/")
+		for _, r := range a.reg.Commands(name) {
+			if r.Command.Name == name {
+				a.runCommand(r)
+				return
+			}
 		}
 	}
 	a.Send(text)

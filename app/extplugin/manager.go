@@ -19,12 +19,14 @@ import (
 	"github.com/matto49/hiro-gakumas-hero/app/plugin"
 )
 
+// PluginTrustNote 是「管理插件」页上的说明：说实话，插件不是沙箱。
+const PluginTrustNote = "外部插件是一个普通程序，以你本人的权限在这台电脑上运行，能读写你能读写的文件；只装你信得过的人做的插件。" +
+	"清单里写的「动游戏」命令要你同意后才能经初星助手发起，每次真动游戏仍会出确认卡，没有「始终允许」。"
+
 // Manager 管 HIRO_HOME/plugins 下装的外部插件：读清单、同意记录（approved.json）、启用 / 卸载、「管理插件」页。
 type Manager struct {
 	Home string
 	Reg  *plugin.Registry
-	// IsRead 是工具层命令是不是只读（交给每个插件）。
-	IsRead func(args []string) bool
 
 	mu        sync.Mutex
 	installed map[string]*Manifest
@@ -73,7 +75,6 @@ func (m *Manager) enableLocked(man *Manifest, ap Approval) {
 		old.Close()
 	}
 	e := New(man, ap, m.Home)
-	e.IsRead = m.IsRead
 	m.exts[man.ID] = e
 	m.Reg.Add(e.Plugin())
 }
@@ -245,7 +246,7 @@ func (m *Manager) Panel(c *ui.Context, h plugin.Host) {
 	sort.Strings(ids)
 	m.mu.Unlock()
 	ui.Text(c, "外部插件").FontSize(15).FontWeight(650).TextColor(kit.Ink)
-	kit.Note(c, "外部插件跑在单独的进程里。它要动游戏的命令写在清单里，你同意了才启用；每次真动游戏仍会出确认卡，没有「始终允许」。")
+	kit.Note(c, PluginTrustNote)
 	if len(ids) == 0 {
 		kit.Note(c, "还没装外部插件。")
 	}
