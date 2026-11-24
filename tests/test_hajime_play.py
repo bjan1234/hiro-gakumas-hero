@@ -246,12 +246,15 @@ def test_oikomi_vision_drops_teki():
 @pytest.mark.synthetic
 def test_oikomi_options_tolerate_missing_teki(monkeypatch):
     """OCR 吞掉「的」：「〜を重点に」也算追い込み选项（合成：替换 OCR，图标区是空白，属性按文字认）。"""
-    import numpy as np
-
     from hiro.vision import action
 
-    boxes = [("卓ボーカルを重点に", 0.9, (76, 81, 411, 118)), ("①ダンスを重点に", 0.9, (73, 185, 380, 219)),
-             ("ビジュアルを重点的に", 0.9, (127, 287, 450, 319))]  # fmt: skip  (OIKOMI_BAND 内的相对坐标)
+    import numpy as np
+
+    boxes = [
+        ("卓ボーカルを重点に", 0.9, (76, 81, 411, 118)),
+        ("①ダンスを重点に", 0.9, (73, 185, 380, 219)),
+        ("ビジュアルを重点的に", 0.9, (127, 287, 450, 319)),
+    ]  # fmt: skip  (OIKOMI_BAND 内的相对坐标)
     monkeypatch.setattr(action, "ocr_boxes", lambda img, scale=1: boxes)
     opts = action._oikomi_options(np.full((1280, 720, 3), 255, np.uint8))
     assert [o.attr for o in opts] == ["vo", "da", "vi"]
