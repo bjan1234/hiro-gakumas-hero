@@ -303,10 +303,27 @@ def step1(rt, skin_id: str) -> None:
             or nav.find(f, "Produce.TextStepIndicator4Or2") is not None
         ):
             return True
+        if f.has_dialog and IDOL_SWITCH_TITLE in ((f.dialog or {}).get("title") or ""):
+            if (b := _idol_switch_keep(f)) is None:
+                raise ResumeBlocked("第 1 步弹「プロデュースアイドル変更」，没找到「切り替えない」按钮，不开局")
+            logger.info("第 1 步：弹「プロデュースアイドル変更」，点「切り替えない」保留选中的偶像卡")
+            rt.device.tap(*b.rect.center)
+            return None
         _tap_step1_next(rt, f)
         return None
 
     rt.drive(next_step, STEP_TIMEOUT, "第 1 步点次へ")
+
+
+# 第 1 步点「次へ」后可能弹：「新しく切り替え可能なプロデュースアイドルを入手しています。切り替えますか？」
+# （拿到同一偶像的另一版卡后第一次培育她时，Mac 11-24 18:27 藤田ことね）。开局方案是按选中的这张卡出的，一律点「切り替えない」。
+IDOL_SWITCH_TITLE = "プロデュースアイドル変更"
+
+
+def _idol_switch_keep(f):
+    """「プロデュースアイドル変更」弹窗底部的「切り替えない」按钮文字（OCR 会带前面的 ✕ 图标）；找不到 None。
+    「切り替える」不含「ない」，不会误选。"""
+    return next((t for t in f.texts if "切り替えない" in t.text and t.rect.center.y > 1080), None)
 
 
 # ---------------------------------------------------------------- 第 2 步：支援卡编成 + 租借（同 kaa_patches._rent_step2）
