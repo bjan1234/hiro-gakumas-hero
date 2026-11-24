@@ -27,6 +27,9 @@ const SidebarWidth float32 = 232
 func (a *App) View(c *ui.Context) {
 	t := kit.Theme(*c.Theme())
 	c.SetTheme(&t)
+	if a.d.Gate != nil && a.d.Gate(c, a) {
+		return
+	}
 	if c.Shortcut(ui.Cmd, ui.KeyN) {
 		a.NewThread()
 	}

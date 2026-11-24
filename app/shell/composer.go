@@ -23,7 +23,7 @@ func (a *App) composer(c *ui.Context) {
 			if _, w := a.latestWaiting(); w != nil {
 				ph = "回复，或者直接点上面的「开始」"
 			}
-			if a.d.Ask == nil {
+			if !a.hasModel() {
 				ph = "先到设置里配一个模型，才能直接说话；现在可以用「/」命令"
 			}
 			ui.TextAreaBase(c, &a.input).Lines(1, 6).AutoFocus().Placeholder(ph).FontSize(kit.FBody).TextColor(kit.Ink).Grow(1).Padding(5, 0).

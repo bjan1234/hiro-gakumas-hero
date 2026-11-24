@@ -61,3 +61,38 @@ func TestSlashListsCommandsAndOpensPanel(t *testing.T) {
 		t.Errorf("面板 open=%v plugin=%q route=%q", a.ui.panelOpen, a.ui.panelPlugin, a.ui.panelRoute)
 	}
 }
+
+func TestGateTakesWholeWindow(t *testing.T) {
+	a, _ := newTestApp(newMem(oldThread), &fakeCall{}, nil, viewReg())
+	gated := true
+	a.d.Gate = func(c *ui.Context, _ plugin.Host) bool {
+		if gated {
+			ui.Text(c, "第一次使用")
+		}
+		return gated
+	}
+	tt := ui.NewTester(a.View, 1280, 800)
+	if !tt.HasText("第一次使用") || tt.HasText("新对话") {
+		t.Errorf("门没拦住：%q", tt.Texts())
+	}
+	gated = false
+	tt.Frame()
+	if !tt.HasText("新对话") {
+		t.Error("过了门要显示主界面")
+	}
+}
+
+func TestHasModelFalseMeansQuickOnly(t *testing.T) {
+	asked := false
+	ask := func(context.Context, []Turn, string, string, func(string, string)) (Reply, error) {
+		asked = true
+		return Reply{}, nil
+	}
+	a, run := newTestApp(newMem(), &fakeCall{}, ask, nil)
+	a.d.HasModel = func() bool { return false }
+	a.Send("你好")
+	run.Drain()
+	if asked || a.Current().Messages[1].Text != NoModelText {
+		t.Error("没配模型时不该问 agent")
+	}
+}

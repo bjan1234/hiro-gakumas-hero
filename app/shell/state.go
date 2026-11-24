@@ -3,7 +3,9 @@ package shell
 
 import (
 	"context"
+
 	"encoding/json"
+	"github.com/egoist/mygo/ui"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -35,8 +37,10 @@ type Deps struct {
 	Run     Runner
 	Home    string
 	Now     func() time.Time
-	// ModelLabel 是侧栏底部显示的模型名。
-	ModelLabel func() string
+	// HasModel 是现在配没配模型（设置改了随时变）；nil 时看 Ask 是否为 nil。
+	HasModel func() bool
+	// Gate 画在主界面之前（第一次使用）：返回 true 表示它画了整个窗口。
+	Gate func(c *ui.Context, h plugin.Host) bool
 }
 
 // App 是主界面的全部状态。只在界面线程里改。
@@ -177,6 +181,13 @@ func history(t *Thread) []Turn {
 	return out
 }
 
+func (a *App) hasModel() bool {
+	if a.d.Ask == nil {
+		return false
+	}
+	return a.d.HasModel == nil || a.d.HasModel()
+}
+
 // NoModelText 是没配模型时的回答。
 const NoModelText = "还没配模型，初星助手现在只能做输入框上面那几件事，或者用「/」命令。到设置里配好模型，就可以直接说话了。"
 
@@ -189,7 +200,7 @@ func (a *App) Send(text string) {
 	t := a.ensureThread()
 	hist := history(t)
 	a.add("user", text, nil)
-	if a.d.Ask == nil {
+	if !a.hasModel() {
 		a.add("agent", NoModelText, nil)
 		a.save(t)
 		return
