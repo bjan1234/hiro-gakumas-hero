@@ -1,0 +1,148 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"image/png"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/egoist/mygo/ui"
+
+	"github.com/matto49/hiro-gakumas-hero/app/hiroapi"
+	"github.com/matto49/hiro-gakumas-hero/app/shell"
+)
+
+// 用假数据离屏画主要画面（设计稿 §10）：设了 HIRO_PREVIEW_OUT 才画，PNG 不进仓库。
+// 想要卡面图时设 HIRO_PREVIEW_ASSETS（目录里放 <asset>.webp / .png / .jpg，以及 frame.jpg）。
+// 例：HIRO_PREVIEW_OUT=.preview go test -run TestPreview .
+func TestPreview(t *testing.T) {
+	out := os.Getenv("HIRO_PREVIEW_OUT")
+	if out == "" {
+		t.Skip("没设 HIRO_PREVIEW_OUT")
+	}
+	assets := os.Getenv("HIRO_PREVIEW_ASSETS")
+	sprite := func(asset string) string {
+		for _, ext := range []string{".webp", ".png", ".jpg"} {
+			if p := filepath.Join(assets, asset+ext); assets != "" && exists(p) {
+				return p
+			}
+		}
+		return ""
+	}
+	frame := ""
+	if assets != "" {
+		frame = filepath.Join(assets, "frame.jpg")
+	}
+	live := false
+	t0 := time.Now().Add(-12 * time.Minute).Unix()
+	resp := func(args []string) string {
+		key := strings.Join(args, " ")
+		switch {
+		case strings.HasPrefix(key, "catalog lookup"):
+			return `{"items":{"i_card-skin-ttmr-3-0012":{"kind":"idols","name":"【Luna say maybe】月村手毬","rarity":"SSR","asset":"ttmr","attr":"Vo"}}}`
+		case strings.HasPrefix(key, "catalog sprite"):
+			b, _ := json.Marshal(map[string]string{"path": sprite(args[2])})
+			return string(b)
+		case key == "plan show":
+			return `{"created":"2026-11-23 20:00","idol":{"id":"i_card-skin-ttmr-3-0012","name":"月村手毬"},"main_attr":"Vo","support":{"set":2,"own":[{"id":"s_card-2-0001","name":"一緒に行こう！","attr":"Vo","level":50,"why":["Vo 主力"]},{"id":"s_card-3-0012","name":"放課後の約束","attr":"Vo","level":50,"why":["集中"]},{"id":"s_card-3-0027","name":"止まらないドキドキ","attr":"Da","level":45,"why":[]},{"id":"s_card-3-0044","name":"集中タイム","attr":"Vo","level":60,"why":[]},{"id":"s_card-3-0070","name":"光に向かって","attr":"Vi","level":50,"why":[]}]},"memory":{"set":1,"chosen":[{"name":"アイドル宣言","upgrade":1,"timing":"start"}]},"notes":["主属性按初定 Vo"]}`
+		case key == "run status":
+			if live {
+				return `{"current":{"id":"j7","kind":"hajime","state":"running","summary":"初 · 月村手毬","started_at":` + strconv.FormatInt(t0, 10) + `},"recent":[]}`
+			}
+			return `{"current":null,"recent":[{"id":"j5","kind":"hajime","state":"done","summary":"初 · 月村手毬","started_at":1763900000,"params":{"idol":"i_card-skin-ttmr-3-0012"}}]}`
+		case strings.HasPrefix(key, "run events"):
+			ev := []map[string]any{}
+			steps := [][3]string{{"EVENT_CHOICE", "rule", "选第 2 个选项（体力 +）"}, {"SELECT_DRINK", "deepseek", "画面没认出来，问了一下 LLM"}, {"HIF_EXAM", "gnrpa", "出牌 6 回合，得分 4,820"}, {"SELECT_CARD", "gnrpa", "拿「アイドル宣言」，集中流核心"}, {"ACTION_SELECT", "gnrpa", "声乐课「レッスン」：声乐离上限还差 210"}}
+			for i, s := range steps {
+				ev = append(ev, map[string]any{"seq": i, "t": t0 + int64(i*150), "type": "step", "step": i + 1, "page": s[0], "source": s[1], "text": s[2], "frame": frame})
+			}
+			b, _ := json.Marshal(map[string]any{"state": "running", "events": ev})
+			return string(b)
+		case key == "info summary":
+			return `{"account":{"plv":52,"ap":120,"ap_max":150},"kinds":{"supports":{"count":88,"scanned_at":"2026-11-20 21:10:00"},"memories":{"count":40,"scanned_at":"2026-11-18 20:00:00"},"idols":{"count":30,"scanned_at":"2026-11-22 10:00:00"}}}`
+		case key == "confirm p1":
+			live = true
+			return `{"job":{"id":"j7","kind":"hajime"}}`
+		case strings.HasPrefix(key, "doctor"):
+			return `{"items":[{"id":"platform","ok":true,"detail":"学マス（PlayCover）：已连上"}]}`
+		}
+		return `{}`
+	}
+	call := func(_ context.Context, args []string) hiroapi.Result {
+		return hiroapi.Result{OK: true, Data: json.RawMessage(resp(args))}
+	}
+	home := t.TempDir()
+	a := &Assistant{Home: home, Keys: fileKeys{Path: filepath.Join(home, "model-keys.json")}}
+	_ = a.Save(Settings{Provider: "deepseek", Model: "deepseek-flash", WizardDone: true}, "sk-preview-not-real")
+	run := &shell.SyncRunner{}
+	app := buildApp(appDeps{Home: home, Call: call, Assistant: a, Bootstrap: &Bootstrap{Home: home, Hiro: &Hiro{}}, Run: run,
+		Ready: func(context.Context) bool { return true }})
+	// 一句话开局：agent 回偶像卡 + 待确认
+	idol := map[string]any{"type": "info", "title": "偶像卡", "kind": "idols", "scannedAt": "2026-11-22 10:00:00",
+		"items": []any{map[string]any{"id": "i_card-skin-ttmr-3-0012", "name": "【Luna say maybe】月村手毬", "title": "Luna say maybe", "idol": "月村手毬", "rarity": "SSR", "plan": "sense"}}}
+	confirm := shell.ConfirmCard(hiroapi.Pending{ID: "p1", Command: "hiro run start hajime --idol i_card-skin-ttmr-3-0012", Summary: "初", ExpiresAt: 4102444800})
+	tt := ui.NewTester(app.View, 1280, 800)
+	tt.SetScale(2)
+	settle := func() {
+		for i := 0; i < 8; i++ {
+			tt.Frame()
+			if run.Drain() == 0 {
+				break
+			}
+		}
+		tt.Frame()
+	}
+	settle()
+	app.NewThread()
+	settle()
+	settle()
+	save0 := func() {
+		_ = os.MkdirAll(out, 0o755)
+		f, err := os.Create(filepath.Join(out, "0-welcome.png"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		_ = png.Encode(f, tt.Image())
+	}
+	save0()
+	app.Post("", nil)
+	app.Current().Messages = nil
+	app.Current().Messages = append(app.Current().Messages,
+		&shell.Message{ID: "m1", Role: "user", Text: "帮我用月村手毬打一把初", Cards: nil},
+		&shell.Message{ID: "m2", Role: "agent", Text: "找到了。初默认打普通难度，编成沿用你上次的方案，下面是要开的这一局：", Tools: []string{"info_idols · 1 条"}, Cards: []map[string]any{idol, confirm}})
+	settle()
+	save := func(name string) {
+		_ = os.MkdirAll(out, 0o755)
+		f, err := os.Create(filepath.Join(out, name+".png"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		if err := png.Encode(f, tt.Image()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	save("1-confirm")
+	if err := tt.Click("开始"); err != nil {
+		t.Fatal(err)
+	}
+	settle()
+	app.PollJobs()
+	settle()
+	save("2-running")
+	app.OpenPanel("library", "")
+	settle()
+	save("3-library")
+	app.OpenPanel("plan", "")
+	settle()
+	save("4-plan")
+	app.OpenPanel("settings", "")
+	settle()
+	save("5-settings")
+}

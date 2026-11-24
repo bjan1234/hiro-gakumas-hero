@@ -49,6 +49,6 @@
 | `engine-wheels` | 引擎源码在 main 上变了 | 编四个平台的引擎 wheel 发 Release |
 
 - **actions 一律钉提交 SHA**，后面注释写版本，例如 `actions/checkout@fbc6…  # v5.1.0`。不要写 `@v5` 这种标签：标签能被改指向别的代码。
-- **Dependabot**（`.github/dependabot.yml`）每周提升级 PR：actions、pip、`app/` 的 bun 和 Go 依赖。同一生态的小版本合成一个 PR。`vendor/` 不管，跟着上游走。
+- **Dependabot**（`.github/dependabot.yml`）每周提升级 PR：actions、pip、`app/` 的 Go 依赖（桌面程序是纯 Go 的 mygo 原生 ui，没有 npm / bun 依赖）。同一生态的小版本合成一个 PR。`vendor/` 不管，跟着上游走。
 - **pip 缓存**：各工作流的 `setup-python` 按 `pyproject.toml` 缓存下载的包，依赖没变时装得快。
 - `pip-audit` 只查 `.[dev]` 和基础依赖；`play` / `bench` 里有 git 依赖和 KAA 子模块，CI 不装。

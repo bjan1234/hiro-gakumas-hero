@@ -1,0 +1,85 @@
+package library
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/egoist/mygo/ui"
+
+	"github.com/matto49/hiro-gakumas-hero/app/plugin"
+	"github.com/matto49/hiro-gakumas-hero/app/plugins/plugintest"
+)
+
+func host() *plugintest.Host {
+	return plugintest.New(map[string]string{
+		"catalog lookup": `{"items":{}}`,
+		"catalog sprite": `{"path":""}`,
+		"info summary":   `{"account":{"plv":52,"ap":120,"ap_max":150},"kinds":{"supports":{"count":88,"scanned_at":"2026-11-20 21:10:00"},"memories":{"count":40,"scanned_at":"2026-11-18 20:00:00"},"idols":{"count":30,"scanned_at":null}}}`,
+		"info supports":  `{"kind":"supports","scanned_at":"2026-11-20 21:10:00","items":[{"id":"s_card-2-0001","name":"一緒に行こう！","rarity":"SSR","attr":"Vo","level":50,"breaks":4}]}`,
+	})
+}
+
+func cardView(t *testing.T, card plugin.Card) *ui.Tester {
+	h, p := host(), New()
+	v := p.Cards["info"]
+	if v == nil {
+		t.Fatal("资料库没认领 info 卡")
+	}
+	return ui.NewTester(func(c *ui.Context) { v(c, h, card) }, 760, 400)
+}
+
+func TestIdolInfoCardUsesIdolTemplate(t *testing.T) {
+	tt := cardView(t, plugin.Card{"type": "info", "title": "偶像卡", "kind": "idols", "scannedAt": "2026-11-22 10:00:00",
+		"items": []any{map[string]any{"id": "i_card-skin-ttmr-3-0012", "name": "【Luna say maybe】月村手毬", "title": "Luna say maybe", "idol": "月村手毬", "rarity": "SSR", "plan": "sense"}}})
+	for _, s := range []string{"月村手毬", "Luna say maybe", "SSR", "偶像卡"} {
+		if !tt.HasText(s) {
+			t.Errorf("偶像卡没有 %q：%q", s, tt.Texts())
+		}
+	}
+	for _, txt := range tt.Texts() {
+		if strings.Contains(txt, "突破") || strings.Contains(txt, "Lv?") || txt == "?" {
+			t.Errorf("偶像卡套了支援卡模板：%q", txt)
+		}
+	}
+}
+
+func TestSupportInfoCard(t *testing.T) {
+	tt := cardView(t, plugin.Card{"type": "info", "kind": "supports", "items": []any{map[string]any{"id": "s_card-2-0001", "name": "一緒に行こう！", "rarity": "SSR", "attr": "Vo", "level": 50.0, "breaks": 4.0}}})
+	if !tt.HasText("一緒に行こう！") || !tt.HasText("SSR Lv50 · 突破 4") {
+		t.Errorf("支援卡：%q", tt.Texts())
+	}
+}
+
+func TestContextHasAccountAndScanDates(t *testing.T) {
+	h, p := host(), New()
+	out := p.Context(context.Background(), h)
+	for _, s := range []string{"PLv 52", "AP 120/150", "支援卡 88 张（11-20 扫过）", "回忆 40 张（11-18 扫过）", "偶像卡没扫描过"} {
+		if !strings.Contains(out, s) {
+			t.Errorf("上下文没有 %q：\n%s", s, out)
+		}
+	}
+}
+
+func TestScanPanelAsksForConfirm(t *testing.T) {
+	h, p := host(), New()
+	tt := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "scan") }), 520, 700)
+	if err := plugintest.ClickButton(tt, "扫描支援卡"); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.RunArgs_) != 1 || strings.Join(h.RunArgs_[0][1:], " ") != "run start scan-supports" {
+		t.Errorf("扫描：%v", h.RunArgs_)
+	}
+}
+
+func TestGreetingAndStarter(t *testing.T) {
+	h, p := host(), New()
+	p.Greeting(h)
+	if g := p.Greeting(h); g != "PLv 52 · AP 120/150" {
+		t.Errorf("问候小字 %q", g)
+	}
+	st := p.Starters(h)
+	if len(st) != 1 || st[0].Say == "" {
+		t.Errorf("资料库引导卡 %+v", st)
+	}
+}
