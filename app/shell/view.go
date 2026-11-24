@@ -15,6 +15,7 @@ type viewState struct {
 	panelFrac   float32 // 面板占窗口宽的比例，0 = 默认 45%
 	list        ui.ListState
 	md          markdown.Options
+	resolving   map[string]bool // 正在确认 / 取消的待确认编号（防重复）
 }
 
 // SidebarWidth 是左侧栏宽度（§4）。

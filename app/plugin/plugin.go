@@ -60,9 +60,13 @@ type CardView func(c *ui.Context, h Host, card Card)
 
 // Explained 是确认卡的解读：几行「键 值」和代价（「会操作游戏 · 用掉 1 次培育」）。
 type Explained struct {
-	Title string
-	Rows  [][2]string
-	Cost  string
+	Title    string      // 「开一局 初」
+	Subtitle string      // 「月村手毬【Luna say maybe】· 普通」
+	Attr     string      // 属性（Vo / Da / Vi），卡头的属性标签
+	Art      string      // 卡头大图（本机路径），没有就不画
+	Rows     [][2]string // 卡身几行「键 值」
+	Thumbs   []string    // 卡身一排小图（支援卡），本机路径
+	Cost     string      // 卡脚左边的代价
 }
 
 // Plugin 是一个插件给的全部东西（§5.1 的七类），哪项没有就留空。

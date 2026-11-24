@@ -89,16 +89,20 @@ func (a *App) message(c *ui.Context, m *Message) {
 			markdown.View(c, m.Text, &a.ui.md).FontSize(kit.FBody).TextColor(kit.Ink)
 		}
 		for i, card := range m.Cards {
-			ui.Column(c).Key(fmt.Sprintf("%s-card-%d", m.ID, i)).Children(func() { a.card(c, card) })
+			ui.Column(c).Key(fmt.Sprintf("%s-card-%d", m.ID, i)).Children(func() { a.card(c, m, card) })
 		}
 	})
 }
 
-func (a *App) card(c *ui.Context, card plugin.Card) {
+func (a *App) card(c *ui.Context, m *Message, card plugin.Card) {
 	typ, _ := card["type"].(string)
 	switch typ {
 	case "confirm":
-		confirmLine(c, card)
+		if a.waiting(card) {
+			a.confirmCard(c, m, card)
+		} else {
+			a.confirmLine(c, card)
+		}
 		return
 	case "error":
 		errorCard(c, card)
@@ -112,14 +116,15 @@ func (a *App) card(c *ui.Context, card plugin.Card) {
 }
 
 // confirmLine 是对话里确认卡留下的一行：等确认时指向下面的确认卡，之后写结果。
-func confirmLine(c *ui.Context, card plugin.Card) {
+func (a *App) confirmLine(c *ui.Context, card plugin.Card) {
 	status, _ := card["status"].(string)
+	if status == "waiting" {
+		status = "expired" // 不在等了还是 waiting，就是过期了
+	}
 	p, _ := card["pending"].(map[string]any)
 	summary, _ := p["summary"].(string)
 	text, col := "", kit.Ink3
 	switch status {
-	case "waiting":
-		text, col = "等你确认「"+summary+"」，看输入框那里 ↓", kit.WarnInk
 	case "confirmed":
 		text = "已开始「" + summary + "」· 你点了「开始」"
 	case "cancelled":

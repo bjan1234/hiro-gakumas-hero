@@ -12,9 +12,6 @@ import (
 func (a *App) composer(c *ui.Context) {
 	pad := a.chatPad()
 	ui.Column(c).Shrink(0).Padding(0, pad, 18, pad).Gap(10).Children(func() {
-		if a.confirmView(c) {
-			return
-		}
 		if strings.HasPrefix(a.input, "/") {
 			a.palette(c)
 		} else {
@@ -23,11 +20,17 @@ func (a *App) composer(c *ui.Context) {
 		ui.Row(c).AlignItems(ui.End).Gap(10).Padding(10, 10, 10, 16).Radius(kit.R20).Background(kit.CardBg).Border(kit.Hair, kit.LineStr).
 			Shadow(0, 4, 18, 0, ui.RGBA(0, 0, 0, 0.04)).Children(func() {
 			ph := "说点什么，或者输入「/」用插件"
+			if _, w := a.latestWaiting(); w != nil {
+				ph = "回复，或者直接点上面的「开始」"
+			}
 			if a.d.Ask == nil {
 				ph = "先到设置里配一个模型，才能直接说话；现在可以用「/」命令"
 			}
 			ui.TextAreaBase(c, &a.input).Lines(1, 6).AutoFocus().Placeholder(ph).FontSize(kit.FBody).TextColor(kit.Ink).Grow(1).Padding(5, 0).
 				Label("输入框").OnTextKey(func(k ui.TextKey) bool {
+				if (k.Key == ui.KeyEnter || k.Key == ui.KeyEscape) && k.Mods == 0 && strings.TrimSpace(k.Text()) == "" {
+					return a.keyOnEmptyInput(k.Key)
+				}
 				if k.Key == ui.KeyEnter && k.Mods == 0 {
 					text := k.Text()
 					k.SetText("")

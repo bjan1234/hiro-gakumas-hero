@@ -13,5 +13,5 @@ func (a *App) pinned(c *ui.Context) {}
 
 func (a *App) jobLive() bool { return false }
 
-// confirmView 有待确认时接管输入框（见 confirm.go）；返回是否接管了。
-func (a *App) confirmView(c *ui.Context) bool { return false }
+// onJobStarted 在确认开局后被调用（见 job.go）。
+func (a *App) onJobStarted(card map[string]any) {}
