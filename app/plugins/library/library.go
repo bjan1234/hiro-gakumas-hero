@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -33,6 +34,10 @@ type state struct {
 	query    string
 	results  []map[string]any
 	searched string
+
+	greet        string
+	greetAt      time.Time
+	greetLoading bool
 }
 
 // New 建资料库插件。
@@ -51,7 +56,11 @@ func New() *plugin.Plugin {
 		Cards: map[string]plugin.CardView{
 			"info": func(c *ui.Context, h plugin.Host, card plugin.Card) { s.infoCard(c, h, card) },
 		},
-		Panel:        func(c *ui.Context, h plugin.Host, route string) { s.panel(c, h, route) },
+		Panel:    func(c *ui.Context, h plugin.Host, route string) { s.panel(c, h, route) },
+		Greeting: s.greeting,
+		Starters: func(plugin.Host) []plugin.Starter {
+			return []plugin.Starter{{Label: "看看我的 SSR 支援卡", Sub: "按属性、等级、突破列出来", Say: "我有哪些 SSR 支援卡？", Icon: kit.IcBook}}
+		},
 		ContextTitle: "账号和库存",
 		Context:      func(ctx context.Context, h plugin.Host) string { return summaryContext(ctx, h) },
 	}
@@ -477,4 +486,34 @@ func summaryContext(ctx context.Context, h plugin.Host) string {
 	}
 	b.WriteString(strings.Join(parts, "；"))
 	return b.String()
+}
+
+// greeting 是新对话页问候语下面的「PLv 52 · AP 120/150」（一分钟读一次首页数值）。
+func (s *state) greeting(h plugin.Host) string {
+	if !s.greetLoading && (s.greetAt.IsZero() || h.Now().Sub(s.greetAt) > time.Minute) {
+		s.greetLoading = true
+		h.Go(func() func() {
+			var d summary
+			err := h.Call(context.Background(), []string{"info", "summary"}).Decode(&d)
+			return func() {
+				s.greetLoading, s.greetAt = false, h.Now()
+				if err != nil || d.Account == nil {
+					return
+				}
+				var parts []string
+				if d.Account.PLv != nil {
+					parts = append(parts, fmt.Sprintf("PLv %d", *d.Account.PLv))
+				}
+				if d.Account.AP != nil {
+					ap := fmt.Sprintf("AP %d", *d.Account.AP)
+					if d.Account.APMax != nil {
+						ap += fmt.Sprintf("/%d", *d.Account.APMax)
+					}
+					parts = append(parts, ap)
+				}
+				s.greet = strings.Join(parts, " · ")
+			}
+		})
+	}
+	return s.greet
 }

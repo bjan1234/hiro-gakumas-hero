@@ -44,6 +44,10 @@ func (a *App) View(c *ui.Context) {
 			ui.Column(c).Fill().Children(func() {
 				a.header(c)
 				a.pinned(c)
+				if a.welcomeMode() {
+					a.welcome(c)
+					return
+				}
 				a.transcript(c)
 				a.composer(c)
 			})

@@ -94,3 +94,34 @@ func TestContextCountsRecentAndFrequent(t *testing.T) {
 		}
 	}
 }
+
+func TestStartersFromRecentRuns(t *testing.T) {
+	h, p := host(), New()
+	p.Starters(h) // 第一次在后台读最近几局（假宿主同步）
+	st := p.Starters(h)
+	if len(st) < 2 || st[0].Label != "用月村手毬再打一把初" || st[0].Say != "帮我用月村手毬打一把初" || st[0].Art != "/tmp/none.webp" {
+		t.Fatalf("引导卡 %+v", st)
+	}
+	found := false
+	for _, s := range st {
+		if s.Label == "领日常奖励" && s.Run != nil {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("要有领日常奖励")
+	}
+}
+
+func TestStartersWithoutHistoryOpenPanel(t *testing.T) {
+	h, p := host(), New()
+	h.Resp["run status"] = h.Resp["info idols"] // 形状不对 → 当没有最近几局
+	h.Resp["run status"] = okResult(`{"current":null,"recent":[]}`)
+	p.Starters(h)
+	st := p.Starters(h)
+	if len(st) == 0 || st[0].Say != "/开局" {
+		t.Errorf("没有最近几局时引导去开局面板：%+v", st)
+	}
+}
+
+func okResult(s string) hiroapi.Result { return hiroapi.Result{OK: true, Data: []byte(s)} }

@@ -54,7 +54,7 @@ func TestPreview(t *testing.T) {
 			if live {
 				return `{"current":{"id":"j7","kind":"hajime","state":"running","summary":"初 · 月村手毬","started_at":` + strconv.FormatInt(t0, 10) + `},"recent":[]}`
 			}
-			return `{"current":null,"recent":[]}`
+			return `{"current":null,"recent":[{"id":"j5","kind":"hajime","state":"done","summary":"初 · 月村手毬","started_at":1763900000,"params":{"idol":"i_card-skin-ttmr-3-0012"}}]}`
 		case strings.HasPrefix(key, "run events"):
 			ev := []map[string]any{}
 			steps := [][3]string{{"EVENT_CHOICE", "rule", "选第 2 个选项（体力 +）"}, {"SELECT_DRINK", "deepseek", "画面没认出来，问了一下 LLM"}, {"HIF_EXAM", "gnrpa", "出牌 6 回合，得分 4,820"}, {"SELECT_CARD", "gnrpa", "拿「アイドル宣言」，集中流核心"}, {"ACTION_SELECT", "gnrpa", "声乐课「レッスン」：声乐离上限还差 210"}}
@@ -98,6 +98,19 @@ func TestPreview(t *testing.T) {
 		tt.Frame()
 	}
 	settle()
+	app.NewThread()
+	settle()
+	settle()
+	save0 := func() {
+		_ = os.MkdirAll(out, 0o755)
+		f, err := os.Create(filepath.Join(out, "0-welcome.png"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		_ = png.Encode(f, tt.Image())
+	}
+	save0()
 	app.Post("", nil)
 	app.Current().Messages = nil
 	app.Current().Messages = append(app.Current().Messages,

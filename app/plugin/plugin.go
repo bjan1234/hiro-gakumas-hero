@@ -54,6 +54,17 @@ type Chip struct {
 	Run   func(h Host)
 }
 
+// Starter 是新对话页上的一张引导卡：点了 Run（非空时）或代用户说 Say。
+type Starter struct {
+	Label string
+	Sub   string
+	Say   string
+	Art   string  // 卡面小图（本机路径），可空
+	Icon  *ui.SVG // 没有卡面时的图标，可空
+	Attr  string  // 属性色点（Vo / Da / Vi），可空
+	Run   func(h Host)
+}
+
 // NavItem 是侧栏插件列表里的一项（打开面板的 Route）。
 type NavItem struct {
 	Label string
@@ -90,6 +101,10 @@ type Plugin struct {
 	// Panel 画侧边面板的一页；route 是插件自己的子页（"" 为首页）。
 	Panel    func(c *ui.Context, h Host, route string)
 	Settings func(c *ui.Context, h Host)
+	// Starters 是新对话页的引导卡（按最近几局等生成；view 里每帧调用，要快，慢的东西自己缓存）。
+	Starters func(h Host) []Starter
+	// Greeting 是新对话页问候语下面那行小字里的一段（「PLv 52 · AP 120/150」），没有返回 ""。
+	Greeting func(h Host) string
 	// Footer 画在侧栏底部（游戏连接、模型这类一直要看到的小状态）。
 	Footer func(c *ui.Context, h Host)
 	// Context 是给 agent 的「现在的情况」里的一段；ContextTitle 是小标题（空则用 Name）。

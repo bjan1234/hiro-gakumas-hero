@@ -17,6 +17,13 @@ func (a *App) composer(c *ui.Context) {
 		} else {
 			a.chips(c)
 		}
+		a.inputBox(c)
+	})
+}
+
+// inputBox 是输入框那一行（底部和新对话页共用）。
+func (a *App) inputBox(c *ui.Context) {
+	{
 		ui.Row(c).AlignItems(ui.End).Gap(10).Padding(10, 10, 10, 16).Radius(kit.R20).Background(kit.CardBg).Border(kit.Hair, kit.LineStr).
 			Shadow(0, 4, 18, 0, ui.RGBA(0, 0, 0, 0.04)).Children(func() {
 			ph := "说点什么，或者输入「/」用插件"
@@ -47,7 +54,7 @@ func (a *App) composer(c *ui.Context) {
 				a.submit(text)
 			}
 		})
-	})
+	}
 }
 
 // submit 处理输入框交上来的一句：「/命令」走插件，别的发给 agent。

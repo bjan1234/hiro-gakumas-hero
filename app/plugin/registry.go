@@ -108,3 +108,37 @@ func (r *Registry) Explain(h Host, pd hiroapi.Pending) (Explained, bool) {
 	}
 	return Explained{}, false
 }
+
+// MaxStarters 是新对话页最多几张引导卡。
+const MaxStarters = 4
+
+// Starters 是各插件的引导卡（注册顺序，最多 MaxStarters 张）。
+func (r *Registry) Starters(h Host) []Starter {
+	var out []Starter
+	for _, p := range r.list {
+		if p.Starters == nil {
+			continue
+		}
+		for _, s := range p.Starters(h) {
+			if len(out) == MaxStarters {
+				return out
+			}
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// Greeting 是各插件问候小字拼起来（用「 · 」隔开）。
+func (r *Registry) Greeting(h Host) string {
+	var parts []string
+	for _, p := range r.list {
+		if p.Greeting == nil {
+			continue
+		}
+		if g := strings.TrimSpace(p.Greeting(h)); g != "" {
+			parts = append(parts, g)
+		}
+	}
+	return strings.Join(parts, " · ")
+}

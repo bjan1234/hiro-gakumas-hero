@@ -67,6 +67,10 @@ type state struct {
 	loaded  bool
 	plan    *planBrief
 	planAt  time.Time
+
+	recent        []plugin.Job
+	recentAt      time.Time
+	recentLoading bool
 }
 
 type planBrief struct {
@@ -110,6 +114,7 @@ func New() *plugin.Plugin {
 		Explain: func(h plugin.Host, p hiroapi.Pending) (plugin.Explained, bool) {
 			return s.explain(h, cat, p)
 		},
+		Starters:     func(h plugin.Host) []plugin.Starter { return s.starters(h, cat) },
 		ContextTitle: "最近几局",
 		Context:      func(ctx context.Context, h plugin.Host) string { return recent(ctx, h, cat) },
 	}
@@ -440,4 +445,66 @@ func top(m map[string]int, name func(string) string) string {
 		return "—"
 	}
 	return strings.Join(out, "、")
+}
+
+// ---- 新对话页的引导卡 ----
+
+func shortIdol(name string) string {
+	if i := strings.LastIndex(name, "】"); i >= 0 {
+		name = name[i+len("】"):]
+	}
+	return strings.TrimSpace(name)
+}
+
+func (s *state) loadRecent(h plugin.Host) {
+	if s.recentLoading || (!s.recentAt.IsZero() && h.Now().Sub(s.recentAt) < time.Minute) {
+		return
+	}
+	s.recentLoading = true
+	h.Go(func() func() {
+		var st struct {
+			Recent []plugin.Job `json:"recent"`
+		}
+		_ = h.Call(context.Background(), []string{"run", "status"}).Decode(&st)
+		return func() {
+			s.recentLoading, s.recentAt = false, h.Now()
+			sort.SliceStable(st.Recent, func(i, j int) bool { return st.Recent[i].StartedAt > st.Recent[j].StartedAt })
+			s.recent = st.Recent
+		}
+	})
+}
+
+// starters 是「用某某再打一把某模式」（最近两局里不同的偶像 + 模式）和「领日常奖励」；没有最近几局时引导去开局面板。
+func (s *state) starters(h plugin.Host, cat *common.Catalog) []plugin.Starter {
+	s.loadRecent(h)
+	var out []plugin.Starter
+	seen := map[string]bool{}
+	for _, j := range s.recent {
+		if len(out) == 2 {
+			break
+		}
+		id, _ := j.Params["idol"].(string)
+		if id == "" || (j.Kind != "hajime" && j.Kind != "nia" && j.Kind != "hif" && j.Kind != "tower") || seen[id+j.Kind] {
+			continue
+		}
+		seen[id+j.Kind] = true
+		e := cat.Get(h, id)
+		if e == nil {
+			continue
+		}
+		name, mode := shortIdol(e.Name), modeName(j.Kind)
+		out = append(out, plugin.Starter{
+			Label: "用" + name + "再打一把" + mode,
+			Sub:   "上次 " + time.Unix(int64(j.StartedAt), 0).Format("01-02") + " · " + labels.State(j.State),
+			Say:   "帮我用" + name + "打一把" + mode,
+			Art:   cat.Sprite(h, e.Asset),
+			Attr:  e.Attr,
+		})
+	}
+	if len(out) == 0 {
+		out = append(out, plugin.Starter{Label: "选个偶像开一局", Sub: "也可以直接说「帮我用某某打一把初」", Say: "/开局", Icon: kit.IcPlay})
+	}
+	out = append(out, plugin.Starter{Label: "领日常奖励", Sub: "活動費、礼物、工作、任务，不花ジュエル", Icon: kit.IcSparkles,
+		Run: func(h plugin.Host) { h.RunArgs("帮我领日常奖励", []string{"run", "start", "daily"}) }})
+	return out
 }

@@ -71,3 +71,15 @@ func TestScanPanelAsksForConfirm(t *testing.T) {
 		t.Errorf("扫描：%v", h.RunArgs_)
 	}
 }
+
+func TestGreetingAndStarter(t *testing.T) {
+	h, p := host(), New()
+	p.Greeting(h)
+	if g := p.Greeting(h); g != "PLv 52 · AP 120/150" {
+		t.Errorf("问候小字 %q", g)
+	}
+	st := p.Starters(h)
+	if len(st) != 1 || st[0].Say == "" {
+		t.Errorf("资料库引导卡 %+v", st)
+	}
+}
