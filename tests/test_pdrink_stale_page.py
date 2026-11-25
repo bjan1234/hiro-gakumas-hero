@@ -8,7 +8,7 @@ from hiro.contracts import Action, ActionKind, Decision, GameState
 
 import pytest
 
-pytestmark = [pytest.mark.kaa]
+pytestmark = [pytest.mark.play]
 
 
 def test_overflow_decider_waits_when_fields_are_from_another_page():

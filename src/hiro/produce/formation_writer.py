@@ -1,4 +1,4 @@
-# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）
 """把编成位改成方案（hiro.brain.formation_plan）：支援卡、回忆，就地修正对不上的格子。
 
 两个用处：开局第 2 步支援卡（HIRO_FORMATION_AUTOFIX=1 才启用，在 KAA 切到方案的编成号之后、点「次へ」之前）；

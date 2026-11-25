@@ -23,7 +23,7 @@ from hiro.vision.ui_templates import Match, box, point
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.kaa_free  # hiro.daily 不碰 KAA（下面 test_registry_and_no_kaa_import 查着）
+pytestmark = pytest.mark.play_free  # hiro.daily 不要 OCR 等 play 组依赖也能导入
 
 HOME = {"Daily.ButtonHomeCurrent": (359, 1155)}
 

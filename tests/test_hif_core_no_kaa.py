@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = [pytest.mark.synthetic, pytest.mark.kaa_free]
+pytestmark = [pytest.mark.synthetic, pytest.mark.play_free]
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "hiro" / "produce" / "hif.py"
 

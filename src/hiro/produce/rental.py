@@ -1,4 +1,4 @@
-# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）
 """开局第 2 步租借格（用户 2026-11-02：不用おまかせ，租借格由我们挑）。
 
 挑法：

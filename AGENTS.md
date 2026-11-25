@@ -27,8 +27,9 @@
 
 - 不要把截图、trace、账号、密钥、主数据原文件提交进仓库。`.gitignore` 已挡住 `resources/`、`tests/fixtures/`、`cache/`、`traces/`。
   `assets/pack/` 是仓库有意带的识别素材包（权利属于游戏的权利人，见 `assets/pack/README.md`），除此之外不要再往仓库里加游戏素材或截图。
-- 不要改 `vendor/kaa`（KAA 子模块，固定版本）。主循环已经不用 KAA（2026-11-24 删了 KAA 主循环和它的运行时补丁）；
-  还在用 KAA 的只剩识别层的部分模板 / 主数据和 `HiroHifStrategy`，正在逐步去掉（日常任务 2026-11-25 全部迁到 `hiro.daily`）。
+- 代码不依赖 KAA（kotones-auto-assistant）：2026-11-24 删了 KAA 主循环和运行时补丁，2026-11-25 分 4 批去掉了剩下的
+  策略类壳、日常任务、OCR 模型、主数据和 `vendor/kaa` 子模块。移植自 KAA 的文件保留 GPL-3.0 文件头。
+  `git grep -nE "(from|import) (kaa|kotonebot)" -- src tools scripts app` 应该为空，别再加回去。
 
 ## 二、架构
 
@@ -52,7 +53,7 @@
 
 | 插件 | 回答什么 | 开源默认实现 |
 |---|---|---|
-| `asset_source` | 素材和主数据从哪来 | `defaults/assets.py`：KAA 公开数据 + 使用者自建素材 |
+| `asset_source` | 素材和主数据从哪来 | `defaults/assets.py`：公开游戏图 + 从模拟器主数据生成的主数据库 + 使用者自建素材 |
 | `exam_state_source` | 考试局面从哪来 | `defaults/exam_state.py`：画面识别 + 状态机记账（不知道牌库顺序）。另有 `hiro.sim.screen_source:SimScreenExamStateSource`：同样从画面读，再用模拟器跟踪局面、给每个候选动作附预演（不读存档） |
 | `exam_advisor` | 考试每一步怎么打 | `defaults/advisor.py`：社区规则链 + LLM 兜底 |
 | `observation_source` | 不看画面的数据来源（hook、存档…），按页面给字段，和画面识别走同一个 reduce | 没有（只用画面） |
@@ -64,37 +65,38 @@
   可以混用；每一步记录是哪个插件定的，每段 trace 有 `plugins.json`。插件给了画面上看不到的信息（`hidden`）时，这一段对局打 `uses_hidden`，战绩单独统计。
 
 - **模拟器**（`hiro/sim`，考试引擎 `vendor/gakumas-player/gakumas_exam`（Rust 后端 `gakumas_exam_rs`：有 cargo 本地编，没有就下预编译包 `scripts/engine_rs.py install`，都不行用 Python 版）、
-  培育层公式 `gakumas_produce`，主数据由 setup 第 6 步从社区公开的 gakumasu-diff 下载构建）：
+  培育层公式 `gakumas_produce`，主数据由 setup 第 4 步从社区公开的 gakumasu-diff 下载构建）：
   轮间买什么 / 刷不刷货架、饮料取舍、本战相談按模拟算第二轮期望分（`HIRO_SIM=0` 关掉，只按社区规则）；
   考试出牌的预演要选用 `SimScreenExamStateSource`（见上表）。主数据没构建时这些自动退回社区规则。
 - **不在这个仓库里的东西**：考试存档读取（解密）。作者用私有插件接回去。
 
 ## 三、环境
 
-平台与 KAA 支持的对齐（见下面「设备」）：**作者实机验证过的有 macOS（Apple Silicon）+ PlayCover，和 Windows + MuMu 12**
-（MuMu 6.8，22 局 3 次本战夺冠）；Windows DMM 版实机开局跑通（见「设备」）；安卓设备 / 模拟器（ADB）、雷电走 KAA 的设备工厂，代码接好了、有离线测试，但没有实机打过一局。
+平台见下面「设备」：**作者实机验证过的有 macOS（Apple Silicon）+ PlayCover，和 Windows + MuMu 12**
+（MuMu 6.8，22 局 3 次本战夺冠）；Windows DMM 版实机开局跑通（见「设备」）；安卓设备 / 模拟器（ADB）、雷电走 `AdbDevice`，代码接好了、有离线测试，但没有实机打过一局。
 
 1. 装环境（一条命令，可重复跑，做过的步骤会跳过；需要 uv、git 和网络）：
    ```bash
    git clone https://github.com/matto49/hiro-gakumas-hero && cd hiro-gakumas-hero
-   scripts/setup.sh      # 子模块 → .venv（Python 3.10）→ 安装 → 生成 KAA 的 R.py → 下载 KAA 公开数据 + 卡图索引 → 自检
+   scripts/setup.sh      # .venv（Python 3.10）→ 安装 → OCR 模型 → 识别用的游戏原图 → 模拟器主数据 + 主数据库 → 自检
    ```
-   从零约 4 分钟。KAA 换版本后加 `--regen` 重新生成；已用 `HIRO_KAA_GAME_DATA` 指向现成数据时加 `--no-data`。
-   不要用 `git clone --recurse-submodules`：会递归拉 KAA 自己嵌套的 GkmasObjectManager（资源解包工具，运行用不到，
-   体积大，Windows 上 20 分钟还没拉完，2026-11-11 W4）；子模块由安装脚本只拉 `vendor/kaa` 这一层。
+   从零约 4 分钟。已用 `HIRO_KAA_GAME_DATA` / `HIRO_MASTER_DB` 指向现成数据时加 `--no-data`。
+   游戏原图（技能卡 / 偶像卡 / 饮料，`resources/game_data/`）由 `tools/assets/game_images.py` 从 kaa-game-data 的公开发布包
+   按固定版本下载、校验 SHA256；主数据库（`cache/master/game.db`）由 `python -m hiro.state.master_db` 从模拟器主数据生成，
+   和原来 KAA 的 game.db 同结构。见 `docs/assets.md`。
    自检最后会打印插件来源、有没有主数据和自建素材，以及开局命令。
 2. 游戏窗口：用 [hguandl 的 PlayCover 分支](https://github.com/hguandl/PlayCover)，在游戏的 PlayCover 设置里打开 `maaTools`（端口 `maaToolsPort`）。
    截图和点击走游戏进程内的 MaaTools 服务（见 `hiro/devices/maatools.py`），**不要求窗口在前台，也不动鼠标**。
    **原版 PlayCover 不支持**（2026-11-13 起）：MaaTools 连不上时直接报错停下，不再退回 Quartz 截图 + `CGEventPostToPid`。
    macOS 要给运行它的终端 / 程序「屏幕录制」权限；截图报 `could not create image from display` 时先查这个权限和显示器状态。
 
-   **设备**（`HIRO_DEVICE`，与 KAA 支持的平台对齐）：
+   **设备**（`HIRO_DEVICE`）：
 
    | `HIRO_DEVICE` | 平台 | 截图 / 点击 | 验证情况 |
    |---|---|---|---|
    | `auto`（缺省） | macOS 上就是 `maatools`；其他系统要求显式设置 | — | — |
    | `maatools` | macOS + hguandl 分支 PlayCover（原版不支持） | 游戏进程内 MaaTools | 作者实机验证（6 次夺冠） |
-   | `adb` | 任意安卓设备 / 模拟器（KAA 的 custom） | `HIRO_SCREENSHOT=adb`（缺省）或 `uiautomator2` | 未实机验证 |
+   | `adb` | 任意安卓设备 / 模拟器 | `HIRO_SCREENSHOT=adb`（缺省）或 `uiautomator2` | 未实机验证 |
    | `mumu` | MuMu 12 | `adb`（缺省；Windows 上 `nemu_ipc` 截图可用但点击送不到游戏，别用） | Windows + MuMu 6.8 实机打过（见下） |
    | `leidian` | 雷电模拟器 | `adb` / `uiautomator2` | 未实机验证 |
    | `dmm` | Windows DMM 版 | `windows_background`（缺省：PrintWindow 截图 + SendMessage 点击，窗口不用在前台）/ `windows_native` | 作者实机开局验证（2026-11-10，见下） |
@@ -102,24 +104,23 @@
    - `HIRO_ADB=ip:port` 指 adb 地址（`adb` / `leidian` 用，缺省 `127.0.0.1:5555`；`mumu` 不设时由 MuMu SDK 自动取）；
      `HIRO_EMULATOR_INSTANCE` 指 MuMu / 雷电的实例 ID（MuMu 缺省 `0`，多开时指定）。
      MuMu 缺省开后台模式（按游戏包名截它所在的显示；MuMu 6 把应用放在单独的显示里，不开时截到的是模拟器桌面），
-     `HIRO_MUMU_BACKGROUND=0` 关掉。组合不合法时开局前就报错（用 KAA 自己的配置校验）。
+     `HIRO_MUMU_BACKGROUND=0` 关掉。
    - 非 PlayCover 后端不做 PlayCover 专用的退路（横屏 LIVE 黑屏时切全屏、MaaTools 点了没反应时用真实鼠标再点）。
    - 文字识别（`HIRO_OCR`）：macOS 缺省用 Apple Vision，其他系统自动改用 RapidOCR（`rapidocr_onnxruntime` + PaddleOCR PP-OCRv3 日文 / 英文识别模型，
-     模型在 `cache/rapidocr/`，由安装脚本调 `tools/assets/rapid_models.py` 从本仓库 GitHub Release `ocr-models-v1` 下载、校验 SHA256）。页面判定、找按钮的整帧文字统一走 `hiro.vision.ocr.screen_texts`，
-     不再调 kotonebot 的 `ocr`。
+     模型在 `cache/rapidocr/`，由安装脚本调 `tools/assets/rapid_models.py` 从本仓库 GitHub Release `ocr-models-v1` 下载、校验 SHA256）。页面判定、找按钮的整帧文字统一走 `hiro.vision.ocr.screen_texts`。
      RapidOCR 在作者的回归截图上的准确率与速度见 `docs/assets.md`；换平台后先用自己的截图验一遍。
    - Windows 用 PowerShell 版安装脚本：`powershell -NoProfile -ExecutionPolicy Bypass -File scripts\setup.ps1`（步骤与 `setup.sh` 相同）。
      作者的 Windows 台式机上实测过安装、自检和全套离线测试，以及 `HIRO_DEVICE=mumu`（MuMu 6.8，截图 / 点击 `adb`）
      实机打 H.I.F 本战（2026-11-07–09，22 局 3 次夺冠，RapidOCR + Codex）。`HIRO_SCREENSHOT=nemu_ipc` 时截图正常、
      点击不生效（页面一直不变，开局 guard_new 15 秒超时），缺省已改成 `adb`。
-     KAA 公开数据的下载镜像连不上时，从别处拷一份 `game_data` 目录，用 `-NoData` 加 `HIRO_KAA_GAME_DATA` 指过去。
+     游戏原图 / 模拟器主数据下载不了时，从别处拷一份 `resources/game_data` 和 `cache/master/game.db`，用 `-NoData` 加 `HIRO_KAA_GAME_DATA` / `HIRO_MASTER_DB` 指过去。
    - Windows 开局用 `scripts\play.ps1`：把作者夺冠时的环境变量设好再调 `tools\play_game.py`，日志写到 `reports\live\play-<tag>.out`：
      ```powershell
      powershell -NoProfile -ExecutionPolicy Bypass -File scripts\play.ps1 -Idol i_card-skin-shro-3-007 -MainOnly -Memory <Vo,Da,Vi> -Tag 1
      ```
      缺省 `-Device mumu`（截图 / 点击 `adb`）、`-Llm codex`、支援卡 / 回忆编成 4 / 5、模拟器开但考试预演只在 R2
      （`HIRO_SIM_WORKERS=1`、`HIRO_EXAM_SIM_ROUNDS=r2`，原因见脚本开头注释）。`-Proxy http://…` 给 LLM 设代理，`-NoSim` 关模拟器，
-     `-Relaunch`（游戏被杀时自己拉起，缺省关）只在旧 KAA 主循环里接过，2026-11-24 删旧主循环后暂时不起作用，`-Wait` 前台等跑完。参数全表见脚本开头。
+     `-Relaunch`（游戏被杀时自己拉起，缺省关）只在旧主循环里接过，2026-11-24 删旧主循环后暂时不起作用，`-Wait` 前台等跑完。参数全表见脚本开头。
    - **DMM 版**（`-Device dmm`）：
      - 游戏以管理员身份运行，普通权限的进程能截图、点击会被系统挡掉（UIPI），所以 hiro 也要以管理员身份跑。
        `scripts\play.ps1 -Device dmm` 不是管理员时会自己申请（弹一次 UAC），在新窗口里开局。
@@ -134,11 +135,11 @@
      - 设备层 `hiro/devices/`（2026-11-13 起；主循环 hiro.runtime 用它，旧的 kotonebot 设备 `hiro.device` 2026-11-24 删了）：统一接口 6 个方法
        （`connect / close / screenshot / tap / swipe(…, hold=) / alive`，逻辑坐标 720×1280、横屏 1280×720，失败抛 `DeviceGone` /
        `DeviceUnavailable`），三个实现 `MaaToolsDevice`（Mac）、`DmmWin32Device`（DMM）、`AdbDevice`（MuMu / 雷电 / 真机，
-       `HIRO_ADB`、`HIRO_ADB_PATH`），`hiro.devices.open_device()` 按 `HIRO_DEVICE` 选。不 import kotonebot / KAA。
+       `HIRO_ADB`、`HIRO_ADB_PATH`），`hiro.devices.open_device()` 按 `HIRO_DEVICE` 选。
        另有两个不在统一接口里的可选方法，各自只给一个调用方：`MaaToolsDevice.real_tap`（drink_swap 的 PlayCover 真实鼠标兜底）、
        `AdbDevice.shell`（`hiro.loop.game_app` 的 `foreground(shell)` / `relaunch(shell)`）。横屏判断看 `dev.orientation`。
-     - `DmmWin32Device`（`hiro/devices/dmm_win32.py`）自己调 Win32（ctypes），不依赖 MaaFramework / KAA / pywin32（2026-11-25 去掉 maafw）。
-       截图 `HIRO_DMM_CAPTURE`：`printwindow`（缺省，同 KAA 的 DMM 截图）/ `gdi`（BitBlt 窗口 DC，普通权限实测约 11 ms 一张，窗口被挡住的部分截不到，实验）；
+     - `DmmWin32Device`（`hiro/devices/dmm_win32.py`）自己调 Win32（ctypes），不依赖 MaaFramework / pywin32（2026-11-25 去掉 maafw）。
+       截图 `HIRO_DMM_CAPTURE`：`printwindow`（缺省，做法同 KAA 的 DMM 截图）/ `gdi`（BitBlt 窗口 DC，普通权限实测约 11 ms 一张，窗口被挡住的部分截不到，实验）；
        点击 / 滑动和上面的后台点击同一种做法（挪窗口让目标点落在光标下 + PostMessage），读光标「拒绝访问」时同样等桌面恢复。
        2026-11-25 hiro-w4 实机（管理员）：PrintWindow 约 34 ms 一张，窗口被挡着也截得对；点击、底部导航 3/3、横幅滑动 2/2 通过。
      - 游戏窗口尺寸（用户 2026-11-14 定）：客户区按显示器自适应，9:16，高 = 主显示器工作区高（去掉任务栏）− 窗口外框高，
@@ -182,11 +183,12 @@ PYTHONPATH=src python -m hiro.run_hif resume --mode qualify|main   # 续跑进�
 
 | 环境变量 | 作用 |
 |---|---|
-| `HIRO_SUPPORT_SET` / `HIRO_MEMORY_SET` | 游戏里的编成号。没设、也没有开局编成方案时，在碰游戏前退出（码 2）。写 `auto` 等于 KAA「おまかせ」，支援卡会直接确认列表第一张租借卡，只在你明确想这样时用 |
+| `HIRO_SUPPORT_SET` / `HIRO_MEMORY_SET` | 游戏里的编成号。没设、也没有开局编成方案时，在碰游戏前退出（码 2）。写 `auto` 等于游戏里的「おまかせ」，支援卡会直接确认列表第一张租借卡，只在你明确想这样时用 |
 | `HIRO_MEMORY_CARDS` | 回忆编成带进培育的技能卡 ID（逗号分隔）。决策器把它们算作已有，三选一里不再找；不设时用开局编成方案里的，都没有就当空。手动设编成号时记得一起设 |
 | `HIRO_FORMATION_PLAN` | 开局编成方案文件，默认 `conf/formation-plan.json`；`off` = 不读。见 [docs/formation-plan.md](docs/formation-plan.md) |
 | `HIRO_LLM` | LLM，如 `claude:sonnet`（默认，走 `claude -p`）、`codex[:<model>]`（走 OpenAI Codex CLI 的 `codex exec`，用 ChatGPT 账号登录，不要 API key；Windows 上能自动找到 Codex 应用自带的 `codex.exe`，或用 `HIRO_CODEX_BIN` 指定）、`openai:<model>`（OpenAI 兼容）。`--no-llm` 只用规则。需要代理的网络给进程设 `HTTPS_PROXY` |
-| `HIRO_KAA_GAME_DATA` | KAA 公开数据目录（含 `game.db`），默认 `resources/game_data` |
+| `HIRO_KAA_GAME_DATA` | 识别用的游戏原图目录（`skill_cards/`、`idol_cards/`、`drinks/`，`tools/assets/game_images.py` 下载），默认 `resources/game_data`；名字沿用 KAA 时期的 |
+| `HIRO_MASTER_DB` | 主数据库路径：缺省 `cache/master/game.db`（`python -m hiro.state.master_db` 从模拟器主数据生成，模拟器主数据换提交自动重建）；指向一份已有的库时原样用、不重建 |
 | `HIRO_USER_ASSETS` | 自建素材目录（`capture_icons` 的产出），可选；与随仓库素材包并用，同类图库取文件更多的一个 |
 | `HIRO_BUNDLED_ASSETS` | 随仓库素材包目录，默认 `assets/pack`；设 `0` 关掉 |
 | `HIRO_ASSET_SOURCE` / `HIRO_EXAM_STATE_SOURCE` / `HIRO_EXAM_ADVISOR` | 换插件实现（`包.模块:类名`）。考试预演：`HIRO_EXAM_STATE_SOURCE=hiro.sim.screen_source:SimScreenExamStateSource` |
@@ -198,7 +200,6 @@ PYTHONPATH=src python -m hiro.run_hif resume --mode qualify|main   # 续跑进�
 | `HIRO_HIF_GUIDES` | H.I.F 用偶像卡攻略包（`hiro.brain.guides`，开局自动下载，24 小时更新一次，新版下好后删旧版）：`1` 时广以外的偶像在选卡 / 删卡 / 换卡 / 强化上按自己的流派 + 攻略条目（同初 / N.I.A），不再按广的必拿表刷新、禁用；缺省 `0` 照旧。广仍要 `HIRO_GUIDES_HIRO=1` 才从条目读。见 `hiro/brain/idol_know.py` |
 | `HIRO_SIM=0` | 不用模拟器（轮间 / 饮料 / 相談只按社区规则） |
 | `HIRO_DECK_REVIEW` | 培育中主动打开牌组一览读全量（约 10 秒一次）。缺省：本战开局牌组为空时读一次；牌组标成待复核时（跳过剧情后支援事件可能给了卡、删卡没对上等）到选行动页读一次，同一天只试一次。`1` = 另外每个考试段第一次到选行动页都读（调试）；`0` = 只保留开局那次，待复核不读 |
-| `HIRO_STRATEGY` | 换培育策略类（KAA `HifGrindStrategy` 子类），默认 `hiro.produce.hif:HiroHifStrategy` |
 | `HIRO_PAUSE_FLAG` | 外部暂停旗标文件路径：文件存在就暂停对局 |
 | `HIRO_CLOSE_GAME` | 跑完（不管成败）关游戏：`off`（缺省）/ `on`·`emulator`（MuMu 关模拟器、雷电设了 `HIRO_LDCONSOLE` 时关模拟器、DMM 关游戏 + DMM Game Player）/ `game`（只关游戏）。只由整局的发起方关一次：`play_game` 整局结束关（选拔和本战之间不关）；单段的 `run_hif` 不关。`play.ps1 -CloseGame`。见 `hiro/runtime/close_game.py` |
 | `HIRO_UNREAD_STORY` / `HIRO_UNREAD_TIMEOUT_S` | 未读剧情：`skip`（缺省，照旧跳过）/ `stop`：未读确认框点キャンセル、暂停、发系统通知、写等人文件 `%LOCALAPPDATA%\hiro\waiting-for-user.txt`（`HIRO_WAIT_FILE`）；看完剧情自动继续，删掉文件 = 跳过这段继续；剧情框文字（OCR）`HIRO_UNREAD_TIMEOUT_S` 秒（缺省 60）没变 = 没人在看，关游戏并退出（码 3，之后 `resume`）。按文字判断，因为剧情画面一直在动。stop 时开局设置不打开「未読コミュでも早送り」（打开着的会关掉）。`play.ps1 -UnreadStory stop`。见 `hiro/runtime/unread_story.py` |

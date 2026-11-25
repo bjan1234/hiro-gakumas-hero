@@ -72,7 +72,7 @@
 
   | 插件 | 回答什么 | 本仓库的默认实现 |
   |---|---|---|
-  | `asset_source` | 素材和主数据从哪来 | KAA 公开数据 + 随仓库素材包 `assets/pack/` + 使用者自建素材 |
+  | `asset_source` | 素材和主数据从哪来 | 公开游戏图（技能卡 / 偶像卡 / 饮料）+ 从模拟器主数据生成的主数据库 + 随仓库素材包 `assets/pack/` + 使用者自建素材 |
   | `exam_state_source` | 考试局面从哪来 | 画面识别 + 状态机记账；要预演时换成 `hiro.sim.screen_source:SimScreenExamStateSource`（`play.ps1` 缺省就用它） |
   | `exam_advisor` | 考试每一步怎么打 | `hiro.search.advisor:SearchAdvisor`：Rust GNRPA 搜索（见下文「考试出牌」）；搜不了的步退回 [gakumas-bench](https://github.com/matto49/gakumas-bench) 中转层（缺省 [UINet](https://github.com/yuzeis/GKMSUINet)，`hiro.bench_bridge`），再出错退回社区规则 |
 
@@ -80,8 +80,8 @@
   或者在另一个包的 `pyproject.toml` 里声明入口点 `[project.entry-points."hiro_gakumas.plugins"]`，装进同一个环境就自动登记。
   作者读存档的局面来源就是这样做成私有插件的，主仓库里没有任何读存档的代码。每局的 `run.json` 记下这一局实际用了哪些实现。
 
-- **主循环**：`hiro.runtime`（自有判页、页面处理器、中断层，不 import KAA），H.I.F、初、N.I.A、偶像之路都在上面跑。
-  原来 H.I.F 缺省走 KAA 的任务流程（`hiro/loop/kaa_patches.py` 打运行时补丁），2026-11-24 删了。
+- **主循环**：`hiro.runtime`（自有判页、页面处理器、中断层），H.I.F、初、N.I.A、偶像之路都在上面跑。
+  原来 H.I.F 缺省走 KAA 的任务流程（`hiro/loop/kaa_patches.py` 打运行时补丁），2026-11-24 删了；2026-11-25 起整个仓库不再依赖 KAA。
 - **安全拦截写在代码里**：不用ジュエル、不破棄、不按跨端培育的「開始する」、通信错误不点タイトルへ、LLM 兜底只能点识别出的文字框
   （完整列表见 [AGENTS.md](AGENTS.md)）。
 - **每一步可审计**：每局自动生成逐回合复盘页（开局牌库、手牌、候选动作、状态曲线），人可以在任意一步标注「应该怎么做」，
@@ -131,7 +131,7 @@ setup 检测到 Rust 工具链时本地编译（快约 8 倍）；没有时下�
 ## 快速开始
 
 作者实机验证过的平台：macOS（Apple Silicon）+ PlayCover，Windows + MuMu 12（22 局 3 次本战夺冠），和 Windows DMM 版
-（`-Device dmm`，要管理员权限、游戏用日文原版）。安卓设备 / 模拟器（ADB）、雷电与 [KAA](https://github.com/XcantloadX/kotones-auto-assistant) 对齐，用 `HIRO_DEVICE` 选择、走 KAA 的设备工厂，
+（`-Device dmm`，要管理员权限、游戏用日文原版）。安卓设备 / 模拟器（ADB）、雷电用 `HIRO_DEVICE` 选择、走 `hiro.devices` 的 ADB 实现，
 代码和离线测试都有，但还没有实机打过一局（见 [AGENTS.md](AGENTS.md)「设备」）。
 
 > **macOS 只支持带 MaaTools 的 PlayCover。** 请安装 [hguandl 的 PlayCover 分支](https://github.com/hguandl/PlayCover)，
@@ -142,7 +142,7 @@ setup 检测到 Rust 工具链时本地编译（快约 8 倍）；没有时下�
 ```bash
 git clone https://github.com/matto49/hiro-gakumas-hero
 cd hiro-gakumas-hero
-scripts/setup.sh                                        # 装依赖、生成 KAA 文件、下载公开游戏数据、自检（约 4 分钟）
+scripts/setup.sh                                        # 装依赖、下载 OCR 模型和公开游戏数据、生成主数据库、自检（约 4 分钟）
 PYTHONPATH=src .venv/bin/python -m pytest -q            # 没有截图样例时，读截图的用例会跳过
 ```
 
@@ -206,7 +206,7 @@ open /tmp/hiro-view/demo-run.html
 
 ## 默认素材下能读到什么
 
-| 读数 | 默认（KAA 公开数据 + 随仓库素材包） |
+| 读数 | 默认（公开游戏图 + 主数据库 + 随仓库素材包） |
 |---|---|
 | 判页、HUD（剩余回合 / 元気 / 体力）、考试分数、名次、手牌、P 饮料、主数据、日程 | 可用 |
 | 考试效果名（やる気、好印象…）、P 道具名、开始确认页的支援卡 | 可用（素材包带图标和支援卡图） |
@@ -214,7 +214,7 @@ open /tmp/hiro-view/demo-run.html
 
 （Windows 上 MuMu 的 22 局和 DMM 版的整局都是带素材包打的；每次改识别都拿 DMM 实机帧的回归集（`tests/dmm_regression.json`，样例帧不随仓库）在 Mac 两种 OCR 和 Windows 上各跑一遍。）
 
-不想用随仓库的素材包时，设 `HIRO_BUNDLED_ASSETS=0`，识别层退回只用 KAA 公开数据，考试效果名等要跑 `capture_icons` 补。
+不想用随仓库的素材包时，设 `HIRO_BUNDLED_ASSETS=0`，识别层退回只用公开游戏图和主数据库，考试效果名等要跑 `capture_icons` 补。
 
 完整表和退路说明见 [docs/assets.md](docs/assets.md)。
 
@@ -228,7 +228,7 @@ open /tmp/hiro-view/demo-run.html
 | `src/hiro/brain/`、`defaults/advisor.py` | 策略层：培育决策（规则、社区先验、LLM 补位；`hajime_nia.py` 是初 / N.I.A），LLM 适配（`claude -p`、Codex CLI、OpenAI 兼容） |
 | `src/hiro/search/` | 考试出牌：Rust GNRPA 搜索插件（`advisor.py`）、初 / N.I.A / 偶像之路的考试开局和算法（`exam_env.py`、`exam_algo.py`、`tower_algo.py`） |
 | `src/hiro/exec/`、`loop/`、`produce/` | 操作层：执行器、页面处理、恢复、安全拦截 |
-| `src/hiro/runtime/` | 自建主循环（不用 KAA）：判页、处理器、中断层、开局 / 续跑；初（`hajime.py`）、N.I.A（`nia_sample.py`）、偶像之路（`tower_play.py`）的入口 |
+| `src/hiro/runtime/` | 自建主循环：判页、处理器、中断层、开局 / 续跑；初（`hajime.py`）、N.I.A（`nia_sample.py`）、偶像之路（`tower_play.py`）的入口 |
 | `src/hiro/devices/` | 设备层：MaaTools（macOS）、ADB、DMM 窗口（自己调 Win32，不依赖 MaaFramework） |
 | `src/hiro/sim/` | 模拟器接入：轮间 / 饮料 / 相談的模拟、考试预演、从画面跟踪局面（`screen_source.py`） |
 | `src/hiro/bench_bridge/` | 和 gakumas-bench 的中转层：把画面局面写成 bench 的观测（UIObs），调 UINet 等算法 |
@@ -239,7 +239,6 @@ open /tmp/hiro-view/demo-run.html
 | `tools/assets/capture_icons.py` | 从自己的截图补齐图标素材 |
 | `docs/` | 契约、状态机、素材与退路、社区打法（H.I.F `hif-playbook.md`，初 / N.I.A `hajime-playbook.md`、`nia-playbook.md`、`hajime-nia-mechanics.md`） |
 | `vendor/gakumas-player` | 考试引擎 `gakumas_exam`、Rust 版 `gakumas_exam_rs`（含世界采样和 GNRPA 搜索）、培育公式 `gakumas_produce`（含初 / N.I.A 的日程和评价公式）；主数据由 `vendor/gakumas-player/scripts/fetch_master.py` 下载（setup 会跑），不进仓库 |
-| `vendor/kaa` | KAA（kotones-auto-assistant），子模块，固定版本 |
 | `.github/workflows/` | 测试（带覆盖率）、代码检查 + 格式 + 类型检查（`lint.yml`）；考试引擎 Rust 预编译包（Windows / macOS / Linux，发到 Release） |
 
 ## 桌面程序（初星助手）
@@ -255,6 +254,9 @@ open /tmp/hiro-view/demo-run.html
 
 - 识别层的部分逻辑基于 [KAA（kotones-auto-assistant）](https://github.com/XcantloadX/kotones-auto-assistant) 的识别接口、主数据与界面模板；
   早期的培育页面流程沿用 KAA 的任务流程（2026-11-24 换成自建主循环）。KAA 以 GPL-3.0 发布。
+  2026-11-25 起不再引入 KAA 的代码（原来是子模块 `vendor/kaa`），用到的逻辑已移植进本仓库。
+  识别用的技能卡 / 偶像卡 / 饮料原图取自 KAA 的公开数据发布包 [kaa-game-data](https://github.com/kotonebot/kaa-game-data)（固定版本，安装时下载，不随仓库分发）；
+  主数据来自社区公开的 [gakumasu-diff](https://github.com/vertesan/gakumasu-diff)。
 - **许可**：本仓库自己的代码以 **AGPL-3.0-or-later** 发布（[LICENSE](LICENSE)；2026-11-20 起，之前是 GPL-3.0-or-later）。
   从 KAA 派生的文件保留 GPL-3.0（文件头注明，全文见 [LICENSE.GPL-3.0](LICENSE.GPL-3.0)），按 GPL-3.0 / AGPL-3.0 第 13 条和其余代码合在一起发布。
   改过的版本分发出去，或者放到网上给别人用，要同样公开源码。

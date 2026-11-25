@@ -1,4 +1,4 @@
-# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）
 """饮料满（所持上限）时丢一瓶已有的、收下新的。丢哪瓶由决策给已有饮料的序号（饮料栏从左到右，0 起）。
 
 两种画面：
