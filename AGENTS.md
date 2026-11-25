@@ -126,16 +126,15 @@
        弹 UAC / 锁屏。真碰上了，`hiro.loop.win_desktop` 会等桌面恢复（最多 10 分钟）再重做，超时讲清原因停下。
      - 滑动到终点会原地停 0.3 秒再松手：直接松手时选卡对话框按松手速度惯性多滑，
        相邻两屏没有重叠的行，牌组拼接不可信。
-     - 实验（缺省关）：`HIRO_DMM_DRIVER=maafw` 把截图 / 点击换成 MaaFramework 的 Win32 控制器（`pip install maafw`，`hiro/device_maafw.py`）。
-       `HIRO_MAAFW_SCREENCAP`（缺省 `FramePool`）、`HIRO_MAAFW_INPUT`（缺省 `SendMessageWithWindowPos`，和现在的后台点击同一种做法）。
-       2026-11-11 只读实测（普通权限、游戏以管理员运行）：FramePool 约 29 ms、GDI 约 11 ms 一张 1081×1921，画面正常；PrintWindow 连不上；
-       DXGI_DesktopDup_Window 全黑。点击还没实测（要以管理员身份跑）。`tools/maafw_probe.py` 逐个截图方式试一遍。
      - 去 KAA 的新设备层 `hiro/devices/`（2026-11-13，还没有调用方，主循环仍走 `hiro.device.connect()`）：统一接口 6 个方法
        （`connect / close / screenshot / tap / swipe(…, hold=) / alive`，逻辑坐标 720×1280、横屏 1280×720，失败抛 `DeviceGone` /
-       `DeviceUnavailable`），三个实现 `MaaToolsDevice`（Mac）、`MaaFwWin32Device`（DMM）、`AdbDevice`（MuMu / 雷电 / 真机，
+       `DeviceUnavailable`），三个实现 `MaaToolsDevice`（Mac）、`DmmWin32Device`（DMM）、`AdbDevice`（MuMu / 雷电 / 真机，
        `HIRO_ADB`、`HIRO_ADB_PATH`），`hiro.devices.open_device()` 按 `HIRO_DEVICE` 选。不 import kotonebot / KAA。
        另有两个不在统一接口里的可选方法，各自只给一个调用方：`MaaToolsDevice.real_tap`（drink_swap 的 PlayCover 真实鼠标兜底）、
        `AdbDevice.shell`（`hiro.loop.game_app` 的 `foreground(shell)` / `relaunch(shell)`）。横屏判断看 `dev.orientation`。
+     - `DmmWin32Device`（`hiro/devices/dmm_win32.py`）自己调 Win32（ctypes），不依赖 MaaFramework / KAA / pywin32（2026-11-25 去掉 maafw）。
+       截图 `HIRO_DMM_CAPTURE`：`printwindow`（缺省，同 KAA 的 DMM 截图）/ `gdi`（BitBlt 窗口 DC，普通权限实测约 11 ms 一张，窗口被挡住的部分截不到，实验）；
+       点击 / 滑动和上面的后台点击同一种做法（挪窗口让目标点落在光标下 + PostMessage），读光标「拒绝访问」时同样等桌面恢复。
      - 游戏窗口尺寸（用户 2026-11-14 定）：客户区按显示器自适应，9:16，高 = 主显示器工作区高（去掉任务栏）− 窗口外框高，
        上限 1080x1920、下限 540x960；窗口挪到工作区左上角，整个窗口在屏幕内。`-Runtime own` 开局时 `hiro.runtime.play.fit_dmm_window`
        核对、不对就调（`hiro.devices.win_window`，要管理员），显示器放不下 540x960 或调不过去就停下报告，实际尺寸记进 trace 备注；

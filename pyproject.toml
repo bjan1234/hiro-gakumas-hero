@@ -25,8 +25,6 @@ bench = [
     "gkms-uinet @ git+https://github.com/yuzeis/GKMSUINet@1201b841828d9874b604f7d48f7b00ddf3b71d95",
     "onnxruntime",
 ]
-# 实验：DMM 版用 MaaFramework（LGPL-3.0）截图 / 点击（HIRO_DMM_DRIVER=maafw，缺省不用），见 hiro/device_maafw.py
-dmm-maa = ["maafw>=5.14"]
 
 [tool.uv.sources]
 ksaa = { path = "vendor/kaa", editable = true }

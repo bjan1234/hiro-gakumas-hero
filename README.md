@@ -179,7 +179,6 @@ PYTHONPATH=src .venv/bin/python -m pytest -q            # 没有截图样例时�
      内存吃紧时加 `-NoSim` 关掉模拟器；MuMu 被系统杀掉时加 `-Relaunch`，让程序自己拉起游戏。
    - **文字识别**：Windows 缺省用 RapidOCR，macOS 缺省用系统自带的 Vision；也可以选用[本机 SIMD OCR](docs/assets.md#可选simd-paddleocr)。
    - **Rust**：`setup.ps1` 找不到 cargo 时，会下载 CI 编好的考试引擎预编译包，不用自己装 Rust。
-   - **DMM 版的截图 / 点击**（实验，缺省关）：`HIRO_DMM_DRIVER=maafw` 换成 MaaFramework 的 Win32 控制器，见 [AGENTS.md](AGENTS.md)「设备」。
 
    **其他模式**（自建主循环，游戏停在首页，编成号按开局编成方案）：
 
@@ -230,7 +229,7 @@ open /tmp/hiro-view/demo-run.html
 | `src/hiro/search/` | 考试出牌：Rust GNRPA 搜索插件（`advisor.py`）、初 / N.I.A / 偶像之路的考试开局和算法（`exam_env.py`、`exam_algo.py`、`tower_algo.py`） |
 | `src/hiro/exec/`、`loop/`、`produce/` | 操作层：执行器、KAA 主循环、页面处理、恢复、安全拦截；`loop/win_desktop.py` 是 DMM 后台点击的桌面保护 |
 | `src/hiro/runtime/` | 自建主循环（不用 KAA）：判页、处理器、中断层、开局 / 续跑；初（`hajime.py`）、N.I.A（`nia_sample.py`）、偶像之路（`tower_play.py`）的入口 |
-| `src/hiro/devices/`、`device.py` | 设备层：MaaTools（macOS）、ADB、DMM 窗口、MaaFramework Win32 |
+| `src/hiro/devices/`、`device.py` | 设备层：MaaTools（macOS）、ADB、DMM 窗口（自己调 Win32，不依赖 MaaFramework） |
 | `src/hiro/sim/` | 模拟器接入：轮间 / 饮料 / 相談的模拟、考试预演、从画面跟踪局面（`screen_source.py`） |
 | `src/hiro/bench_bridge/` | 和 gakumas-bench 的中转层：把画面局面写成 bench 的观测（UIObs），调 UINet 等算法 |
 | `src/hiro/plugins.py`、`defaults/` | 插件接口与默认实现 |

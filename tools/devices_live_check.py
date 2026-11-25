@@ -1,4 +1,4 @@
-"""DMM 实机检查新设备层 hiro.devices 的 MaaFwWin32Device（要以管理员身份运行：游戏是管理员，普通进程的点击会被 UIPI 挡掉）。
+"""DMM 实机检查新设备层 hiro.devices 的 DmmWin32Device（要以管理员身份运行：游戏是管理员，普通进程的点击会被 UIPI 挡掉）。
 
     python tools/devices_live_check.py shots --out <目录>                 只截图：连接、各截图方式测速、存一张 720x1280 截图
     python tools/devices_live_check.py menu --out <目录> --at X,Y [--n 10] 在主页点 ≡ 菜单开 / 关 n 次，比画面变化、窗口位置
@@ -7,8 +7,8 @@
 menu 只能在游戏主页跑（≡ 开出来的是菜单浮层，再点一次关掉，不改任何游戏数据）；坐标是 720x1280 逻辑坐标，
 先用 shots 存下的截图量出来。每一步都存图，报告写 <目录>/report-<阶段>.json。shots / menu 不 import KAA / kotonebot。
 
-kaa 只截图不点击，要在静止的画面上跑（首页、菜单这类没有动画的页；有动画的页像素差会偏大）：新设备层（MaaFwWin32Device，
-GDI 和 FramePool）和 KAA 的 DMM 截图（hiro.device.connect("dmm")，HIRO_DMM_DRIVER 不设，即 KAA 自己的 Windows 截图）
+kaa 只截图不点击，要在静止的画面上跑（首页、菜单这类没有动画的页；有动画的页像素差会偏大）：新设备层（DmmWin32Device，
+printwindow 和 gdi）和 KAA 的 DMM 截图（hiro.device.connect("dmm")，KAA 自己的 Windows 截图）
 交替各截 n 张，报告每对的平均像素差 / 最大差 / PSNR、两边整帧 OCR 文字的差集、几个首页模板的匹配分数。
 游戏局进行中不要跑（两个进程同时截同一个窗口）。
 """
@@ -20,7 +20,7 @@ import json
 import time
 from pathlib import Path
 
-from hiro.devices.maafw_win32 import MaaFwWin32Device
+from hiro.devices.dmm_win32 import DmmWin32Device
 
 import numpy as np
 
@@ -67,8 +67,8 @@ def mean_diff(a, b, box=None):
 
 def shots(out: Path, n: int) -> dict:
     rep = {"admin": is_admin(), "methods": {}}
-    for method in ("GDI", "FramePool"):
-        dev = MaaFwWin32Device(screencap=method)
+    for method in ("printwindow", "gdi"):
+        dev = DmmWin32Device(capture=method)
         row = {}
         try:
             dev.connect()
@@ -127,7 +127,7 @@ def _scores(img) -> dict:
 
 
 def kaa_parity(out: Path, n: int) -> dict:
-    """同一静止画面：新设备层（GDI / FramePool）和 KAA 的 DMM 截图交替各截 n 张，逐对比较。"""
+    """同一静止画面：新设备层（printwindow / gdi）和 KAA 的 DMM 截图交替各截 n 张，逐对比较。"""
     from hiro import device as old_device
 
     import cv2
@@ -138,8 +138,8 @@ def kaa_parity(out: Path, n: int) -> dict:
     kaa = old_device.connect("dmm")
     rep = {"admin": is_admin(), "methods": {}}
     try:
-        for method in ("GDI", "FramePool"):
-            dev = MaaFwWin32Device(screencap=method)
+        for method in ("printwindow", "gdi"):
+            dev = DmmWin32Device(capture=method)
             rows = []
             try:
                 dev.connect()
@@ -174,7 +174,7 @@ def kaa_parity(out: Path, n: int) -> dict:
 
 
 def menu(out: Path, at: tuple[int, int], n: int, settle: float) -> dict:
-    dev = MaaFwWin32Device()
+    dev = DmmWin32Device()
     dev.connect()
     x, y = at
     rep = {"admin": is_admin(), "at": [x, y], "rounds": []}

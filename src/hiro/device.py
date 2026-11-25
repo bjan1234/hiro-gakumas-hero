@@ -133,18 +133,11 @@ def _keep_swipe_duration(device) -> None:
     device.swipe = swipe
 
 
-def _dmm_driver() -> str:
-    from hiro.device_maafw import driver
-
-    return driver()
-
-
 def connect(backend: str | None = None) -> Device:
     """创建并启动连接游戏的设备，逻辑分辨率 720x1280。
 
     backend：缺省读 HIRO_DEVICE（auto / maatools / adb / mumu / leidian / dmm）。
     adb / mumu / leidian / dmm 交给 KAA 的设备工厂，要求先 hiro.kaa_env.init_kaa（KAA 配置里有后端设置）。
-    dmm 另有 HIRO_DMM_DRIVER=maafw（实验，缺省关）：截图 / 点击换成 MaaFramework 的 Win32 控制器（hiro.device_maafw）。
     """
     global BACKEND, DEVICE
     from hiro.vision.ocr import engine as ocr_engine
@@ -156,16 +149,7 @@ def connect(backend: str | None = None) -> Device:
     name = resolve_backend(backend)
     conf().device.default_scaler_factory = lambda: PortraitGameScaler()
     conf().device.default_logic_resolution = Size(720, 1280)
-    if name == "dmm" and _dmm_driver() == "maafw":
-        # 实验（缺省关）：DMM 版换成 MaaFramework 的 Win32 控制器截图 / 点击，见 hiro.device_maafw
-        from hiro.device_maafw import MaaFwWin32Impl
-
-        from kotonebot.client.device import WindowsDevice
-
-        device = WindowsDevice()
-        impl = MaaFwWin32Impl(device)
-        device.setup(screenshot=impl, touch=impl)
-    elif name in KAA_BACKENDS:
+    if name in KAA_BACKENDS:
         from kaa.main.kaa import KaaDeviceFactory
 
         device = KaaDeviceFactory().create_device_for_config(_kaa_config(name))
