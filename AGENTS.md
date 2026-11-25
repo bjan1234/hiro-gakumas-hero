@@ -135,6 +135,7 @@
      - `DmmWin32Device`（`hiro/devices/dmm_win32.py`）自己调 Win32（ctypes），不依赖 MaaFramework / KAA / pywin32（2026-11-25 去掉 maafw）。
        截图 `HIRO_DMM_CAPTURE`：`printwindow`（缺省，同 KAA 的 DMM 截图）/ `gdi`（BitBlt 窗口 DC，普通权限实测约 11 ms 一张，窗口被挡住的部分截不到，实验）；
        点击 / 滑动和上面的后台点击同一种做法（挪窗口让目标点落在光标下 + PostMessage），读光标「拒绝访问」时同样等桌面恢复。
+       2026-11-25 hiro-w4 实机（管理员）：PrintWindow 约 34 ms 一张，窗口被挡着也截得对；点击、底部导航 3/3、横幅滑动 2/2 通过。
      - 游戏窗口尺寸（用户 2026-11-14 定）：客户区按显示器自适应，9:16，高 = 主显示器工作区高（去掉任务栏）− 窗口外框高，
        上限 1080x1920、下限 540x960；窗口挪到工作区左上角，整个窗口在屏幕内。`-Runtime own` 开局时 `hiro.runtime.play.fit_dmm_window`
        核对、不对就调（`hiro.devices.win_window`，要管理员），显示器放不下 540x960 或调不过去就停下报告，实际尺寸记进 trace 备注；

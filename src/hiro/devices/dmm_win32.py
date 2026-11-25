@@ -10,6 +10,10 @@
     读光标报「拒绝访问」（UAC / 锁屏 / 远程切桌面）时等桌面恢复再做这一下，最多 hiro.loop.win_desktop.DESKTOP_WAIT_S 秒。
 
 截图给窗口原生尺寸，LogicalScreen 一次拉伸到 720x1280（同 KAA）；点击按比例换回原生像素 = 客户区坐标。
+
+2026-11-25 hiro-w4 实机（管理员，客户区 541x960，游戏窗口被别的窗口挡着）：PrintWindow 约 34 ms 一张、画面正确；GDI 截到的是挡在上面的窗口
+（普通权限）或全黑（管理员），所以不当缺省。点击：标题页 → 登录奖励 → 关弹窗 → 首页一路点通；底部导航アイドル ↔ ホーム 3/3、
+首页横幅滑动 2/2（tools/devices_live_navswipe.py）。
 """
 
 from __future__ import annotations
