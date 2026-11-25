@@ -13,7 +13,6 @@ from pathlib import Path
 from hiro.cli import jobs
 
 import pytest
-from conftest import OPTIONAL_DEPS
 
 ROOT = Path(__file__).resolve().parents[1]
 PARAMS = {"command": "new", "idol": "x", "mode": "qualify", "scenario": "hif", "items": "", "seconds": 1}
@@ -34,6 +33,10 @@ except ModuleNotFoundError as e:
 loaded = sorted(m for m in sys.modules if m.split(".")[0] in ("kaa", "kotonebot"))
 print(json.dumps({"missing": err, "loaded": loaded}))
 """
+
+
+# 可选组 play / macOS 系统框架（同 tests/conftest.py 的 OPTIONAL_DEPS；不从 conftest 导入：tests/cli 下有同名模块）
+OPTIONAL_DEPS = ("rapidocr_onnxruntime", "faiss", "ddddocr", "PIL", "onnxruntime", "Vision", "Quartz", "AppKit")
 
 
 def _missing_verdict(name: str) -> str:
