@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/matto49/hiro-gakumas-hero/app/hiroapi"
+	"github.com/matto49/hiro-gakumas-hero/app/shell"
 	"github.com/matto49/hiro-gakumas-hero/app/usagelog"
 )
 
@@ -149,5 +151,40 @@ func TestCodexRecordsNoUsageRow(t *testing.T) {
 	r := ledgerLines(t, dir)[0]
 	if r["provider"] != "codex-cli" || r["input"] != nil || r["ok"] != true {
 		t.Fatalf("row %+v", r)
+	}
+}
+
+func TestAgentUsageToolBecomesTableCard(t *testing.T) {
+	dir := t.TempDir()
+	p := dir + "/hiro"
+	_ = os.WriteFile(p, []byte(`#!/bin/sh
+echo '{"ok":true,"data":{"rows":[{"key":"2026-11-25","calls":3,"total":900,"cost":{"CNY":0.01}}],"totals":{"calls":3},"prices_checked":"2026-11-25"}}'
+`), 0o755)
+	tools := []ToolSpec{{Name: "usage daily", ToolName: "usage_daily", Risk: "read", Agent: true}}
+	srv, _ := fakeLLM(t,
+		`{"role":"assistant","content":"","tool_calls":[{"id":"c1","type":"function","function":{"name":"usage_daily","arguments":"{}"}}]}`,
+		`{"role":"assistant","content":"今天花了一分钱。"}`)
+	a := &Agent{Hiro: &Hiro{Command: []string{p}}, Tools: tools, Provider: OpenAICompat{BaseURL: srv.URL, Model: "m", Key: "sk-test", Client: http.DefaultClient}}
+	r, err := a.Ask(context.Background(), nil, "今天花了多少")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Cards) != 1 || r.Cards[0]["type"] != "usage-table" || r.Cards[0]["tool"] != "usage daily" {
+		t.Fatalf("cards %v", r.Cards)
+	}
+	if rows := r.Cards[0]["data"].(map[string]any)["rows"].([]any); len(rows) != 1 {
+		t.Fatalf("data %v", r.Cards[0]["data"])
+	}
+}
+
+func TestUsagePluginRegistered(t *testing.T) {
+	home := t.TempDir()
+	call := func(_ context.Context, args []string) hiroapi.Result {
+		return hiroapi.Result{OK: true, Data: json.RawMessage(`{}`)}
+	}
+	a := &Assistant{Home: home, Keys: fileKeys{Path: filepath.Join(home, "model-keys.json")}}
+	app := buildApp(appDeps{Home: home, Call: call, Assistant: a, Bootstrap: &Bootstrap{Home: home, Hiro: &Hiro{}}, Run: &shell.SyncRunner{}})
+	if reg := app.Registry(); reg.ByID("usage") == nil || reg.ToolOwner("usage job") != "usage" {
+		t.Fatal("用量插件没注册")
 	}
 }

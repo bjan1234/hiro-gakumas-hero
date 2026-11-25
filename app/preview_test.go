@@ -68,6 +68,14 @@ func TestPreview(t *testing.T) {
 		case key == "confirm p1":
 			live = true
 			return `{"job":{"id":"j7","kind":"hajime"}}`
+		case strings.HasPrefix(key, "usage daily"):
+			return `{"rows":[{"key":"2026-11-25","calls":41,"total":612000,"cost":{"CNY":0.38}}],"totals":{"calls":41,"total":612000,"cost":{"CNY":0.38}},"prices_checked":"2026-11-25"}`
+		case strings.HasPrefix(key, "usage monthly"):
+			return `{"rows":[{"key":"2026-11","calls":412,"total":6120000,"cost":{"CNY":3.24},"subscription_usd":0.41,"models":[{"provider":"deepseek","model":"deepseek-flash","calls":398,"total":6010000,"cost":{"CNY":3.24}},{"provider":"claude-cli","model":"claude-sonnet-5-5","calls":14,"total":110000,"cost":{},"subscription_usd":0.41}]}],"totals":{"calls":412,"total":6120000,"cost":{"CNY":3.24},"subscription_usd":0.41},"prices_checked":"2026-11-25"}`
+		case strings.HasPrefix(key, "usage recent"):
+			return `{"jobs":[{"job":"20261125-071500-aaaa","kind":"hajime","summary":"初 · 篠澤広","calls":14,"total":208000,"cost":{"CNY":0.13}},{"job":"20261125-062900-bbbb","kind":"hajime","summary":"初 · 月村手毬","calls":9,"total":120000,"cost":{"CNY":0.08}},{"job":"20261124-220000-cccc","kind":"hif","summary":"H.I.F · 篠澤広","calls":31,"total":402000,"cost":{"CNY":0.27}}],"prices_checked":"2026-11-25"}`
+		case strings.HasPrefix(key, "usage job"):
+			return `{"job":"20261125-071500-aaaa","calls":14,"total":208000,"cost":{"CNY":0.13},"by_source":{"decision":{"calls":12,"total":190000,"cost":{"CNY":0.12}},"rescue":{"calls":2,"total":18000,"cost":{"CNY":0.01}}},"by_model":[{"provider":"deepseek","model":"deepseek-flash","calls":14,"total":208000,"cost":{"CNY":0.13}}],"items":[{"ts":"2026-11-25T07:16:02.000+08:00","source":"decision","provider":"deepseek","model":"deepseek-flash","tokens":15200,"cost":0.0091,"currency":"CNY","kind":"priced","ok":true},{"ts":"2026-11-25T07:19:40.000+08:00","source":"rescue","provider":"deepseek","model":"deepseek-flash","tokens":9100,"cost":0.0052,"currency":"CNY","kind":"priced","ok":true}],"prices_checked":"2026-11-25"}`
 		case strings.HasPrefix(key, "doctor"):
 			return `{"items":[{"id":"platform","ok":true,"detail":"学マス（PlayCover）：已连上"}]}`
 		}
@@ -145,4 +153,10 @@ func TestPreview(t *testing.T) {
 	app.OpenPanel("settings", "")
 	settle()
 	save("5-settings")
+	app.OpenPanel("usage", "")
+	settle()
+	save("6-usage")
+	app.OpenPanel("usage", "job/20261125-071500-aaaa")
+	settle()
+	save("7-usage-job")
 }

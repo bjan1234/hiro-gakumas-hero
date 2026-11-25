@@ -386,6 +386,11 @@ func (a *Agent) runTool(ctx context.Context, byName map[string]ToolSpec, c toolC
 			delete(plan, "report") // 编成卡只要结构；全文在交给模型的结果里
 			return content, map[string]any{"type": "formation", "plan": plan}, nil
 		}
+	case r.OK && strings.HasPrefix(t.Name, "usage "):
+		var data map[string]any
+		if json.Unmarshal(r.Data, &data) == nil {
+			return content, map[string]any{"type": "usage-table", "tool": t.Name, "data": data}, nil // 用量插件画
+		}
 	case r.OK && infoTitles[t.Name] != "":
 		var d struct {
 			Items     []map[string]any `json:"items"`

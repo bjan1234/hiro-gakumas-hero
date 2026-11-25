@@ -16,6 +16,7 @@ import (
 	"github.com/matto49/hiro-gakumas-hero/app/plugins/plan"
 	"github.com/matto49/hiro-gakumas-hero/app/plugins/settings"
 	"github.com/matto49/hiro-gakumas-hero/app/plugins/start"
+	"github.com/matto49/hiro-gakumas-hero/app/plugins/usage"
 	"github.com/matto49/hiro-gakumas-hero/app/shell"
 )
 
@@ -45,6 +46,7 @@ func buildApp(d appDeps) *shell.App {
 	reg.Add(plan.New())
 	reg.Add(library.New())
 	reg.Add(cockpit.New())
+	reg.Add(usage.New())
 	reg.Add(set.Plugin())
 	mgr.Load() // 同意过的外部插件排在内置插件后面
 	plugins = mgr
