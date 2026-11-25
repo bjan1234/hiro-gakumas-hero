@@ -373,6 +373,14 @@ def _sim_test_defaults(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_hiro_home(monkeypatch):
+    """不继承外面的 HIRO_HOME / HIRO_JOB_ID：模型调用会记流水账（hiro.usage.ledger），mock 调用不能写进开发者真的数据目录。
+    要用数据目录的用例自己 setenv（tests/cli 的 hiro_home 夹具会设）。"""
+    monkeypatch.delenv("HIRO_HOME", raising=False)
+    monkeypatch.delenv("HIRO_JOB_ID", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _bench_advisor_off(monkeypatch, request):
     """缺省出招器是 bench 算法（hiro.bench_bridge）：装了 gkbench 时构造它会去下载 UINet 模型。
     测试里默认关掉（不联网、行为和以前的规则出招一致）；bench 中转层自己的测试（标 bench_on）再打开。"""

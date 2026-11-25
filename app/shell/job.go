@@ -139,6 +139,7 @@ func (a *App) PollJobs() {
 			busy := a.live != ""
 			for id, v := range a.jobs {
 				a.notify(id, before[id], v)
+				a.jobEnded(id, before[id], v)
 				if !v.Final {
 					busy = true
 				}
@@ -183,6 +184,39 @@ func (a *App) notify(id, before string, v *plugin.JobView) {
 	m := a.addTo(t, "agent", text, nil)
 	_ = m
 	a.save(t)
+}
+
+// jobEnded 在任务从活着变成结束时调各插件的 OnJobEnd（每局一次）。
+func (a *App) jobEnded(id, before string, v *plugin.JobView) {
+	if a.reg == nil || !plugin.LiveStates[before] || v.State == "" || plugin.LiveStates[v.State] || a.ended[id] {
+		return
+	}
+	if a.ended == nil {
+		a.ended = map[string]bool{}
+	}
+	a.ended[id] = true
+	h := &jobHost{App: a, id: id}
+	for _, p := range a.reg.All() {
+		if p.OnJobEnd != nil {
+			p.OnJobEnd(h, id, v)
+		}
+	}
+}
+
+// jobHost 是给 OnJobEnd 的宿主：Post 发到有这局对局卡的对话（用户可能已经切走）。
+type jobHost struct {
+	*App
+	id string
+}
+
+func (h *jobHost) Post(text string, card plugin.Card) {
+	t := h.threadOfJob(h.id)
+	var cards []plugin.Card
+	if card != nil {
+		cards = []plugin.Card{card}
+	}
+	h.addTo(t, "agent", text, cards)
+	h.save(t)
 }
 
 // threadOfJob 是有这局对局卡的对话（没有就用当前对话）。

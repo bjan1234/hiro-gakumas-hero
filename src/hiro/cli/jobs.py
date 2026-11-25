@@ -396,6 +396,10 @@ class Job:
     ):
         self.id = time.strftime("%Y%m%d-%H%M%S-") + secrets.token_hex(2)
         llm = {k: str(v) for k, v in (llm_env or {}).items() if k in LLM_VARS and v}
+        if not llm:  # 命令行 hiro confirm 开的（桌面程序会传）：按桌面设置推，和界面开局用同一个模型（设计稿 §5）
+            from hiro.cli.llm_env import env_from_settings
+
+            llm = env_from_settings(home)
         self._llm_off = llm.get("HIRO_LLM", "").lower() == "off"
         if self._llm_off:
             llm.pop("HIRO_LLM")
@@ -469,6 +473,8 @@ class Job:
         if self._llm_off:
             env.pop("HIRO_LLM", None)
         env.update({"HIRO_PAUSE_FLAG": str(self.flag), "PYTHONUNBUFFERED": "1", "PYTHONUTF8": "1"})
+        # 模型用量流水账（hiro.usage.ledger）：写到 HIRO_HOME/usage，每行带任务编号（设计稿 §1）
+        env.update({"HIRO_JOB_ID": self.id, "HIRO_HOME": str(self.work.parent)})
         env.setdefault("HIRO_CALIB_DIR", str(self.dir / "calib"))  # 排查截图跟着任务走（hiro.imgio.calib_root）
         src = str(REPO / "src")
         env["PYTHONPATH"] = src + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")

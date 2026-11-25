@@ -198,3 +198,48 @@ func TestFinalEventsRetriedAfterFailure(t *testing.T) {
 		t.Error("结束后的成绩没再读到")
 	}
 }
+
+func TestOnJobEndCalledOnceWhenJobFinishes(t *testing.T) {
+	var ended []string
+	reg := &plugin.Registry{}
+	reg.Add(&plugin.Plugin{ID: "u", Name: "用量", OnJobEnd: func(h plugin.Host, id string, v *plugin.JobView) {
+		ended = append(ended, id+"|"+v.State)
+		h.Post("", plugin.Card{"type": "usage-job", "jobId": id})
+	}})
+	call := liveCall("running")
+	a, run := newTestApp(newMem(), call, nil, reg)
+	jobThread := a.NewThread()
+	a.Post("", plugin.Card{"type": "run", "jobId": "j7"})
+	a.PollJobs()
+	run.Drain()
+	call.resp["run status"] = ok(`{"current":{"id":"j7","kind":"hajime","state":"paused","summary":"初","started_at":1},"recent":[]}`)
+	call.resp["run events"] = ok(`{"state":"paused","events":[]}`)
+	a.PollJobs()
+	run.Drain()
+	if len(ended) != 0 {
+		t.Fatalf("暂停不算结束：%v", ended)
+	}
+	other := a.NewThread() // 用户切到别的对话
+	call.resp["run status"] = ok(`{"current":null,"recent":[{"id":"j7","kind":"hajime","state":"done","summary":"初","started_at":1}]}`)
+	call.resp["run events"] = ok(`{"state":"done","events":[]}`)
+	for i := 0; i < 3; i++ {
+		a.PollJobs()
+		run.Drain()
+	}
+	if len(ended) != 1 || ended[0] != "j7|done" {
+		t.Fatalf("结束钩子 %v", ended)
+	}
+	has := func(th *Thread) bool {
+		for _, m := range th.Messages {
+			for _, c := range m.Cards {
+				if c["type"] == "usage-job" {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if !has(jobThread) || has(other) {
+		t.Fatal("用量卡要发到有这局对局卡的对话里")
+	}
+}

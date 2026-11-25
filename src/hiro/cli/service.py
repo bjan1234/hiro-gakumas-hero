@@ -124,18 +124,26 @@ class Manager:
         return {"ok": True, "data": {"job": job.describe()}}
 
     def _exited(self, job: Job) -> None:
-        if job.kind.name in PRODUCE_KINDS:  # 对局结束：成绩摘要（在结束事件之前）
+        if job.kind.name in PRODUCE_KINDS:  # 对局结束：成绩摘要 + 本局模型用量（在结束事件之前）
+            line, exams = "", []
             try:
                 from hiro.cli import report
 
                 segs = report.segments(report.traces_dir(), job.id)
                 if segs:
                     exams = report.exam_scores(job.id, report.traces_dir())
-                    line = report.score_line(exams)
-                    if line:
-                        job.emit("report", line, exams=exams)
+                    line = report.score_line(exams) or ""
             except Exception as e:  # noqa: BLE001 成绩摘要出错不影响任务
                 job.emit("log", f"成绩摘要没算出来：{e}")
+            usage = None
+            try:
+                from hiro.usage import report as usage_report
+
+                usage = usage_report.write_job_usage(self.home, job.id)  # 写 jobs/<id>/usage.json
+            except Exception as e:  # noqa: BLE001 用量没算出来不影响任务
+                job.emit("log", f"本局模型用量没算出来：{e}")
+            if line or usage is not None:  # 没有成绩也发（带用量），设计稿 §3
+                job.emit("report", line, exams=exams, usage=usage)
         if job.kind.output:
             try:
                 from hiro.cli.scan_ingest import ingest

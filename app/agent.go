@@ -7,11 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/matto49/hiro-gakumas-hero/app/usagelog"
 )
 
 // 内置 agent（设计稿 §8）：把工具层的命令描述成工具交给模型，模型选工具，程序执行、把 JSON 结果交回模型，直到回答用户。
@@ -383,6 +386,11 @@ func (a *Agent) runTool(ctx context.Context, byName map[string]ToolSpec, c toolC
 			delete(plan, "report") // 编成卡只要结构；全文在交给模型的结果里
 			return content, map[string]any{"type": "formation", "plan": plan}, nil
 		}
+	case r.OK && strings.HasPrefix(t.Name, "usage "):
+		var data map[string]any
+		if json.Unmarshal(r.Data, &data) == nil {
+			return content, map[string]any{"type": "usage-table", "tool": t.Name, "data": data}, nil // 用量插件画
+		}
 	case r.OK && infoTitles[t.Name] != "":
 		var d struct {
 			Items     []map[string]any `json:"items"`
@@ -405,6 +413,47 @@ type OpenAICompat struct {
 	Model   string
 	Key     string
 	Client  *http.Client
+	// Home 是 HIRO_HOME（记流水账用，空则不记）；Provider 是服务商 id（空则由 BaseURL 反推）
+	Home     string
+	Provider string
+}
+
+// openAIUsage 是 OpenAI 兼容接口返回的 usage（DeepSeek 另有 prompt_cache_hit_tokens）。
+type openAIUsage struct {
+	Prompt     *int `json:"prompt_tokens"`
+	Completion *int `json:"completion_tokens"`
+	Details    *struct {
+		Cached *int `json:"cached_tokens"`
+	} `json:"prompt_tokens_details"`
+	CacheHit *int `json:"prompt_cache_hit_tokens"`
+}
+
+// record 记一行（失败只写日志）：prompt_tokens 含缓存命中部分，拆开记，避免重复计价（同 Python _openai_usage）。
+func (o OpenAICompat) record(ctx context.Context, u *openAIUsage, ok bool) {
+	if o.Home == "" {
+		return
+	}
+	prov := o.Provider
+	if prov == "" || prov == "custom" {
+		prov = usagelog.ProviderOf(o.BaseURL)
+	}
+	row := usagelog.Row{Source: "chat", Thread: usagelog.ThreadOf(ctx), Provider: prov, Model: o.Model, OK: ok}
+	if u != nil {
+		var cached *int
+		if u.Details != nil && u.Details.Cached != nil {
+			cached = u.Details.Cached
+		} else if u.CacheHit != nil {
+			cached = u.CacheHit
+		}
+		row.Input, row.Output, row.CacheRead = u.Prompt, u.Completion, cached
+		if u.Prompt != nil && cached != nil {
+			in := *u.Prompt - *cached
+			row.Input = &in
+		}
+	}
+	if err := usagelog.Record(o.Home, row); err != nil {
+		log.Printf("用量记不进流水账：%v", err)
+	}
 }
 
 // ErrUnauthorized 是 Key 不对。
@@ -428,10 +477,19 @@ func (o OpenAICompat) Chat(ctx context.Context, messages []chatMessage, tools []
 	}
 	resp, err := client.Do(req)
 	if err != nil {
+		o.record(ctx, nil, false)
 		return chatMessage{}, fmt.Errorf("连不上模型服务：%w", err)
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	var out struct {
+		Choices []struct {
+			Message chatMessage `json:"message"`
+		} `json:"choices"`
+		Usage *openAIUsage `json:"usage"`
+	}
+	jerr := json.Unmarshal(raw, &out)
+	o.record(ctx, out.Usage, resp.StatusCode < 300 && jerr == nil && len(out.Choices) > 0)
 	switch {
 	case resp.StatusCode == 401 || resp.StatusCode == 403:
 		return chatMessage{}, ErrUnauthorized
@@ -444,12 +502,7 @@ func (o OpenAICompat) Chat(ctx context.Context, messages []chatMessage, tools []
 		}
 		return chatMessage{}, fmt.Errorf("模型服务出错（%d）：%s", resp.StatusCode, msg)
 	}
-	var out struct {
-		Choices []struct {
-			Message chatMessage `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.Unmarshal(raw, &out); err != nil || len(out.Choices) == 0 {
+	if jerr != nil || len(out.Choices) == 0 {
 		return chatMessage{}, errors.New("模型服务的回答看不懂")
 	}
 	return out.Choices[0].Message, nil

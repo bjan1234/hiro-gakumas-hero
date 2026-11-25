@@ -112,6 +112,9 @@ type Plugin struct {
 	ContextTitle string
 	// Explain 解读一条待确认；认不出返回 ok=false。
 	Explain func(h Host, p hiroapi.Pending) (Explained, bool)
+	// OnJobEnd 在宿主看到某局从活着变成结束（不在 LiveStates）时调一次（界面线程；慢的事用 h.Go）。
+	// h.Post 发到有这局对局卡的对话里。启动前就已结束的局不调。
+	OnJobEnd func(h Host, id string, v *JobView)
 }
 
 // Navs 是插件在侧栏里的入口。
