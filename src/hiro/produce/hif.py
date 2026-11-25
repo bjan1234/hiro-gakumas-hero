@@ -2034,7 +2034,9 @@ class HifCore:
             type(self).exams_done = self.exam_count
             return "r2"
         scene = classify_current().scene
-        if scene != "HIF_EXAM" and self.scenario != "qualify":
+        if scene != "HIF_EXAM":
+            # 选拔也要等：11-24 mao4 选拔第 2 场进考试那一刻还在过场，判成 lesson-1（不探圆盘、场次错），
+            # 再挑戦后计数往回减又成了 qualify-1。公開レッスン 等满 EXAM_SCENE_SETTLE_S 还不是 HIF_EXAM 才算课程
             scene = self._settle_exam_scene(scene)
         if scene == "HIF_EXAM" and self.scenario != "qualify":
             try:
