@@ -161,4 +161,4 @@ hiro usage recent [--limit 20] [--json]   # 最近每局（读任务目录的 us
 - 11-25 设计审阅（builder check，sonnet 子代理）提出的 7 个问题都已按上面「我的判断」写进各节。
 
 - 本对话 11-25：用户要求「逻辑参考 ccusage」「每局花了多少钱最想看，日 / 月汇总也要」「直接做进 desktop 里面，以 plugin 的形式去提供」。
-- 11-25 账号 3 实测：本会话 Claude Code 自身约 2.65 亿 token；初星助手的 6 次兜底调用实际走了 `claude -p`（Sonnet），合计约 2.3 万 token，DeepSeek 0 次 —— 第 6 节的来由。
+- 11-25 账号 3 实测：本会话 Claude Code 自身约 2.65 亿 token；初星助手的 6 次兜底调用实际走了 `claude -p`（Sonnet），合计约 2.3 万 token，DeepSeek 0 次 —— 第 5 节的来由。
