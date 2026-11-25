@@ -1,6 +1,6 @@
 """Mac + PlayCover：经 hguandl/PlayCover 的 PlayTools 在游戏进程里开的 MaaTools 服务截图、注入触摸（不要求前台、不动鼠标）。
 
-MaaToolsImpl 是协议客户端（原在 hiro.device；日常任务的 KAA 那条路 tools/daily/kaa_device.py 还用它建 kotonebot 设备）；
+MaaToolsImpl 是协议客户端（原在 hiro.device）；
 MaaToolsDevice 是设备统一接口（hiro.devices.base）的实现：逻辑坐标、DeviceGone / DeviceUnavailable。
 协议见 hguandl/PlayTools 的 MaaTools.swift。
 """
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 class MaaToolsImpl:
-    """MaaTools 协议客户端：截图与触摸，坐标为截图物理像素。原在 hiro.device，原样挪来（tools/daily/kaa_device.py 的 kotonebot 设备也还用它）。"""
+    """MaaTools 协议客户端：截图与触摸，坐标为截图物理像素。原在 hiro.device，原样挪来。"""
 
     TOUCH_BEGAN, TOUCH_MOVED, TOUCH_ENDED = 0, 1, 3
 

@@ -28,7 +28,7 @@
 - 不要把截图、trace、账号、密钥、主数据原文件提交进仓库。`.gitignore` 已挡住 `resources/`、`tests/fixtures/`、`cache/`、`traces/`。
   `assets/pack/` 是仓库有意带的识别素材包（权利属于游戏的权利人，见 `assets/pack/README.md`），除此之外不要再往仓库里加游戏素材或截图。
 - 不要改 `vendor/kaa`（KAA 子模块，固定版本）。主循环已经不用 KAA（2026-11-24 删了 KAA 主循环和它的运行时补丁）；
-  还在用 KAA 的只剩识别层的部分模板 / 主数据、`HiroHifStrategy` 和日常任务的 assignment / contest（`tools/daily/kaa_device.py`），正在逐步去掉。
+  还在用 KAA 的只剩识别层的部分模板 / 主数据和 `HiroHifStrategy`，正在逐步去掉（日常任务 2026-11-25 全部迁到 `hiro.daily`）。
 
 ## 二、架构
 
