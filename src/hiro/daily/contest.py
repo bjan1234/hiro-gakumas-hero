@@ -57,7 +57,9 @@ def read_scores(f) -> list[int | None]:
     for name in SCORE_BOXES:
         b = box(name)
         try:
-            text = " ".join(t for t, _ in ocr(f.img[b.y1 : b.y2, b.x1 : b.x2])).replace(",", "")  # 段之间留空格：两段数字不拼成一个
+            text = " ".join(t for t, _ in ocr(f.img[b.y1 : b.y2, b.x1 : b.x2])).replace(
+                ",", ""
+            )  # 段之间留空格：两段数字不拼成一个
         except Exception:  # noqa: BLE001
             logger.warning("读 %s 的分数失败", name, exc_info=True)
             out.append(None)
