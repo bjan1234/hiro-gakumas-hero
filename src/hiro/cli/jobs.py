@@ -182,6 +182,8 @@ def _produce_argv(module: str, default_level: str):
                 argv += [flag, str(p[key])]
         if p.get("no_llm"):
             argv.append("--no-llm")
+        if p.get("final_rank") and module.endswith(".hajime"):
+            argv += ["--final-rank", str(p["final_rank"])]  # 只有初支持：期末没到这个名次就用再挑戦
         return argv
 
     return build

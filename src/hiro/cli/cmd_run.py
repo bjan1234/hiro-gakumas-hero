@@ -32,6 +32,7 @@ PARAMS = (
     "items",
     "chapter",
     "until",
+    "final_rank",
 )
 
 
@@ -224,6 +225,11 @@ def _first_reason(out: str) -> str:
         Arg("--support-set", "hif / hajime / nia：用游戏里第几号支援卡编成（不给按编成方案）", type="int"),
         Arg("--memory-set", "hif / hajime / nia：用第几号回忆编成", type="int"),
         Arg("--difficulty", "hajime：regular / pro / master；nia：pro / master", choices=("regular", "pro", "master")),
+        Arg(
+            "--final-rank",
+            "hajime：期末要到第几名（如 1），没到就用再挑戦（免费 / チケット，不花ジュエル）",
+            type="int",
+        ),
         Arg(
             "--items",
             "daily：只领这几项（逗号分隔：activity_funds、presents、assignment、contest、mission_reward、club_reward）",
