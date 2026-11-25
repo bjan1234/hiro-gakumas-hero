@@ -753,7 +753,21 @@ def _item_from_name(text: str) -> dict | None:
         for t in (text, text[1:]):
             if (near := _near_name(t)) is not None:
                 return _item_from_name(near)
+    # Vision 也会少读一个字（11-25 账号 3 实机：获得演出名称栏「楽観的」读成「楽観」，获得页认不出 → 判成选卡停机）：
+    # 主数据里补一个字能对上、且只有一个时认作那一项
+    for t in (text, text[1:]):
+        if (fuller := _one_char_missing(t)) is not None:
+            return _item_from_name(fuller)
     return None
+
+
+def _one_char_missing(text: str) -> str | None:
+    """主数据里比 text 多一个字、删掉那个字就是 text 的名称（text ≥ 2 字）；恰好一个才返回。"""
+    if len(text) < 2:
+        return None
+    names = set(_cards_by_full_name()) | set(_drinks_by_name()) | set(_pitems_by_name())
+    hits = {n for n in names if len(n) == len(text) + 1 and any(n[:i] + n[i + 1 :] == text for i in range(len(n)))}
+    return hits.pop() if len(hits) == 1 else None
 
 
 def _near_name(text: str) -> str | None:

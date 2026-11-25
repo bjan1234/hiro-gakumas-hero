@@ -143,3 +143,25 @@ def test_select_card_under_acquire_popup_native_resolution(monkeypatch):
     core, clicks, notes, _Stop = _acquire_core(monkeypatch, big, None)
     core.on_select_card()
     assert clicks == [core.RESIDUAL_TAP] and "楽観的" in notes[0][1]
+
+
+ACQUIRE_OVER_LIVE = Path(__file__).with_name("fixtures") / "pages" / "hajime-acquire-over-select-card-live.png"
+
+
+def test_select_card_under_acquire_popup_live_png(monkeypatch):
+    """实机原始截图（PNG，没压缩）：Vision 把名称栏「楽観的」读成「楽観」，精确匹配认不出 → 前两次修实机没生效。
+    JPEG 样例碰巧读得全，不能代替这一张。"""
+    if not ACQUIRE_OVER_LIVE.exists():
+        pytest.skip("需要实机截图 pages/hajime-acquire-over-select-card-live.png")
+    core, clicks, notes, _Stop = _acquire_core(monkeypatch, cv2.imread(str(ACQUIRE_OVER_LIVE)), None)
+    core.on_select_card()
+    assert clicks == [core.RESIDUAL_TAP] and "楽観的" in notes[0][1]
+
+
+def test_acquire_name_missing_one_char():
+    """名称栏 OCR 少读一个字（「楽観的」→「楽観」）：主数据里少一个字能对上、且只有一个时认作那一项；太短或对上多个不认。"""
+    from hiro.vision.deck import _item_from_name
+
+    item = _item_from_name("楽観")
+    assert item is not None and item["kind"] == "card" and item["name"] == "楽観的"
+    assert _item_from_name("楽") is None
