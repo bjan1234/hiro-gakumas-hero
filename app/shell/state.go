@@ -12,6 +12,7 @@ import (
 
 	"github.com/matto49/hiro-gakumas-hero/app/hiroapi"
 	"github.com/matto49/hiro-gakumas-hero/app/plugin"
+	"github.com/matto49/hiro-gakumas-hero/app/usagelog"
 )
 
 // Turn 是交给 agent 的一句历史。
@@ -214,7 +215,8 @@ func (a *App) Send(text string) {
 	a.d.Run.Go(func() func() {
 		extra := plugin.Gather(a.ctx, reg, snap, a.d.Now(), plugin.ContextTimeout)
 		var tools []string
-		reply, err := ask(a.ctx, hist, text, extra, func(name, summary string) {
+		// 对话 id 放进 ctx：对话助手记用量时按对话归账
+		reply, err := ask(usagelog.WithThread(a.ctx, t.ID), hist, text, extra, func(name, summary string) {
 			line := name
 			if summary != "" {
 				line += " · " + summary

@@ -92,3 +92,11 @@ def test_read_rows_dedupes_by_id(home):
     ledger.record(dict(row, id="other", ts="2026-12-01T00:00:00+08:00"))
     rows = ledger.read_rows(ledger.ledger_dir())
     assert sorted(r["id"] for r in rows) == sorted([row["id"], "other"])
+
+
+def test_openai_usage_deepseek_cache_hit_fallback():
+    """只给 DeepSeek 自己的 prompt_cache_hit_tokens 时也拆出缓存命中（同 Go OpenAICompat.record）。"""
+    from hiro.brain.llm import _openai_usage
+
+    u = _openai_usage({"usage": {"prompt_tokens": 500, "completion_tokens": 5, "prompt_cache_hit_tokens": 400}})
+    assert (u["input_tokens"], u["cache_read_input_tokens"], u["output_tokens"]) == (100, 400, 5)

@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -14,6 +16,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/matto49/hiro-gakumas-hero/app/usagelog"
 )
 
 // 模型配置和对话入口（设计稿 §8）：照 magpie 的「服务商 + Key + 模型」。
@@ -269,7 +273,8 @@ func (a *Assistant) provider() (ChatProvider, error) {
 	if err != nil {
 		return nil, err
 	}
-	return OpenAICompat{BaseURL: url, Model: model, Key: key, Client: &http.Client{Timeout: 120 * time.Second}}, nil
+	return OpenAICompat{BaseURL: url, Model: model, Key: key, Client: &http.Client{Timeout: 120 * time.Second},
+		Home: a.Home, Provider: a.Settings().Provider}, nil
 }
 
 // TestResult 是「测试」按钮的结果。
@@ -357,7 +362,7 @@ HIRO_ACTION: run start <种类> [参数]
 // cliAllowed 是命令行 agent 能跑的只读命令（Claude 的权限白名单）；cliDenied 明确拒绝（压过用户自己设置里更宽的规则）。
 var (
 	cliAllowed = []string{"Bash(hiro info:*)", "Bash(hiro catalog:*)", "Bash(hiro run status:*)", "Bash(hiro run events:*)",
-		"Bash(hiro pending list:*)", "Bash(hiro tools:*)", "Bash(hiro doctor)"}
+		"Bash(hiro pending list:*)", "Bash(hiro tools:*)", "Bash(hiro doctor)", "Bash(hiro usage:*)"}
 	cliDenied = []string{"Bash(hiro confirm:*)", "Bash(hiro cancel:*)", "Bash(hiro secret:*)", "Bash(hiro run start:*)",
 		"Bash(hiro run stop:*)", "Bash(hiro run pause:*)", "Bash(hiro run resume:*)", "Bash(hiro run takeover:*)", "Bash(pbpaste:*)"}
 )
@@ -410,7 +415,7 @@ func (c CLIAgent) argv(prompt, lastFile string) []string {
 			SystemPrompt + cliRules + "\n\n" + prompt}
 	}
 	argv := []string{c.Bin, "-p", prompt, "--append-system-prompt", SystemPrompt + cliRules,
-		"--permission-mode", "default", "--setting-sources", "project"}
+		"--permission-mode", "default", "--setting-sources", "project", "--output-format", "json"}
 	argv = append(argv, "--allowedTools")
 	argv = append(argv, cliAllowed...)
 	argv = append(argv, "--disallowedTools")
@@ -460,6 +465,11 @@ func (c CLIAgent) Ask(ctx context.Context, history []Turn, text string) (Reply, 
 	cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "PYTHONUTF8=1", "HIRO_AGENT_SANDBOX=1")
 	hideWindow(cmd)
 	out, err := cmd.Output()
+	res, parsed := parseClaudeJSON(c.Kind, out)
+	c.record(ctx, res, parsed, err == nil && !res.IsError)
+	if parsed && res.IsError {
+		return Reply{}, fmt.Errorf("%s 出错：%s", c.Kind, strings.TrimSpace(res.Result))
+	}
 	if err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && len(ee.Stderr) > 0 {
@@ -472,6 +482,9 @@ func (c CLIAgent) Ask(ctx context.Context, history []Turn, text string) (Reply, 
 		return Reply{}, fmt.Errorf("%s 出错：%w", c.Kind, err)
 	}
 	reply := strings.TrimSpace(string(out))
+	if parsed {
+		reply = strings.TrimSpace(res.Result)
+	}
 	if c.Kind == "codex" {
 		if b, err := os.ReadFile(lastFile); err == nil {
 			reply = strings.TrimSpace(string(b))
@@ -494,6 +507,52 @@ func (c CLIAgent) Ask(ctx context.Context, history []Turn, text string) (Reply, 
 	}
 	reply = strings.TrimSpace(actionLine.ReplaceAllString(reply, ""))
 	return Reply{Text: reply, Cards: cards}, nil
+}
+
+// claudeResult 是 claude -p --output-format json 的结果（只取用得到的字段）。
+type claudeResult struct {
+	Result  string   `json:"result"`
+	IsError bool     `json:"is_error"`
+	Cost    *float64 `json:"total_cost_usd"`
+	Usage   *struct {
+		Input      *int `json:"input_tokens"`
+		Output     *int `json:"output_tokens"`
+		CacheRead  *int `json:"cache_read_input_tokens"`
+		CacheWrite *int `json:"cache_creation_input_tokens"`
+	} `json:"usage"`
+	ModelUsage map[string]struct {
+		Cost float64 `json:"costUSD"`
+	} `json:"modelUsage"`
+}
+
+// parseClaudeJSON：claude 的输出是一个 JSON 对象；认不出（旧版本、codex）就当纯文本。
+func parseClaudeJSON(kind string, out []byte) (claudeResult, bool) {
+	var r claudeResult
+	t := bytes.TrimSpace(out)
+	if kind != "claude" || len(t) == 0 || t[0] != '{' || json.Unmarshal(t, &r) != nil {
+		return claudeResult{}, false
+	}
+	return r, true
+}
+
+// record 记一行：claude 取 usage 和 total_cost_usd（订阅，汇总时单列），模型取花费最多的那个；codex 没有用量，只记一次调用。
+func (c CLIAgent) record(ctx context.Context, r claudeResult, parsed, ok bool) {
+	row := usagelog.Row{Source: "chat", Thread: usagelog.ThreadOf(ctx), Provider: c.Kind + "-cli", OK: ok}
+	if parsed {
+		if r.Usage != nil {
+			row.Input, row.Output, row.CacheRead, row.CacheWrite = r.Usage.Input, r.Usage.Output, r.Usage.CacheRead, r.Usage.CacheWrite
+		}
+		row.Cost = r.Cost
+		best := -1.0
+		for m, u := range r.ModelUsage {
+			if u.Cost > best || (u.Cost == best && m < row.Model) {
+				row.Model, best = m, u.Cost
+			}
+		}
+	}
+	if err := usagelog.Record(c.Home, row); err != nil {
+		log.Printf("用量记不进流水账：%v", err)
+	}
 }
 
 // ---------------------------------------------------------------------------- 对话存储

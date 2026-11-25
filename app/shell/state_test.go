@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/matto49/hiro-gakumas-hero/app/plugin"
+	"github.com/matto49/hiro-gakumas-hero/app/usagelog"
 )
 
 const oldThread = `{"id":"t-old-1","title":"用月村手毬打一把初","updatedAt":1763900000000,"messages":[
@@ -104,5 +105,20 @@ func TestNullMessageDoesNotCrash(t *testing.T) {
 	a, _ := newTestApp(newMem(`{"id":"t-n","title":"x","updatedAt":1,"messages":[null,{"id":"m","role":"user","text":"hi","at":1}]}`), &fakeCall{}, nil, nil)
 	if len(a.Threads()) != 1 || len(a.Threads()[0].Messages) != 1 {
 		t.Errorf("读出 %+v", a.Threads())
+	}
+}
+
+func TestSendPutsThreadIDInContext(t *testing.T) {
+	var got string
+	ask := func(ctx context.Context, _ []Turn, _, _ string, _ func(string, string)) (Reply, error) {
+		got = usagelog.ThreadOf(ctx)
+		return Reply{Text: "ok"}, nil
+	}
+	a, run := newTestApp(newMem(), &fakeCall{}, ask, &plugin.Registry{})
+	a.NewThread()
+	a.Send("你好")
+	run.Drain()
+	if got == "" || got != a.Current().ID {
+		t.Fatalf("thread in ctx %q, current %q", got, a.Current().ID)
 	}
 }

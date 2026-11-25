@@ -56,6 +56,8 @@ def _openai_usage(payload: dict) -> dict:
     """OpenAI 兼容 usage → 用量字段。prompt_tokens 已含缓存命中部分（prompt_tokens_details.cached_tokens），拆开记，避免总输入重复计。"""
     u = payload.get("usage") or {}
     cached = (u.get("prompt_tokens_details") or {}).get("cached_tokens")
+    if cached is None:
+        cached = u.get("prompt_cache_hit_tokens")  # DeepSeek 自己的字段
     prompt = u.get("prompt_tokens")
     return {"input_tokens": (prompt - cached) if isinstance(prompt, int) and isinstance(cached, int) else prompt,
             "output_tokens": u.get("completion_tokens"), "cache_read_input_tokens": cached}  # fmt: skip
