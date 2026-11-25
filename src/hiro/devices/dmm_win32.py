@@ -22,6 +22,7 @@ import os
 import sys
 import time
 from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 
@@ -46,8 +47,13 @@ def _lparam(x: int, y: int) -> int:
 class Win32:
     """用到的几个 Win32 调用（ctypes）。只在 Windows 上能用；测试换成假的。"""
 
+    _ct: Any
+    _wt: Any
+    user32: Any
+    gdi32: Any
+
     def __init__(self) -> None:
-        if sys.platform != "win32":
+        if not sys.platform.startswith("win"):  # 不写 != "win32"：类型检查按 Linux 分析时会把后面整段当成走不到
             raise DeviceUnavailable("DMM 版只能在 Windows 上用")
         import ctypes
         from ctypes import wintypes
