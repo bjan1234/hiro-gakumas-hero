@@ -133,3 +133,13 @@ def test_select_card_under_acquire_popup_real_frame(monkeypatch):
     core, clicks, notes, _Stop = _acquire_core(monkeypatch, cv2.imread(str(ACQUIRE_OVER)), None)
     core.on_select_card()
     assert clicks == [core.RESIDUAL_TAP] and "楽観的" in notes[0][1]
+
+
+def test_select_card_under_acquire_popup_native_resolution(monkeypatch):
+    """设备截图是原始分辨率（1080×1920 等），read_acquire_popup 按 720×1280 的坐标读名称栏：先缩放再判（16:51 实机复测没生效的原因）。"""
+    if not ACQUIRE_OVER.exists():
+        pytest.skip("需要实机截图 pages/hajime-acquire-over-select-card.jpg")
+    big = cv2.resize(cv2.imread(str(ACQUIRE_OVER)), (1080, 1920))
+    core, clicks, notes, _Stop = _acquire_core(monkeypatch, big, None)
+    core.on_select_card()
+    assert clicks == [core.RESIDUAL_TAP] and "楽観的" in notes[0][1]

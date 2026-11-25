@@ -567,10 +567,11 @@ class HifCore:
         from hiro.vision.card_select import recommended_index, select_card_options
         from hiro.vision.deck import read_acquire_popup
         from hiro.vision.extract import extract
+        from hiro.vision.ui_templates import normalize
 
         t0 = time.monotonic()
         img = device.screenshot()
-        acquired = read_acquire_popup(img, art=False)
+        acquired = read_acquire_popup(normalize(img), art=False)  # 名称栏按 720×1280 坐标读，设备截图是原始分辨率
         if acquired is not None:
             # 拿完卡的获得演出（放大的卡 + 名称栏）盖住三张候选、底下「受け取る」还在，被判成又一次选卡：候选认不出，
             # 决策只能 Wait → 停机（11-25 账号 3 初レギュラー 楽観的）。点空白等演出过去，交回主循环
