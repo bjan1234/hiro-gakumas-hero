@@ -565,10 +565,22 @@ class HifCore:
         """三选一选卡：候选位置 / 卡 / おすすめ 用 hiro.vision.card_select（替换 KAA CardSelectContext），提交用 card_ops.card_select_commit。"""
         from hiro.produce.card_ops import card_select_commit
         from hiro.vision.card_select import recommended_index, select_card_options
+        from hiro.vision.deck import read_acquire_popup
         from hiro.vision.extract import extract
 
         t0 = time.monotonic()
         img = device.screenshot()
+        acquired = read_acquire_popup(img, art=False)
+        if acquired is not None:
+            # 拿完卡的获得演出（放大的卡 + 名称栏）盖住三张候选、底下「受け取る」还在，被判成又一次选卡：候选认不出，
+            # 决策只能 Wait → 停机（11-25 账号 3 初レギュラー 楽観的）。点空白等演出过去，交回主循环
+            if self.s is not None:
+                self.s.recover(
+                    "page_misjudged", f"选卡页上叠着获得演出（{acquired.get('name')}），点空白等它过去，不再选"
+                )
+            device.click(*self.RESIDUAL_TAP)
+            sleep(1.0)
+            return
         options = select_card_options(img)
         for _ in range(3):  # 弹窗入场动画中可能一张都找不到（IDLE 补判进来时尤其常见）
             if options:
