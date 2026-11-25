@@ -48,7 +48,12 @@ def normalize_supports(inv: dict) -> list[dict]:
 
 
 def normalize_idols(inv: dict) -> list[dict]:
-    """偶像卡扫描（hiro.produce.idol_scan）→ 每张一行；idol_card_id 扫描时按主数据对上，对不上（新卡）留空。"""
+    """偶像卡扫描（hiro.produce.idol_scan）→ 每张一行；idol_card_id 扫描时按主数据对上。
+    有没对上的（旧扫描、当时主数据旧）入库时再对一次，顺带按主数据补稀有度；主数据里也没有的（新卡）留空。"""
+    if any(not c.get("idol_card_id") or not c.get("rarity") for c in inv.get("idols") or []):
+        from hiro.produce.idol_scan import attach_ids
+
+        inv = attach_ids({**inv, "idols": [dict(c) for c in inv["idols"]]})
     out = []
     for c in inv.get("idols") or []:
         title, chara = c.get("title") or "", c.get("character") or ""
@@ -68,6 +73,12 @@ def normalize_memories(inv: dict) -> list[dict]:
     out = []
     for e in inv.get("entries") or []:
         card = e.get("card") or {}
+        if not card.get("card_id") and e.get(
+            "card_text"
+        ):  # 扫描时卡名没对上：入库时按现在的规则再对一次（11-24「200％スマイル＋」）
+            from hiro.vision import deck
+
+            card = deck.card_from_name(e["card_text"]) or {}
         out.append(
             {
                 "card_id": card.get("card_id"),

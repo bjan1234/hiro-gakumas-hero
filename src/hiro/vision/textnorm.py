@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import unicodedata
 
-# 拔：SIMD OCR 把「選抜」读成中文字形「選拔」（11-24）
-_FOLD = str.maketrans({"ヘ": "へ", "ベ": "べ", "ペ": "ぺ", "工": "エ", "拔": "抜"})
+# ♥ / ♡：主数据「カワイイ♡はじめました」，OCR 读成实心「♥」（11-23 偶像卡扫描）
+_FOLD = str.maketrans({"ヘ": "へ", "ベ": "べ", "ペ": "ぺ", "工": "エ", "拔": "抜", "♥": "♡"})
 
 
 def fold(text: str) -> str:
