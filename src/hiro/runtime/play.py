@@ -1,7 +1,7 @@
-"""新主循环跑一局（HIRO_RUNTIME=own，去 KAA 第 6 步接线）：设备（hiro.devices）→ Runtime（自有判页 + HifCore 处理器 + 中断层）
+"""主循环跑一局（去 KAA 第 6 步接线；2026-11-24 起是唯一的主循环）：设备（hiro.devices）→ Runtime（自有判页 + HifCore 处理器 + 中断层）
 → 开局 / 续跑（hiro.runtime.opening / finish）→ rt.run 到培育结束。不 import KAA / kotonebot。
 
-run_hif 在 HIRO_RUNTIME=own 时调 run(args, session)；其余参数、trace、报告、退出码和旧主循环一样。
+run_hif 调 run(args, session)；参数、trace、报告、退出码沿用旧主循环的约定。
 没有处理器的页面交给 advance：剧情 SKIP → 横屏 LIVE 曲目页 → 一次性设置框 → 安全空白连点（hiro.loop.advance.burst，同旧主循环）。
 日切换（DateChanged）按旧主循环的做法回首页再续跑，一局最多 MAX_DATE_CHANGES 次。
 """

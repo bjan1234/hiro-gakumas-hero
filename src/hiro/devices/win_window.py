@@ -95,7 +95,7 @@ def center_pos(win_w: int, win_h: int, work: tuple[int, int, int, int]) -> tuple
 
 def center(title: str = WINDOW_TITLE) -> tuple[int, int] | None:
     """把游戏窗口挪到主显示器工作区正中并提到最前（尺寸不变），让人能看剧情（hiro.runtime.unread_story）。
-    DMM 后台点击会把窗口挪到点击点落在光标下的位置（hiro.loop.win_desktop），之后点击时会再挪回去，这里不用还原。
+    DMM 后台点击会把窗口挪到点击点落在光标下的位置（hiro.devices.dmm_win32），之后点击时会再挪回去，这里不用还原。
     要管理员（游戏以管理员运行）。找不到窗口返回 None。"""
     import ctypes
     from ctypes import wintypes

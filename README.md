@@ -58,7 +58,7 @@
                                       │ 状态（契约）                    │ 决策（契约）
 截图 ─► 识别层 hiro.vision ─► Observation ─► reduce（纯函数，可重放）─► 状态 hiro.state
            ▲ 素材：插件 AssetSource                              │
-设备 ◄── 操作层 hiro.device / exec / loop / produce ◄── 执行器（点击、等稳、补点、弹窗、恢复、安全拦截）
+设备 ◄── 操作层 hiro.devices / exec / loop / produce ◄── 执行器（点击、等稳、补点、弹窗、恢复、安全拦截）
                                       │
                  trace（每一步：截图 + 观测 + 状态 + 决策 + 执行结果）
                                       ▼
@@ -80,8 +80,8 @@
   或者在另一个包的 `pyproject.toml` 里声明入口点 `[project.entry-points."hiro_gakumas.plugins"]`，装进同一个环境就自动登记。
   作者读存档的局面来源就是这样做成私有插件的，主仓库里没有任何读存档的代码。每局的 `run.json` 记下这一局实际用了哪些实现。
 
-- **两套主循环**：H.I.F 缺省沿用 KAA 的任务流程（`hiro/loop/kaa_patches.py` 打运行时补丁）；`HIRO_RUNTIME=own` 换成自建主循环
-  `hiro.runtime`（自有判页、页面处理器、中断层，不 import KAA）。初、N.I.A、偶像之路只在自建主循环上跑（KAA 不支持 N.I.A）。
+- **主循环**：`hiro.runtime`（自有判页、页面处理器、中断层，不 import KAA），H.I.F、初、N.I.A、偶像之路都在上面跑。
+  原来 H.I.F 缺省走 KAA 的任务流程（`hiro/loop/kaa_patches.py` 打运行时补丁），2026-11-24 删了。
 - **安全拦截写在代码里**：不用ジュエル、不破棄、不按跨端培育的「開始する」、通信错误不点タイトルへ、LLM 兜底只能点识别出的文字框
   （完整列表见 [AGENTS.md](AGENTS.md)）。
 - **每一步可审计**：每局自动生成逐回合复盘页（开局牌库、手牌、候选动作、状态曲线），人可以在任意一步标注「应该怎么做」，
@@ -176,7 +176,7 @@ PYTHONPATH=src .venv/bin/python -m pytest -q            # 没有截图样例时�
      人一动鼠标，程序就会等着，或者点偏。最好把这台机器当专用机。MuMu 走 adb，没有这个问题。
    - **DMM 版要用日文原版客户端。** 装了汉化补丁（比如 gakuen-imas-localify）的中文界面认不出来。
    - **内存**：hiro 的进程要 3 GB 多（图库、卡图索引、OCR 模型、主数据、模拟器），DMM 版游戏本身约 4 GB。
-     内存吃紧时加 `-NoSim` 关掉模拟器；MuMu 被系统杀掉时加 `-Relaunch`，让程序自己拉起游戏。
+     内存吃紧时加 `-NoSim` 关掉模拟器。MuMu 被系统杀掉时程序会认出来停下，重开游戏后 `resume` 续跑（`-Relaunch` 自动拉起只在旧 KAA 主循环里接过，新主循环还没接）。
    - **文字识别**：Windows 缺省用 RapidOCR，macOS 缺省用系统自带的 Vision；也可以选用[本机 SIMD OCR](docs/assets.md#可选simd-paddleocr)。
    - **Rust**：`setup.ps1` 找不到 cargo 时，会下载 CI 编好的考试引擎预编译包，不用自己装 Rust。
 
@@ -227,9 +227,9 @@ open /tmp/hiro-view/demo-run.html
 | `src/hiro/state/`、`loop/reduce.py` | 状态、记账、不变量 |
 | `src/hiro/brain/`、`defaults/advisor.py` | 策略层：培育决策（规则、社区先验、LLM 补位；`hajime_nia.py` 是初 / N.I.A），LLM 适配（`claude -p`、Codex CLI、OpenAI 兼容） |
 | `src/hiro/search/` | 考试出牌：Rust GNRPA 搜索插件（`advisor.py`）、初 / N.I.A / 偶像之路的考试开局和算法（`exam_env.py`、`exam_algo.py`、`tower_algo.py`） |
-| `src/hiro/exec/`、`loop/`、`produce/` | 操作层：执行器、KAA 主循环、页面处理、恢复、安全拦截；`loop/win_desktop.py` 是 DMM 后台点击的桌面保护 |
+| `src/hiro/exec/`、`loop/`、`produce/` | 操作层：执行器、页面处理、恢复、安全拦截 |
 | `src/hiro/runtime/` | 自建主循环（不用 KAA）：判页、处理器、中断层、开局 / 续跑；初（`hajime.py`）、N.I.A（`nia_sample.py`）、偶像之路（`tower_play.py`）的入口 |
-| `src/hiro/devices/`、`device.py` | 设备层：MaaTools（macOS）、ADB、DMM 窗口（自己调 Win32，不依赖 MaaFramework） |
+| `src/hiro/devices/` | 设备层：MaaTools（macOS）、ADB、DMM 窗口（自己调 Win32，不依赖 MaaFramework） |
 | `src/hiro/sim/` | 模拟器接入：轮间 / 饮料 / 相談的模拟、考试预演、从画面跟踪局面（`screen_source.py`） |
 | `src/hiro/bench_bridge/` | 和 gakumas-bench 的中转层：把画面局面写成 bench 的观测（UIObs），调 UINet 等算法 |
 | `src/hiro/plugins.py`、`defaults/` | 插件接口与默认实现 |
@@ -254,13 +254,13 @@ open /tmp/hiro-view/demo-run.html
 ## 致谢与许可
 
 - 识别层的部分逻辑基于 [KAA（kotones-auto-assistant）](https://github.com/XcantloadX/kotones-auto-assistant) 的识别接口、主数据与界面模板；
-  培育的页面流程沿用 KAA 的任务流程，在 `hiro/loop/kaa_patches.py` 里打运行时补丁。KAA 以 GPL-3.0 发布。
+  早期的培育页面流程沿用 KAA 的任务流程（2026-11-24 换成自建主循环）。KAA 以 GPL-3.0 发布。
 - **许可**：本仓库自己的代码以 **AGPL-3.0-or-later** 发布（[LICENSE](LICENSE)；2026-11-20 起，之前是 GPL-3.0-or-later）。
   从 KAA 派生的文件保留 GPL-3.0（文件头注明，全文见 [LICENSE.GPL-3.0](LICENSE.GPL-3.0)），按 GPL-3.0 / AGPL-3.0 第 13 条和其余代码合在一起发布。
   改过的版本分发出去，或者放到网上给别人用，要同样公开源码。
 - 截图和点击默认通过 [hguandl 的 PlayCover 分支](https://github.com/hguandl/PlayCover)（GPL-3.0，派生自 PlayCover）里
   [PlayTools](https://github.com/hguandl/PlayTools)（AGPL-3.0）内置的 MaaTools 服务完成：它在游戏进程内开 TCP 服务，进程内截图、注入触摸，
-  不要求游戏在前台，也不动鼠标。本仓库只按它的协议做客户端（`hiro/device.py`），不包含它的代码；macOS 上只支持这一种方式。
+  不要求游戏在前台，也不动鼠标。本仓库只按它的协议做客户端（`hiro/devices/maatools.py`），不包含它的代码；macOS 上只支持这一种方式。
   致谢 MaaTools 的作者们。
 - 考试出牌用到 yuzeis 的 [GKMSUINet](https://github.com/yuzeis/GKMSUINet)（UINet）。用 GNRPA 搜索打学マス考试的思路来自
   yuzeis 的 GKMS 项目；本仓库的实现按 Cazenave（2020）的 GNRPA 论文在 Rust 引擎里自己写（`gakumas_exam_rs/src/search.rs`）。

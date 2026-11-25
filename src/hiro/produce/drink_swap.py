@@ -395,7 +395,7 @@ def swap_receive(
     r = Run(action or Action.activate_effect(pick), "SELECT_DRINK", shoot or device.screenshot, click or device.click, clock, sleep,
             label="饮料替换", ocr=ocr, calib=calib)  # fmt: skip
     if click is None:  # 实机：点了没反应时用设备层的兜底点击（PlayCover 是真实鼠标；测试注入了 click 就不会碰）
-        from hiro.device import fallback_click
+        from hiro.devices.active import fallback_click
 
         r.real_click = fallback_click()
     r.snap(r.shoot(), "open")

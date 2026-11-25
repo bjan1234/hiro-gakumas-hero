@@ -1425,26 +1425,6 @@ class HifCore:
         result = self.s.verify(act, page_before="PDRINK_MAX_CONFIRM", taps=[])
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
-    def on_date_change(self, ctx):
-        """日期变更（凌晨 5 点）：KAA 点确认 → 回标题 → 进游戏 → 再開培育（不经过破弃对话框）。记录一次 recover:dialog。"""
-        from kaa.tasks.produce.shared.common import acquisition_date_change_dialog
-
-        obs = self.s.observe(scene="DATE_CHANGE", fields=False, save_frame=True)
-        self.s.recover("dialog", "日期变更弹窗：确认后回标题并再開培育")
-        result = acquisition_date_change_dialog()
-        self.s.record(obs)
-        if result is None:
-            self._stop("DATE_CHANGE", "判成日期变更，但没找到日期变更对话框")
-
-    def on_produce_end(self, ctx):
-        """培育结算：用 resume.finish_produce_end（只点次へ / 閉じる 等，遇到「開始確認 / 本戦へ」就停），不用 KAA 默认的乱点 click_center。"""
-        from hiro.loop.resume import finish_produce_end
-
-        obs = self.s.observe(scene="PRODUCE_END", fields=False, save_frame=True)
-        self.s.record(obs)
-        finish_produce_end()
-        ctx.controller.abort()
-
     def _card_event(self, page: str, ctx, executor_name: str):
         """强化 / 删卡事件：观测卡格 → 决策 → 按 card_id 执行（游戏执行-06）→ 记录。决策器或执行器还没有、读不出、决策取消执行失败 → 停下。"""
         from hiro.brain import deciders as deciders_mod

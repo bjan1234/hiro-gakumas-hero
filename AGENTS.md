@@ -16,8 +16,8 @@
 | 规则 | 代码里的拦截 |
 |---|---|
 | 不用ジュエル（付费货币）。AP 不够只喝 APドリンク；确认框 / 再挑戦按钮带ジュエル就点キャンセル | `loop/ap_refill.py`、`produce/hif.py`（再挑戦）、考试危险词 |
-| 不按「破棄」「リタイア」，不放弃进行中的培育 | `loop/kaa_patches.py`（NeverConfirmDiscard）、`loop/rescue.py` |
-| 在别的设备开着的培育：开局确认页绝不按「開始する」（会破弃另一台设备的进度），停下来 | `loop/resume.py`、`loop/controller.py` |
+| 不按「破棄」「リタイア」，不放弃进行中的培育 | `runtime/guard.py`（危险弹窗 / 危险字样拦点击）、`loop/rescue.py` |
+| 在别的设备开着的培育：开局确认页绝不按「開始する」（会破弃另一台设备的进度），停下来 | `runtime/opening.py`（点キャンセル并停）、`runtime/guard.py` |
 | 通信错误弹窗不点「タイトルへ」 | `loop/comm_error.py`、`loop/rescue.py` |
 | LLM 兜底只能点 OCR 识别出的文字框或固定空白处；选择页、考试画面不点；点之前重新截图核对；次数有上限 | `loop/rescue.py` |
 | 再挑戦只用免费次数 / 再挑戦チケット，最多 3 次 | `produce/hif.py` |
@@ -27,7 +27,8 @@
 
 - 不要把截图、trace、账号、密钥、主数据原文件提交进仓库。`.gitignore` 已挡住 `resources/`、`tests/fixtures/`、`cache/`、`traces/`。
   `assets/pack/` 是仓库有意带的识别素材包（权利属于游戏的权利人，见 `assets/pack/README.md`），除此之外不要再往仓库里加游戏素材或截图。
-- 不要改 `vendor/kaa`（KAA 子模块，固定版本）。需要改 KAA 行为时，在 `hiro/loop/kaa_patches.py` 里打补丁。
+- 不要改 `vendor/kaa`（KAA 子模块，固定版本）。主循环已经不用 KAA（2026-11-24 删了 KAA 主循环和它的运行时补丁）；
+  还在用 KAA 的只剩识别层的部分模板 / 主数据、`HiroHifStrategy` 和日常任务的 assignment / contest（`tools/daily/kaa_device.py`），正在逐步去掉。
 
 ## 二、架构
 
@@ -39,7 +40,7 @@
 截图 ─► 识别层 hiro.vision / perception ─► Observation ─► reduce（纯函数）─► 状态 hiro.state
            ▲ 素材：插件 AssetSource                              │
            │                                                      ▼
-设备 ◄── 操作层 hiro.device / tap / exec / loop / produce ◄── 执行器（点击、等稳、补点、弹窗、恢复）
+设备 ◄── 操作层 hiro.devices / tap / exec / loop / produce ◄── 执行器（点击、等稳、补点、弹窗、恢复）
                                       │
                        trace（每一步：截图 + 观测 + 状态 + 决策 + 执行结果）
                                       ▼
@@ -114,7 +115,7 @@
      ```
      缺省 `-Device mumu`（截图 / 点击 `adb`）、`-Llm codex`、支援卡 / 回忆编成 4 / 5、模拟器开但考试预演只在 R2
      （`HIRO_SIM_WORKERS=1`、`HIRO_EXAM_SIM_ROUNDS=r2`，原因见脚本开头注释）。`-Proxy http://…` 给 LLM 设代理，`-NoSim` 关模拟器，
-     `-Relaunch` 让游戏被杀时自己拉起（缺省关），`-Wait` 前台等跑完。参数全表见脚本开头。
+     `-Relaunch`（游戏被杀时自己拉起，缺省关）只在旧 KAA 主循环里接过，2026-11-24 删旧主循环后暂时不起作用，`-Wait` 前台等跑完。参数全表见脚本开头。
    - **DMM 版**（`-Device dmm`）：
      - 游戏以管理员身份运行，普通权限的进程能截图、点击会被系统挡掉（UIPI），所以 hiro 也要以管理员身份跑。
        `scripts\play.ps1 -Device dmm` 不是管理员时会自己申请（弹一次 UAC），在新窗口里开局。
@@ -123,10 +124,10 @@
        DMM 版要从 DMM Game Player 启动、每次弹管理员确认，程序点不到。重新启动游戏后 `python -m hiro.run_hif resume` 续跑。
      - 同一个账号不要同时开 MuMu 和 DMM：另一端进入培育时会弹「プロデュースデータの破棄」。
      - 后台点击要读真实光标（游戏认的是光标位置，SendMessage 前先把窗口挪到目标点落在光标下）：程序在跑时别在这台 Windows 上
-       弹 UAC / 锁屏。真碰上了，`hiro.loop.win_desktop` 会等桌面恢复（最多 10 分钟）再重做，超时讲清原因停下。
+       弹 UAC / 锁屏。真碰上了，`DmmWin32Device` 会等桌面恢复（最多 10 分钟，`hiro.devices.desktop`）再重做，超时讲清原因停下。
      - 滑动到终点会原地停 0.3 秒再松手：直接松手时选卡对话框按松手速度惯性多滑，
        相邻两屏没有重叠的行，牌组拼接不可信。
-     - 去 KAA 的新设备层 `hiro/devices/`（2026-11-13，还没有调用方，主循环仍走 `hiro.device.connect()`）：统一接口 6 个方法
+     - 设备层 `hiro/devices/`（2026-11-13 起；主循环 hiro.runtime 用它，旧的 kotonebot 设备 `hiro.device` 2026-11-24 删了）：统一接口 6 个方法
        （`connect / close / screenshot / tap / swipe(…, hold=) / alive`，逻辑坐标 720×1280、横屏 1280×720，失败抛 `DeviceGone` /
        `DeviceUnavailable`），三个实现 `MaaToolsDevice`（Mac）、`DmmWin32Device`（DMM）、`AdbDevice`（MuMu / 雷电 / 真机，
        `HIRO_ADB`、`HIRO_ADB_PATH`），`hiro.devices.open_device()` 按 `HIRO_DEVICE` 选。不 import kotonebot / KAA。
@@ -137,7 +138,7 @@
        点击 / 滑动和上面的后台点击同一种做法（挪窗口让目标点落在光标下 + PostMessage），读光标「拒绝访问」时同样等桌面恢复。
        2026-11-25 hiro-w4 实机（管理员）：PrintWindow 约 34 ms 一张，窗口被挡着也截得对；点击、底部导航 3/3、横幅滑动 2/2 通过。
      - 游戏窗口尺寸（用户 2026-11-14 定）：客户区按显示器自适应，9:16，高 = 主显示器工作区高（去掉任务栏）− 窗口外框高，
-       上限 1080x1920、下限 540x960；窗口挪到工作区左上角，整个窗口在屏幕内。`-Runtime own` 开局时 `hiro.runtime.play.fit_dmm_window`
+       上限 1080x1920、下限 540x960；窗口挪到工作区左上角，整个窗口在屏幕内。开局时 `hiro.runtime.play.fit_dmm_window`
        核对、不对就调（`hiro.devices.win_window`，要管理员），显示器放不下 540x960 或调不过去就停下报告，实际尺寸记进 trace 备注；
        `HIRO_DMM_FIT=0` 关掉。窗口小了截图要放大，小字 OCR 和模板分数会掉（541x961 时「残りターン」0.50、牌组按钮 0.78）。
        看 / 调：`python -m hiro.devices.win_window [fit | 宽 高]`。不改系统缩放和分辨率。
@@ -212,7 +213,8 @@ PYTHONPATH=src python -m hiro.run_hif resume --mode qualify|main   # 续跑进�
 有开局编成方案时按「加上这张后编成的价值」挑（社区推荐）；两页 + 刷新都打不上分时，退回租对应类型里等级最高的一张
 （自己已有 4 张主属性就租非主属性，不足就租主属性；流派由游戏的「プラン適正」挡住）。`HIRO_RENTAL_FALLBACK=0` 关掉，照旧停下。
 
-别的设备上有进行中的培育时，`run_hif new` 会停下（退出码 3）。只有使用者明确同意放弃那一份进度，才加 `--allow-discard`。
+别的设备上有进行中的培育时，`run_hif new` 会停下（退出码 3）。程序不会破弃那一份进度（原来的 `--allow-discard` 2026-11-24 随 KAA 主循环删了），
+要放弃由使用者在游戏里自己操作。
 
 运行中：
 

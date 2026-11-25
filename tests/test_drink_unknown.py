@@ -68,7 +68,7 @@ def test_hif_pdrink_max_rereads_on_wait(monkeypatch):
     sess = NS(
         state=GameState(), observe=lambda **k: NS(fields={}), record=lambda *a, **k: None, recover=lambda *a, **k: None
     )
-    strat = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
+    strat = hif.HifCore.__new__(hif.HifCore)
     strat.s, strat.deciders = sess, Deciders()
     monkeypatch.setattr(hif, "sleep", lambda s: None)
     monkeypatch.setattr(hif, "device", NS(screenshot=lambda: None))  # 合并后执行侧版本重读前会先截图

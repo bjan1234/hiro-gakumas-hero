@@ -109,6 +109,34 @@ def _outing_options(img) -> int:
     return option_buttons(img) + len(grey_rows(img))
 
 
+INTERVAL_TITLE_BAND = (0, 0, 260, 220)  # 左上角标题徽章搜索区（x1, y1, x2, y2；720x1280）
+INTERVAL_TITLE_MIN = 0.88  # 按彩色匹配分数定的
+
+
+def interval_title_visible(img) -> bool:
+    """轮间「インターバル」标题徽章（模板 InProduce.HifInterval.Title）在左上角任意位置出现。
+    模板 exists() 只在原位附近找；通信エラー 回标题再「再開」进轮间后徽章下移 13px（第二十二局 UNKNOWN 197 秒停机）。
+    原在旧主循环 hiro.loop.controller，2026-11-24 删旧主循环时搬来：新主循环的判页原来只用 exists()，同一帧判 unknown。"""
+    t = _interval_title_tpl()
+    if img is None or t is None:
+        return False
+    x1, y1, x2, y2 = INTERVAL_TITLE_BAND
+    roi = img[y1:y2, x1:x2]
+    if roi.shape[0] < t.shape[0] or roi.shape[1] < t.shape[1]:
+        return False
+    return float(cv2.matchTemplate(roi, t, cv2.TM_CCOEFF_NORMED).max()) >= INTERVAL_TITLE_MIN
+
+
+_INTERVAL_TPL: list = []
+
+
+def _interval_title_tpl():
+    if not _INTERVAL_TPL:
+        img = cv2.imread(str(PACK / tpl("InProduce.HifInterval.Title").file))  # 彩色匹配
+        _INTERVAL_TPL.append(img[:, :, :3] if img is not None else None)
+    return _INTERVAL_TPL[0]
+
+
 # ---------------------------------------------------------------- KAA check_scene 的同一套模板判据（只判不点）
 def _any(img, *names) -> bool:
     return any(tpl(n).exists(img) for n in names)
@@ -187,7 +215,7 @@ def template_scene(img) -> str | None:
             return "CONSULT"
         if _any(img, "InProduce.IconTitleAllowance"):
             return "ALLOWANCE"
-        if _any(img, "InProduce.HifInterval.Title"):
+        if _any(img, "InProduce.HifInterval.Title") or interval_title_visible(img):
             return "HIF_ROUND_INTERVAL"
         if option_buttons(img) > 1:
             return "INITIAL_CHOICE"  # 开局饮料 / 卡二选一：KAA 双击第一项，这里交给决策层

@@ -287,19 +287,6 @@ def test_inventory_position_only_for_memory_scan_entries():
     )  # tools.memory_inventory：屏内行号，不用
 
 
-def test_autofix_switch_default_off(monkeypatch):
-    from hiro import kaa_env
-    from hiro.loop import kaa_patches
-
-    monkeypatch.setattr(kaa_env, "ACTIVE_PLAN", {"support": {"own": [{"support_card_id": "a"}]}})
-    monkeypatch.delenv("HIRO_FORMATION_AUTOFIX", raising=False)
-    assert kaa_patches._autofix_on() is False
-    monkeypatch.setenv("HIRO_FORMATION_AUTOFIX", "1")
-    assert kaa_patches._autofix_on() is True
-    monkeypatch.setattr(kaa_env, "ACTIVE_PLAN", None)
-    assert kaa_patches._autofix_on() is False
-
-
 def test_fix_support_waits_for_settled_slots():
     """刚翻到这个编成号时第 1 格还在动画里、读成认不出：等读数稳定后发现 5 格都对，不改任何格子（11-16 Mac 实机）。"""
     g = FakeGame(["a", "b", "c", "d", "e"], [[["p"]]])

@@ -3,7 +3,7 @@
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import Action, ActionKind, ExecutionResult, GameState
-from hiro.produce.hif import HiroHifStrategy
+from hiro.produce.hif import HifCore
 
 import pytest
 
@@ -57,7 +57,7 @@ class StubCtx:
 
 
 def _strategy(fields):
-    st = HiroHifStrategy.__new__(HiroHifStrategy)
+    st = HifCore.__new__(HifCore)
     st.s = StubSession(fields)
     st.deciders = ProduceDeciders(CAMPUS_HIRO, None, change_controlled=True)
     return st

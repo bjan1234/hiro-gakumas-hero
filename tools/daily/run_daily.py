@@ -28,6 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # kaa_device
 
 import hiro  # noqa: E402, F401  兼容层
 
@@ -153,16 +154,15 @@ def run_own(names: list[str], timeout: float, out: Path) -> list[dict]:
 
 def run_kaa(names: list[str], timeout: float, out: Path) -> list[dict]:
     from hiro.daily_guard import PopupGuard, run_with_timeout
-    from hiro.device import connect
     from hiro.produce.ops import ocr_boxes
 
     import cv2
+    from kaa_device import connect  # tools/daily/kaa_device.py（只给这条路用）
     from kotonebot import device
     from kotonebot.backend.context import init_context, manual_context
     from kotonebot.backend.context import vars as kvars
 
-    _config()
-    dev = connect()
+    dev = connect(_config())
     init_context(target_device=dev)
     manual_context().begin()
     funcs = _funcs()

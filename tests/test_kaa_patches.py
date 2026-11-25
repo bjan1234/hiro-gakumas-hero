@@ -1,12 +1,10 @@
 # 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
-"""kaa_patches 授業换卡补丁的离线测试：用 KAA 自带的 H.I.F 换卡参考截图（阶段 1 / 阶段 2）喂离线设备。"""
+"""授業换卡（hiro.produce.card_ops，原来是 kaa_patches 里的补丁）的离线测试：用 KAA 自带的 H.I.F 换卡参考截图（阶段 1 / 阶段 2）喂离线设备。"""
 
 from pathlib import Path
 
 import hiro  # noqa: F401
-from hiro.loop import kaa_patches
 from hiro.produce import card_ops
-from hiro.produce import memory_select as ms
 from hiro.vision.offline import load
 
 import cv2
@@ -28,10 +26,10 @@ def _shift(img, dy):
 
 
 class RecordingDevice:
-    """截图转给离线 MockDevice，点击只记录（MockDevice 没有输入实现）。"""
+    """截图取离线画面（hiro.vision.offline.load 喂的，经 hiro.devices.active），点击只记录。"""
 
     def __init__(self):
-        from kotonebot.backend.context import device
+        from hiro.devices.active import device
 
         self._real = device
         self.clicks = []
@@ -270,50 +268,6 @@ def test_pitem_commit_rejects_bad_index():
         _commit(FakeScreen(), 3)
 
 
-def test_pitem_patch_installed():
-    from kaa.tasks.produce.new.page import PItemSelectContext
-
-    kaa_patches.apply()
-    assert PItemSelectContext.commit is card_ops.pitem_commit
-
-
-def test_discard_dialog_never_confirmed(monkeypatch):
-    """KAA do_produce 的「プロデュースデータの破棄」确认被替换：点キャンセル 并抛 ResumeBlocked，绝不点開始する。"""
-    import hiro.loop.kaa_patches as kp
-    from hiro.loop.resume import CANCEL_BUTTON, ResumeBlocked
-
-    import pytest
-
-    clicks = []
-    monkeypatch.setattr(kp, "device", type("D", (), {"click": staticmethod(lambda *a: clicks.append(a))}))
-    kp.apply()
-    from kaa.tasks import R
-
-    assert R.Produce.BreakProduceDialog.ButtonConfirm is kp.NeverConfirmDiscard
-    with pytest.raises(ResumeBlocked):
-        R.Produce.BreakProduceDialog.ButtonConfirm.try_click()
-    assert clicks == [CANCEL_BUTTON]
-
-
-def test_blind_double_click_is_blocked():
-    """KAA 判页时对剧情二选一 double_click(buttons[0])：被拦下，判 UNKNOWN 并置 BLIND_CHOICE，不点击。"""
-    import importlib
-
-    pg = importlib.import_module("kaa.tasks.produce.new.page")
-    import hiro.loop.kaa_patches as kp
-
-    from kaa.tasks.produce.new.consts import SceneType
-
-    real = pg.device
-    guarded = kp._guard_action_like(lambda self: pg.device.double_click((1, 2)))
-    kp.BLIND_CHOICE["pending"] = False
-    scene = guarded(object())
-    assert scene.type is SceneType.UNKNOWN and kp.BLIND_CHOICE["pending"] and pg.device is real
-    kp.BLIND_CHOICE["pending"] = False
-    kp.apply()
-    assert getattr(pg.ProducePage._check_action_like, "_hiro_guard", False)
-
-
 # ---------------------------------------------------------------- 删卡 / 强化页（游戏执行-06）
 
 EVENTS = Path(__file__).parent / "fixtures" / "events"
@@ -450,28 +404,6 @@ def test_stage1_mark_by_column():
     assert card_ops._stage1_mark(full, 0).rect.x1 == 213 and card_ops._stage1_mark(full, 2).rect.x1 == 491
     missing_left = [M(352), M(491)]  # 第 0 张角标漏检：第 1 张仍是中间那列，不能错位成第 0 张
     assert card_ops._stage1_mark(missing_left, 1).rect.x1 == 352 and card_ops._stage1_mark(missing_left, 0) is None
-
-
-def test_select_memory_finds_by_params():
-    import hiro.loop.kaa_patches as kp
-
-    headers = {ms.MEMORY_CELLS[4]: ["1498", "2066", "944"]}
-    state = {"cur": None}
-    clicks = []
-
-    def click(x, y):
-        clicks.append((x, y))
-        state["cur"] = (x, y)
-
-    ok = kp.select_memory(("1498", "2066", "944"), shoot=lambda: None, click=click, swipe=lambda *a: None,
-                          texts_of=lambda img: headers.get(state["cur"], ["1697", "1936", "815"]), sleep=lambda s: None)  # fmt: skip
-    assert (
-        ok
-        and clicks[0] == ms.MEMORY_CHANGE_BTN
-        and clicks[1] == ms.MEMORY_SORT_BTN
-        and clicks[-1] == ms.MEMORY_OK_BTN
-        and ms.MEMORY_CELLS[4] in clicks
-    )
 
 
 def test_card_op_scrolls_to_collect_deck_and_back_to_target(monkeypatch):
@@ -624,24 +556,6 @@ def test_card_op_given_id_on_real_interval_frames():
     )
 
 
-def test_select_memory_matches_prefixed_and_confused_ocr():
-    """第十八局本战：列表上方属性读成「+1434」，按块精确相等找不到；拼接后按值找（允许 1 位常见混淆），且不跨块拼出假数。"""
-    import hiro.loop.kaa_patches as kp
-
-    headers = {ms.MEMORY_CELLS[0]: ["スター性", "ボーカル", "+1434", "ダンス", "2296", "1179"],
-               ms.MEMORY_CELLS[1]: ["ボーカル", "1510", "ダンス", "2360", "1029"]}  # fmt: skip
-    state = {"cur": None}
-
-    def click(x, y):
-        state["cur"] = (x, y)
-
-    picked = []
-    ok = kp.select_memory(("1434", "2296", "1179"), shoot=lambda: None, click=lambda x, y: (click(x, y), picked.append((x, y))),
-                          swipe=lambda *a: None, texts_of=lambda img: headers.get(state["cur"], ["1"]), sleep=lambda s: None)  # fmt: skip
-    assert ok and ms.MEMORY_CELLS[0] in picked
-    assert not kp.memory_value_seen("1936", "1697|1936x".replace("1936x", "19|36"))  # 不跨块拼数
-
-
 # ---------------------------------------------------------------- 第二十局 03:21：点「チェンジ」后确认框晚弹出
 CHANGE_CONFIRM = Path(__file__).parent / "fixtures" / "change_confirm"
 
@@ -670,27 +584,6 @@ def test_stage2_screen_is_not_a_confirm_dialog(dev):
     from hiro.vision.ui_templates import tpl
 
     assert tpl("InProduce.DialogCardChange2.Title").exists(img)  # 还在阶段 2：等待循环会继续等，而不是判完成
-
-
-def test_select_memory_sort_by_ocr_and_fast_scan(monkeypatch):
-    """第二十二局：排序选项按固定坐标点、列表按「タグ」排，翻完 12 页 5 分半没找到。现在按 OCR 找「入手」点，每格等 0.6s。"""
-    import hiro.loop.kaa_patches as kp
-
-    import numpy as np
-
-    monkeypatch.setattr(ms, "_memory_snap", lambda img, tag: None)
-    clicks, t = [], [0.0]
-    sort_dialog = [("ソート・フィルタ", 1.0, (200, 60, 520, 100)), ("タグ", 1.0, (380, 260, 440, 286)), ("入手", 1.0, (180, 380, 240, 406)),
-                   ("決定", 1.0, (470, 1145, 530, 1175))]  # fmt: skip
-    img = np.zeros((1280, 720, 3), np.uint8)
-    ok = kp.select_memory(("1", "2", "3"), shoot=lambda: img, click=lambda x, y: clicks.append((x, y)), swipe=lambda *a: None,
-                          texts_of=lambda im: ["9999"], sleep=lambda s: t.__setitem__(0, t[0] + s), boxes_of=lambda im: sort_dialog)  # fmt: skip
-    assert not ok
-    assert (
-        clicks[2] == (210, 393) and ms.MEMORY_SORT_NEWEST not in clicks
-    )  # 点的是 OCR 找到的「入手」，不是固定坐标（也不是「タグ」）
-    assert (500, 1160) in clicks  # 「決定」
-    assert t[0] < 120  # 翻满 12 页 × 9 格的等待合计 < 2 分钟（原来约 5 分钟）
 
 
 def test_enhance_pick_verify_survives_slow_reads():
@@ -733,7 +626,6 @@ DECK_DIALOG = Path(__file__).parent / "fixtures" / "deck_dialog"
 def test_read_loaded_waits_for_card_art():
     """DMM 版 dmm1m 相談删 眠気：对话框刚打开时下面几行卡面是白色占位（19 格认不出 18 格），拼接对不上；
     read_loaded 隔一会儿重读，拿到卡图加载好的那一帧（20 格全认出）。"""
-    from hiro.loop import kaa_patches as kp  # noqa: F401
 
     import cv2
 
@@ -753,7 +645,6 @@ def test_read_loaded_waits_for_card_art():
 
 def test_read_loaded_gives_up_when_no_progress():
     """真认不出的卡（素材没有）：连续几次没变好就停，不等满 timeout。"""
-    from hiro.loop import kaa_patches as kp  # noqa: F401
 
     import numpy as np
 
@@ -777,69 +668,6 @@ def test_read_loaded_gives_up_when_no_progress():
     finally:
         deck.read_card_dialog = orig
     assert calls["n"] == 1 + card_ops.CARD_ART_STALL
-
-
-def test_step_indicator_threshold_relaxed():
-    """11-21 DMM 541x961：第 2 步步骤条只有 0.77 分，阈值放到 0.7（别的步骤条同一帧最高 0.56）。"""
-    from hiro.loop import kaa_patches
-
-    from kaa.tasks import R
-
-    kaa_patches._relax_step_indicators(R)
-    assert all(
-        getattr(R.Produce, n).threshold == kaa_patches.STEP_INDICATOR_THRESHOLD for n in kaa_patches.STEP_INDICATORS
-    )
-
-
-def test_opening_dry_run_waits_then_refuses_click():
-    """HIRO_OPENING_DRY_RUN：等到第 4 步开始按钮（证明前面走通），click 不点、抛 OpeningDryRunDone（ResumeBlocked）。"""
-    from hiro.loop import kaa_patches
-    from hiro.loop.errors import ResumeBlocked
-
-    calls = []
-
-    class Orig:
-        @staticmethod
-        def wait(*a, **k):
-            calls.append("wait")
-            return "match"
-
-    btn = kaa_patches._dry_run_start_button(Orig)
-    got = btn.wait()
-    assert calls == ["wait"]
-    with pytest.raises(ResumeBlocked):
-        got.click()
-
-
-def test_go_home_on_opening_step_taps_toolbar_home_not_next():
-    """11-21：开局停在第 2 步时「先回首页」点了灰色的次へ。开局准备页认出来，只点工具栏首页。"""
-    from hiro.loop.resume import is_opening_step
-
-    assert is_opening_step(["2サポート選択", "3", "4"]) and is_opening_step(["サポートカードを選択してください"])
-    assert not is_opening_step(["プロデュース", "ホーム", "コンテスト"])
-
-
-def test_start_button_click_is_tracked():
-    """点「プロデュース開始」时记 START_CLICKED；run_hif 据此区分开局准备里出错（停下）和培育中出错（转 resume）。"""
-    from hiro.loop import kaa_patches
-
-    clicked = []
-
-    class Found:
-        def click(self):
-            clicked.append(1)
-
-    class Orig:
-        @staticmethod
-        def wait(*a, **k):
-            return Found()
-
-    btn = kaa_patches._track_start_button(Orig)
-    kaa_patches.START_CLICKED["clicked"] = False
-    m = btn.wait()
-    assert kaa_patches.START_CLICKED["clicked"] is False  # 只等到按钮不算
-    m.click()
-    assert kaa_patches.START_CLICKED["clicked"] is True and clicked == [1]
 
 
 def test_step_indicator_threshold_also_in_hiro_templates():

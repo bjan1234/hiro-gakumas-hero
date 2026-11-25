@@ -6,7 +6,7 @@
     img = dev.screenshot()       # 720x1280 BGR（横屏 1280x720）
     dev.tap(360, 640)
 
-现在还没有调用方：主循环仍走 hiro.device.connect()（kotonebot 设备）。新主循环接上之前这里不改变任何行为。
+主循环（hiro.runtime.play）开局时用它建设备；旧的 kotonebot 设备 hiro.device 2026-11-24 删了。
 接口说明见 hiro.devices.base。
 """
 

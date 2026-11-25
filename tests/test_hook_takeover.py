@@ -27,8 +27,12 @@ def _kaa_hooks() -> set[str]:
 def test_every_kaa_hook_is_overridden():
     from hiro.produce.hif import HifCore
 
+    # 日期切换 / 培育结算只有旧 KAA 主循环会调（2026-11-24 删了）；新主循环走 hiro.runtime.interrupts.date_changed / hiro.runtime.finish
+    loop_only = {"on_date_change", "on_produce_end"}
     missing = sorted(
-        h for h in _kaa_hooks() if getattr(HiroHifStrategy, h).__qualname__.split(".")[0] != HifCore.__name__
+        h
+        for h in _kaa_hooks() - loop_only
+        if getattr(HiroHifStrategy, h).__qualname__.split(".")[0] != HifCore.__name__
     )
     assert not missing, f"这些 KAA 钩子还会走 KAA 默认：{missing}"
 
@@ -121,35 +125,6 @@ def test_reward_skip_confirmed_after_own_full_skip(monkeypatch):
 def test_practice_page_stops():
     with pytest.raises(UnhandledPage):
         _strategy().on_practice_entered(object())
-
-
-def test_unknown_screen_stops_after_limit(monkeypatch):
-    """画面持续认不出超过 UNKNOWN_STOP_AFTER：调 strategy._stop（停下报警），不无限空转。"""
-    import time as _time
-
-    from hiro.loop.controller import HiroController
-
-    from kaa.tasks.produce.new.consts import Scene, SceneType
-
-    c = HiroController.__new__(HiroController)
-    c._texts = ["?"]
-    stopped = []
-    c.strategy = type("S", (), {"_stop": lambda self, page, why: stopped.append(page)})()
-    monkeypatch.setattr(HiroController, "session", None)
-    import kotonebot
-
-    # _watch_unknown 先截一帧查游戏是否还活着：单独跑时 kotonebot 上下文没初始化，给 device 打桩
-    monkeypatch.setattr(kotonebot, "device", type("D", (), {"screenshot": lambda self: None})())
-    monkeypatch.setattr(HiroController, "_check_game_alive", lambda self, shot: None)
-    t = [1000.0]
-    monkeypatch.setattr(_time, "monotonic", lambda: t[0])
-    c._watch_unknown(Scene(SceneType.UNKNOWN))
-    t[0] += 60
-    c._watch_unknown(Scene(SceneType.UNKNOWN))
-    assert not stopped
-    t[0] += 200
-    c._watch_unknown(Scene(SceneType.UNKNOWN))
-    assert stopped == ["unknown"]
 
 
 def test_consult_opens_dialog_when_deck_unknown():
@@ -328,60 +303,6 @@ def test_study_visible_option_still_uses_kaa_commit(monkeypatch):
     st._act = lambda fn, action, **kw: (fn(), ExecutionResult(action=action, ok=True))[1]
     st._event_page("STUDY", kaa.append, 2)
     assert kaa == [1] and clicks == []
-
-
-def test_live_landscape_skips_page_checks(monkeypatch):
-    """第三十一局：横屏 LIVE 期间主循环不跑快速判页 / KAA 判页（KAA 拿竖屏 rect 裁 1280x720，每 2s 报错），记一次进展后等。"""
-    import time as _time
-
-    from hiro.loop.controller import HiroController
-    from hiro.loop.repeat_guard import Guard
-
-    import kotonebot
-    import numpy as np
-
-    live = np.zeros((720, 1280, 3), np.uint8)
-    live[200:500, 300:900] = 120
-    monkeypatch.setattr(kotonebot, "device", type("D", (), {"screenshot": staticmethod(lambda: live)}))
-    monkeypatch.setattr(_time, "sleep", lambda s: None)
-    touched = []
-    g = Guard()
-    g.touch = lambda: touched.append(1)
-    monkeypatch.setattr(HiroController, "session", type("S", (), {"guard": g})())
-    lg = type("L", (), {"tick": lambda self, img: False, "in_live": lambda self, img: True})()
-    monkeypatch.setattr(HiroController, "_landscape", lg)
-    c = HiroController.__new__(HiroController)
-    c._quick_page = lambda: (_ for _ in ()).throw(AssertionError("LIVE 中不该判页"))
-    c._update()
-    assert touched == [1]
-
-
-def test_live_tick_taps_start_and_warns_when_still(monkeypatch):
-    """横屏帧：每 2s OCR 一次，认到 TAP TO START 就点；同一画面 60s 不变报一次警。"""
-    import time as _time
-
-    import hiro.produce.ops as ops
-    from hiro.loop.controller import HiroController
-
-    import kotonebot
-    import numpy as np
-
-    t = [0.0]
-    clicks, notes = [], []
-    monkeypatch.setattr(_time, "monotonic", lambda: t[0])
-    monkeypatch.setattr(kotonebot, "device", type("D", (), {"click": staticmethod(lambda x, y: clicks.append((x, y)))}))
-    monkeypatch.setattr(ops, "ocr_boxes", lambda img: [("TAP TO START", 1.0, (551, 597, 731, 621))])
-    monkeypatch.setattr(HiroController, "session", type("S", (), {"note": lambda self, n: notes.append(n)})())
-    c = HiroController.__new__(HiroController)
-    img = np.full((720, 1280, 3), 80, np.uint8)
-    c._live_tick(img)
-    assert clicks == [(641, 609)]
-    t[0] = 1.0
-    c._live_tick(img)  # 不到 2s：不再 OCR
-    assert len(clicks) == 1
-    t[0] = 61.0
-    c._live_tick(img)
-    assert notes and "没变" in notes[0]
 
 
 def test_finals_retry_restarts_exam(monkeypatch):

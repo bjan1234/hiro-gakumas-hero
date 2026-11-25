@@ -11,7 +11,7 @@
 
 new_produce：培育入口 → 翻到 H.I.F → 选拔 / 本战（AP）→ 编成第 1–4 步（选偶像 / 支援卡和租借 / 回忆 / 加成；本战核对选拔回忆）
 → プロデュース開始 → 跳过交流。选偶像、翻编成号、核对、租借、回忆选择都用 hiro.produce 里不依赖 KAA 的实现。
-还没有调用方：run_hif 的 HIRO_RUNTIME=own 接线由平台模块做。
+调用方：hiro.runtime.play（run_hif）。
 """
 
 from __future__ import annotations
