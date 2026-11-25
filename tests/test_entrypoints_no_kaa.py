@@ -73,10 +73,10 @@ def test_entry_does_not_load_kaa(kind, target):
     )
     assert r.returncode == 0, r.stderr[-2000:]
     res = json.loads(r.stdout.strip().splitlines()[-1])
+    assert res["loaded"] == [], f"{target} 导入时加载了 {res['loaded']}"  # 先查：导入到一半才缺依赖时也不放过
     if res["missing"]:
         assert _missing_verdict(res["missing"]) == "skip", f"{target} 导入不了，缺 {res['missing']}"
         pytest.skip(f"缺可选依赖 {res['missing']}（CI 只装 dev 组）")
-    assert res["loaded"] == [], f"{target} 导入时加载了 {res['loaded']}"
 
 
 def test_only_known_optional_deps_are_skipped():
