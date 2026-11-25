@@ -2075,6 +2075,9 @@ class HifCore:
             if n is not None and n != self.exam_count:
                 logger.info("考试场次以画面为准：選抜試験%d（计数为 %d）", n, self.exam_count)
                 self.exam_count = n
+            if self.exam_count > 3:  # 选拔只有 3 场：多出来的是同一场的再挑戦没扣掉计数
+                logger.warning("选拔场次计数 %d > 3，按第 3 场（再挑戦没扣计数）", self.exam_count)
+                self.exam_count = 3
             type(self).exams_done = self.exam_count
             return f"qualify-{self.exam_count}"
         type(self).exams_done = self.exam_count
@@ -2165,6 +2168,17 @@ class HifCore:
         got = retry_handoff.wait(label, look=look)
         if self.s is not None:
             self.s.note(f"{label} 没过线，再挑戦交给人：{'人处理过了' if got == 'user' else '交回程序'}")
+        if got == "user":
+            try:
+                in_exam = look() == "exam"
+            except Exception:  # noqa: BLE001
+                in_exam = False
+            if in_exam:
+                # 交回来时还在考试里（你点了再挑戦，没打完就交回）：这是同一场的再挑戦，场次不加
+                # （11-24 mao3：被记成 qualify-4，中转层不搜、过线条件按错的场次）
+                self.exam_restarted = True
+                self.exam_count -= 1
+                type(self).exams_done = self.exam_count
         return got == "user"
 
     RETRY_EFFECT_WAIT = 15.0  # 点了再挑戦之后最多等这么久看考试有没有重开
