@@ -63,6 +63,7 @@ type App struct {
 	hidden   atomic.Bool // 窗口隐藏（轮询降速）
 	busyJobs atomic.Bool // 有活任务或没读过的任务（每秒查；否则 5 秒）
 	notified map[string]bool
+	ended    map[string]bool // 已调过 OnJobEnd 的局
 }
 
 // New 建主界面，读出已存的对话。
