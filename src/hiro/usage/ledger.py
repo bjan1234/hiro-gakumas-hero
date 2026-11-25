@@ -31,8 +31,9 @@ HOSTS = {
     "api.openai.com": "openai",
     "openrouter.ai": "openrouter",
 }
-# 模型别名（同 app/assistant.go 的 legacyDeepSeek）：deepseek-chat / deepseek-reasoner 现在都由 deepseek-flash 应答
-ALIASES = {("deepseek", "deepseek-chat"): "deepseek-flash", ("deepseek", "deepseek-reasoner"): "deepseek-flash"}
+# 模型别名（同 app/usagelog 的 aliases）：这些旧名字现在都由 deepseek-flash 应答、按 Flash 计费（官方价格页）
+ALIASES = {("deepseek", m): "deepseek-flash"
+           for m in ("deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp")}  # fmt: skip
 CLI_PROVIDERS = {"claude-cli", "codex-cli"}
 
 

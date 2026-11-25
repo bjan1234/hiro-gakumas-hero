@@ -62,10 +62,12 @@ var hosts = map[string]string{
 	"openrouter.ai":          "openrouter",
 }
 
-// aliases：deepseek-chat / deepseek-reasoner 现在都由 deepseek-flash 应答（同 Python ledger.ALIASES）。
+// aliases：这些旧名字现在都由 deepseek-flash 应答、按 Flash 计费（官方价格页；同 Python ledger.ALIASES）。
 var aliases = map[[2]string]string{
-	{"deepseek", "deepseek-chat"}:     "deepseek-flash",
-	{"deepseek", "deepseek-reasoner"}: "deepseek-flash",
+	{"deepseek", "deepseek-chat"}:                "deepseek-flash",
+	{"deepseek", "deepseek-reasoner"}:            "deepseek-flash",
+	{"deepseek", "deepseek-v4-flash"}:            "deepseek-flash",
+	{"deepseek", "deepseek-v4-flash-vision-exp"}: "deepseek-flash",
 }
 
 // ProviderOf 由接口地址反推服务商 id；认不出 → openai-compatible。

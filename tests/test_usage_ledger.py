@@ -100,3 +100,19 @@ def test_openai_usage_deepseek_cache_hit_fallback():
 
     u = _openai_usage({"usage": {"prompt_tokens": 500, "completion_tokens": 5, "prompt_cache_hit_tokens": 400}})
     assert (u["input_tokens"], u["cache_read_input_tokens"], u["output_tokens"]) == (100, 400, 5)
+
+
+@pytest.mark.parametrize(
+    "old", ["deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"]
+)
+def test_old_deepseek_names_priced_as_flash(old):
+    """官方价格页：这些旧名字按 Flash 计费；不归一的话每次都显示「—」。"""
+    assert ledger.normalize_model("deepseek", old) == "deepseek-flash"
+
+
+def test_suite_does_not_inherit_real_home():
+    """跑测试时不继承外面的 HIRO_HOME / HIRO_JOB_ID：mock 调用不能写进开发者真的流水账。"""
+    import os
+
+    assert "HIRO_HOME" not in os.environ and "HIRO_JOB_ID" not in os.environ
+    assert ledger.ledger_dir() is None

@@ -94,3 +94,13 @@ func TestProviderFromURL(t *testing.T) {
 		}
 	}
 }
+
+func TestOldDeepSeekNamesNormalized(t *testing.T) {
+	for _, old := range []string{"deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"} {
+		home := t.TempDir()
+		_ = Record(home, Row{Source: "chat", Provider: "deepseek", Model: old, OK: true})
+		if m := lines(t, home)[0]["model"]; m != "deepseek-flash" {
+			t.Errorf("%s → %v", old, m)
+		}
+	}
+}
