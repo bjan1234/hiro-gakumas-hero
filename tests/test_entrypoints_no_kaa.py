@@ -1,7 +1,8 @@
 """去 KAA 验收：初星助手能启动的每个任务（hiro.cli.jobs.KINDS）的入口模块 / 脚本，导入时都不加载 kaa / kotonebot。
 
 每个入口在单独的子进程里导入（脚本按文件导入，不当 __main__ 跑），导入完看 sys.modules。
-入口模块缺 play 组依赖导入不了时跳过（CI 只装 dev 组）；缺的是 kaa / kotonebot 本身就算失败。
+入口模块缺 play 组依赖 / macOS 系统框架导入不了时跳过（CI 只装 dev 组）；缺的是别的模块（入口自己、hiro 内部模块、
+必需依赖、kaa / kotonebot）都算失败。
 """
 
 import json
@@ -12,6 +13,7 @@ from pathlib import Path
 from hiro.cli import jobs
 
 import pytest
+from conftest import OPTIONAL_DEPS
 
 ROOT = Path(__file__).resolve().parents[1]
 PARAMS = {"command": "new", "idol": "x", "mode": "qualify", "scenario": "hif", "items": "", "seconds": 1}
@@ -32,6 +34,11 @@ except ModuleNotFoundError as e:
 loaded = sorted(m for m in sys.modules if m.split(".")[0] in ("kaa", "kotonebot"))
 print(json.dumps({"missing": err, "loaded": loaded}))
 """
+
+
+def _missing_verdict(name: str) -> str:
+    """导入时缺的模块 → skip（已知的可选依赖）/ fail（其他）。"""
+    return "skip" if name.split(".")[0] in OPTIONAL_DEPS else "fail"
 
 
 def _entries():
@@ -64,6 +71,15 @@ def test_entry_does_not_load_kaa(kind, target):
     assert r.returncode == 0, r.stderr[-2000:]
     res = json.loads(r.stdout.strip().splitlines()[-1])
     if res["missing"]:
-        assert res["missing"].split(".")[0] not in ("kaa", "kotonebot"), f"{target} 还要 KAA：{res['missing']}"
+        assert _missing_verdict(res["missing"]) == "skip", f"{target} 导入不了，缺 {res['missing']}"
         pytest.skip(f"缺可选依赖 {res['missing']}（CI 只装 dev 组）")
     assert res["loaded"] == [], f"{target} 导入时加载了 {res['loaded']}"
+
+
+def test_only_known_optional_deps_are_skipped():
+    """入口模块自己没了（任务表还指着它）、hiro 内部模块缺了、KAA 回来了：都算失败，不当成缺可选依赖跳过。"""
+    assert _missing_verdict("rapidocr_onnxruntime") == "skip"
+    assert _missing_verdict("Vision") == "skip"
+    assert _missing_verdict("hiro.runtime.tower_play") == "fail"
+    assert _missing_verdict("kaa.tasks") == "fail"
+    assert _missing_verdict("numpy") == "fail"
