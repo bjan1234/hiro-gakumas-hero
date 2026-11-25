@@ -469,6 +469,8 @@ class Job:
         if self._llm_off:
             env.pop("HIRO_LLM", None)
         env.update({"HIRO_PAUSE_FLAG": str(self.flag), "PYTHONUNBUFFERED": "1", "PYTHONUTF8": "1"})
+        # 模型用量流水账（hiro.usage.ledger）：写到 HIRO_HOME/usage，每行带任务编号（设计稿 §1）
+        env.update({"HIRO_JOB_ID": self.id, "HIRO_HOME": str(self.work.parent)})
         env.setdefault("HIRO_CALIB_DIR", str(self.dir / "calib"))  # 排查截图跟着任务走（hiro.imgio.calib_root）
         src = str(REPO / "src")
         env["PYTHONPATH"] = src + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")

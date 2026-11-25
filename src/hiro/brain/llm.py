@@ -20,7 +20,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Protocol, cast, runtime_checkable
 
 PROMPTS = Path(__file__).parent / "prompts"
 REPO = Path(__file__).resolve().parents[3]
@@ -430,8 +430,53 @@ class MockLLM:
         )
 
 
-def from_spec(spec: str | None = None, **kw) -> LLMAdapter:
-    """ "claude[:model]" / "codex[:model]" / "openai:<model>" / "mock" → 适配器。spec 为 None 时读 HIRO_LLM，缺省 claude:sonnet。"""
+class Metered:
+    """给适配器包一层记账（hiro.usage.ledger）：每次 ask_json / ask_json_image 返回后写一行流水；其余属性读写都透传。
+    from_spec 是创建适配器的唯一入口，在这里包，所有调用方都不会漏记（设计稿 §1）。"""
+
+    def __init__(self, inner, source: str):
+        object.__setattr__(self, "__wrapped__", inner)
+        object.__setattr__(self, "_source", source)
+
+    def _record(self, result: LLMResult) -> LLMResult:
+        try:
+            from hiro.usage import ledger
+
+            ledger.record(
+                ledger.row_from_result(result, source=self._source, provider=ledger.provider_of(self.__wrapped__))
+            )
+        except Exception:  # noqa: BLE001 记账绝不影响调用
+            pass
+        return result
+
+    def ask_json(self, system: str, user) -> LLMResult:
+        return self._record(self.__wrapped__.ask_json(system, user))
+
+    def ask_json_image(self, system: str, user: str, image_jpeg: bytes) -> LLMResult:
+        return self._record(self.__wrapped__.ask_json_image(system, user, image_jpeg))
+
+    @property
+    def name(self) -> str:
+        return self.__wrapped__.name
+
+    @property
+    def model(self) -> str | None:
+        return self.__wrapped__.model
+
+    def __getattr__(self, name):
+        return getattr(self.__wrapped__, name)
+
+    def __setattr__(self, name, value):
+        setattr(self.__wrapped__, name, value)
+
+
+def from_spec(spec: str | None = None, *, source: str = "decision", **kw) -> LLMAdapter:
+    """ "claude[:model]" / "codex[:model]" / "openai:<model>" / "mock" → 适配器（包了记账，source 写进流水：decision / rescue）。
+    spec 为 None 时读 HIRO_LLM，缺省 claude:sonnet。"""
+    return cast(LLMAdapter, Metered(_make(spec, **kw), source))  # Metered 透传 name / model / 其它属性，运行时满足协议
+
+
+def _make(spec: str | None = None, **kw):
     spec = spec or os.environ.get("HIRO_LLM") or "claude:sonnet"
     kind, _, model = spec.partition(":")
     if kind in ("claude", "claude-cli"):
