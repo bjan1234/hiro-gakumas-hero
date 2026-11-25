@@ -199,7 +199,7 @@ def test_special_guidance_reentry_continues_customizing(monkeypatch):
     state = NS(page_fields={"cards": [{"index": 0}, {"index": 1}]})
     decisions = [Decision(Action(ActionKind.CUSTOMIZE_CARD, {"card_index": 1, "item_index": 0}), "定制", "rule", 0.8),
                  Decision(Action(ActionKind.CUSTOMIZE_END, {}), "结束", "rule", 0.8)]  # fmt: skip
-    core = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
+    core = hif.HifCore.__new__(hif.HifCore)
     core.s = NS(state=state, observe=lambda **k: NS(fields={}), left_page=lambda *a: None, record=lambda *a, **k: None,
                 recover=lambda *a: None, note=lambda *a: None)  # fmt: skip
     core.deciders = NS(decide=lambda page, st: decisions.pop(0))

@@ -446,7 +446,7 @@ def test_r1_done_in_trace(tmp_path):
         {"observation": {"page": {"name": "HIF_FINALS_RANKING"}, "fields": {"kind": kind, "round_result": None}}}
     )
     (d / "steps.jsonl").write_text(page("standings") + "\n", encoding="utf-8")
-    st = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
+    st = hif.HifCore.__new__(hif.HifCore)
     st.s = NS(trace=NS(dir=str(d)))
     assert st._r1_done_in_trace() is False
     (d / "steps.jsonl").write_text(page("standings") + "\n" + page("round_result") + "\n", encoding="utf-8")

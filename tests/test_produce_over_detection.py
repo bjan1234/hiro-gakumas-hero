@@ -14,7 +14,7 @@ def test_retry_that_did_not_start_falls_back(monkeypatch):
     """点了再挑戦、15 秒后结算页的「再挑戦」还在 = 没生效。"""
     import hiro.produce.hif as hif
 
-    st = object.__new__(hif.HiroHifStrategy)
+    st = object.__new__(hif.HifCore)
     notes = []
     st.s = NS(note=notes.append)
     monkeypatch.setattr(hif, "sleep", lambda s: None)
