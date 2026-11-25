@@ -405,6 +405,7 @@ func (s *S) envSection(c *ui.Context, h plugin.Host) {
 			ui.Icon(c, kit.IcCheck).FontSize(14).TextColor(kit.Good)
 			ui.Text(c, "运行环境装好了").FontSize(kit.FSmall).TextColor(kit.Ink)
 		})
+		s.ocrLine(c)
 		if kit.Secondary(c, "下载 / 更新资料库").Disabled(s.busy).Clicked() {
 			s.busy = true
 			h.Go(func() func() {
@@ -437,6 +438,25 @@ func (s *S) envSection(c *ui.Context, h plugin.Host) {
 	}
 }
 
+// ocrLine 写现在用哪个文字识别后端（doctor 的 ocr 项，随试连游戏一起读到；还没读到时不画）。
+// SIMD 没装好时用 RapidOCR，识别慢一些：告诉用户怎么再装一次。
+func (s *S) ocrLine(c *ui.Context) {
+	s.devMu.Lock()
+	it, ok := s.doctor["ocr"]
+	s.devMu.Unlock()
+	if !ok {
+		return
+	}
+	col := kit.Ink2
+	if it.OK != nil && !*it.OK {
+		col = kit.Bad
+	}
+	ui.Text(c, "文字识别："+it.Detail).FontSize(kit.FSmall).TextColor(col).Wrap()
+	if it.Next != "" && it.OK != nil && !*it.OK {
+		kit.Note(c, it.Next)
+	}
+}
+
 func (s *S) installEnv(h plugin.Host) {
 	s.booting = true
 	s.bootLines = nil
@@ -450,6 +470,33 @@ func (s *S) installEnv(h plugin.Host) {
 				s.bootLines = append(s.bootLines, "出错了："+err.Error())
 			}
 			s.Recheck(h)
+			s.refreshOcr(h) // 装好 SIMD 之后，「文字识别」那行不能还是装之前读到的
+		}
+	})
+}
+
+// refreshOcr 重新读文字识别后端：调不连游戏的 doctor，只更新 ocr 项（platform 等项留着试连时读到的）。
+// 不看 deviceOK，游戏试连过与否都刷。
+func (s *S) refreshOcr(h plugin.Host) {
+	h.Go(func() func() {
+		var d struct {
+			Items []doctorItem `json:"items"`
+		}
+		err := h.Call(context.Background(), []string{"doctor"}).Decode(&d)
+		return func() {
+			if err != nil {
+				return
+			}
+			s.devMu.Lock()
+			defer s.devMu.Unlock()
+			for _, it := range d.Items {
+				if it.ID == "ocr" {
+					if s.doctor == nil {
+						s.doctor = map[string]doctorItem{}
+					}
+					s.doctor[it.ID] = it
+				}
+			}
 		}
 	})
 }
