@@ -73,3 +73,9 @@ def test_child_env_has_job_id_and_home(tmp_path):
     env = job.child_env()
     assert env["HIRO_JOB_ID"] == job.id and env["HIRO_HOME"] == str(tmp_path)
     json.dumps(env)  # 可序列化（没有塞进奇怪的对象）
+
+
+def test_isinstance_sees_real_adapter_class(home):
+    """包了记账层后 isinstance 仍认得出真正的适配器（调用方按类分支时不坏）。"""
+    m = llm_mod.from_spec("mock")  # 同一个模块对象（别的测试会 reload hiro.brain.llm）
+    assert isinstance(m, llm_mod.MockLLM) and isinstance(m, llm_mod.Metered)

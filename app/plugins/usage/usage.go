@@ -105,7 +105,7 @@ func trim(v float64) string {
 	return strings.TrimSuffix(s, ".0")
 }
 
-// money 写一个币种的金额：≥ 0.01 两位小数，更小的保留 4 位有效（不写成 0.00）。
+// money 写一个币种的金额：≥ 0.01 两位小数，更小的保留两位有效数字（不写成 0.00）。
 func money(cur string, v float64) string {
 	sym := symbols[cur]
 	if sym == "" {
@@ -114,7 +114,7 @@ func money(cur string, v float64) string {
 	if v >= 0.01 || v == 0 {
 		return sym + fmt.Sprintf("%.2f", v)
 	}
-	d := int(math.Ceil(-math.Log10(v))) + 3
+	d := int(math.Ceil(-math.Log10(v))) + 1 // 两位有效数字
 	return sym + strings.TrimRight(fmt.Sprintf("%.*f", d, v), "0")
 }
 
@@ -719,8 +719,9 @@ func contextText(ctx context.Context, h plugin.Host) string {
 		h.Call(ctx, []string{"usage", "monthly", "--since", monthStart(h), "--breakdown"}).Decode(&m) != nil {
 		return ""
 	}
+	head := "今天是 " + today(h) + "（查用量时日期写成 YYYY-MM-DD）。"
 	if m.Totals.Calls == 0 {
-		return "这个月还没调用过模型。"
+		return head + "这个月还没调用过模型。"
 	}
 	day := Cost(d.Totals)
 	if d.Totals.Calls == 0 {
@@ -732,7 +733,7 @@ func contextText(ctx context.Context, h plugin.Host) string {
 	if mon == "" {
 		mon = fmt.Sprintf("%d 次（没有花费信息）", m.Totals.Calls)
 	}
-	out := "今天模型花费 " + day + "，本月 " + mon
+	out := head + "今天模型花费 " + day + "，本月 " + mon
 	if len(m.Rows) > 0 {
 		var names []string
 		for _, g := range m.Rows[0].Models {

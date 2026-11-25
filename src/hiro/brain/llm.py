@@ -458,6 +458,10 @@ class Metered:
         return self._record(self.__wrapped__.ask_json_image(system, user, image_jpeg))
 
     @property
+    def __class__(self):  # type: ignore[override]  # isinstance(x, CodexCLI) 等按真正的适配器判断
+        return type(self.__wrapped__)
+
+    @property
     def name(self) -> str:
         return self.__wrapped__.name
 

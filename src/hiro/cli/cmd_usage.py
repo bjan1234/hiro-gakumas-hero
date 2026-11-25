@@ -6,26 +6,39 @@
 from __future__ import annotations
 
 import json
+import re
 
 from hiro.cli.home import hiro_home
-from hiro.cli.registry import Arg, Risk, command
+from hiro.cli.registry import Arg, CliError, Risk, command
 from hiro.usage import ledger
 from hiro.usage import report as usage_report
 
 _RANGE = (
-    Arg("--since", "从这一天起（YYYY-MM-DD，含）"),
-    Arg("--until", "到这一天为止（YYYY-MM-DD，含）"),
+    Arg("--since", "从这一天起（YYYY-MM-DD，含；写 YYYY-MM 是这个月 1 号起）"),
+    Arg("--until", "到这一天为止（YYYY-MM-DD，含；写 YYYY-MM 是到这个月底）"),
     Arg("--breakdown", "每组再按模型拆", type="bool"),
 )
 
 
+def _day(v: str, *, end: bool) -> str:
+    """YYYY-MM-DD 原样；YYYY-MM 补成月初 / 月底；别的写法报错（按字符串比较，写错会悄悄筛成空表）。"""
+    v = str(v).strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+        return v
+    if re.fullmatch(r"\d{4}-\d{2}", v):
+        return v + ("-31" if end else "-01")
+    raise CliError("bad_args", f"日期看不懂：{v}", "写成 YYYY-MM-DD（例如 2026-11-25）或 YYYY-MM")
+
+
 def _rows(a: dict | None = None) -> list[dict]:
-    rows = ledger.read_rows(hiro_home() / "usage")
     a = a or {}
-    if a.get("since"):
-        rows = [r for r in rows if (r.get("ts") or "")[:10] >= a["since"]]
-    if a.get("until"):
-        rows = [r for r in rows if (r.get("ts") or "")[:10] <= a["until"]]
+    since = _day(a["since"], end=False) if a.get("since") else None
+    until = _day(a["until"], end=True) if a.get("until") else None
+    rows = ledger.read_rows(hiro_home() / "usage")
+    if since:
+        rows = [r for r in rows if (r.get("ts") or "")[:10] >= since]
+    if until:
+        rows = [r for r in rows if (r.get("ts") or "")[:10] <= until]
     return rows
 
 

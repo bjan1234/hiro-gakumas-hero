@@ -53,6 +53,8 @@ func TestCostLineFormatting(t *testing.T) {
 		{`{"calls":12,"total":34000,"cost":{"CNY":0.42}}`, "12 次 · 3.4 万 token · 约 ¥0.42"},
 		{`{"calls":3,"total":800,"cost":{"USD":0.0123}}`, "3 次 · 800 token · 约 $0.01"},
 		{`{"calls":1,"total":900,"cost":{"CNY":0.0042}}`, "1 次 · 900 token · 约 ¥0.0042"},
+		{`{"calls":4,"total":18807,"cost":{"CNY":0.009911}}`, "4 次 · 1.9 万 token · 约 ¥0.0099"},
+		{`{"calls":1,"total":10,"cost":{"CNY":0.00001234}}`, "1 次 · 10 token · 约 ¥0.000012"},
 		{`{"calls":2,"total":5000,"cost":{},"subscription_usd":0.05}`, "2 次 · 5,000 token · 订阅（不另收费，折合 API 约 $0.05）"},
 		{`{"calls":2,"total":5000,"cost":{},"unpriced":2}`, "2 次 · 5,000 token · 花费 —"},
 		{`{"calls":4,"total":5000,"cost":{"CNY":0.1},"unpriced":1}`, "4 次 · 5,000 token · 约 ¥0.10（1 次未定价）"},
@@ -182,6 +184,9 @@ func TestToolCardRendersTable(t *testing.T) {
 func TestContextSummary(t *testing.T) {
 	h, p := host(), New()
 	out := p.Context(context.Background(), h)
+	if !strings.Contains(out, "今天是 2026-11-24") { // 模型不知道年份，查用量时 --since 要写全
+		t.Errorf("context 没写完整日期 %q", out)
+	}
 	if !strings.Contains(out, "今天模型花费 约 ¥0.40") || !strings.Contains(out, "本月 约 ¥3.20") {
 		t.Errorf("context %q", out)
 	}

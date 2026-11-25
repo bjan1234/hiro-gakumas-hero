@@ -76,3 +76,12 @@ def test_usage_in_tools_list(run_cli):
     names = {t["name"]: t for t in env["data"]["tools"]}
     for n in ("usage daily", "usage monthly", "usage job", "usage chat", "usage recent"):
         assert n in names and names[n]["risk"] == "read"
+
+
+def test_usage_bad_date_is_error_not_empty(run_cli):
+    """--since / --until 写成不完整的日期（11-25）时报错，不悄悄筛成空表（对话助手实测踩过）。"""
+    _seed()
+    code, env = run_cli("usage", "daily", "--until", "11-25")
+    assert code != 0 and not env["ok"] and "11-25" in env["error"]["message"] and "YYYY-MM-DD" in env["error"]["hint"]
+    code, env = run_cli("usage", "monthly", "--since", "2026-11")
+    assert code == 0 and env["data"]["totals"]["calls"] == 3  # 只写年月也认（从这个月 1 号起）
