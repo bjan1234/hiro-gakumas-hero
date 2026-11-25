@@ -149,6 +149,8 @@ class Win32:
 
             bi = BITMAPINFOHEADER(ct.sizeof(BITMAPINFOHEADER), w, -h, 1, 32, 0, 0, 0, 0, 0, 0)  # 自上而下、BI_RGB
             buf = (ct.c_ubyte * (w * h * 4))()
+            g.SelectObject(mem, old)  # GetDIBits 要求位图此时没有选进任何 DC
+            old = None
             if not g.GetDIBits(mem, bmp, 0, h, buf, ct.byref(bi), 0):  # DIB_RGB_COLORS
                 raise self._err("GetDIBits")
             img = np.frombuffer(buf, np.uint8).reshape(h, w, 4)
