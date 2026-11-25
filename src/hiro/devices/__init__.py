@@ -1,7 +1,7 @@
 """设备统一接口（去 KAA，设计稿第 4 节）：不依赖 kotonebot / KAA 的三个设备实现。
 
     from hiro.devices import open_device
-    dev = open_device()          # 按 HIRO_DEVICE 选：maatools（Mac）、dmm（MaaFramework）、adb / mumu / leidian（adb）
+    dev = open_device()          # 按 HIRO_DEVICE 选：maatools（Mac）、dmm（自己调 Win32）、adb / mumu / leidian（adb）
     dev.connect()
     img = dev.screenshot()       # 720x1280 BGR（横屏 1280x720）
     dev.tap(360, 640)
@@ -17,7 +17,7 @@ import sys
 
 from .base import LANDSCAPE, PORTRAIT, Device, DeviceError, DeviceGone, DeviceUnavailable, LogicalScreen  # noqa: F401
 
-NAMES = {"maatools": "maatools", "dmm": "maafw-win32", "adb": "adb", "mumu": "adb", "leidian": "adb"}
+NAMES = {"maatools": "maatools", "dmm": "dmm-win32", "adb": "adb", "mumu": "adb", "leidian": "adb"}
 
 
 def open_device(name: str | None = None) -> Device:
@@ -36,10 +36,10 @@ def open_device(name: str | None = None) -> Device:
         from .maatools import MaaToolsDevice
 
         return MaaToolsDevice()
-    if impl == "maafw-win32":
-        from .maafw_win32 import MaaFwWin32Device
+    if impl == "dmm-win32":
+        from .dmm_win32 import DmmWin32Device
 
-        return MaaFwWin32Device()
+        return DmmWin32Device()
     from .adb import AdbDevice
 
     return AdbDevice()

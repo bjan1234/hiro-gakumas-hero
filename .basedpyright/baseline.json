@@ -1760,40 +1760,6 @@
                 }
             }
         ],
-        "./src/hiro/device_maafw.py": [
-            {
-                "code": "reportMissingImports",
-                "range": {
-                    "startColumn": 13,
-                    "endColumn": 27,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportMissingImports",
-                "range": {
-                    "startColumn": 13,
-                    "endColumn": 23,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportMissingImports",
-                "range": {
-                    "startColumn": 13,
-                    "endColumn": 24,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportReturnType",
-                "range": {
-                    "startColumn": 15,
-                    "endColumn": 25,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./src/hiro/devices/active.py": [
             {
                 "code": "reportMissingImports",

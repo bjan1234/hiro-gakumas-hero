@@ -4,7 +4,7 @@
 
 窗口小了截图要放大，小字 OCR 和模板分数会掉（541x961 时「残りターン」0.50、牌组按钮 0.78，都在阈值以下）。
 游戏以管理员运行，改它的窗口尺寸要以管理员身份调用（UIPI）。尺寸按物理像素算（进程先设成按显示器 DPI 感知），
-和 MaaFwWin32Device 原生尺寸截图（screen.native）同一个口径。
+和 DmmWin32Device 原生尺寸截图（screen.native）同一个口径。
 
     python -m hiro.devices.win_window            # 看现在的客户区尺寸和按显示器算的目标
     python -m hiro.devices.win_window fit        # 调成目标尺寸（要管理员）
