@@ -78,6 +78,10 @@ if ($Device -eq "dmm" -and -not ([Security.Principal.WindowsPrincipal][Security.
         else { $pass += @("-$($kv.Key)", "`"$($kv.Value)`"") }
     }
     Write-Host "DMM 版要管理员权限：在弹出的 UAC 里点「是」，开局在新窗口里进行"
+    if ($Wait) {  # 前台等：把提权进程的退出码交回调用方（3 = 别的端末有进行中的培育，停下了）
+        $p = Start-Process powershell -Verb RunAs -ArgumentList $pass -PassThru -Wait
+        exit $p.ExitCode
+    }
     Start-Process powershell -Verb RunAs -ArgumentList $pass
     exit 0
 }
