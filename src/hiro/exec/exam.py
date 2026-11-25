@@ -1385,6 +1385,22 @@ def run_exam(
                                                ocr_boxes=ops.ocr_boxes, is_exam=schedule_probe.back_in_exam, log=rec.log,
                                                note=session.note if session is not None else None, read_panel=read_schedule_panel,
                                                swipe=lambda *a: device.swipe(*a), total_turns=frame.remaining)  # fmt: skip
+                if (fixed := schedule_probe.exam_from_panel(exam, got.get("panel"))) is not None:
+                    # 面板写着这是第几场选拔，和标签不符：以面板为准，局面来源 / 出招重新开这一场（第 1 回合，还没出牌）
+                    logger.warning("[%s] 审查日程面板写的是 %s：改用 %s", exam, got["panel"].get("pass_text"), fixed)
+                    if session is not None:
+                        session.note(f"场次以审查日程面板为准：{exam} → {fixed}（{got['panel'].get('pass_text')}）")
+                        session.state.exam_session.label = fixed
+                    rec.log("exam_label_fixed", exam=exam, fixed=fixed, pass_text=got["panel"].get("pass_text"))
+                    SCHEDULE_PROBED.add(fixed)
+                    exam = fixed
+                    memory = brain.new_memory(exam)
+                    seed_max_hp(memory, session, rec, brain.profile)
+                    source.begin({"exam": exam, "profile": brain.profile, "target_score": target_score, "session": session,
+                                  "brain": brain, "rec": rec})  # fmt: skip
+                    advisor.on_round_start(round_no if round_no is not None else 1,
+                                           {"exam": exam, "idol": brain.profile.idol_id if brain.profile else None, "brain": brain,
+                                            "max_hp": getattr(memory, "max_hp", None), "deck": _round_deck(session), "session": session})  # fmt: skip
                 schedule_probe.apply_panel(got.get("panel"), session, memory)
                 animating = True
                 continue

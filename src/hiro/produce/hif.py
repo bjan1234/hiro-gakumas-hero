@@ -11,6 +11,7 @@
 """
 
 import logging
+import re
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -1496,6 +1497,9 @@ class HifCore:
                 device.click(*btn)
             else:  # 识别说有、这一帧 OCR 没读到：按固定位置点（识屏：11 个样本都在 x≈165、y≈1148）
                 device.click(*self.CARD_OP_CANCEL_XY)
+            card_ops.confirm_skip_after_cancel(
+                shoot=device.screenshot, click=lambda x, y: device.click(x, y)
+            )  # 弹「スキップ確認」就点「選択せず次へ」（不点会回选卡页再来）
             result = self.s.verify(d.action, page_before=page, taps=[], retries=0)
             self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
             logger.info("%s：%s → 点キャンセル 退回", page, d.reason)
@@ -1519,6 +1523,7 @@ class HifCore:
             )
             if cancel is not None:
                 device.click(*cancel.rect.center)
+                card_ops.confirm_skip_after_cancel(shoot=device.screenshot, click=lambda x, y: device.click(x, y))
                 self.s.recover(
                     "tap_no_effect",
                     f"{executor_name} 连续 {len(failed)} 张做不成，点キャンセル 退回（{sorted(failed)}）",
@@ -2489,6 +2494,15 @@ class HifCore:
             )
 
         run_exam(self.brain, label, self.rec, ended, session=self.s, advisor=self.advisor)
+        fixed = getattr(self.s.state.exam_session, "label", None)
+        if fixed and fixed != label and re.fullmatch(r"qualify-[1-3]", str(fixed)):
+            # 考试里按审查日程面板改了场次（hiro.exec.schedule_probe.exam_from_panel）：计数跟着改，再挑戦 / 之后的场次才对
+            if label.startswith("lesson-"):
+                self.lesson_count -= 1
+                type(self).lessons_done = self.lesson_count
+            self.exam_count = int(fixed.rsplit("-", 1)[1])
+            type(self).exams_done = self.exam_count
+            label = fixed
         self.rec.log("exam_end", image=device.screenshot(), exam=label)
 
         if self._retry_if_failed(label):
