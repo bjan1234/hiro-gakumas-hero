@@ -102,7 +102,7 @@ class Kind:
 
 
 _PY = sys.executable
-HOME_READER = "hiro.vision.home_values"  # 首页顶栏读数（scan-account）
+ACCOUNT_SCAN = "hiro.daily.account_scan"  # 首页顶栏读数 + プロフィール的プロデューサーID（scan-account）
 
 _SELFTEST = r"""
 import json, os, sys, time
@@ -342,9 +342,9 @@ KINDS: dict[str, Kind] = {
     ),
     "scan-account": Kind(
         "scan-account",
-        "读首页顶栏的 PLv、AP、ジュエル（只截一张图，不点）",
-        lambda p, d: [_PY, "-m", HOME_READER, "--live", "--out", str(d / "out.json")],
-        lambda p: "读首页的 PLv / AP / ジュエル（只截图，不点）",
+        "读首页顶栏的 PLv、AP、ジュエル，再进菜单的プロフィール读プロデューサーID（信息库按账号分开，读到新账号就切过去）",
+        lambda p, d: [_PY, "-m", ACCOUNT_SCAN, "--out", str(d / "out.json")],
+        lambda p: "读首页数值和プロデューサーID（会点开菜单的プロフィール）",
         output="account",
         pausable=False,
     ),

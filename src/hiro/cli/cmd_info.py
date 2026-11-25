@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from hiro.cli.registry import Arg, CliError, Risk, command
@@ -17,6 +18,8 @@ SCAN_HINT = {
     "game_settings": "还没检查游戏设置：运行 hiro run start check-settings",
     "formations": "还没读过编成位：游戏停在首页时运行 hiro run start scan-formations",
 }
+
+logger = logging.getLogger(__name__)
 
 
 def _rarity(raw) -> str | None:
@@ -86,8 +89,8 @@ def normalize_game_settings(inv: dict) -> list[dict]:
 
 
 def normalize_account(inv: dict) -> list[dict]:
-    """hiro.vision.home_values 的输出 → 一行。"""
-    return [{k: inv.get(k) for k in ("plv", "ap", "ap_max", "jewel")}]
+    """读首页数值（hiro.daily.account_scan）的输出 → 一行（プロデューサーID / 名字读不到时为 None）。"""
+    return [{k: inv.get(k) for k in ("plv", "ap", "ap_max", "jewel", "producer_id", "name")}]
 
 
 NORMALIZE = {
@@ -112,8 +115,15 @@ def import_inventory(kind: str, inv: dict, source: str) -> dict:
         from datetime import datetime
 
         scanned_at = datetime.fromtimestamp(inv["generated"]).strftime("%Y-%m-%d %H:%M:%S")
-    sid = open_store().save_snapshot(kind, rows, source=source, scanned_at=scanned_at, complete=complete, raw=inv)
-    return {"kind": kind, "snapshot": sid, "count": len(rows)}
+    st = open_store()
+    out: dict = {}
+    if kind == "account" and (pid := inv.get("producer_id")):
+        # 默认切换：读到哪个账号，信息库就切到哪个账号（之后的扫描记在它名下、查询只看它的）
+        if st.switch_account(pid):
+            logger.info("信息库切到账号 %s（%s）", pid, inv.get("name") or "?")
+        out["account"] = pid
+    sid = st.save_snapshot(kind, rows, source=source, scanned_at=scanned_at, complete=complete, raw=inv)
+    return {"kind": kind, "snapshot": sid, "count": len(rows), **out}
 
 
 def _listing(kind: str, keep=lambda r: True) -> dict:
