@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/matto49/hiro-gakumas-hero/app/hiroapi"
+	"github.com/matto49/hiro-gakumas-hero/app/labels"
 	"github.com/matto49/hiro-gakumas-hero/app/plugin"
 	"github.com/matto49/hiro-gakumas-hero/app/plugins/plugintest"
 )
@@ -257,5 +258,48 @@ func TestIdlePanelShowsLastEndedJob(t *testing.T) {
 	}
 	if strings.Contains(all, "更早的一局") {
 		t.Errorf("只放最近一局，更早的对话局不进来：%q", tt.Texts())
+	}
+}
+
+// N6（11-26 G1）：扫描这类任务不说「游玩中」「0 步」「已打」「正在连游戏、开局…」「等第一张画面」，写做到哪了。
+func TestScanJobUsesTaskWording(t *testing.T) {
+	h, p := liveHost(), New()
+	v := h.Job("j7")
+	v.Job = &plugin.Job{ID: "j7", Kind: "scan-memories", State: "running", Summary: "扫描回忆库存（只读，不改编成）", StartedAt: float64(h.Now().Unix() - 120)}
+	v.Events = []plugin.JobEvent{
+		{Seq: 0, Type: "start", Text: "扫描回忆库存"},
+		{Seq: 1, Type: "log", Text: "[2026-11-26 04:51:34,433] [INFO] [hiro.produce.memory_picker] 回忆扫描：第 70 页，已读 204 格"},
+	}
+	card := ui.NewTester(func(c *ui.Context) { p.Cards["run"](c, h, plugin.Card{"type": "run", "jobId": "j7"}) }, 760, 600)
+	card.Frame()
+	panel := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "job:j7") }), 380, 900)
+	panel.Frame()
+	for _, tt := range []*ui.Tester{card, panel} {
+		if !tt.HasText("回忆扫描：第 70 页，已读 204 格") || !tt.HasText("进行中") {
+			t.Errorf("应写做到哪了、状态「进行中」：%q", tt.Texts())
+		}
+		for _, bad := range []string{"游玩中", "0 步", "正在连游戏、开局…", "等第一张画面", "步数", "已打"} {
+			for _, s := range tt.Texts() {
+				if strings.Contains(s, bad) {
+					t.Errorf("扫描任务不该出现 %q：%q", bad, s)
+				}
+			}
+		}
+	}
+	v.State, v.Job.State = "done", "done"
+	v.Events = append(v.Events, plugin.JobEvent{Seq: 2, Type: "done", Text: "完成"})
+	card.Frame()
+	if card.HasText("还没有步骤") {
+		t.Errorf("做完的扫描不该写「还没有步骤」：%q", card.Texts())
+	}
+}
+
+// #109 review：没日志的暂停 / 等接手的任务不说「正在连游戏…」，按状态说。
+func TestScanProgressFollowsState(t *testing.T) {
+	for state, want := range map[string]string{"running": "正在连游戏…", "paused": labels.State("paused"), "takeover": labels.State("takeover")} {
+		v := &plugin.JobView{State: state, Job: &plugin.Job{Kind: "scan-idols", State: state}}
+		if got := progress(v); got != want || got == "" {
+			t.Errorf("%s：%q，要 %q", state, got, want)
+		}
 	}
 }
