@@ -33,6 +33,8 @@ PARAMS = (
     "chapter",
     "until",
     "final_rank",
+    "plugins",
+    "sources",
 )
 
 
@@ -242,6 +244,11 @@ def _first_reason(out: str) -> str:
         Arg("--scenario", "write-formation：写哪个模式的编成", choices=("hif", "hajime", "nia")),
         Arg("--what", "write-formation：写哪些（support / memory，逗号分隔，缺省都写）"),
         Arg("--dry-run", "write-formation：只看差在哪几格，不改；contest-unit：只读总合力，不重排", type="bool"),
+        Arg(
+            "--plugins",
+            "这一局换用的插件（覆盖 HIRO_HOME/strategy.json）：决策点=插件 id，逗号分隔，如 produce.ACTION_SELECT=uinet,exam=gnrpa；查已装插件用 hiro plugins list",
+        ),
+        Arg("--sources", "这一局用的数据来源插件 id，逗号分隔（覆盖 strategy.json 的 sources）"),
     ),
     confirm_summary=_summary,
     precheck=_precheck,

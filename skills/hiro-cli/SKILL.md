@@ -108,6 +108,18 @@ description: 用 hiro 命令行查学マス账号信息和游戏资料库、开�
 
 对局里用哪个模型，跟着发起开局（`hiro confirm`）那个进程的环境变量走：`HIRO_LLM`（如 `openai:deepseek-flash`、`claude:sonnet`、`codex`）、`OPENAI_BASE_URL`、`OPENAI_API_KEY`；`HIRO_LLM=off` 只用规则和算法。桌面程序按设置里的模型自动传，缺省是 DeepSeek，没填 Key 时是 off。
 
+培育 / 偶像之路的任务都可以加 `--plugins` 和 `--sources` 换用插件（只对这一局生效，覆盖 `HIRO_HOME/strategy.json`）：
+`--plugins produce.ACTION_SELECT=uinet,exam=gnrpa`（决策点=插件 id，`exam.<hif|hajime|nia|tower>` 按模式），`--sources hook`（数据来源插件）。
+配了却没装 / 不能用的插件，对应决策点用内置逻辑，任务照常开。
+
+## 插件（只读，直接执行）
+
+| 命令 | 返回 |
+|---|---|
+| `hiro plugins list` | 已装的插件（数据来源 / 育成 / 考试出牌）：id、版本、能接的页面、能不能用和原因；`HIRO_HOME/strategy.json` 每个决策点配了哪个插件、配置里的错误 |
+
+插件只能交数据和出主意：不能直接点击、不能绕过安全拦截。每一步记录是哪个插件定的（事件 `source` 是 `plugin:<id@版本>`），每局报告里有插件一节；用过插件给的隐藏信息（画面上看不到的）的对局会单独标出来。写插件见 `docs/plugins.md`。
+
 开局前先确认：游戏停在首页；没有别的设备上进行中的培育（那种情况开局确认页绝不按「開始する」，程序会停下来）。
 
 ## 看进度、暂停、接手（直接执行）

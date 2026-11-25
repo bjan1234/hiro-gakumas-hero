@@ -205,8 +205,15 @@ var (
 	reRule   = regexp.MustCompile(`rule|community|default|plan`)
 )
 
-// Source 是每一步谁定的：规则、算法、LLM、兜底；空的是「自动」。
+// IsPluginSource 是这一步是不是插件定的（事件 source 为 plugin:<id@版本>，见 hiro.cli.jobs.step_event）。
+func IsPluginSource(s string) bool { return strings.HasPrefix(s, "plugin:") }
+
+// Source 是每一步谁定的：规则、算法、LLM、兜底、插件 <id>；空的是「自动」。
 func Source(s string) string {
+	if IsPluginSource(s) {
+		id, _, _ := strings.Cut(strings.TrimPrefix(s, "plugin:"), "@")
+		return strings.TrimSpace("插件 " + id)
+	}
 	l := strings.ToLower(s)
 	switch {
 	case l == "":

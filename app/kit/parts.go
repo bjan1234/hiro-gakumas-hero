@@ -33,9 +33,12 @@ func Tag(c *ui.Context, text string, fg, bg ui.Color) ui.Element {
 	return ui.Text(c, text).FontSize(10.5).FontWeight(600).TextColor(fg).Padding(1, 6).Radius(5).Background(bg).MaxLines(1)
 }
 
-// SourceTag 是每一步「谁定的」：规则灰、算法橙、LLM 蓝、兜底红。
+// SourceTag 是每一步「谁定的」：规则灰、算法橙、LLM 蓝、兜底红、插件绿。
 func SourceTag(c *ui.Context, source string) ui.Element {
 	l := labels.Source(source)
+	if labels.IsPluginSource(source) {
+		return Tag(c, l, Good, GoodT)
+	}
 	switch l {
 	case "算法":
 		return Tag(c, l, Brand, BrandT)

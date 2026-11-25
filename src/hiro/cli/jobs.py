@@ -41,7 +41,7 @@ def step_event(rec: dict, trace: Path) -> dict:
         "page": ((obs.get("page") or {}).get("name")),
         "action": ((dec.get("action") or {}).get("kind")),
         "args": ((dec.get("action") or {}).get("args")),
-        "source": dec.get("source"),
+        "source": f"plugin:{dec['plugin']}" if dec.get("plugin") else dec.get("source"),
         "decider": dec.get("decider"),
         "warnings": dec.get("warnings") or [],
         "notes": rec.get("notes") or [],
@@ -461,6 +461,36 @@ class Job:
         (self.dir / "job.json").write_text(json.dumps(self.describe(), ensure_ascii=False), encoding="utf-8")
 
     # ----------------------------------------------------------------- 进程
+    def _strategy_file(self) -> Path | None:
+        """2026-11-25 插件架构：HIRO_HOME/strategy.json + 本局 --plugins / --sources 合成一份放进任务目录；都没有时返回 None。"""
+        from hiro import strategy
+
+        base = strategy.read_file(self.work.parent / "strategy.json")
+        over = strategy.parse_overrides(self.params.get("plugins"), self.params.get("sources"))
+        if not base and len(over) == 1 and not over["_warnings"]:
+            return None
+        path = self.dir / "strategy.json"
+        path.write_text(json.dumps(strategy.merge(base, over), ensure_ascii=False, indent=1), encoding="utf-8")
+        return path
+
+    def strategy_warnings(self) -> None:
+        """开局时把插件配置的问题写进任务事件和日志（spec 4.2 / 4.7）：写错的键 / 页面、开局参数写错、配了但用不了的插件。"""
+        from hiro import plugins, strategy
+
+        base = strategy.read_file(self.work.parent / "strategy.json")
+        over = strategy.parse_overrides(self.params.get("plugins"), self.params.get("sources"))
+        cfg = strategy.from_dict(strategy.merge(base, over))
+        texts = list(cfg.warnings)
+        want = [("observation_source", i) for i in cfg.sources]
+        want += [("exam_advisor", i) for i in sorted({v for v in cfg.exam.values() if v != plugins.BUILTIN})]
+        want += [("produce_advisor", i) for i in sorted(set(cfg.produce.values()))]
+        for kind, pid in want:
+            if plugins.get_by_id(kind, pid) is None:
+                why = next((x.error for x in plugins.available(kind) if x.id == pid), None) or "没装"
+                texts.append(f"插件 {pid!r} 用不了（{why}），相关决策点用内置逻辑")
+        for t in texts:
+            self.emit("log", f"插件配置：{t}")
+
     def child_env(self) -> dict:
         env = os.environ.copy()
         from hiro.cli import paths
@@ -478,6 +508,8 @@ class Job:
         # 模型用量流水账（hiro.usage.ledger）：写到 HIRO_HOME/usage，每行带任务编号（设计稿 §1）
         env.update({"HIRO_JOB_ID": self.id, "HIRO_HOME": str(self.work.parent)})
         env.setdefault("HIRO_CALIB_DIR", str(self.dir / "calib"))  # 排查截图跟着任务走（hiro.imgio.calib_root）
+        if (sf := self._strategy_file()) is not None:
+            env["HIRO_STRATEGY_FILE"] = str(sf)
         src = str(REPO / "src")
         env["PYTHONPATH"] = src + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
         return env
@@ -491,6 +523,10 @@ class Job:
         ):  # 服务没有控制台；不加 CREATE_NO_WINDOW 会给每个任务弹一个黑窗口，用户一关这局就没了
             kw["creationflags"] = 0x00000200 | 0x08000000  # CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
         self.emit("start", self.kind.summary(self.params), kind=self.kind.name)
+        try:
+            self.strategy_warnings()
+        except Exception as e:  # noqa: BLE001  配置检查出错不影响开局
+            self.emit("log", f"插件配置检查出错：{e}")
         self.proc = subprocess.Popen(
             argv,
             cwd=self.work,

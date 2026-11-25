@@ -22,6 +22,7 @@ var (
 	WarnT    = ui.Hex("#FFF1E6")
 	WarnInk  = ui.Hex("#9A3F0B")
 	Good     = ui.Hex("#2E9E5B")
+	GoodT    = ui.RGBA(46, 158, 91, 0.12) // 插件来源标签的浅底
 	Bad      = ui.Hex("#D23B3B")
 	BadT     = ui.Hex("#FDECEC")
 	Blue     = ui.Hex("#3C82F0")

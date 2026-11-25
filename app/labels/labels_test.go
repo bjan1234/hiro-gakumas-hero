@@ -51,3 +51,15 @@ func TestToolNames(t *testing.T) {
 		}
 	}
 }
+
+// 2026-11-25 插件架构：插件定的步骤，事件 source 是 plugin:<id@版本>，显示成「插件 id」（不能因为 id 里有 uinet 就显示成算法）。
+func TestSourcePlugin(t *testing.T) {
+	for in, want := range map[string]string{"plugin:uinet@0.3": "插件 uinet", "plugin:my-llm": "插件 my-llm", "plugin:": "插件"} {
+		if got := Source(in); got != want {
+			t.Errorf("Source(%q) = %q，要 %q", in, got, want)
+		}
+	}
+	if !IsPluginSource("plugin:x@1") || IsPluginSource("gnrpa") {
+		t.Error("IsPluginSource")
+	}
+}

@@ -125,7 +125,7 @@ class Manager:
 
     def _exited(self, job: Job) -> None:
         if job.kind.name in PRODUCE_KINDS:  # 对局结束：成绩摘要 + 本局模型用量（在结束事件之前）
-            line, exams = "", []
+            line, exams, hidden = "", [], False
             try:
                 from hiro.cli import report
 
@@ -133,6 +133,9 @@ class Manager:
                 if segs:
                     exams = report.exam_scores(job.id, report.traces_dir())
                     line = report.score_line(exams) or ""
+                    hidden = report.uses_hidden(report.traces_dir(), job.id)  # 插件给过隐藏信息：战绩单独统计
+                    if line and hidden:
+                        line += "（用了隐藏信息，战绩单独统计）"
             except Exception as e:  # noqa: BLE001 成绩摘要出错不影响任务
                 job.emit("log", f"成绩摘要没算出来：{e}")
             usage = None
@@ -143,7 +146,7 @@ class Manager:
             except Exception as e:  # noqa: BLE001 用量没算出来不影响任务
                 job.emit("log", f"本局模型用量没算出来：{e}")
             if line or usage is not None:  # 没有成绩也发（带用量），设计稿 §3
-                job.emit("report", line, exams=exams, usage=usage)
+                job.emit("report", line, exams=exams, usage=usage, uses_hidden=hidden)
         if job.kind.output:
             try:
                 from hiro.cli.scan_ingest import ingest

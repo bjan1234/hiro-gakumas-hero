@@ -48,16 +48,20 @@
 ```
 
 - **契约**（`hiro/contracts`）是层与层之间唯一的接口。读不到的字段是 `None`，不要猜。
-- **插件**（`hiro/plugins.py`）：三处可以换实现，主循环不用改。
+- **插件**（`hiro/plugins.py`）：五处可以换实现，主循环不用改。写法见 [docs/plugins.md](docs/plugins.md)。
 
 | 插件 | 回答什么 | 开源默认实现 |
 |---|---|---|
 | `asset_source` | 素材和主数据从哪来 | `defaults/assets.py`：KAA 公开数据 + 使用者自建素材 |
 | `exam_state_source` | 考试局面从哪来 | `defaults/exam_state.py`：画面识别 + 状态机记账（不知道牌库顺序）。另有 `hiro.sim.screen_source:SimScreenExamStateSource`：同样从画面读，再用模拟器跟踪局面、给每个候选动作附预演（不读存档） |
 | `exam_advisor` | 考试每一步怎么打 | `defaults/advisor.py`：社区规则链 + LLM 兜底 |
+| `observation_source` | 不看画面的数据来源（hook、存档…），按页面给字段，和画面识别走同一个 reduce | 没有（只用画面） |
+| `produce_advisor` | 育成某几页怎么选（按页面接管，返回 None 交回内置） | 没有（`brain/deciders.py` 内置决策器） |
 
   换实现：环境变量 `HIRO_ASSET_SOURCE` / `HIRO_EXAM_STATE_SOURCE` / `HIRO_EXAM_ADVISOR`（写成 `包.模块:类名`），
   或在 `pyproject.toml` 的入口点组 `hiro_gakumas.plugins` 里登记，或代码里 `hiro.plugins.register(...)`。
+  后两种（以及按 id 选的出招插件）用 `HIRO_HOME/strategy.json` / `HIRO_STRATEGY_FILE` 按决策点选用（入口点名字写 `<种类>.<id>`），
+  可以混用；每一步记录是哪个插件定的，每段 trace 有 `plugins.json`。插件给了画面上看不到的信息（`hidden`）时，这一段对局打 `uses_hidden`，战绩单独统计。
 
 - **模拟器**（`hiro/sim`，考试引擎 `vendor/gakumas-player/gakumas_exam`（Rust 后端 `gakumas_exam_rs`：有 cargo 本地编，没有就下预编译包 `scripts/engine_rs.py install`，都不行用 Python 版）、
   培育层公式 `gakumas_produce`，主数据由 setup 第 6 步从社区公开的 gakumasu-diff 下载构建）：

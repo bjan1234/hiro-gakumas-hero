@@ -22,6 +22,7 @@ _MODULES: tuple[str, ...] = (
     "hiro.cli.cmd_doctor",
     "hiro.cli.cmd_plan",
     "hiro.cli.cmd_usage",
+    "hiro.cli.cmd_plugins",
 )
 
 
