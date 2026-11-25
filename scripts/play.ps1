@@ -17,7 +17,8 @@
 #   2026-11-24 随 KAA 主循环删了：别的端末有进行中的培育时开局一律停下（退出码 3），破不破弃由你在游戏里自己定
 #   -Llm         HIRO_LLM（缺省 codex；用 Claude Code 写 claude:sonnet）
 #   -Proxy       给 LLM 调用设 HTTPS_PROXY / HTTP_PROXY（国内网络通常要）
-#   -Relaunch    游戏被杀 / 闪退时自己拉起、回首页续跑（HIRO_RELAUNCH_GAME=1；缺省关，关着时讲清原因停下）
+#   -Relaunch    游戏被杀 / 闪退时自己拉起（HIRO_RELAUNCH_GAME=1）。只在旧 KAA 主循环里接过，2026-11-24 删掉后暂时不起作用：
+#                新主循环认出游戏没了会停下，重开游戏后 resume 续跑
 #   -NoSim       关掉模拟器（轮间 / 饮料 / 相談按模拟、考试预演），只按社区规则；内存紧时用
 #   -Wait        前台等跑完再返回（缺省后台起进程，立刻返回 PID）
 #   -NoSettingsCheck  跳过开局前的设置检查（tools/check_settings.py；它只在首页做，不在首页会自己跳过）
@@ -40,7 +41,7 @@
 #   HIRO_SIM_WORKERS=1：模拟器每个 worker 约 600 MB；16 GB 内存的机器多开时 MuMu 会被系统杀掉。
 #   HIRO_EXAM_SIM_ROUNDS=r2：R1 开考试预演会早兑现（win20 R1 只得 8.2 万），只在 R2 开。
 #   HIRO_EXAM_PLAYBOOK / HIRO_R1_TURN_PROXY：考试按攻略打法、R1 回合属性替身，三局夺冠都开着。
-#   内存吃紧时 MuMu 会杀游戏：加 -Relaunch 让程序自己拉起。
+#   内存吃紧时 MuMu 会杀游戏：程序会停下，重开游戏后 resume 续跑。
 param(
     [Parameter(Mandatory = $true)][string]$Idol,
     [ValidateSet("Vo", "Da", "Vi")][string]$MainAttr = "Da",

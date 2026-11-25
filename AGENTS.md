@@ -115,7 +115,7 @@
      ```
      缺省 `-Device mumu`（截图 / 点击 `adb`）、`-Llm codex`、支援卡 / 回忆编成 4 / 5、模拟器开但考试预演只在 R2
      （`HIRO_SIM_WORKERS=1`、`HIRO_EXAM_SIM_ROUNDS=r2`，原因见脚本开头注释）。`-Proxy http://…` 给 LLM 设代理，`-NoSim` 关模拟器，
-     `-Relaunch` 让游戏被杀时自己拉起（缺省关），`-Wait` 前台等跑完。参数全表见脚本开头。
+     `-Relaunch`（游戏被杀时自己拉起，缺省关）只在旧 KAA 主循环里接过，2026-11-24 删旧主循环后暂时不起作用，`-Wait` 前台等跑完。参数全表见脚本开头。
    - **DMM 版**（`-Device dmm`）：
      - 游戏以管理员身份运行，普通权限的进程能截图、点击会被系统挡掉（UIPI），所以 hiro 也要以管理员身份跑。
        `scripts\play.ps1 -Device dmm` 不是管理员时会自己申请（弹一次 UAC），在新窗口里开局。
