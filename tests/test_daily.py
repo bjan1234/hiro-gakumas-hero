@@ -574,7 +574,7 @@ def test_contest_picks_lowest_score_and_skips_through(monkeypatch):
 def test_contest_without_memory_set_skips(monkeypatch):
     """回忆没编成：同 KAA when_no_set=skip，关掉提示框、不自动编成。"""
     _, contest = _patch_multi(monkeypatch)
-    btn, cross = (480, 1140), (620, 400)
+    btn, cross, challenge = (480, 1140), (620, 400), (360, 760)
     ongoing = {"Daily.TextRoadToIdol": (360, 200), "Daily.TextContestLastOngoing": (360, 500)}
     from hiro.vision.ui_templates import point
 
@@ -583,10 +583,21 @@ def test_contest_without_memory_set_skips(monkeypatch):
     def script(rig, act):
         table = {btn: [frame(ongoing)], (360, 500): [frame(ongoing)],
                  cpoint: [frame({"Daily.ButtonContestChallengeStart": (360, 1000), "Daily.ButtonContestStart": (360, 1000)})],
-                 (360, 1000): [frame({"Daily.TextContestNoMemory": (360, 640), "Common.IconButtonCross": cross})]}  # fmt: skip
+                 (360, 1000): [frame({"Daily.TextContestNoMemory": (360, 640), "Common.IconButtonCross": cross,
+                                      "Daily.ButtonContestChallenge": challenge})]}  # fmt: skip
         return table.get(act[1:3])
 
     rig = Rig(monkeypatch, [frame({**HOME, "Common.ButtonContest": btn}, red=True)], script)
     out = contest.run(rig.rt, home=False)
     assert cross in rig.taps and "回忆没编成" in out
-    assert "Daily.ButtonContestChallenge" not in str(rig.taps)
+    assert challenge not in rig.taps  # 不点「おまかせで挑戦」（不自动编成）
+
+
+def test_contest_scores_keep_ocr_blocks_apart(monkeypatch):
+    """一格 OCR 出两段数字（「40,000」「50,000」）时取较小的 40000，不拼成 4000050000（CodeRabbit）。"""
+    from hiro.daily import contest
+    from hiro.vision import ocr as ocr_mod
+
+    monkeypatch.setattr(ocr_mod, "ocr", lambda img: [("40,000", 0.9), ("50,000", 0.9)])
+    f = frame({})
+    assert contest.read_scores(f) == [40000, 40000, 40000]
