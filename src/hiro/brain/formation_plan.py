@@ -114,13 +114,25 @@ def build(idol: str, *, support_inventory: dict | None, memory_inventory: dict |
         if not has_rentals:  # 没有实机租借列表：按可租到的满级 SSR 估租借格，一起评估 6 格（协调 11-17）
             inv = dict(inv, rentals=ss.virtual_rentals())
         size, main_count = 6, 4
-        if fixed_main:
+        # 主属性来自攻略站（formation.main_attr 是前 100 名的统计，已经含成长率 / 审查基准）时不逆练：
+        # 11-24 標 麻央 攻略 Vo，按支援卡价值逆练成 Da（Da 卡价值高 309），但麻央成长率 Vo 22% / Vi 18% / Da 6%、
+        # 选拔审查基准 Vo 45% / Vi 30% / Da 25%，Da 是最差的主属性，选拔第 3 场只打到过线的 57%
+        guided = str(info.get("main_why") or "").startswith("攻略")
+        if fixed_main or guided:
             with ss.using(info["default_main"], info["plan"], main_count):
                 r = ss.choose(inv, size=size)
-            r = dict(r, main_attr_why=f"指定主属性 {info['default_main']}（不比较逆练）")
+            r = dict(
+                r,
+                main_attr_why=f"{'指定' if fixed_main else info['main_why']} 主属性 {info['default_main']}（不比较逆练）",
+            )
         else:
             r = ss.choose_main(
-                inv, plan=info["plan"], default_attr=info["default_main"], size=size, main_count=main_count
+                inv,
+                plan=info["plan"],
+                default_attr=info["default_main"],
+                size=size,
+                main_count=main_count,
+                growth=info.get("growth"),
             )
         if "error" in r:
             sup["error"] = r["error"]

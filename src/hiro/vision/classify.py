@@ -114,6 +114,22 @@ def _any(img, *names) -> bool:
     return any(tpl(n).exists(img) for n in names)
 
 
+# 授業换卡第 1 步（「チェンジで獲得するスキルカードを選んでください」）：DMM 541x961 小窗口放大后提示文字模板只有 0.63–0.64
+# （门槛 0.8，11-24 mao3 卡住看门狗；同一局另一次 0.64 也没认出）。放宽到 0.55 时另要求「→」下一步按钮 ≥ 0.9：
+# 两个同时成立在 mao2 / mao3 两局 512 帧里只出现在换卡第 1 步本身
+CHANGE1_RELAXED = (0.55, 0.9)
+
+
+def change1(img) -> bool:
+    """换卡第 1 步（选换进哪张）。"""
+    if _any(img, "InProduce.DialogCardChange1.TipText"):
+        return True
+    tip, nxt = CHANGE1_RELAXED
+    return tpl("InProduce.DialogCardChange1.TipText").exists(img, threshold=tip) and tpl(
+        "InProduce.DialogCardChange1.ButtonNext"
+    ).exists(img, threshold=nxt)
+
+
 SELECT_TITLE_BOX = (
     230,
     590,
@@ -156,7 +172,7 @@ def template_scene(img) -> str | None:
         return "SKILL_CARD_ENHANCE"
     if _any(img, "InProduce.IconTitleSkillCardRemoval"):
         return "SKILL_CARD_REMOVAL"
-    if _any(img, "InProduce.DialogCardChange1.TipText"):
+    if change1(img):
         return "SKILL_CARD_CHANGE_1"
     if _any(img, "InProduce.DialogCardChange2.Title"):
         return "SKILL_CARD_CHANGE_2"
@@ -202,7 +218,7 @@ DRINK_DIALOG_MIN_SCORE = 0.6  # 饮料弹窗三格最高分实测 0.74；选卡�
 def card_or_drink(img) -> str:
     """选卡 / 选饮料 / 换卡第 1 步弹窗（签名分不开）：提示文字「受け取るスキルカード / Pドリンクを選んでください」优先；
     选中一项后提示被详情替换时，看卡区有没有卡类型角标：有就是选卡，否则是选饮料。"""
-    if _any(img, "InProduce.DialogCardChange1.TipText"):
+    if change1(img):
         return "SKILL_CARD_CHANGE_1"  # 换卡第 1 步「チェンジするスキルカードを選択してください」，布局同三选一
     if _any(img, "InProduce.TextSkillCard"):
         return "SELECT_CARD"

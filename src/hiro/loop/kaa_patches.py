@@ -18,6 +18,7 @@
   等「受け取る」变亮再点，等待按时间封顶，点不动返回 False 交回主循环。
 """
 
+import functools
 import importlib
 import os
 import time
@@ -414,6 +415,32 @@ STEP_INDICATOR_THRESHOLD = 0.7
 STEP_INDICATORS = ("TextStepIndicator1", "TextStepIndicator2", "TextStepIndicator3", "TextStepIndicator4Or2")
 
 
+def _relaxed_change1(orig):
+    """KAA 判全屏对话框：换卡第 1 步的提示文字模板在 DMM 小窗口只有 0.64（门槛 0.8），认不出就一直 Idle、看门狗停机
+    （11-24 mao3）。KAA 没认出时按 hiro.vision.classify.change1（放宽的提示文字 + 「→」按钮同时成立）再判一次。"""
+
+    @functools.wraps(orig)
+    def wrapped(self):
+        got = orig(self)
+        if got is not None:
+            return got
+        from hiro.vision.classify import change1
+
+        from kaa.tasks.produce.new.consts import Scene, SceneType
+        from kotonebot import device
+
+        try:
+            if change1(device.screenshot()):
+                logger.info("换卡第 1 步：KAA 模板没认出，按放宽的提示文字 + 下一步按钮认出")
+                return Scene(SceneType.SKILL_CARD_CHANGE_1)
+        except Exception as e:  # noqa: BLE001
+            logger.info("换卡第 1 步放宽判断失败：%s: %s", type(e).__name__, e)
+        return None
+
+    wrapped._hiro_change1 = True
+    return wrapped
+
+
 def _relax_step_indicators(R) -> None:
     for name in STEP_INDICATORS:
         prefab = getattr(R.Produce, name, None)
@@ -505,6 +532,8 @@ def apply() -> None:
     from kaa.tasks.produce.new.page import ProducePage
 
     ProducePage._check_action_like = _guard_action_like(ProducePage._check_action_like)
+    if not getattr(ProducePage._check_fullscreen_dialogs, "_hiro_change1", False):
+        ProducePage._check_fullscreen_dialogs = _relaxed_change1(ProducePage._check_fullscreen_dialogs)
     global _ORIG_DISCARD_CONFIRM
     if R.Produce.BreakProduceDialog.ButtonConfirm is not NeverConfirmDiscard:
         _ORIG_DISCARD_CONFIRM = R.Produce.BreakProduceDialog.ButtonConfirm
