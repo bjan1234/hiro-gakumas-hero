@@ -359,7 +359,7 @@ def set_mode(session, mode: str) -> None:
 
 
 def run(args) -> int:
-    from hiro import kaa_env
+    from hiro import formation_env
     from hiro.brain import guides
     from hiro.contracts import TraceWriter
     from hiro.devices import active, open_device
@@ -372,9 +372,9 @@ def run(args) -> int:
     from hiro.vision.classify import classify
 
     guides.refresh_if_stale()  # 偶像卡攻略包：没有或超过 24 小时就下载，失败不阻塞（协调 11-20）
-    kaa_env.apply_formation_plan(args.idol)
-    support_set = args.support_set or kaa_env.SUPPORT_SET
-    memory_set = args.memory_set or kaa_env.MEMORY_SET
+    formation_env.apply_formation_plan(args.idol)
+    support_set = args.support_set or formation_env.SUPPORT_SET
+    memory_set = args.memory_set or formation_env.MEMORY_SET
     if args.command == "new" and (support_set is None or memory_set is None):
         logger.error("new 开局要编成号：--support-set / --memory-set，或开局编成方案")
         return 2
@@ -420,7 +420,7 @@ def run(args) -> int:
     def start_new():
         rt.screen.shot = opening_shot
         finish.finish_produce_end(rt, go_home=True)
-        new_produce(rt, args.difficulty, idol=args.idol, support_set=support_set, memory_set=memory_set, plan=kaa_env.ACTIVE_PLAN,
+        new_produce(rt, args.difficulty, idol=args.idol, support_set=support_set, memory_set=memory_set, plan=formation_env.ACTIVE_PLAN,
                     rental_attr=args.main_attr, main_attr=args.main_attr)  # fmt: skip
 
     def resume():

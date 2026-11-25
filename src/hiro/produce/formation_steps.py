@@ -1,5 +1,5 @@
 """开局第 2 / 3 步的核对、自动编成、租借（不依赖 KAA）：编成方案和设备由调用方给。
-旧主循环经 kaa_patches 的同名包装用（方案取 kaa_env.ACTIVE_PLAN、设备是 kotonebot）；新主循环（hiro.runtime.opening）直接用。"""
+旧主循环经 kaa_patches 的同名包装用（方案取 formation_env.ACTIVE_PLAN、设备是 kotonebot）；新主循环（hiro.runtime.opening）直接用。"""
 
 from __future__ import annotations
 

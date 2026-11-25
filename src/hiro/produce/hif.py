@@ -189,7 +189,7 @@ class HifCore:
             change_controlled=True,
         )  # 决策会话的培育决策器；换卡已由 on_skill_card_change 按决策执行（GameState → Decision）
         # 续跑：从同一局之前的 trace 段（<基名>、<基名>-rN）恢复本局已拿到的卡，决策器据此判断必拿卡是否已齐（牌组识别接入前的兜底）
-        from hiro.kaa_env import MEMORY_CARDS
+        from hiro.formation_env import MEMORY_CARDS
 
         self.deciders.picked_musts |= set(MEMORY_CARDS) | self._picked_cards_from_trace()  # 回忆带的卡算已有
         self._load_finals_context()
@@ -991,7 +991,7 @@ class HifCore:
         """同一局之前各 trace 段（<基名>、<基名>-rN）按事件记账得到的现有卡（hiro.loop.ledger：拿卡 / 买卡 / 换入 + 回忆，减去换出 / 删除）。"""
         import re  # noqa: F401
 
-        from hiro.kaa_env import MEMORY_CARDS
+        from hiro.formation_env import MEMORY_CARDS
         from hiro.loop.ledger import owned_cards, steps_of
 
         dirs = self._prior_trace_dirs()

@@ -3,7 +3,7 @@
 
 from types import SimpleNamespace as NS
 
-from hiro import kaa_env
+from hiro import formation_env
 
 import pytest
 
@@ -16,10 +16,10 @@ def _reload_env(monkeypatch, **env):
     monkeypatch.setenv("HIRO_FORMATION_PLAN", "off")  # 不读本机 conf/formation-plan.json（实机生成的方案会补上编成号）
     for k, v in env.items():
         monkeypatch.setenv(k, v)
-    return importlib.reload(kaa_env)
+    return importlib.reload(formation_env)
 
 
-def test_kaa_env_reads_sets_from_env(monkeypatch):
+def test_formation_env_reads_sets_from_env(monkeypatch):
     env = _reload_env(monkeypatch, HIRO_SUPPORT_SET="4", HIRO_MEMORY_SET="5", HIRO_MEMORY_CARDS="a, b,")
     assert (env.SUPPORT_SET, env.MEMORY_SET, env.MEMORY_CARDS) == (4, 5, ("a", "b"))
     env = _reload_env(monkeypatch, HIRO_SUPPORT_SET="auto")

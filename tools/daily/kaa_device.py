@@ -1,7 +1,7 @@
 # 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
 """日常任务 KAA 那条路（run_daily.py 不带 --own）用的 kotonebot 设备，720x1280 逻辑坐标。
 
-原来是 src/hiro/device.py + hiro.kaa_env.kaa_backend*，2026-11-24 随 KAA 主循环删掉时挪到这里：
+原来是 src/hiro/device.py + hiro.formation_env.kaa_backend*，2026-11-24 随 KAA 主循环删掉时挪到这里：
 只剩 assignment / contest 两项还没迁到 hiro.daily，迁完连这个文件一起删。
 后端按 HIRO_DEVICE 选：maatools（macOS + hguandl 分支 PlayCover，客户端在 hiro.devices.maatools）；
 adb / mumu / leidian / dmm 交给 KAA 的设备工厂，配置按 HIRO_ADB / HIRO_SCREENSHOT / HIRO_EMULATOR_INSTANCE /
