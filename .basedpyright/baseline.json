@@ -2372,22 +2372,6 @@
         ],
         "./src/hiro/produce/hif.py": [
             {
-                "code": "reportMissingImports",
-                "range": {
-                    "startColumn": 9,
-                    "endColumn": 41,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportMissingImports",
-                "range": {
-                    "startColumn": 9,
-                    "endColumn": 35,
-                    "lineCount": 1
-                }
-            },
-            {
                 "code": "reportOptionalMemberAccess",
                 "range": {
                     "startColumn": 59,
@@ -4576,30 +4560,6 @@
                 "range": {
                     "startColumn": 23,
                     "endColumn": 27,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportMissingImports",
-                "range": {
-                    "startColumn": 9,
-                    "endColumn": 25,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportMissingImports",
-                "range": {
-                    "startColumn": 9,
-                    "endColumn": 24,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportMissingImports",
-                "range": {
-                    "startColumn": 9,
-                    "endColumn": 51,
                     "lineCount": 1
                 }
             }

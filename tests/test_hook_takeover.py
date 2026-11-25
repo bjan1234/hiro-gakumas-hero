@@ -1,40 +1,13 @@
-# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
-"""用户规则 3a / 3f：KAA 的每个策略钩子都由 HiroHifStrategy 自己接管；没接管 / 读不出 / 决策不合法时停下（UnhandledPage），不落到 KAA 默认的 commit(0)。"""
-
-import inspect
+"""用户规则 3a / 3f：每个页面由 HifCore 自己处理；读不出 / 决策不合法时停下（UnhandledPage），不退回默认选第一个（原来是 KAA 的 commit(0)）。
+「KAA 的每个策略钩子都被接管」那条测试随 KAA 策略类壳（去 KAA 第 3 批）删了。"""
 
 from hiro.brain.deciders import ProduceDeciders
 from hiro.brain.state import CAMPUS_HIRO
 from hiro.contracts import Action, ActionKind, Decision, ExecutionResult, GameState
-from hiro.produce.hif import HiroHifStrategy, UnhandledPage
+from hiro.produce.hif import HifCore, UnhandledPage
 from hiro.vision.ocr import Box, Text
 
 import pytest
-
-
-def _kaa_hooks() -> set[str]:
-    from kaa.tasks.produce.new.strategies.base import ProduceStrategy
-    from kaa.tasks.produce.new.strategies.hif_grind import HifGrindStrategy
-
-    return {
-        n
-        for cls in (ProduceStrategy, HifGrindStrategy)
-        for n, _ in inspect.getmembers(cls, inspect.isfunction)
-        if n.startswith("on_")
-    }
-
-
-def test_every_kaa_hook_is_overridden():
-    from hiro.produce.hif import HifCore
-
-    # 日期切换 / 培育结算只有旧 KAA 主循环会调（2026-11-24 删了）；新主循环走 hiro.runtime.interrupts.date_changed / hiro.runtime.finish
-    loop_only = {"on_date_change", "on_produce_end"}
-    missing = sorted(
-        h
-        for h in _kaa_hooks() - loop_only
-        if getattr(HiroHifStrategy, h).__qualname__.split(".")[0] != HifCore.__name__
-    )
-    assert not missing, f"这些 KAA 钩子还会走 KAA 默认：{missing}"
 
 
 class StubSession:
@@ -59,7 +32,7 @@ class StubSession:
 
 
 def _strategy(fields=None):
-    st = HiroHifStrategy.__new__(HiroHifStrategy)
+    st = HifCore.__new__(HifCore)
     st.s = StubSession(fields)
     st.deciders = ProduceDeciders(CAMPUS_HIRO, None, change_controlled=True)
     st.CHANGE_OBSERVE_TRIES = 1
@@ -162,7 +135,7 @@ def test_retry_cancels_when_jewel(monkeypatch):
     assert st._click_retry("r2", T("再挑戦"), []) is None
     n0 = len(clicks)  # 确认框在第一次点确认后关掉（点过确认、确认框没了才算完成）
     monkeypatch.setattr(hif, "screen_texts", lambda *a, **k: [] if len(clicks) > n0 + 1 else
-                                                                         [T("再挑戦券を1枚使用"), T(hif.HiroHifStrategy.RETRY_CONFIRM[0])])  # fmt: skip
+                                                                         [T("再挑戦券を1枚使用"), T(hif.HifCore.RETRY_CONFIRM[0])])  # fmt: skip
     assert st._click_retry("r2", T("再挑戦"), []) == "ticket"
 
 
@@ -194,7 +167,7 @@ def test_retry_confirm_reclicks_until_closed(monkeypatch):
     st = _strategy()
     st._retries_so_far = lambda label: 0
     assert st._click_retry("r2", T("再挑戦", 1000), []) in ("free", "ticket")
-    assert len(clicks) == 3 and t["now"] < hif.HiroHifStrategy.RETRY_CONFIRM_WAIT  # 再挑戦 + 決定 ×2，没等满 15s
+    assert len(clicks) == 3 and t["now"] < hif.HifCore.RETRY_CONFIRM_WAIT  # 再挑戦 + 決定 ×2，没等满 15s
 
 
 def test_retry_capped():

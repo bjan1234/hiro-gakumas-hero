@@ -94,7 +94,7 @@ def test_select_drink_uses_fast_acquire(monkeypatch):
 
     got = []
     monkeypatch.setattr(ops, "fast_acquire", lambda c: got.append(c) or True)
-    st = hif.HiroHifStrategy.__new__(hif.HiroHifStrategy)
+    st = hif.HifCore.__new__(hif.HifCore)
     st._drink_full_skip = lambda: False
     st._note_fallback = lambda *a: None
     st._confirm_acquire = lambda: 0
