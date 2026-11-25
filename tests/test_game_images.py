@@ -1,5 +1,6 @@
 """去 KAA 第 4 批：识别要用的原图（技能卡 skill_cards、偶像卡 idol_cards、饮料 drinks）不再经 KAA 的更新器下载，
-由 tools/assets/game_images.py 直接从 kaa-game-data 的固定 Release（data-<gakumasu-diff 提交>）取，校验 SHA256 后解压。"""
+由 tools/assets/game_images.py 从本仓库 GitHub Release game-images-b9577da 取（kaa-game-data b9577da 版的逐字节副本，
+识别按这一版调的、上游已下架），校验 SHA256 后解压。"""
 
 import hashlib
 import importlib.util
@@ -31,9 +32,12 @@ def _zip(names):
 
 def test_pinned_release_and_categories():
     tool = _tool()
-    assert tool.TAG.startswith("data-") and set(tool.FILES) == {"skill_cards", "idol_cards", "drinks"}
+    assert tool.TAG == "game-images-b9577da" and set(tool.FILES) == {"skill_cards", "idol_cards", "drinks"}
     assert all(len(sha) == 64 for sha in tool.FILES.values())
-    assert tool.url("drinks").startswith("https://github.com/kotonebot/kaa-game-data/releases/download/data-")
+    assert (
+        tool.url("drinks")
+        == "https://github.com/matto49/hiro-gakumas-hero/releases/download/game-images-b9577da/drinks.zip"
+    )
 
 
 def test_fetch_extracts_checks_sha_and_skips_when_current(tmp_path, monkeypatch):
@@ -58,3 +62,20 @@ def test_fetch_extracts_checks_sha_and_skips_when_current(tmp_path, monkeypatch)
     with pytest.raises(SystemExit, match="校验不对"):
         tool.fetch(tmp_path)
     assert (tmp_path / "drinks" / "drinks_a.png").exists()  # 校验不对时不动已有的图
+
+
+def test_existing_kaa_download_of_same_version_is_kept(tmp_path, monkeypatch):
+    """原来 KAA 更新器下好的同一版（它写的 version.txt 是 b9577da、三个目录都在）：不重新下载，只记上版本。"""
+    tool = _tool()
+    for c in tool.FILES:
+        (tmp_path / c).mkdir()
+        (tmp_path / c / "a.png").write_bytes(b"old")
+    (tmp_path / "version.txt").write_text(tool.KAA_VERSION, encoding="utf-8")
+
+    def boom(*a, **k):
+        raise AssertionError("不该下载")
+
+    monkeypatch.setattr(tool.urllib.request, "urlopen", boom)
+    assert tool.fetch(tmp_path) == []
+    assert (tmp_path / "images-version.txt").read_text().strip() == tool.TAG
+    assert (tmp_path / "drinks" / "a.png").read_bytes() == b"old"

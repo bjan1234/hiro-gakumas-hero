@@ -40,7 +40,7 @@ if ($LASTEXITCODE) { throw "安装失败" }
 & $Py tools\assets\rapid_models.py
 if ($LASTEXITCODE) { throw "RapidOCR 识别模型下载失败（网络？）：可稍后重跑本脚本，或手动 python tools\assets\rapid_models.py" }
 
-Step "3/6 识别用的游戏原图（kaa-game-data 公开发布包固定版本：技能卡 / 偶像卡 / 饮料 → resources/game_data，约 160 MB）"
+Step "3/6 识别用的游戏原图（本仓库 Release game-images-b9577da：技能卡 / 偶像卡 / 饮料 → resources/game_data，约 125 MB）"
 if ($NoData) {
     Write-Host "跳过（-NoData）"
 } else {

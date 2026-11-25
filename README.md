@@ -255,7 +255,7 @@ open /tmp/hiro-view/demo-run.html
 - 识别层的部分逻辑基于 [KAA（kotones-auto-assistant）](https://github.com/XcantloadX/kotones-auto-assistant) 的识别接口、主数据与界面模板；
   早期的培育页面流程沿用 KAA 的任务流程（2026-11-24 换成自建主循环）。KAA 以 GPL-3.0 发布。
   2026-11-25 起不再引入 KAA 的代码（原来是子模块 `vendor/kaa`），用到的逻辑已移植进本仓库。
-  识别用的技能卡 / 偶像卡 / 饮料原图取自 KAA 的公开数据发布包 [kaa-game-data](https://github.com/kotonebot/kaa-game-data)（固定版本，安装时下载，不随仓库分发）；
+  识别用的技能卡 / 偶像卡 / 饮料原图是 KAA 公开数据包 [kaa-game-data](https://github.com/kotonebot/kaa-game-data) b9577da 版的副本（上游已下架，由本仓库 Release `game-images-b9577da` 托管，安装时下载，不进 git 仓库）；
   主数据来自社区公开的 [gakumasu-diff](https://github.com/vertesan/gakumasu-diff)。
 - **许可**：本仓库自己的代码以 **AGPL-3.0-or-later** 发布（[LICENSE](LICENSE)；2026-11-20 起，之前是 GPL-3.0-or-later）。
   从 KAA 派生的文件保留 GPL-3.0（文件头注明，全文见 [LICENSE.GPL-3.0](LICENSE.GPL-3.0)），按 GPL-3.0 / AGPL-3.0 第 13 条和其余代码合在一起发布。

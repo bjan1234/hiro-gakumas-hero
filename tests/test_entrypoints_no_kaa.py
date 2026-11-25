@@ -9,9 +9,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 from hiro.cli import jobs
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 PARAMS = {"command": "new", "idol": "x", "mode": "qualify", "scenario": "hif", "items": "", "seconds": 1}

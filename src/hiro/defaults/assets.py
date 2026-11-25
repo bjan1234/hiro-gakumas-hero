@@ -2,7 +2,7 @@
 
 两个来源（都可以用环境变量改位置）：
 
-- 公开游戏图（KAA 公开发布的 kaa-game-data 数据包，tools/assets/game_images.py 按固定版本下载到 resources/game_data/）：
+- 公开游戏图（kaa-game-data b9577da 版的副本，本仓库 Release game-images-b9577da，tools/assets/game_images.py 下载到 resources/game_data/）：
   skill_cards/（技能卡卡面）、idol_cards/（偶像卡）、drinks/（P 饮料图）。HIRO_KAA_GAME_DATA 改目录（名字沿用 KAA 时期的）。
 - 主数据库：hiro.state.master_db 从模拟器主数据生成（cache/master/game.db，HIRO_MASTER_DB 改位置）。
 - 使用者自建目录（从自己的截图 / 客户端取，不随仓库发布；效果图标 / P 道具图标用 tools/assets/capture_icons.py 从自己的考试截图生成）：
@@ -73,7 +73,10 @@ class PublicAssetSource:
         return best
 
     def card_art_dir(self) -> Path | None:
-        return self._fullest_dir(*(r / "cards" for r in self._roots()), self.kaa / "skill_cards")
+        """卡面图库：自建 / 素材包里文件最多的一个。素材包开着时不和公开卡图比文件数：公开卡图换新版后张数可能更多，
+        却少了素材包里的卡面变体（2026-11-25 试 kaa-game-data edc305a 版：2312 张 > 素材包 2290 张，认错过变体）；素材包关掉时公开卡图才参与比较。"""
+        public = () if self.bundled else (self.kaa / "skill_cards",)
+        return self._fullest_dir(*(r / "cards" for r in self._roots()), *public)
 
     def game_data(self, category: str) -> Path | None:
         """公开游戏图的原图目录：idol_cards（选偶像，hiro.vision.idols）/ skill_cards（卡面图库 hiro.vision.card_db、卡格缩略图）

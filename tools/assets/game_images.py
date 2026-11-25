@@ -2,9 +2,11 @@
 
 usage: python tools/assets/game_images.py [--out resources/game_data]
 
-原来由 KAA 的游戏数据更新器下载（kaa.game_data.updater）；去 KAA 后不再用 KAA 的代码，直接取它公开发布的数据包：
-kotonebot/kaa-game-data 的 Release（每个版本对应一个 gakumasu-diff 提交，GPL-3.0），版本和 SHA256 钉死在下面，
-换版本时改 TAG 和三个 SHA256。主数据（game.db）不从这里取，由 python -m hiro.state.master_db 从模拟器主数据生成。
+原来由 KAA 的游戏数据更新器从 kotonebot/kaa-game-data 下载（kaa.game_data.updater）。识别一直按 data-b9577da 这一版调，
+这一版上游已经下架，新版是重新导出的图，像素有细微差别，换卡对话框里有帧会认错（2026-11-25 实测 edc305a）。
+所以去 KAA 后由本仓库 GitHub Release game-images-b9577da 托管这份逐字节相同的副本（每个目录一个 zip，文件在包的根上，
+见 Release 里的 NOTICE.txt），版本和 SHA256 钉在下面；换版本要先用识别回归验过。
+主数据（game.db）不从这里取，由 python -m hiro.state.master_db 从模拟器主数据生成。
 已经是这个版本、三个目录都在就不重复下载。HIRO_KAA_GAME_DATA 指向别的目录时识别从那里读，这里的 --out 也要指过去。
 """
 
@@ -20,14 +22,15 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-REPO = "https://github.com/kotonebot/kaa-game-data/releases/download"
-TAG = "data-edc305aac3ac0204806c96164ce36fb795ba81e1"
+REPO = "https://github.com/matto49/hiro-gakumas-hero/releases/download"
+TAG = "game-images-b9577da"  # kaa-game-data data-b9577da85ec296d192d7a659422e85f07f74242a 的副本
 FILES = {  # 目录名（= 发布包名 <名>.zip，文件都在包的根上）→ SHA256
-    "skill_cards": "ecfe06b81a7de1075f46a466455e4c2126e41bf30106754fad7ea76d728046b7",
-    "idol_cards": "46d66cbe64198443573c251587221cc35615e54b5c4a724846cfd0c19212bca7",
-    "drinks": "2e08b03544bd152c7e5a570067d31cd279159e17312dbe1aadb8f58aaa17bbb8",
+    "skill_cards": "8aa818c2ea809bb8813cf9c50a496244d132274e9ddee2603f157acba4a7de8f",
+    "idol_cards": "3f0458baeae217309ba75726e14a3f123ac78a6670a91190501bf7eb9f2a393d",
+    "drinks": "ef0a28b9894078952c75276d3d0c8b73ef214ac2e8a5d8541ddf652176893c22",
 }
 VERSION_FILE = "images-version.txt"
+KAA_VERSION = "b9577da85ec296d192d7a659422e85f07f74242a"  # 原来 KAA 更新器下的同一版：它在目录里写 version.txt
 
 
 def url(cat: str) -> str:
@@ -35,8 +38,15 @@ def url(cat: str) -> str:
 
 
 def _current(out: Path) -> bool:
-    v = out / VERSION_FILE
-    return v.is_file() and v.read_text(encoding="utf-8").strip() == TAG and all((out / c).is_dir() for c in FILES)
+    if not all((out / c).is_dir() and any((out / c).iterdir()) for c in FILES):
+        return False
+    v, kaa = out / VERSION_FILE, out / "version.txt"
+    if v.is_file() and v.read_text(encoding="utf-8").strip() == TAG:
+        return True
+    if kaa.is_file() and kaa.read_text(encoding="utf-8").strip() == KAA_VERSION:  # 以前装的：图就是这一版，不重下
+        v.write_text(TAG + "\n", encoding="utf-8")
+        return True
+    return False
 
 
 def fetch(out: Path) -> list[str]:

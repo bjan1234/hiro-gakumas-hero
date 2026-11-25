@@ -11,9 +11,11 @@
 | 随仓库素材包 | `HIRO_BUNDLED_ASSETS`，默认 `assets/pack/`；设 `0` 关掉 | 卡面、考试效果 / P 饮料 / P 道具图标、数字字体、界面 Sprite、支援卡图、布局 |
 | 使用者自建素材 | `HIRO_USER_ASSETS`，默认 `resources/user_assets/` | 见下文「自建素材」；都可选。与素材包并用：同类图库取文件更多的一个，`layout.json` 和字体先自建后素材包 |
 
-公开游戏图原来由 KAA 的游戏数据更新器下载，2026-11-25 起由 `tools/assets/game_images.py` 直接取 KAA 公开发布的数据包
-[kaa-game-data](https://github.com/kotonebot/kaa-game-data)（GPL-3.0）：版本（`data-<gakumasu-diff 提交>`）和三个包的 SHA256 钉在脚本里，
-校验对了才替换目录，已是这个版本就不重复下载。图片不随仓库分发。
+公开游戏图原来由 KAA 的游戏数据更新器从 [kaa-game-data](https://github.com/kotonebot/kaa-game-data) 下载。识别一直按
+`data-b9577da` 这一版调；这一版上游已经下架，现在能下的新版是重新导出的图，像素有细微差别，2026-11-25 实测换成 edc305a 后
+换卡对话框里点选的卡会认错。所以 2026-11-25 起由本仓库 GitHub Release `game-images-b9577da` 托管这份逐字节相同的副本，
+`tools/assets/game_images.py` 按钉在脚本里的 SHA256 下载，校验对了才替换目录；已是这个版本（或目录里是 KAA 当年下好的同一版）就不重复下载。
+图片不进 git 仓库；权利属于游戏的权利人（见 Release 里的 NOTICE.txt）。换版本前先跑识别回归（`tests/dmm_regression.json`、`test_change_index` 等）。
 
 主数据原来用 kaa-game-data 里的 `game.db`，2026-11-25 起由 `hiro.state.master_db` 从模拟器主数据
 （`vendor/gakumas-player/data/master/<提交>/catalog.sqlite`，社区公开的 gakumasu-diff 固定提交）生成同结构的库：

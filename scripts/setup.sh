@@ -37,7 +37,7 @@ uv pip install --python "$PY" -e ".[dev,play]"
 # RapidOCR 后端的识别模型：从本仓库 GitHub Release 下载、校验 SHA256（Mac 缺省用 Vision，下载失败不挡安装）
 "$PY" tools/assets/rapid_models.py || echo "  ⚠ RapidOCR 模型没下好（网络？）：要用 HIRO_OCR=rapidocr 时再跑 python tools/assets/rapid_models.py"
 
-step "3/6 识别用的游戏原图（kaa-game-data 公开发布包固定版本：技能卡 / 偶像卡 / 饮料 → resources/game_data，约 160 MB）"
+step "3/6 识别用的游戏原图（本仓库 Release game-images-b9577da：技能卡 / 偶像卡 / 饮料 → resources/game_data，约 125 MB）"
 if [ "$DATA" = 0 ]; then
   echo "跳过（--no-data）"
 else

@@ -81,8 +81,8 @@
    scripts/setup.sh      # .venv（Python 3.10）→ 安装 → OCR 模型 → 识别用的游戏原图 → 模拟器主数据 + 主数据库 → 自检
    ```
    从零约 4 分钟。已用 `HIRO_KAA_GAME_DATA` / `HIRO_MASTER_DB` 指向现成数据时加 `--no-data`。
-   游戏原图（技能卡 / 偶像卡 / 饮料，`resources/game_data/`）由 `tools/assets/game_images.py` 从 kaa-game-data 的公开发布包
-   按固定版本下载、校验 SHA256；主数据库（`cache/master/game.db`）由 `python -m hiro.state.master_db` 从模拟器主数据生成，
+   游戏原图（技能卡 / 偶像卡 / 饮料，`resources/game_data/`）由 `tools/assets/game_images.py` 从本仓库 Release `game-images-b9577da`
+   （kaa-game-data b9577da 版的副本，识别按这一版调）下载、校验 SHA256；主数据库（`cache/master/game.db`）由 `python -m hiro.state.master_db` 从模拟器主数据生成，
    和原来 KAA 的 game.db 同结构。见 `docs/assets.md`。
    自检最后会打印插件来源、有没有主数据和自建素材，以及开局命令。
 2. 游戏窗口：用 [hguandl 的 PlayCover 分支](https://github.com/hguandl/PlayCover)，在游戏的 PlayCover 设置里打开 `maaTools`（端口 `maaToolsPort`）。
