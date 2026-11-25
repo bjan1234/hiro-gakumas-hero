@@ -162,7 +162,7 @@ def test_action_commit_taps_three_times_then_waits_button_gone(monkeypatch):
 
 
 def test_handlers_and_core_import_no_kaa():
-    """新主循环用的处理器和 HifCore 不 import KAA / kotonebot（HiroHifStrategy 壳懒加载，用到才 import KAA）。"""
+    """新主循环用的处理器和 HifCore 不 import KAA / kotonebot。"""
     import os
     import subprocess
     import sys

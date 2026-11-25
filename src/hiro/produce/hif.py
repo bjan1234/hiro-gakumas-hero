@@ -1,13 +1,14 @@
-# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）的培育流程
 """数字小广的 HIF 培育策略。
 
-流程骨架、弹窗和被动事件沿用 KAA 的 HifGrindStrategy；每个决策点按 observe → reduce → decide → act → verify 走一遍，
+新主循环（hiro.runtime）的处理器在每个页面调 HifCore；每个决策点按 observe → reduce → decide → act → verify 走一遍，
 全部经契约对象记入 trace（hiro.loop.session.Session）：
 - 考试出牌：hiro.exec.exam.run_exam，局面来自 ExamStateSource 插件、每一步由 ExamAdvisor 插件决定（hiro.plugins；
   默认 = 画面识别 + 状态机记账、社区规则 + LLM：规则 → 本回合计划 → LLM → 硬约束 → 兜底），饮料和跳过也由它决定。
 - 选行动、选卡、选饮料、授業 / 外出、相談、轮间：hiro.brain.deciders.ProduceDeciders（决策会话维护；规则 → LLM → 社区兜底）。
   识别还没给的页面字段（相談货架、授業 / 外出选项、轮间可买项）缺失时决策器给保守动作并写 warnings。
-  这里只做 observe → decide → 把契约 Action 翻译成 KAA 上下文的操作 → verify。
+  这里只做 observe → decide → 把契约 Action 翻译成点击 → verify。
+原来套在 KAA 的 HifGrindStrategy 上（HiroHifStrategy），2026-11-25 去 KAA 第 3 批删了那层壳，只剩 HifCore。
 """
 
 import logging
@@ -15,7 +16,7 @@ import re
 import time
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any
 
 from hiro.brain.battle import BattleBrain
 from hiro.brain.deciders import ProduceDeciders
@@ -33,20 +34,6 @@ from hiro.vision.hif import is_final_exam
 from hiro.vision.ocr import find_text, screen_texts
 from hiro.vision.textnorm import contains  # OCR 容错匹配（用户 11-21）
 from hiro.vision.ui_templates import box, tap, tpl
-
-if TYPE_CHECKING:
-    from kaa.tasks.produce.new.controller import ProduceController
-    from kaa.tasks.produce.new.page import (
-        ActionSelectContext,  # noqa: F401
-        CardSelectContext,  # noqa: F401
-        ConsultContext,
-        DrinkSelectContext,  # noqa: F401
-        ExamContext,
-        HifRoundIntervalContext,  # noqa: F401
-        OutingContext,  # noqa: F401
-        StudyContext,  # noqa: F401
-    )
-
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +141,7 @@ def finals_label_round(npc_round: int | None, turns: int | None) -> int | None:
 
 class HifCore:
     """H.I.F 培育的决策和执行（不依赖 KAA）：每个页面的 observe → decide → act → record。
-    KAA 主循环用 HiroHifStrategy（下面，HifCore + KAA 的 HifGrindStrategy）；新主循环（hiro.runtime）的处理器也调这里。
+    新主循环（hiro.runtime）的处理器调这里（hiro.produce.handlers）。
     共享状态放在类属性上（run_hif 用 setattr 注入、跨实例保留），方法里一律通过 type(self) 读写。"""
 
     recorder: Recorder | None = None
@@ -1773,7 +1760,7 @@ class HifCore:
 
     CONSULT_P_REREADS = 2  # 相談页 P 点没进状态时重读几次
 
-    def on_consult(self, ctx: "ConsultContext"):
+    def on_consult(self, ctx: Any):
         """相談：每步 observe → 决策器（github-d9）→ execute_shop（github-8f）→ 重新 observe，直到 ShopEnd。
         同一天的相談里（重新进入也算）记住：买失败的格子（确认框商品不符算 2 次，其他失败每次 1 次，满 2 次标成已购、不再选）、
         用过 / 打不开的强化 / 删除服务。某一步失败不离开，重新观测后继续；连续失败 3 次才离开（q12 第 12 天：
@@ -2008,7 +1995,7 @@ class HifCore:
             self._stop("HIF_ROUND_INTERVAL", f"轮间 {TIMEOUT:.0f}s 内没结束")
 
     # ---------------------------------------------------------------- 考试
-    def _battle_label(self, ctx: "ExamContext") -> str:
+    def _battle_label(self, ctx: Any) -> str:
         """KAA 把 H.I.F 的公開レッスン也当 EXAM 场景；用我们的场景识别区分：HIF_EXAM 才是选拔 / 本战。"""
         from hiro.vision.scene import classify_current
 
@@ -2467,7 +2454,7 @@ class HifCore:
         logger.info("本战轮次结果（%s）：第 %s 轮，我方第 %s 名，总分 %s，本轮得分 %s；全员 %s", f.get("kind"), f.get("finals_round"), f.get("rank"),
                     f.get("score"), f.get("round_score"), [(e.get("rank"), e.get("name"), e.get("score"), e.get("round_score")) for e in f.get("entries") or []])  # fmt: skip
 
-    def on_exam_entered(self, ctx: "ExamContext"):
+    def on_exam_entered(self, ctx: Any):
         label = self._battle_label(ctx)
         self.rec.log("exam_enter", image=device.screenshot(), exam=label)
         self.s.state.exam_session.label = label
@@ -2524,32 +2511,3 @@ class HifCore:
                 break
             ops.wait_change(before, roi=btn.rect.xywh, timeout=EXAM_END_SETTLE, use_signature=False)
             ops.wait_stable(timeout=EXAM_END_SETTLE)  # 转场中间帧找不到「次へ」会提前退出循环，等画面停稳再判断
-
-
-def _kaa_strategy():
-    """KAA 主循环用的策略：KAA 的 _dispatch 调这些 on_* 钩子（钩子本身在 HifCore 里）。去 KAA 收尾时整个删掉。
-    懒加载（PEP 562 模块 __getattr__）：只有用到 HiroHifStrategy 时才 import KAA，新主循环只用 HifCore，不碰 KAA。"""
-    from kaa.config.const import HifScenario
-    from kaa.kaa_context import produce_solution
-    from kaa.tasks.produce.new.strategies.hif_grind import HifGrindStrategy
-
-    class HiroHifStrategy(HifCore, HifGrindStrategy):
-        def __init__(self, controller: "ProduceController") -> None:
-            HifGrindStrategy.__init__(self, controller)
-            solution = produce_solution().data
-            HifCore.__init__(
-                self, scenario="qualify" if solution.mode == HifScenario.QUALIFY else "main", idol=solution.idol
-            )
-
-    HiroHifStrategy.__module__, HiroHifStrategy.__qualname__ = __name__, "HiroHifStrategy"
-    return HiroHifStrategy
-
-
-def __getattr__(name: str):
-    if name in ("HiroHifStrategy", "HifGrindStrategy"):
-        if "HiroHifStrategy" not in globals():
-            cls = _kaa_strategy()
-            globals()["HiroHifStrategy"] = cls
-            globals()["HifGrindStrategy"] = cls.__mro__[2]
-        return globals()[name]
-    raise AttributeError(name)
