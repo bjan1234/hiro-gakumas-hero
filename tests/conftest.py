@@ -176,6 +176,9 @@ def pytest_configure(config):
         "markers", "fixtures: 要读 tests/fixtures 的截图样例（经类 / 多层辅助函数间接读，自动判断看不出来时显式标）"
     )
     config.addinivalue_line(
+        "markers", "kaa_free: 明确不要 KAA：按源码猜「要 KAA」的规则（引用了 hiro.vision 等）对它不算"
+    )
+    config.addinivalue_line(
         "markers",
         "kaa: 要 KAA（可选组 play）：经 hiro.produce.hif 的策略类 / kaa_patches 等在运行时才导入，自动判断看不出来时显式标",
     )
@@ -220,7 +223,7 @@ def pytest_collection_modifyitems(config, items):
         if missing:
             item.add_marker(pytest.mark.skip(reason=f"依赖的层不在仓库里：{missing}"))
             continue
-        if _needs_kaa(src) or _body_needs_optional(item):
+        if item.get_closest_marker("kaa_free") is None and (_needs_kaa(src) or _body_needs_optional(item)):
             if kaa_ok is None:
                 kaa_ok = _kaa_ok()
             if not kaa_ok:

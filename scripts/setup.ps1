@@ -47,6 +47,9 @@ Step "3/7 安装本仓库与 KAA（.[dev,play]）"
 # --override：不装 KAA 图形界面的 PySide6（约 1.2 GB，hiro 用不到），见 scripts\uv-overrides.txt
 uv pip install --python $Py --override (Join-Path $Root "scripts\uv-overrides.txt") -e ".[dev,play]"
 if ($LASTEXITCODE) { throw "安装失败" }
+# RapidOCR 后端的识别模型：原来随 KAA 带，现在从本仓库 GitHub Release 下载、校验 SHA256（没装 SIMD 时 Windows 缺省用它）
+& $Py tools\assets\rapid_models.py
+if ($LASTEXITCODE) { throw "RapidOCR 识别模型下载失败（网络？）：可稍后重跑本脚本，或手动 python tools\assets\rapid_models.py" }
 
 Step "4/7 生成 KAA 的 kaa/tasks/R.py（KAA 的生成文件，子模块里没有）"
 if ($Regen -or -not (Test-Path vendor/kaa/kaa/tasks/R.py)) {

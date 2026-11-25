@@ -101,7 +101,7 @@
      `HIRO_MUMU_BACKGROUND=0` 关掉。组合不合法时开局前就报错（用 KAA 自己的配置校验）。
    - 非 PlayCover 后端不做 PlayCover 专用的退路（横屏 LIVE 黑屏时切全屏、MaaTools 点了没反应时用真实鼠标再点）。
    - 文字识别（`HIRO_OCR`）：macOS 缺省用 Apple Vision，其他系统自动改用 RapidOCR（`rapidocr_onnxruntime` + PaddleOCR PP-OCRv3 日文 / 英文识别模型，
-     模型先找 `cache/rapidocr/`，没有就用已装 kaa 包里随带的那份）。页面判定、找按钮的整帧文字统一走 `hiro.vision.ocr.screen_texts`，
+     模型在 `cache/rapidocr/`，由安装脚本调 `tools/assets/rapid_models.py` 从本仓库 GitHub Release `ocr-models-v1` 下载、校验 SHA256）。页面判定、找按钮的整帧文字统一走 `hiro.vision.ocr.screen_texts`，
      不再调 kotonebot 的 `ocr`。
      RapidOCR 在作者的回归截图上的准确率与速度见 `docs/assets.md`；换平台后先用自己的截图验一遍。
    - Windows 用 PowerShell 版安装脚本：`powershell -NoProfile -ExecutionPolicy Bypass -File scripts\setup.ps1`（步骤与 `setup.sh` 相同）。
