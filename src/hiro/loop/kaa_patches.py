@@ -426,8 +426,7 @@ def _relaxed_change1(orig):
             return got
         from hiro.vision.classify import change1
 
-        from kaa.tasks.produce.new.consts import Scene, SceneType
-        from kotonebot import device
+        from kaa.tasks.produce.new.consts import Scene, SceneType  # type: ignore[import-not-found]
 
         try:
             if change1(device.screenshot()):
@@ -437,7 +436,7 @@ def _relaxed_change1(orig):
             logger.info("换卡第 1 步放宽判断失败：%s: %s", type(e).__name__, e)
         return None
 
-    wrapped._hiro_change1 = True
+    setattr(wrapped, "_hiro_change1", True)  # noqa: B010  functools.wraps 的包装类型不让直接加属性
     return wrapped
 
 

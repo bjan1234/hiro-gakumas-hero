@@ -2494,7 +2494,7 @@ class HifCore:
             )
 
         run_exam(self.brain, label, self.rec, ended, session=self.s, advisor=self.advisor)
-        fixed = getattr(self.s.state.exam_session, "label", None)
+        fixed = getattr(self.s.state.exam_session, "label", None) if self.s is not None else None
         if fixed and fixed != label and re.fullmatch(r"qualify-[1-3]", str(fixed)):
             # 考试里按审查日程面板改了场次（hiro.exec.schedule_probe.exam_from_panel）：计数跟着改，再挑戦 / 之后的场次才对
             if label.startswith("lesson-"):
