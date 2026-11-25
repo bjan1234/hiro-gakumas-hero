@@ -2,6 +2,8 @@ package usage
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -208,5 +210,60 @@ func TestJobPageTitleUsesRecentSummary(t *testing.T) {
 	tt := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "job/20261124-010000-aaaa") }), 520, 900)
 	if !tt.HasText("11-24 01:00 初 · 篠澤広") || tt.HasText("20261124-010000-aaaa") {
 		t.Errorf("标题 %q", tt.Texts())
+	}
+}
+
+func TestFooterSkipsRefreshWhenLedgerUnchanged(t *testing.T) {
+	h, p := host(), New()
+	h.HomeDir = t.TempDir()
+	ledger := filepath.Join(h.HomeDir, "usage", h.At.Format("2006-01")+".jsonl")
+	_ = os.MkdirAll(filepath.Dir(ledger), 0o755)
+	_ = os.WriteFile(ledger, []byte("{}\n"), 0o644)
+	draw := func() {
+		ui.NewTester(func(c *ui.Context) { ui.Column(c).Fill().Children(func() { p.Footer(c, h) }) }, 232, 60)
+	}
+	draw()
+	n := len(h.Calls)
+	h.At = h.At.Add(time.Minute)
+	draw()
+	if len(h.Calls) != n {
+		t.Fatalf("流水账没变就不该再起进程：%v", h.Calls[n:])
+	}
+	_ = os.WriteFile(ledger, []byte("{}\n{}\n"), 0o644) // 多了一行
+	h.At = h.At.Add(time.Minute)
+	draw()
+	if len(h.Calls) == n {
+		t.Fatal("流水账变了要刷新")
+	}
+	n = len(h.Calls)
+	h.At = h.At.Add(time.Minute)
+	draw()
+	if len(h.Calls) != n {
+		t.Fatal("刷新过一次后，没再变就不再刷新")
+	}
+}
+
+func TestPanelSkipsReloadWhenLedgerUnchanged(t *testing.T) {
+	h, p := host(), New()
+	h.HomeDir = t.TempDir()
+	panel := func() { ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "") }), 520, 900) }
+	panel()
+	n := len(h.Calls)
+	h.At = h.At.Add(time.Minute)
+	panel()
+	if len(h.Calls) != n {
+		t.Fatalf("面板开着、流水账没变就不重读：%v", h.Calls[n:])
+	}
+}
+
+func TestJobPageNoReloadForFinishedJob(t *testing.T) {
+	h, p := host(), New()
+	page := func() { ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "job/J1") }), 520, 900) }
+	page()
+	n := len(h.Calls)
+	h.At = h.At.Add(time.Minute)
+	page()
+	if len(h.Calls) != n {
+		t.Fatalf("打完的局用量不会变，不重读：%v", h.Calls[n:])
 	}
 }

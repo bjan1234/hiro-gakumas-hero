@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -248,11 +250,13 @@ type jobPage struct {
 	u   *JobUsage
 	err string
 	at  time.Time
+	sig string
 }
 
 type state struct {
 	// 侧栏底部（界面线程读写；后台只算结果）
 	footAt      time.Time
+	footSig     string
 	footLoading bool
 	today       *Group
 	month       *Group
@@ -261,6 +265,7 @@ type state struct {
 
 	home        *home
 	homeAt      time.Time
+	homeSig     string
 	homeLoading bool
 
 	jobs       map[string]*jobPage
@@ -287,8 +292,11 @@ func New() *plugin.Plugin {
 			}
 			s.homePanel(c, h)
 		},
-		OnJobEnd: func(h plugin.Host, id string, v *plugin.JobView) { onJobEnd(h, id, v) },
-		Footer:   func(c *ui.Context, h plugin.Host) { s.footer(c, h) },
+		OnJobEnd: func(h plugin.Host, id string, v *plugin.JobView) {
+			s.homeSig = "" // 这局的 usage.json 刚写好：面板「最近每局」下次重读
+			onJobEnd(h, id, v)
+		},
+		Footer: func(c *ui.Context, h plugin.Host) { s.footer(c, h) },
 		Greeting: func(h plugin.Host) string {
 			s.refreshFoot(h)
 			if s.month == nil || s.month.Calls == 0 {
@@ -417,13 +425,37 @@ func row(c *ui.Context, key, label, value string) {
 func today(h plugin.Host) string      { return h.Now().Format("2006-01-02") }
 func monthStart(h plugin.Host) string { return h.Now().Format("2006-01") + "-01" }
 
-// refreshFoot 每 Refresh 在后台取一次今天 / 本月 / 本局（Footer、Greeting 每帧调用，只读缓存）。
+// ledgerSig 是这个月流水账文件的大小和修改时间（加上日期：过了零点「今天」要重算）。
+// 没变就不刷新：每次刷新要起 Python 进程（fastpath.go 记着 11-18 进程太多把内存吃光的事）。
+// 拿不到 HIRO_HOME 时返回 ""，退回只按 Refresh 间隔刷新。
+func ledgerSig(h plugin.Host) string {
+	if h.Home() == "" {
+		return ""
+	}
+	day := today(h)
+	st, err := os.Stat(filepath.Join(h.Home(), "usage", h.Now().Format("2006-01")+".jsonl"))
+	if err != nil {
+		return day + "|none"
+	}
+	return fmt.Sprintf("%s|%d|%d", day, st.Size(), st.ModTime().UnixNano())
+}
+
+// stale：从没取过；或者过了 Refresh 且流水账变了（拿不到签名时只看时间）。
+func stale(h plugin.Host, at time.Time, sig, now string) bool {
+	if at.IsZero() {
+		return true
+	}
+	return h.Now().Sub(at) >= Refresh && (now == "" || now != sig)
+}
+
+// refreshFoot 在后台取今天 / 本月 / 本局（Footer、Greeting 每帧调用，只读缓存）：至少隔 Refresh，且流水账变了或活任务换了才取。
 func (s *state) refreshFoot(h plugin.Host) {
 	live := h.LiveJob()
-	if s.footLoading || (!s.footAt.IsZero() && h.Now().Sub(s.footAt) < Refresh && live == s.liveID) {
+	sig := ledgerSig(h)
+	if s.footLoading || (!stale(h, s.footAt, s.footSig, sig) && live == s.liveID) {
 		return
 	}
-	s.footLoading = true
+	s.footLoading, s.footSig = true, sig
 	day, month := today(h), monthStart(h)
 	h.Go(func() func() {
 		ctx := context.Background()
@@ -474,10 +506,11 @@ func (s *state) footer(c *ui.Context, h plugin.Host) {
 // ---- 面板 ----
 
 func (s *state) loadHome(h plugin.Host) {
-	if s.homeLoading || (s.home != nil && h.Now().Sub(s.homeAt) < Refresh) {
+	sig := ledgerSig(h)
+	if s.homeLoading || (s.home != nil && !stale(h, s.homeAt, s.homeSig, sig)) {
 		return
 	}
-	s.homeLoading = true
+	s.homeLoading, s.homeSig = true, sig
 	day, month := today(h), monthStart(h)
 	h.Go(func() func() {
 		ctx := context.Background()
@@ -586,16 +619,18 @@ func averages(r Recent) []string {
 
 func (s *state) loadJob(h plugin.Host, id string) {
 	p := s.jobs[id]
-	if s.jobLoading[id] || (p != nil && h.Now().Sub(p.at) < Refresh) {
+	// 打完的局用量定了，读过就不再读；活着的局按流水账变化刷新
+	if s.jobLoading[id] || (p != nil && (h.LiveJob() != id || !stale(h, p.at, p.sig, ledgerSig(h)))) {
 		return
 	}
+	sig := ledgerSig(h)
 	s.jobLoading[id] = true
 	h.Go(func() func() {
 		var u JobUsage
 		err := h.Call(context.Background(), []string{"usage", "job", id}).Decode(&u)
 		return func() {
 			s.jobLoading[id] = false
-			np := &jobPage{at: h.Now()}
+			np := &jobPage{at: h.Now(), sig: sig}
 			if err != nil {
 				np.err = err.Error()
 			} else {
