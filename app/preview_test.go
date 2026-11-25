@@ -14,6 +14,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/matto49/hiro-gakumas-hero/app/hiroapi"
+	"github.com/matto49/hiro-gakumas-hero/app/plugin"
 	"github.com/matto49/hiro-gakumas-hero/app/shell"
 )
 
@@ -159,4 +160,10 @@ func TestPreview(t *testing.T) {
 	app.OpenPanel("usage", "job/20261125-071500-aaaa")
 	settle()
 	save("7-usage-job")
+	app.ClosePanel()
+	var usageCard map[string]any
+	_ = json.Unmarshal([]byte(resp([]string{"usage", "job", "20261125-071500-aaaa"})), &usageCard)
+	app.Post("", plugin.Card{"type": "usage-job", "jobId": "20261125-071500-aaaa", "usage": usageCard})
+	settle()
+	save("8-usage-card")
 }
