@@ -139,6 +139,19 @@ def finals_label_round(npc_round: int | None, turns: int | None) -> int | None:
     return 1 if turns == 9 else None
 
 
+def _acquire_overlay(img) -> dict | None:
+    """画面上是不是盖着获得演出（名称栏认得出主数据里的卡 / 饮料 / P 道具）；不是截图数组时 None。
+    名称栏按 720×1280 坐标读，设备截图是原始分辨率，先缩放。"""
+    from hiro.vision.deck import read_acquire_popup
+    from hiro.vision.ui_templates import normalize
+
+    import numpy as np
+
+    if not isinstance(img, np.ndarray):
+        return None
+    return read_acquire_popup(normalize(img), art=False)
+
+
 class HifCore:
     """H.I.F 培育的决策和执行（不依赖 KAA）：每个页面的 observe → decide → act → record。
     新主循环（hiro.runtime）的处理器调这里（hiro.produce.handlers）。
@@ -556,6 +569,17 @@ class HifCore:
 
         t0 = time.monotonic()
         img = device.screenshot()
+        acquired = _acquire_overlay(img)
+        if acquired is not None:
+            # 拿完卡的获得演出（放大的卡 + 名称栏）盖住三张候选、底下「受け取る」还在，被判成又一次选卡：候选认不出，
+            # 决策只能 Wait → 停机（11-25 账号 3 初レギュラー 楽観的）。点空白等演出过去，交回主循环
+            if self.s is not None:
+                self.s.recover(
+                    "page_misjudged", f"选卡页上叠着获得演出（{acquired.get('name')}），点空白等它过去，不再选"
+                )
+            device.click(*self.RESIDUAL_TAP)
+            sleep(1.0)
+            return
         options = select_card_options(img)
         for _ in range(3):  # 弹窗入场动画中可能一张都找不到（IDLE 补判进来时尤其常见）
             if options:
