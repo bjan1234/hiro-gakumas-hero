@@ -95,7 +95,7 @@ description: 用 hiro 命令行查学マス账号信息和游戏资料库、开�
 | `hajime` | 同上（没有 `--mode`），另有 `--difficulty regular\|pro\|master` | 「初」培育。`new` 必须给 `--idol` |
 | `nia` | 同 `hajime`，`--difficulty pro\|master` | N.I.A 培育。认不出的页面会停下：请用户手动处理后 `--command resume` |
 | `tower` | `--idol <路线的偶像名>`、`--layers N`、`--no-llm` | 偶像之路 |
-| `daily` | `--items activity_funds,presents,assignment,contest,mission_reward,club_reward`（可选，缺省全部） | 日常：活動費、礼物、工作、竞赛、任务奖励、社团。只选前四项以外的（工作、竞赛）时走 KAA |
+| `daily` | `--items activity_funds,presents,assignment,contest,mission_reward,club_reward`（可选，缺省全部） | 日常：活動費、礼物、工作、竞赛、任务奖励、社团 |
 | `scan-account` | — | 读首页顶栏的 PLv / AP / ジュエル（只截一张图，不点；游戏要停在首页、没有弹窗） |
 | `scan-supports` | — | 扫描支援卡（只读，不改编成） |
 | `scan-idols` | — | 扫描偶像卡（只读：偶像一览里逐张点开读卡名，最后点「<<」退出，不点決定），结果进 `hiro info idols` |

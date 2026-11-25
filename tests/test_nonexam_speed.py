@@ -1,4 +1,4 @@
-# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）
 """选拔里考试以外的提速（协调 2026-11-03，第二十一局选拔非考试 40 分钟）：
 - 三选一快速提交：点选项 → 等「受け取る」亮 → 点 → 等消失（KAA commit 固定 sleep，选卡执行中位 8.5s）；
 - 「受け取る」改底部条带局部 OCR（以前整帧 kotonebot OCR）；
@@ -85,7 +85,7 @@ def test_gift_effect_wait_short():
     assert play.QUICK_WAIT_TAP_BY_KIND["gift_effect"] <= 1.0 and play.QUICK_WAIT_TAP_S == 15.0
 
 
-@pytest.mark.kaa
+@pytest.mark.play
 def test_select_drink_uses_fast_acquire(monkeypatch):
     from types import SimpleNamespace as NS
 

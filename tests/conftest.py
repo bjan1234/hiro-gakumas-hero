@@ -2,7 +2,7 @@
 
 - 识别层很多用例读 tests/fixtures/ 下的实机截图。截图属于游戏画面，仓库不带；把自己的截图按同样的相对路径放进
   tests/fixtures/（或设 HIRO_FIXTURES 指向一个同结构目录，会软链过来）就能跑。没有样例目录时这些用例跳过。
-- 识别层依赖 KAA（可选组 play：pip install -e '.[play]'，子模块 vendor/kaa）。导入不了 kotonebot / kaa 时跳过。
+- 识别层要可选组 play 的依赖（pip install -e '.[play]'：RapidOCR、faiss、ddddocr 等）。没装时跳过。
 - 个别用例引到操作层 / 策略层（hiro.produce、hiro.brain.*）或不开源的模拟器（hiro.sim）；
   这些模块不在时，整个文件跳过。
 """
@@ -28,21 +28,15 @@ if not FIXTURES.exists() and os.environ.get("HIRO_FIXTURES") and Path(os.environ
         _winapi.CreateJunction(str(Path(os.environ["HIRO_FIXTURES"]).resolve()), str(FIXTURES))
 HAVE_FIXTURES = FIXTURES.is_dir() and any(FIXTURES.iterdir())  # 空目录 / 断链都算没有样例
 
-if os.environ.get("HIRO_KAA_GAME_DATA"):
-    try:  # 先把 KAA 的数据目录指过去（hiro.vision 导入时做）：别的测试模块先导入 KAA 会在当前目录建空的 resources/game_data  # noqa: SIM105
-        import hiro.vision  # noqa: F401
-    except Exception:  # noqa: BLE001 没装识别依赖：照常收集
-        pass
-
 OPTIONAL_LAYERS = ("hiro.produce", "hiro.brain.state", "hiro.brain.cards",
                    "hiro.brain.deciders", "hiro.brain.rules", "hiro.brain.replay", "hiro.sim")  # fmt: skip
-KAA_USERS = re.compile(r"hiro\.(?:vision|perception)(?:\.(\w+))?")
-KAA_FREE = {"assets", "layout", "items", "region_cache"}  # 导入时不碰 KAA 的识别层模块（items 只在读饮料时才导入 KAA）
+PLAY_USERS = re.compile(r"hiro\.(?:vision|perception)(?:\.(\w+))?")
+PLAY_FREE = {"assets", "layout", "items", "region_cache"}  # 不要 play 组依赖的识别层模块
 
 
-def _needs_kaa(src: str) -> bool:
-    """测试源码引用了要 KAA 的识别层模块（只引用 KAA_FREE 里的模块不算）。"""
-    return any(m.group(1) not in KAA_FREE for m in KAA_USERS.finditer(src))
+def _needs_play(src: str) -> bool:
+    """测试源码引用了要 play 组依赖的识别层模块（只引用 PLAY_FREE 里的模块不算）。"""
+    return any(m.group(1) not in PLAY_FREE for m in PLAY_USERS.finditer(src))
 
 
 def _has_module(name: str) -> bool:
@@ -52,14 +46,11 @@ def _has_module(name: str) -> bool:
         return False
 
 
-def _kaa_ok() -> bool:
-    try:
-        import kaa  # noqa: F401
-        import kotonebot  # noqa: F401
+PLAY_DEPS = ("rapidocr_onnxruntime", "faiss", "ddddocr")  # 可选组 play 的代表（pyproject.toml）
 
-        return True
-    except Exception:  # noqa: BLE001 没装 play 组，或 macOS 上缺 hiro.compat 的补丁
-        return False
+
+def _play_ok() -> bool:
+    return all(_has_module(m) for m in PLAY_DEPS)
 
 
 def _top_level(src: str) -> str:
@@ -111,11 +102,18 @@ def _collect_ignore() -> list[str]:
     return out
 
 
-OPTIONAL_DEPS = ("kaa", "kotonebot", "Vision", "Quartz", "AppKit")  # 可选组 play / macOS 系统框架（pyobjc）
+OPTIONAL_DEPS = (
+    *PLAY_DEPS,
+    "PIL",
+    "onnxruntime",
+    "Vision",
+    "Quartz",
+    "AppKit",
+)  # 可选组 play / macOS 系统框架（pyobjc）
 
 
 def _body_needs_optional(item) -> bool:
-    """用例函数体里导入的 hiro 模块（操作层大多在导入时就要 KAA）本机导入不了，且缺的是 KAA / macOS 框架。"""
+    """用例函数体里导入的 hiro 模块本机导入不了，且缺的是 play 组依赖 / macOS 框架。"""
     import inspect
 
     try:
@@ -127,7 +125,7 @@ def _body_needs_optional(item) -> bool:
 
 
 def _top_import_missing_optional(top: str) -> bool:
-    """顶层导入的 hiro 模块在导入时就要 KAA / macOS 框架，而本机没装：整个文件不收集（CI 不装 play 组）。"""
+    """顶层导入的 hiro 模块在导入时就要 play 组依赖 / macOS 框架，而本机没装：整个文件不收集（CI 不装 play 组）。"""
     import importlib
 
     names = []
@@ -176,13 +174,15 @@ def pytest_configure(config):
         "markers", "fixtures: 要读 tests/fixtures 的截图样例（经类 / 多层辅助函数间接读，自动判断看不出来时显式标）"
     )
     config.addinivalue_line(
-        "markers", "kaa_free: 明确不要 KAA：按源码猜「要 KAA」的规则（引用了 hiro.vision 等）对它不算"
+        "markers", "play_free: 明确不要 play 组依赖：按源码猜「要 play」的规则（引用了 hiro.vision 等）对它不算"
     )
     config.addinivalue_line(
         "markers",
-        "kaa: 要 KAA（可选组 play）：经 hiro.produce.hif 的策略类 / kaa_patches 等在运行时才导入，自动判断看不出来时显式标",
+        "play: 要可选组 play 的依赖（OCR 等）：运行时才导入、自动判断看不出来时显式标",
     )
-    config.addinivalue_line("markers", "master: 要主数据 game.db（经决策器 / 识别层间接查，自动判断看不出来时显式标）")
+    config.addinivalue_line(
+        "markers", "master: 要主数据库（hiro.state.master_db，经决策器 / 识别层间接查，自动判断看不出来时显式标）"
+    )
     config.addinivalue_line(
         "markers", "sim_master: 要真跑模拟器（vendor/gakumas-player 的主数据 catalog.sqlite 已构建）"
     )
@@ -209,7 +209,7 @@ def _missing_user_assets(kinds) -> list[str]:
 
 
 def pytest_collection_modifyitems(config, items):
-    kaa_ok = None
+    play_ok = None
     for item in items:
         marker = item.get_closest_marker("user_assets")
         if marker is not None and (missing := _missing_user_assets(marker.args)):
@@ -223,11 +223,11 @@ def pytest_collection_modifyitems(config, items):
         if missing:
             item.add_marker(pytest.mark.skip(reason=f"依赖的层不在仓库里：{missing}"))
             continue
-        if item.get_closest_marker("kaa_free") is None and (_needs_kaa(src) or _body_needs_optional(item)):
-            if kaa_ok is None:
-                kaa_ok = _kaa_ok()
-            if not kaa_ok:
-                item.add_marker(pytest.mark.skip(reason="需要 KAA（pip install -e '.[play]'）"))
+        if item.get_closest_marker("play_free") is None and (_needs_play(src) or _body_needs_optional(item)):
+            if play_ok is None:
+                play_ok = _play_ok()
+            if not play_ok:
+                item.add_marker(pytest.mark.skip(reason="需要可选组 play（pip install -e '.[play]'）"))
                 continue
         low = item.get_closest_marker("lowres_sample")
         if low is not None and _ocr_engine() != "vision":
@@ -247,10 +247,12 @@ def pytest_collection_modifyitems(config, items):
                 pytest.mark.skip(reason="需要模拟器主数据（python vendor/gakumas-player/scripts/fetch_master.py）")
             )
             continue
-        if item.get_closest_marker("kaa") is not None and not _kaa_ok():
-            item.add_marker(pytest.mark.skip(reason="需要 KAA（pip install -e '.[play]'）"))
+        if item.get_closest_marker("play") is not None and not _play_ok():
+            item.add_marker(pytest.mark.skip(reason="需要可选组 play（pip install -e '.[play]'）"))
         if item.get_closest_marker("master") is not None and not _master_ok():
-            item.add_marker(pytest.mark.skip(reason="需要主数据 game.db（KAA 公开数据，HIRO_KAA_GAME_DATA）"))
+            item.add_marker(
+                pytest.mark.skip(reason="需要主数据库（python -m hiro.state.master_db，先构建模拟器主数据）")
+            )
             continue
         if item.get_closest_marker("fixtures") is not None and not HAVE_FIXTURES:
             item.add_marker(pytest.mark.skip(reason="没有截图样例 tests/fixtures（游戏画面不随仓库发布）"))
@@ -263,7 +265,9 @@ def pytest_collection_modifyitems(config, items):
             except (OSError, TypeError):
                 body = ""
             if MASTER_HINT.search(body):
-                item.add_marker(pytest.mark.skip(reason="需要主数据 game.db（KAA 公开数据，HIRO_KAA_GAME_DATA）"))
+                item.add_marker(
+                    pytest.mark.skip(reason="需要主数据库（python -m hiro.state.master_db，先构建模拟器主数据）")
+                )
                 continue
         if not HAVE_FIXTURES and not item.get_closest_marker("synthetic") and _needs_fixtures(item, src):
             item.add_marker(pytest.mark.skip(reason="没有截图样例 tests/fixtures（游戏画面不随仓库发布）"))
@@ -329,7 +333,7 @@ MASTER_HINT = re.compile(
 
 
 def _master_ok() -> bool:
-    """主数据（KAA game.db）在不在：PublicAssetSource 的 master_db()。"""
+    """主数据库在不在：PublicAssetSource 的 master_db()（hiro.state.master_db 从模拟器主数据生成）。"""
     try:
         from hiro.defaults.assets import PublicAssetSource
 
@@ -391,16 +395,38 @@ def _bench_advisor_off(monkeypatch, request):
         monkeypatch.setenv("HIRO_BENCH_ADVISOR", "0")
 
 
-_KAA_MISSING = re.compile(r"No module named '(?:kaa|kotonebot)\b|import of (?:kaa|kotonebot)\b")
+_PLAY_MISSING = re.compile(rf"No module named '(?:{'|'.join(OPTIONAL_DEPS)})\b")
 
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_make_collect_report(collector):
-    """没装 KAA（公开 CI 只装 dev 组）时，测试文件间接用到 KAA（例如导入 hiro.produce.hif 的策略类、从别的测试文件导入的替身顶层 import kaa）
-    在收集阶段就报 ModuleNotFoundError。_collect_ignore 只看顶层的直接导入，拦不住这种；这里把「缺 KAA / kotonebot」导致的收集错误改成跳过。
-    装了 KAA 时不改任何结果。"""
+    """没装 play 组（公开 CI 只装 dev 组）时，测试文件间接用到它的依赖（例如从别的测试文件导入的模块顶层 import 了 OCR 库）
+    在收集阶段就报 ModuleNotFoundError。_collect_ignore 只看顶层的直接导入，拦不住这种；这里把缺 play 组依赖导致的收集错误改成跳过。
+    装了 play 组时不改任何结果。"""
     outcome = yield
     rep = outcome.get_result()
-    if rep.failed and isinstance(collector, pytest.Module) and _KAA_MISSING.search(str(rep.longrepr)) and not _kaa_ok():
+    if (
+        rep.failed
+        and isinstance(collector, pytest.Module)
+        and _PLAY_MISSING.search(str(rep.longrepr))
+        and not _play_ok()
+    ):
         rep.outcome = "skipped"
-        rep.longrepr = (str(collector.path), 0, "Skipped: 要 KAA（可选组 play，子模块 vendor/kaa）")
+        rep.longrepr = (str(collector.path), 0, "Skipped: 要可选组 play（pip install -e '.[play]'）")
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """同上，运行阶段：用例经操作层（hiro.produce 等）在运行时才调 OCR / 卡面库，没装 play 组时报 ModuleNotFoundError。
+    原来这些模块顶层导入 KAA，没装 KAA 时整个文件跳过；去 KAA 后导入不再失败，这里照旧记成跳过。装了 play 组时不改任何结果。"""
+    outcome = yield
+    rep = outcome.get_result()
+    if (
+        rep.failed
+        and call.excinfo is not None
+        and call.excinfo.errisinstance(ModuleNotFoundError)
+        and _PLAY_MISSING.search(str(call.excinfo.value))
+        and not _play_ok()
+    ):
+        rep.outcome = "skipped"
+        rep.longrepr = (str(item.path), item.location[1] or 0, f"Skipped: 要可选组 play（{call.excinfo.value}）")

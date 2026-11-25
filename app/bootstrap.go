@@ -42,7 +42,7 @@ type BootEnv struct {
 // needFree 是装环境要的磁盘空间（Python、依赖、游戏数据、下载缓存；2026-11-17 实测装到一半已占 2.5 GB）。
 const needFree = 6 << 30
 
-// installedMarker 是安装脚本整个跑完后写的标记：setup.sh 第 2 步就建好了 .venv，只看 .venv 会把装了一半当成装好了。
+// installedMarker 是安装脚本整个跑完后写的标记：setup.sh 第 1 步就建好了 .venv，只看 .venv 会把装了一半当成装好了。
 const installedMarker = ".hiro-installed"
 
 const (

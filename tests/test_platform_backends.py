@@ -1,4 +1,4 @@
-"""设备后端与 OCR 后端：与 KAA 支持的平台对齐（HIRO_DEVICE / HIRO_OCR），以及非 macOS 下能导入。"""
+"""设备后端与 OCR 后端（HIRO_DEVICE / HIRO_OCR），以及非 macOS 下能导入。"""
 
 import os
 import subprocess
@@ -26,16 +26,7 @@ def test_landscape_guard_inactive_never_toggles_fullscreen():
     assert g.in_live(black) is True  # 判断 LIVE 照常（调用方据此不按「认不出」停机）
 
 
-# ---------------------------------------------------------------- KAA 后端配置
 formation_env = pytest.importorskip("hiro.formation_env")
-
-
-@pytest.fixture
-def kaa_config():
-    pytest.importorskip("kaa.config.schema")
-    from kaa.config.schema import KaaConfig
-
-    return KaaConfig
 
 
 # ---------------------------------------------------------------- OCR 后端

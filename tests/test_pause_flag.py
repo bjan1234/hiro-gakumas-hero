@@ -1,16 +1,9 @@
 """录屏一停就暂停对局（hiro.loop.pause_flag）：旗标出现 → 暂停、消失 → 恢复；开局前等录屏；暂停期间看门狗 / 收尾超时不计时。"""
 
-import importlib.util as _kiu
-
 from hiro.loop import pause_flag as rp
 
 import numpy as np
 import pytest
-
-NEED_KAA = pytest.mark.skipif(
-    _kiu.find_spec("kotonebot") is None or _kiu.find_spec("kaa") is None,
-    reason='操作层：要装 KAA / kotonebot（pip install -e ".[play]"）',
-)
 
 
 @pytest.fixture(autouse=True)
@@ -129,43 +122,6 @@ def test_watchdog_does_not_fire_across_pause(monkeypatch):
     rp._mark(False)
     t[0] = 260
     assert cb(loop) is False and g.stalled() == pytest.approx(110)  # 墙钟过了 260s，扣掉暂停 150s
-
-
-@NEED_KAA
-def test_real_flow_controller_blocks_checkpoint(tmp_path):
-    """真实 kotonebot FlowController：旗标出现后，工作线程停在 check()；旗标消失后继续。"""
-    import threading
-    import time as _t
-
-    import hiro  # noqa: F401
-
-    from kotonebot.backend.context import FlowController
-
-    flow, flag = FlowController(), tmp_path / "REC_DOWN"
-    count, stop = [0], threading.Event()
-
-    def worker():
-        while not stop.is_set():
-            flow.check()
-            count[0] += 1
-            _t.sleep(0.01)
-
-    th = threading.Thread(target=worker, daemon=True)
-    th.start()
-    w = rp.Watcher(flow, flag=flag)
-    _t.sleep(0.1)
-    flag.write_text("1 崩溃重启中", encoding="utf-8")
-    w.tick()
-    _t.sleep(0.1)
-    frozen = count[0]
-    _t.sleep(0.2)
-    assert count[0] == frozen  # 暂停中：停在检查点
-    flag.unlink()
-    w.tick()
-    _t.sleep(0.1)
-    assert count[0] > frozen  # 恢复
-    stop.set()
-    th.join(1)
 
 
 def test_watcher_stop_resumes(tmp_path):

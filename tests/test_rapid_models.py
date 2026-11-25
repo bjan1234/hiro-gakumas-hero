@@ -10,7 +10,7 @@ from hiro.vision import ocr
 
 import pytest
 
-pytestmark = [pytest.mark.synthetic, pytest.mark.kaa_free]
+pytestmark = [pytest.mark.synthetic, pytest.mark.play_free]
 
 ROOT = Path(__file__).resolve().parents[1]
 

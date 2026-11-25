@@ -1,4 +1,4 @@
-# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
+# 部分逻辑基于 KAA（kotones-auto-assistant，GPL-3.0）
 """第十八局本战 R2 起的「再挑戦」相关：策略（HifCore）置 exam_restarted、本战重挑上限 / 差距门槛、计数来源。
 原来前 3 个测试测旧主循环 hiro.loop.controller 收到 exam_restarted 后重进 on_exam_entered，2026-11-24 随旧主循环删了。"""
 

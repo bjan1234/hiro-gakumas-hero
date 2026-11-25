@@ -1,5 +1,6 @@
-# 调用 KAA / kotonebot（kotones-auto-assistant，GPL-3.0）
-"""授業换卡（hiro.produce.card_ops，原来是 kaa_patches 里的补丁）的离线测试：用 KAA 自带的 H.I.F 换卡参考截图（阶段 1 / 阶段 2）喂离线设备。"""
+"""授業换卡（hiro.produce.card_ops，原来是 kaa_patches 里的补丁）的离线测试：用 KAA 自带的 H.I.F 换卡参考截图（阶段 1 / 阶段 2）喂离线设备。
+
+参考截图原来直接读已安装的 KAA（kotonebot-resource/sprites/jp/in_produce）；去 KAA 后放在私有样例 tests/fixtures/kaa_refs/（游戏画面不随仓库发布）。"""
 
 from pathlib import Path
 
@@ -8,17 +9,14 @@ from hiro.produce import card_ops
 from hiro.vision.offline import load
 
 import cv2
-import kaa.tasks
 import numpy as np
 import pytest
 
-REFS = (
-    Path(kaa.tasks.__file__).parents[2] / "kotonebot-resource" / "sprites" / "jp" / "in_produce"
-)  # 已安装的 KAA（vendor/kaa）
+REFS = Path(__file__).parent / "fixtures" / "kaa_refs"  # KAA 的参考截图（私有样例）
 STAGE1 = REFS / "dialog_card_change_1.png"
 STAGE2 = REFS / "dialog_card_change_2.png"
 
-pytestmark = pytest.mark.skipif(not STAGE1.exists(), reason="找不到 KAA 资源里的换卡参考截图")
+pytestmark = pytest.mark.skipif(not STAGE1.exists(), reason="没有换卡参考截图 tests/fixtures/kaa_refs/")
 
 
 def _shift(img, dy):
@@ -365,14 +363,14 @@ def test_remove_card_wrong_selection_cancels():
     assert page.clicks[0] == center and page.clicks[-1][0] < 360 and (520, 1161) not in page.clicks
 
 
-@pytest.mark.skipif(not REMOVE_REF.exists(), reason="找不到 KAA 删卡参考图")
+@pytest.mark.skipif(not REMOVE_REF.exists(), reason="没有删卡参考图 tests/fixtures/kaa_refs/")
 def test_remove_card_event_page_has_no_cancel_and_taps_nothing():
     page = CardPage({"deck": cv2.imread(str(REMOVE_REF))}, {}, "deck")
     assert card_ops.remove_card(None, None, **page.kw()) is False
     assert page.clicks == []
 
 
-@pytest.mark.skipif(not ENHANCE_REF.exists(), reason="找不到 KAA 强化参考图")
+@pytest.mark.skipif(not ENHANCE_REF.exists(), reason="没有强化参考图 tests/fixtures/kaa_refs/")
 def test_enhance_card_flow_on_reference():
     from hiro.vision.deck import read_card_dialog
 
@@ -387,18 +385,18 @@ def test_enhance_card_flow_on_reference():
     assert page.clicks[0] == center and page.state == "after"
 
 
-@pytest.mark.skipif(not ENHANCE_REF.exists(), reason="找不到 KAA 强化参考图")
+@pytest.mark.skipif(not ENHANCE_REF.exists(), reason="没有强化参考图 tests/fixtures/kaa_refs/")
 def test_enhance_card_without_id_taps_nothing():
     page = CardPage({"deck": cv2.imread(str(ENHANCE_REF))}, {}, "deck")
     assert card_ops.enhance_card(None, None, **page.kw()) is False and page.clicks == []
 
 
 def test_stage1_mark_by_column():
-    from kotonebot.primitives import Rect
+    from types import SimpleNamespace
 
-    class M:
+    class M:  # 模板匹配结果：只看 rect.x1（角标左上角 x）
         def __init__(self, x):
-            self.rect = Rect(x, 946, 20, 20)
+            self.rect = SimpleNamespace(x1=x, y1=946, w=20, h=20)
 
     full = [M(491), M(213), M(352)]
     assert card_ops._stage1_mark(full, 0).rect.x1 == 213 and card_ops._stage1_mark(full, 2).rect.x1 == 491
