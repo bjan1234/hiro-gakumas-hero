@@ -123,3 +123,18 @@ def test_enter_closes_popup_that_appears_late(monkeypatch):
     f = main_task.enter(rt, closed=closed)
     assert main_task.at_task_page(f.boxes)
     assert taps == [main_task.POPUP_CLOSE, main_task.HOME_BANNER] and closed[0]["number"] == 48
+
+
+def test_run_returns_home_after_reading(monkeypatch):
+    """11-25 实机：main-task 读完 NEXT 停在课题页，接着开的 scan-memories「不在主页也不在プロデュース編成页」退出。读完回主页。"""
+    from types import SimpleNamespace as NS
+
+    from hiro.runtime import nav
+
+    calls = []
+    monkeypatch.setattr(main_task, "close_popups", lambda rt: [])
+    monkeypatch.setattr(nav, "goto_home", lambda rt: calls.append("home"))
+    monkeypatch.setattr(main_task, "enter", lambda rt, closed=None: calls.append("enter") or NS(boxes=PAGE37))
+    out = main_task.run(NS())
+    assert out["next"]["number"] == 37
+    assert calls[-1] == "home" and calls.index("enter") < len(calls) - 1

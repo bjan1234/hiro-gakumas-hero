@@ -146,6 +146,8 @@ def run(rt) -> dict:
     nxt = parse(f.boxes)
     logger.info("初星課題：NEXT 第 %s 步「%s」进度 %s，总进度 %s/%s", nxt["number"], nxt["text"], nxt["progress"],
                 nxt["done"], nxt["total"])  # fmt: skip
+    # 读完回主页：后面开的任务（扫描、写编成、开局）都要从主页开始（11-25 停在课题页，scan-memories 直接退出）
+    nav.goto_home(rt)
     return {"cleared": [c for c in cleared if c["kind"] == "clear"], "rewards": sum(c["kind"] == "reward" for c in cleared),
             "next": nxt}  # fmt: skip
 
