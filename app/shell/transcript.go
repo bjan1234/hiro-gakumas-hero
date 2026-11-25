@@ -127,6 +127,15 @@ func (a *App) confirmLine(c *ui.Context, card plugin.Card) {
 	switch status {
 	case "confirmed":
 		text = "已开始「" + summary + "」· 你点了「开始」"
+		if n := len(batchOf(card)); n > 1 {
+			text = fmt.Sprintf("已开始「%s」等 %d 项 · 你点了「全部开始」", summary, n)
+		}
+		if lv, _ := card["auto"].(string); lv != "" {
+			text = "已自动开始「" + summary + "」· 操作权限是「" + PermName[lv] + "」，不用确认"
+			if n := len(batchOf(card)); n > 1 {
+				text = fmt.Sprintf("已自动开始「%s」等 %d 项 · 操作权限是「%s」，不用确认", summary, n, PermName[lv])
+			}
+		}
 	case "cancelled":
 		text = "已取消「" + summary + "」"
 	case "expired":

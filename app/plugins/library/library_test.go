@@ -83,3 +83,65 @@ func TestGreetingAndStarter(t *testing.T) {
 		t.Errorf("资料库引导卡 %+v", st)
 	}
 }
+
+func TestChoiceCardPicksIdol(t *testing.T) {
+	h, p := host(), New()
+	v := p.Cards["choice"]
+	if v == nil {
+		t.Fatal("资料库没认领 choice 卡")
+	}
+	card := plugin.Card{"type": "choice", "kind": "idols", "question": "要用哪张琴音？", "status": "waiting", "options": []any{
+		map[string]any{"id": "i_card-a", "name": "【世界一可愛い私】藤田ことね", "idol": "藤田ことね", "title": "世界一可愛い私", "rarity": "SSR", "plan": "logic"},
+		map[string]any{"id": "i_card-b", "name": "【Campus mode!!】藤田ことね", "idol": "藤田ことね", "title": "Campus mode!!", "rarity": "SSR", "plan": "logic"},
+	}}
+	tt := ui.NewTester(func(c *ui.Context) { v(c, h, card) }, 760, 400)
+	tt.Frame()
+	for _, s := range []string{"要用哪张琴音？", "世界一可愛い私", "Campus mode!!"} {
+		if !tt.HasText(s) {
+			t.Errorf("选择卡没有 %q：%q", s, tt.Texts())
+		}
+	}
+	if err := tt.Click("选【Campus mode!!】藤田ことね"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(h.Asked) != 1 || !strings.Contains(h.Asked[0], "Campus mode!!") || strings.Contains(h.Asked[0], "i_card") || card["status"] != "picked" || card["picked"] != "i_card-b" {
+		t.Fatalf("点选后 asked=%v card=%v", h.Asked, card)
+	}
+	_ = tt.Click("选【世界一可愛い私】藤田ことね")
+	if len(h.Asked) != 1 {
+		t.Errorf("选过了不该再发：%v", h.Asked)
+	}
+}
+
+// CodeRabbit #79：助手还在回复时点选会被丢掉：这时不能选，也不锁卡
+func TestChoiceCardWaitsWhileBusy(t *testing.T) {
+	h, p := host(), New()
+	h.Busy_ = true
+	card := plugin.Card{"type": "choice", "kind": "idols", "status": "waiting", "options": []any{map[string]any{"id": "i_card-a", "name": "【A】藤田ことね", "idol": "藤田ことね", "title": "A"}}}
+	tt := ui.NewTester(func(c *ui.Context) { p.Cards["choice"](c, h, card) }, 760, 400)
+	tt.Frame()
+	_ = tt.Click("选【A】藤田ことね")
+	if len(h.Asked) != 0 || card["status"] != "waiting" {
+		t.Errorf("忙的时候不该选：asked=%v card=%v", h.Asked, card)
+	}
+}
+
+// CodeRabbit #79：卡名还没查到（只有编号）时不让选，不给玩家看编号
+func TestChoiceCardWaitsForNames(t *testing.T) {
+	h, p := host(), New()
+	card := plugin.Card{"type": "choice", "kind": "idols", "status": "waiting", "options": []any{map[string]any{"id": "i_card-zzz"}}}
+	tt := ui.NewTester(func(c *ui.Context) { p.Cards["choice"](c, h, card) }, 760, 400)
+	tt.Frame()
+	for _, s := range tt.Texts() {
+		if strings.Contains(s, "i_card") {
+			t.Errorf("露出了编号：%q", tt.Texts())
+		}
+	}
+	for _, l := range []string{"选i_card-zzz", "选卡名还在查"} {
+		_ = tt.Click(l)
+	}
+	if len(h.Asked) != 0 || card["status"] != "waiting" {
+		t.Errorf("卡名没查到不该能选：asked=%v", h.Asked)
+	}
+}

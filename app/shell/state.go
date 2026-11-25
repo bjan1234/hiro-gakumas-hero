@@ -42,6 +42,8 @@ type Deps struct {
 	HasModel func() bool
 	// Gate 画在主界面之前（第一次使用）：返回 true 表示它画了整个窗口。
 	Gate func(c *ui.Context, h plugin.Host) bool
+	// Permission 是用户选的操作权限档（PermAsk / PermRead / …）；nil 或空是「允许读操作」。
+	Permission func() string
 }
 
 // App 是主界面的全部状态。只在界面线程里改。
@@ -64,6 +66,7 @@ type App struct {
 	busyJobs atomic.Bool // 有活任务或没读过的任务（每秒查；否则 5 秒）
 	notified map[string]bool
 	ended    map[string]bool // 已调过 OnJobEnd 的局
+	started  map[string]bool // 本会话里从确认卡开的局
 }
 
 // New 建主界面，读出已存的对话。
@@ -150,6 +153,18 @@ func (a *App) add(role, text string, cards []plugin.Card) *Message {
 	}
 	t.Messages = append(t.Messages, m)
 	t.UpdatedAt = m.At
+	// 同一条回复里还有在等的选择卡（还没选偶像）时，确认卡不自动开始（CodeRabbit #79）
+	choosing := false
+	for _, c := range cards {
+		if c["type"] == "choice" && c["status"] == "waiting" {
+			choosing = true
+		}
+	}
+	for _, c := range cards {
+		if !choosing {
+			a.autoStart(m, c)
+		}
+	}
 	// 最近用过的对话排到最前
 	for i, x := range a.threads {
 		if x == t && i > 0 {
@@ -232,7 +247,7 @@ func (a *App) Send(text string) {
 				m := a.addTo(t, "agent", "", []plugin.Card{{"type": "error", "error": map[string]any{"code": "agent", "message": err.Error()}}})
 				m.Tools = tools
 			} else {
-				m := a.addTo(t, "agent", reply.Text, reply.Cards)
+				m := a.addTo(t, "agent", reply.Text, tidyCards(reply.Cards))
 				m.Tools = tools
 			}
 			a.save(t)
@@ -305,6 +320,8 @@ type snapHost struct {
 	a    *App
 	jobs map[string]*plugin.JobView
 	live string
+	chat map[string]bool
+	busy bool
 }
 
 // snapshotHost 在界面线程上拍一份快照（算上下文时用，免得后台读到正在改的 map）。
@@ -313,7 +330,11 @@ func (a *App) snapshotHost() plugin.Host {
 	for id, v := range a.jobs {
 		jobs[id] = v.Copy()
 	}
-	return &snapHost{a: a, jobs: jobs, live: a.live}
+	chat := map[string]bool{}
+	for id := range a.jobs {
+		chat[id] = a.ChatJob(id)
+	}
+	return &snapHost{a: a, jobs: jobs, live: a.live, chat: chat, busy: a.busy}
 }
 
 func (s *snapHost) Call(ctx context.Context, args []string) hiroapi.Result {
@@ -335,6 +356,8 @@ func (s *snapHost) Job(id string) *plugin.JobView {
 	}
 	return &plugin.JobView{}
 }
-func (s *snapHost) LiveJob() string { return s.live }
-func (s *snapHost) Home() string    { return s.a.d.Home }
-func (s *snapHost) Now() time.Time  { return s.a.d.Now() }
+func (s *snapHost) LiveJob() string        { return s.live }
+func (s *snapHost) Busy() bool             { return s.busy }
+func (s *snapHost) ChatJob(id string) bool { return s.chat[id] }
+func (s *snapHost) Home() string           { return s.a.d.Home }
+func (s *snapHost) Now() time.Time         { return s.a.d.Now() }

@@ -32,6 +32,11 @@ func (a *App) Job(id string) *plugin.JobView {
 // LiveJob 是现在活着的任务编号。
 func (a *App) LiveJob() string { return a.live }
 
+// wasLive 是这局在上次轮询时还活着；在本会话里开的局（onJobStarted 记过）第一次轮询前就结束了也算（CodeRabbit #79：开局即失败时不续做、不通知）。
+func (a *App) wasLive(id, before string) bool {
+	return plugin.LiveStates[before] || (before == "" && a.started[id])
+}
+
 func (a *App) jobLive() bool { return a.live != "" }
 
 type statusData struct {
@@ -151,7 +156,7 @@ func (a *App) PollJobs() {
 
 // notify 在任务从「活着」变成要用户管的状态（接手、出错、结束、中断）时，在对话里冒一条消息（每局每种状态一次）。
 func (a *App) notify(id, before string, v *plugin.JobView) {
-	if !plugin.LiveStates[before] || before == v.State || v.State == "running" || v.State == "stopping" {
+	if !a.wasLive(id, before) || before == v.State || v.State == "running" || v.State == "stopping" {
 		return
 	}
 	if a.notified == nil {
@@ -170,31 +175,60 @@ func (a *App) notify(id, before string, v *plugin.JobView) {
 		}
 	}
 	var text string
+	kind := ""
+	if v.Job != nil {
+		kind = v.Job.Kind
+	}
 	switch v.State {
 	case "takeover":
 		text = "「" + name + "」停下来等你接手了：在游戏里处理完，到游戏运行现状点「继续自动打」。"
 	case "paused":
 		text = "「" + name + "」已暂停。"
 	case "done":
-		text = "「" + name + "」打完了，成绩和复盘在游戏运行现状里。"
+		if produceKind(kind) {
+			text = "「" + name + "」打完了，成绩和复盘在游戏运行现状里。"
+		} else {
+			text = "「" + name + "」做完了。"
+		}
+	case "failed":
+		// 11-25 review：原因直接写出来（原来只说「在最后几步里」，可对局卡只画步骤，原因在日志里）
+		if why := v.FailReason(); why != "" {
+			text = "「" + name + "」出错停下了：" + why + "。"
+		} else {
+			text = "「" + name + "」出错停下了，日志里没写原因；可以到游戏运行现状看最后的画面。"
+		}
+	case "stopped":
+		text = "「" + name + "」已停止。"
 	default:
-		text = "「" + name + "」" + labels.State(v.State) + "了，原因在对局卡下面的最后几步里。"
+		text = "「" + name + "」" + labels.State(v.State) + "了。"
 	}
-	t := a.threadOfJob(id)
-	m := a.addTo(t, "agent", text, nil)
-	_ = m
+	t := a.ownerThread(id)
+	if t == nil {
+		return // 命令行等外部发起的：不进对话（11-25 review），在游戏运行现状的「后台任务」里看
+	}
+	a.addTo(t, "agent", text, nil)
 	a.save(t)
+}
+
+// produceKind 是培育类任务（打完有成绩和复盘）。
+func produceKind(kind string) bool {
+	switch kind {
+	case "hajime", "nia", "tower", "hif":
+		return true
+	}
+	return false
 }
 
 // jobEnded 在任务从活着变成结束时调各插件的 OnJobEnd（每局一次）。
 func (a *App) jobEnded(id, before string, v *plugin.JobView) {
-	if a.reg == nil || !plugin.LiveStates[before] || v.State == "" || plugin.LiveStates[v.State] || a.ended[id] {
+	if a.reg == nil || !a.wasLive(id, before) || v.State == "" || plugin.LiveStates[v.State] || a.ended[id] {
 		return
 	}
 	if a.ended == nil {
 		a.ended = map[string]bool{}
 	}
 	a.ended[id] = true
+	a.continueBatch(id, v)
 	h := &jobHost{App: a, id: id}
 	for _, p := range a.reg.All() {
 		if p.OnJobEnd != nil {
@@ -210,7 +244,10 @@ type jobHost struct {
 }
 
 func (h *jobHost) Post(text string, card plugin.Card) {
-	t := h.threadOfJob(h.id)
+	t := h.ownerThread(h.id)
+	if t == nil {
+		return
+	}
 	var cards []plugin.Card
 	if card != nil {
 		cards = []plugin.Card{card}
@@ -219,8 +256,8 @@ func (h *jobHost) Post(text string, card plugin.Card) {
 	h.save(t)
 }
 
-// threadOfJob 是有这局对局卡的对话（没有就用当前对话）。
-func (a *App) threadOfJob(id string) *Thread {
+// ownerThread 是有这局对局卡的对话（在对话里确认开的局）；命令行等外部发起的没有，返回 nil。
+func (a *App) ownerThread(id string) *Thread {
 	for _, t := range a.threads {
 		for _, m := range t.Messages {
 			for _, c := range m.Cards {
@@ -230,8 +267,11 @@ func (a *App) threadOfJob(id string) *Thread {
 			}
 		}
 	}
-	return a.ensureThread()
+	return nil
 }
+
+// ChatJob 是这局是不是在某个对话里开的。
+func (a *App) ChatJob(id string) bool { return a.ownerThread(id) != nil }
 
 // StartPolling 在后台一直轮询，直到 stop 关上。
 func (a *App) StartPolling(stop <-chan struct{}) {
@@ -257,6 +297,10 @@ func (a *App) onJobStarted(card map[string]any) {
 	if id == "" {
 		return
 	}
+	if a.started == nil {
+		a.started = map[string]bool{}
+	}
+	a.started[id] = true
 	a.Job(id)
 	if a.ui.autoOpened == nil {
 		a.ui.autoOpened = map[string]bool{}

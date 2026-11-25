@@ -113,10 +113,16 @@ func TestEndedJobWithoutEventsStopsPolling(t *testing.T) {
 }
 
 // M13：任务停下要用户管时（接手、出错、结束），在对话里冒一条消息，只冒一次。
+// ownJob 让这局属于当前对话（对话里有它的对局卡，像在对话里确认开的局）。
+func ownJob(a *App, id string) {
+	a.add("agent", "", []plugin.Card{{"type": "run", "jobId": id}})
+}
+
 func TestJobStateChangePostsOnce(t *testing.T) {
 	call := liveCall("running")
 	a, run := newTestApp(newMem(), call, nil, nil)
 	a.NewThread()
+	ownJob(a, "j7")
 	a.PollJobs()
 	run.Drain()
 	call.resp["run status"] = ok(`{"current":null,"recent":[{"id":"j7","kind":"hajime","state":"failed","summary":"初 · 月村手毬","started_at":1}]}`)
@@ -154,7 +160,7 @@ func TestDefaultPanelIsNarrow(t *testing.T) {
 	for _, w := range []float32{1048, 1500} {
 		p := DefaultChatPercent(w)
 		panel := w * (100 - p) / 100
-		if panel < 360 || panel > 400 {
+		if panel < 320 || panel > 360 {
 			t.Errorf("主区 %v 时面板 %v px", w, panel)
 		}
 	}
@@ -241,5 +247,95 @@ func TestOnJobEndCalledOnceWhenJobFinishes(t *testing.T) {
 	}
 	if !has(jobThread) || has(other) {
 		t.Fatal("用量卡要发到有这局对局卡的对话里")
+	}
+}
+
+// 11-25 review：出错原因要写进通知；非培育任务完成不说「成绩和复盘」，用户停下的不说「原因在最后几步里」
+func TestJobNoticeTexts(t *testing.T) {
+	cases := []struct {
+		kind, state, status, events, want, not string
+	}{
+		{"hajime", "failed", `"reason":"没打开支援卡选择列表"`, `[]`, "出错停下了：没打开支援卡选择列表", "最后几步"},
+		{"hajime", "failed", ``, `[{"seq":1,"t":1,"type":"log","text":"[2026-11-24 01:31:04,918] [ERROR] [hiro.runtime.play] new 开局要编成号"},{"seq":2,"t":2,"type":"failed","text":"任务出错退出（代码 1），看上面的日志"}]`, "出错停下了：new 开局要编成号", "最后几步"},
+		{"hajime", "stopped", ``, `[]`, "已停止", "原因"},
+		{"scan-memories", "done", ``, `[]`, "做完了", "成绩和复盘"},
+		{"hajime", "done", ``, `[]`, "成绩和复盘", ""},
+	}
+	for _, c := range cases {
+		call := liveCall("running")
+		a, run := newTestApp(newMem(), call, nil, nil)
+		a.NewThread()
+		ownJob(a, "j7")
+		a.PollJobs()
+		run.Drain()
+		extra := ""
+		if c.status != "" {
+			extra = "," + c.status
+		}
+		call.resp["run status"] = ok(`{"current":null,"recent":[{"id":"j7","kind":"` + c.kind + `","state":"` + c.state + `","summary":"某任务","started_at":1` + extra + `}]}`)
+		call.resp["run events"] = ok(`{"state":"` + c.state + `","events":` + c.events + `}`)
+		for i := 0; i < 3; i++ {
+			a.PollJobs()
+			run.Drain()
+		}
+		got := ""
+		for _, m := range a.Current().Messages {
+			if strings.Contains(m.Text, "某任务") {
+				got = m.Text
+			}
+		}
+		if !strings.Contains(got, c.want) || (c.not != "" && strings.Contains(got, c.not)) {
+			t.Errorf("%s/%s：%q", c.kind, c.state, got)
+		}
+	}
+}
+
+// 11-25 review：命令行等外部发起的任务不进对话（原来 26 条通知全塞进一个「新对话」），只在「后台任务」里看
+func TestExternalJobNotPostedToChat(t *testing.T) {
+	call := liveCall("running")
+	a, run := newTestApp(newMem(), call, nil, nil)
+	a.PollJobs()
+	run.Drain()
+	call.resp["run status"] = ok(`{"current":null,"recent":[{"id":"j7","kind":"hajime","state":"failed","summary":"初 · 月村手毬","started_at":1,"reason":"掉线"}]}`)
+	call.resp["run events"] = ok(`{"state":"failed","events":[]}`)
+	for i := 0; i < 3; i++ {
+		a.PollJobs()
+		run.Drain()
+	}
+	if len(a.threads) != 0 {
+		t.Fatalf("外部任务不该建对话：%d 个", len(a.threads))
+	}
+	if a.ChatJob("j7") {
+		t.Error("外部任务不该算对话里开的")
+	}
+}
+
+// 在对话里确认开的局：通知回到那个对话，哪怕用户已经切到别的对话（「agent 发起的对局直接统计进当前会话」）
+func TestChatJobNoticeGoesToItsThread(t *testing.T) {
+	a, run, call, tt := confirmApp(t, 4102444800)
+	first := a.Current()
+	if err := tt.Click("开始"); err != nil {
+		t.Fatal(err)
+	}
+	run.Drain()
+	if !a.ChatJob("j7") {
+		t.Fatal("确认卡开的局应算这个对话的")
+	}
+	call.resp["run status"] = ok(`{"current":{"id":"j7","kind":"hajime","state":"running","summary":"初","started_at":1},"recent":[]}`)
+	call.resp["run events"] = ok(`{"state":"running","events":[]}`)
+	a.PollJobs()
+	run.Drain()
+	a.NewThread()
+	other := a.Current()
+	call.resp["run status"] = ok(`{"current":null,"recent":[{"id":"j7","kind":"hajime","state":"done","summary":"初","started_at":1}]}`)
+	call.resp["run events"] = ok(`{"state":"done","events":[]}`)
+	a.PollJobs()
+	run.Drain()
+	if len(other.Messages) != 0 {
+		t.Errorf("通知跑到了别的对话：%+v", other.Messages)
+	}
+	last := first.Messages[len(first.Messages)-1]
+	if !strings.Contains(last.Text, "打完了") {
+		t.Errorf("通知没回到开局的对话：%q", last.Text)
 	}
 }

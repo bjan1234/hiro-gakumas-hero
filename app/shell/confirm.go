@@ -1,6 +1,8 @@
 package shell
 
 import (
+	"fmt"
+
 	"github.com/egoist/mygo/ui"
 
 	"github.com/matto49/hiro-gakumas-hero/app/hiroapi"
@@ -13,22 +15,7 @@ import (
 
 func pendingOf(card plugin.Card) (hiroapi.Pending, bool) {
 	m, _ := card["pending"].(map[string]any)
-	if m == nil {
-		return hiroapi.Pending{}, false
-	}
-	p := hiroapi.Pending{}
-	p.ID, _ = m["id"].(string)
-	p.Command, _ = m["command"].(string)
-	p.Summary, _ = m["summary"].(string)
-	switch v := m["expires_at"].(type) {
-	case float64:
-		p.ExpiresAt = v
-	case int:
-		p.ExpiresAt = float64(v)
-	case int64:
-		p.ExpiresAt = float64(v)
-	}
-	return p, p.ID != ""
+	return hiroapi.PendingFromMap(m)
 }
 
 // waiting 是这张卡是不是还在等确认（没点过、没过期）。
@@ -89,16 +76,23 @@ func (a *App) resolve(m *Message, card plugin.Card, action string) {
 				if r.Error != nil {
 					card["message"] = r.Error.Message
 				}
+				if action == "confirm" {
+					a.batchFirstFailed(t, card) // 合并卡第 1 项就没开起来：退掉其余、告诉用户（CodeRabbit #79）
+				}
 			case action == "cancel":
 				card["status"] = "cancelled"
+				a.afterBatchResolved(card, action, "")
 			default:
 				card["status"] = "confirmed"
+				jobID := ""
 				for _, c := range CardsFor(r) {
 					if c["type"] == "run" {
 						m.Cards = append(m.Cards, c)
 						a.onJobStarted(c)
+						jobID, _ = c["jobId"].(string)
 					}
 				}
+				a.afterBatchResolved(card, action, jobID)
 			}
 			a.save(t)
 		}
@@ -131,9 +125,15 @@ func (a *App) keyOnEmptyInput(key ui.Key) bool {
 
 func (a *App) confirmCard(c *ui.Context, m *Message, card plugin.Card) {
 	p, _ := pendingOf(card)
+	items := batchOf(card)
 	e, ok := a.reg.Explain(a, p)
+	if len(items) > 1 {
+		e, ok = plugin.Explained{Title: fmt.Sprintf("要做这 %d 件事", len(items)), Subtitle: "按顺序做，前一项没做完，后面的就不做了",
+			Cost: "会操作游戏"}, true
+	}
 	if !ok {
-		e = plugin.Explained{Title: p.Summary, Rows: [][2]string{{"命令", p.Command}}, Cost: "会操作游戏"}
+		// 解读不了：只用 CLI 给的一句话，不显示命令名（11-25 review）
+		e = plugin.Explained{Title: p.Summary, Cost: "会操作游戏"}
 	}
 	if from, _ := card["from"].(string); from != "" {
 		src := "来自插件「" + from + "」"
@@ -171,6 +171,12 @@ func (a *App) confirmCard(c *ui.Context, m *Message, card plugin.Card) {
 					}
 				})
 			}
+			for gi, g := range e.Groups {
+				explainGroup(c, fmt.Sprintf("%s-g%d", p.ID, gi), g)
+			}
+			if len(items) > 1 {
+				a.batchItems(c, card, items)
+			}
 			ui.Box(c).Height(4)
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, e.Cost).FontSize(kit.FNote).TextColor(kit.Ink3).Shrink(1)
@@ -179,11 +185,37 @@ func (a *App) confirmCard(c *ui.Context, m *Message, card plugin.Card) {
 					a.resolve(m, card, "cancel")
 				}
 				ui.Text(c, "Esc").FontSize(10.5).TextColor(kit.Ink3)
-				if kit.Primary(c, "开始").Key("confirm-" + p.ID).Disabled(busy).Clicked() {
+				start := "开始"
+				if len(items) > 1 {
+					start = "全部开始"
+				}
+				if kit.Primary(c, start).Key("confirm-" + p.ID).Disabled(busy).Clicked() {
 					a.resolve(m, card, "confirm")
 				}
 				ui.Text(c, "↵").FontSize(12).TextColor(kit.Ink3)
 			})
 		})
+	})
+}
+
+// explainGroup 是确认卡卡身里的一组列表：小标题，下面每行「小图 标签 名字 …… 右边小字」。
+func explainGroup(c *ui.Context, key string, g plugin.ExplainGroup) {
+	ui.Column(c).Key(key).Gap(4).Children(func() {
+		ui.Text(c, g.Title).FontSize(11.5).FontWeight(600).TextColor(kit.Ink3)
+		for i, it := range g.Items {
+			ui.Row(c).Key(fmt.Sprintf("%s-%d", key, i)).Gap(8).AlignItems(ui.Center).Children(func() {
+				if it.Thumb != "" {
+					kit.Thumb(c, it.Thumb, 26, 26, 6)
+				}
+				if it.Tag != "" {
+					ui.Text(c, it.Tag).FontSize(11).TextColor(kit.Ink2).Padding(1, 6).Radius(5).Background(kit.Surface2)
+				}
+				ui.Text(c, it.Name).FontSize(kit.FSmall).TextColor(kit.Ink).MaxLines(1).Ellipsis("…").Shrink(1)
+				if it.Note != "" {
+					ui.Spacer(c)
+					ui.Text(c, it.Note).FontSize(11).TextColor(kit.Ink3)
+				}
+			})
+		}
 	})
 }
