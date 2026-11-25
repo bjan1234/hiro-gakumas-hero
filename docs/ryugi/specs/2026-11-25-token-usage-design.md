@@ -1,6 +1,6 @@
 # 初星助手 token 用量与花费统计（参考 ccusage）
 
-2026-11-25 · 状态：待用户确认
+2026-11-25 · 状态：待用户确认（第 2 版：界面部分改为 desktop 内置插件 `usage`）
 
 ## 为什么做
 
@@ -14,9 +14,9 @@
 
 ## 目标
 
-1. **每局花费**：每个对局任务（hif / hajime / nia / tower）结束时，任务报告里写「本局调用模型 N 次、token 多少、约多少钱」，界面在报告卡上显示；`hiro run report <job>` 也给出同样的数。
-2. **开局前心里有数**：开局确认卡上显示「同模式最近几局平均每局约多少钱」（有历史时）。
-3. **汇总**（ccusage 的 daily / monthly / session）：`hiro usage daily | monthly | job | chat`，可按日期范围过滤、按模型拆分、`--json` 输出；设置页显示今天 / 本月的 token 和花费、按模型拆。
+1. **每局花费**：每个对局任务（hif / hajime / nia / tower）结束时，对话里出一张「本局花费」卡：调用模型 N 次、token 多少、约多少钱；对局进行中侧栏底部实时显示本局已花多少。
+2. **汇总**（ccusage 的 daily / monthly / session）：desktop 侧栏的「用量」面板看今天 / 本月、按模型、最近每局；工具层 `hiro usage daily | monthly | job | chat` 给同样的数（插件和对话助手都调它）。
+3. **都在一个 desktop 内置插件里**（用户 11-25 定）：用量的全部界面由 `app/plugins/usage` 提供，不改设置页、开局插件、游戏运行现状插件的画法。
 4. **模型来源一致**：命令行确认的任务和界面开的任务用同一个模型配置（修上面那个悄悄退回 claude 的问题）。
 
 ## 非目标
@@ -79,33 +79,42 @@
 
 币种：DeepSeek 国内站按人民币，其他多按美元。**不做汇率换算**；合计按币种分开显示，例如「¥0.42 + $0.03」。
 
-### 3. 汇总（ccusage 的报表）
+### 3. desktop 内置插件 `usage`（全部界面在这里）
 
-新模块 `hiro.usage`：读 `usage/*.jsonl` → 去重 → 按维度分组。
+分层：**记账在核心**（插件拦不到模型调用：Python 适配器、Go 对话助手写流水，见第 1 节），**读账和展示在插件**。插件不直接读 jsonl，一律 `Host.Call` 工具层 `hiro usage …`（`--json`），和其它插件一样走工具层。
 
-命令（进 `hiro tools` 清单，对话助手也能调）：
+插件 `app/plugins/usage`（`plugin.Plugin`，ID `usage`，名「用量」）提供：
+
+| 插件能力 | 内容 |
+|---|---|
+| `Nav` + `Panel` | 侧栏「用量」。首页：今天 / 本月两行（调用次数、token、花费，按币种）；按模型拆的表；「最近每局」列表（时间、模式 · 偶像、次数、token、花费），点一局进子页 `job/<id>`：按来源（决策 / 兜底）和模型拆、每次调用一行。底部一行「花费按 <核对日期> 价格表估算，以服务商账单为准」。 |
+| `Cards`（`usage-job`） | 「本局花费」卡：一行主数「12 次 · 3.4 万 token · 约 ¥0.42」，下面小字按来源拆；订阅调用写「Claude 订阅（不另收费，折合 API 约 $x）」；没调用写「本局没有调用模型」。卡上「看明细」打开面板 `job/<id>`。 |
+| 任务结束时发卡 | 宿主新增钩子 `OnJobEnd func(h Host, job *JobView)`（`plugin.Plugin` 加一个可空字段；宿主在任务进入结束状态时对所有插件调用一次）。`usage` 插件在这里 `Host.Call("usage job <id> --json")`，`Host.Post` 出上面的卡。这是本次对宿主唯一的接口改动。 |
+| `Footer` | 有活任务（`Host.LiveJob()` 非空）时显示「本局 ¥0.12 · 8 次」，没有时显示「今天 ¥0.40」。数据在 `Host.Go` 里每 15 秒取一次缓存（Footer 每帧调用，不能在里面调工具层）。 |
+| `Commands` | `/用量` 打开面板首页。 |
+| `Tools` | 认领 `usage daily / monthly / job / chat`：对话助手调这些工具时，结果用插件自己的卡画（表格），不是默认的 JSON 卡。 |
+| `Context` | 给对话助手的「现在的情况」一段：「今天模型花费 ¥0.40，本月 ¥3.20（DeepSeek）」，让用户能直接问「这个月花了多少」。 |
+| `Greeting` | 新对话页问候语下面那行加「本月 ¥3.2」（没有任何记录时返回 ""）。 |
+
+每局用量的落盘：任务结束时由工具层把这一局的 `usage` 段写进任务目录 `usage.json`（之后不变）。`hiro usage job` 优先读它，没有再扫流水账；面板「最近每局」读最近任务的 `usage.json`，不在每次刷新时扫全部流水。
+
+不做：开局确认卡上的「最近 5 局平均」（确认卡由开局插件的 `Explain` 画，插件不能往别人的卡里加行；改成在用量面板「最近每局」上方显示同模式平均，第 1 版只按 kind 分组）。设置页不加「用量」一节（都在插件面板里）。
+
+### 4. 工具层 `hiro usage`（插件和对话助手的数据接口）
+
+新模块 `hiro.usage`：读 `usage/*.jsonl` → 按 id 去重 → 分组。
 
 ```
 hiro usage daily   [--since YYYY-MM-DD] [--until …] [--breakdown] [--json]
 hiro usage monthly [同上]
-hiro usage job <job-id>          # 一局：按来源（决策 / 兜底）和模型拆
-hiro usage chat [<thread-id>]    # 对话助手：按对话
+hiro usage job <job-id> [--json]      # 一局：按来源（决策 / 兜底）和模型拆
+hiro usage chat [<thread-id>] [--json]
+hiro usage recent [--limit 20] [--json]   # 最近每局（读任务目录的 usage.json），给面板列表
 ```
 
-每行：调用次数、input / output / cache_read / cache_write / 合计 token、花费（按币种）、没价格的调用数。`--breakdown` 再按模型展开（ccusage 同名选项）。
+每组：调用次数、input / output / cache_read / cache_write / 合计 token、花费（按币种分开）、订阅折合（单列）、没价格 / 没用量的调用数。`--breakdown` 再按模型展开（ccusage 同名选项）。都是只读命令（risk read），对话助手可以直接调。
 
-### 4. 每局花费（用户最想看的）
-
-- 任务结束时 `hiro.cli.report.summarize` 增加 `usage` 段：`{calls, tokens: {...}, cost: {"CNY": 0.42}, unpriced_calls, by_source: {decision: …, rescue: …}, by_model: {…}}`（从流水账按 job id 取）。
-- 任务的 `report` 事件带上这一段，**没有考试成绩的局也发**（现在 `service._exited` 只在有成绩行时发，要改成总是发）；界面报告卡（游戏运行现状 / 对话里的结束卡）加一行：**「本局模型：12 次 · 3.4 万 token · 约 ¥0.42」**；没有调用时写「本局没有调用模型」。
-- 任务结束时把这一局的 `usage` 段写进任务目录 `usage.json`（之后不再变）；`hiro run status` 的最近任务列表直接读它带上 `cost`（不在每次轮询时扫流水账）。
-- 开局确认卡：同 kind + 同实际难度（params 里的 difficulty，空则取该 kind 的缺省难度）最近 5 局有 `usage.json` 时，加一行「最近 5 局平均每局约 ¥0.38」；没有历史不显示。
-
-### 5. 设置页
-
-设置页（`app/plugins/settings`）加「用量」一节：今天、本月各一行（调用次数、token、花费），下面按模型拆（模型名、次数、token、花费），底部一行「花费按价格表估算，以服务商账单为准」。
-
-### 6. 修：命令行确认的任务也用界面设置的模型
+### 5. 修：命令行确认的任务也用界面设置的模型
 
 现状：`cmd_run` 只从确认那个进程的环境变量里取 `HIRO_LLM` 等（`LLM_VARS`），界面会注入，命令行确认（`hiro confirm`）不会 → 任务退回 `claude:sonnet`。
 
@@ -120,11 +129,12 @@ hiro usage chat [<thread-id>]    # 对话助手：按对话
 
 ## 验收
 
-1. 实机打一局（DeepSeek，有兜底调用）：结束卡显示本局次数 / token / 约多少钱，与 `hiro usage job <id>` 一致；与 DeepSeek 控制台当天用量对得上量级。
-2. 对话助手聊几句：`hiro usage chat` 有记录，设置页今天的数增加。
-3. 命令行 `hiro run start hajime … && hiro confirm …` 开的任务，用的是设置页的模型（任务日志 / 流水账里 provider 是 deepseek）。
-4. 写流水的目录不可写时，对局照常进行，只有一条警告日志。
-5. 价格表没有的模型：显示「—」，汇总里列出未定价调用数。
+1. 实机打一局（DeepSeek，有兜底调用）：对局中侧栏底部的「本局 ¥…」在涨；结束时对话里出「本局花费」卡，数和 `hiro usage job <id>` 一致；与 DeepSeek 控制台当天用量对得上量级。
+2. 对话助手聊几句：`hiro usage chat` 有记录，「用量」面板今天的数增加；问它「今天花了多少」能答出来。
+3. 「用量」面板：今天 / 本月、按模型、最近每局、点进一局看明细都能用；`/用量` 能打开。
+4. 命令行 `hiro run start hajime … && hiro confirm …` 开的任务，用的是设置页的模型（任务日志 / 流水账里 provider 是 deepseek）。
+5. 写流水的目录不可写时，对局照常进行，只有一条警告日志。
+6. 价格表没有的模型：显示「—」，汇总里列出未定价调用数。
 
 ## 我的判断（用户可推翻）
 
@@ -133,19 +143,22 @@ hiro usage chat [<thread-id>]    # 对话助手：按对话
 - Claude / Codex 订阅的调用不并进「花了多少钱」，单独写「订阅，折合 API 约 $x」。
 - 拿不到用量的调用照记一行（token 为空），计次数。
 - 对话助手的 CLI 路径（claude / codex）也在范围内；claude 改用 JSON 输出拿用量。
-- 每局用量在结束时写进任务目录 `usage.json`，任务列表和「最近 5 局平均」读它，不每次扫流水账。
+- 每局用量在结束时写进任务目录 `usage.json`，面板的「最近每局」读它，不每次扫流水账。
 - 没有考试成绩的局也发报告（带用量）。
-- 第 6 节 Python 复制 Go 整张 preset 表，两边共用一份用例；没有 settings.json 时保持退回 claude。
+- 第 5 节 Python 复制 Go 整张 preset 表，两边共用一份用例；没有 settings.json 时保持退回 claude。
 
 - 自己记流水账，不读 `~/.claude` 日志；不回填上线前的旧局。
 - 价格表内置、离线，不联网拉 LiteLLM。
 - 不做汇率换算，按币种分开显示。
-- 每局花费放在任务报告 / 结束卡；开局确认卡显示最近 5 局平均。
-- 第 6 节（命令行确认也用界面模型）一起做，因为不修它「每局花费」会把 Claude 订阅的调用算进来、让用户误以为在用 DeepSeek。
+- 内置插件（`app/plugins/usage`，Go 原生界面），不是 extplugin 外部插件。
+- 记账留在核心（插件拦不到调用），插件只读账、只展示，数据一律走工具层 `hiro usage`。
+- 宿主加一个 `OnJobEnd` 钩子让插件在局末发「本局花费」卡（唯一的宿主接口改动）。
+- 开局确认卡不加「最近 5 局平均」（那张卡归开局插件）；放到用量面板里。设置页也不加用量。
+- 第 5 节（命令行确认也用界面模型）一起做，因为不修它「每局花费」会把 Claude 订阅的调用算进来、让用户误以为在用 DeepSeek。
 
 ## 来源
 
 - 11-25 设计审阅（builder check，sonnet 子代理）提出的 7 个问题都已按上面「我的判断」写进各节。
 
-- 本对话 11-25：用户要求「逻辑参考 ccusage」「每局花了多少钱最想看，日 / 月汇总也要」。
+- 本对话 11-25：用户要求「逻辑参考 ccusage」「每局花了多少钱最想看，日 / 月汇总也要」「直接做进 desktop 里面，以 plugin 的形式去提供」。
 - 11-25 账号 3 实测：本会话 Claude Code 自身约 2.65 亿 token；初星助手的 6 次兜底调用实际走了 `claude -p`（Sonnet），合计约 2.3 万 token，DeepSeek 0 次 —— 第 6 节的来由。
