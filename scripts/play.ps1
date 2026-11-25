@@ -37,7 +37,7 @@
 #   -LiveTimeout watch 时曲目页多少秒没人点开始就关游戏（缺省 60；HIRO_LIVE_TIMEOUT_S）
 #
 # 为什么是这些缺省（Windows 实测，2026-11-07–09，22 局 3 次夺冠）：
-#   HIRO_SCREENSHOT=adb：Windows + MuMu 6 用 nemu_ipc 时截图正常但点击送不到游戏（kaa_env 缺省已是 adb，这里写明）。
+#   HIRO_SCREENSHOT=adb：Windows + MuMu 6 用 nemu_ipc 时截图正常但点击送不到游戏（formation_env 缺省已是 adb，这里写明）。
 #   HIRO_SIM_WORKERS=1：模拟器每个 worker 约 600 MB；16 GB 内存的机器多开时 MuMu 会被系统杀掉。
 #   HIRO_EXAM_SIM_ROUNDS=r2：R1 开考试预演会早兑现（win20 R1 只得 8.2 万），只在 R2 开。
 #   HIRO_EXAM_PLAYBOOK / HIRO_R1_TURN_PROXY：考试按攻略打法、R1 回合属性替身，三局夺冠都开着。

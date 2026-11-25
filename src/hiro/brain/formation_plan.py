@@ -6,7 +6,7 @@
 2. 按偶像卡定方案（プラン）、流派（memory_priority.profile_for_idol）和默认主属性，
    支援卡走 support_select.choose_main（三属性各组一次，ep02 逆练门槛），回忆走 formation.select_memories（流派表 + A/B 栏）。
 3. 写方案：选了哪几张、理由、次优方案差多少，以及要存进的编成号（--support-set / --memory-set，用户在游戏里把方案存进这两个编成位）。
-4. 开局：hiro.kaa_env 读到方案就用它的编成号和回忆卡；kaa_patches 在第 2 步核对支援卡、第 3 步核对回忆编成号，对不上就停（不开局）。
+4. 开局：hiro.formation_env 读到方案就用它的编成号和回忆卡；kaa_patches 在第 2 步核对支援卡、第 3 步核对回忆编成号，对不上就停（不开局）。
 
 租借格：库存里没有实机租借列表时，按「可租到的满级 SSR」（support_select.virtual_rentals：方案一致的全部 SSR，Lv60）
 当候选，和自己的卡一起评估 6 格（主属性 4 张 [ep08]、最多 1 张租借；协调 11-17）。开局第 2 步按编成价值从实际租借列表挑（rental.py）。

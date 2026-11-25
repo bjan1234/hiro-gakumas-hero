@@ -98,7 +98,7 @@ def test_run_hif_always_runs_new_runtime_without_kaa(monkeypatch, tmp_path):
 
 def _run_with(monkeypatch, new_effects, run_effects, command="new"):
     """play.run 的外壳：设备 / Runtime / 开局 / 续跑 / 主循环都换成替身，按给定顺序抛 DateChanged 或正常返回。"""
-    from hiro import kaa_env
+    from hiro import formation_env
     from hiro.devices import active
     from hiro.loop.date_change import DateChanged
     from hiro.runtime import finish, opening
@@ -113,9 +113,9 @@ def _run_with(monkeypatch, new_effects, run_effects, command="new"):
 
         return f
 
-    monkeypatch.setattr(kaa_env, "apply_formation_plan", lambda idol: None)
-    monkeypatch.setattr(kaa_env, "SUPPORT_SET", 4)
-    monkeypatch.setattr(kaa_env, "MEMORY_SET", 5)
+    monkeypatch.setattr(formation_env, "apply_formation_plan", lambda idol: None)
+    monkeypatch.setattr(formation_env, "SUPPORT_SET", 4)
+    monkeypatch.setattr(formation_env, "MEMORY_SET", 5)
     monkeypatch.setattr(
         "hiro.devices.open_device", lambda: NS(connect=lambda: None, close=lambda: calls.append("close"))
     )

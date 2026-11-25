@@ -41,6 +41,8 @@ PY="$ROOT/$(venv_py)"
 step "3/7 安装本仓库与 KAA（.[dev,play]）"
 # --override：不装 KAA 图形界面的 PySide6（约 1.2 GB，hiro 用不到），见 scripts/uv-overrides.txt
 uv pip install --python "$PY" --override "$ROOT/scripts/uv-overrides.txt" -e ".[dev,play]"
+# RapidOCR 后端的识别模型：原来随 KAA 带，现在从本仓库 GitHub Release 下载、校验 SHA256（Mac 缺省用 Vision，下载失败不挡安装）
+"$PY" tools/assets/rapid_models.py || echo "  ⚠ RapidOCR 模型没下好（网络？）：要用 HIRO_OCR=rapidocr 时再跑 python tools/assets/rapid_models.py"
 
 step "4/7 生成 KAA 的 kaa/tasks/R.py（KAA 的生成文件，子模块里没有）"
 if [ "$REGEN" = 1 ] || [ ! -f vendor/kaa/kaa/tasks/R.py ]; then

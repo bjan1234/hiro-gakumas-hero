@@ -44,7 +44,8 @@ def test_nia_job_defaults_to_pro(hiro_home):
 
 
 def test_daily_items(hiro_home):
-    assert argv("daily", {"items": "presents,mission_reward"})[2:] == ["--only", "presents,mission_reward", "--own"]
+    assert argv("daily", {"items": "presents,mission_reward"})[2:] == ["--only", "presents,mission_reward"]
+    assert argv("daily", {"items": "assignment,contest"})[2:] == ["--only", "assignment,contest"]
     assert argv("daily", {"items": "contest"})[2:] == ["--only", "contest"]
     assert argv("daily", {})[2:] == []
 

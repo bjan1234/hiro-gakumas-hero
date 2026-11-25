@@ -122,12 +122,12 @@ def main():
 
     if (os.environ.get("HIRO_RUNTIME") or "own").strip().lower() != "own":
         logger.warning("HIRO_RUNTIME=%s：KAA 主循环已经删了，照样用新主循环", os.environ.get("HIRO_RUNTIME"))
-    from hiro import kaa_env
+    from hiro import formation_env
 
-    kaa_env.apply_formation_plan(args.idol)
-    if args.main_attr is None and kaa_env.PLAN_MAIN_ATTR:
+    formation_env.apply_formation_plan(args.idol)
+    if args.main_attr is None and formation_env.PLAN_MAIN_ATTR:
         args.main_attr = (
-            kaa_env.PLAN_MAIN_ATTR
+            formation_env.PLAN_MAIN_ATTR
         )  # 没给 --main-attr：用开局编成方案的主属性（策略、租借格、trace 都按它）
 
     manifest = manifest_mod.collect()

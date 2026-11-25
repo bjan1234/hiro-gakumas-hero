@@ -97,19 +97,14 @@ _rapid: dict = {}
 
 
 def _rapid_model(tag: str) -> Path:
-    """识别模型路径：RAPID_DIR（cache/rapidocr）里有就用；没有就用已安装的 kaa 包里随带的同名文件
-    （只按路径找数据文件，不 import kaa）。PaddleOCR PP-OCRv3 日文 / 英文模型，ModelScope 上没有 v3 的公开地址。"""
-    import importlib.util
-
-    name = RAPID_MODELS[tag]
-    own = RAPID_DIR / name
+    """识别模型路径（RAPID_DIR = cache/rapidocr）。PaddleOCR PP-OCRv3 日文 / 英文模型，原来随 KAA 带，
+    去 KAA 后托管在本仓库 GitHub Release，由 tools/assets/rapid_models.py 下载（安装脚本会调）。"""
+    own = RAPID_DIR / RAPID_MODELS[tag]
     if own.exists():
         return own
-    spec = importlib.util.find_spec("kaa")
-    for d in (spec.submodule_search_locations or []) if spec else []:
-        if (f := Path(d) / "res" / "models" / name).exists():
-            return f
-    raise RuntimeError(f"HIRO_OCR=rapidocr 要的模型 {name} 不在 {own.parent}，也没装 kaa 包")
+    raise RuntimeError(
+        f"HIRO_OCR=rapidocr 要的模型 {own.name} 不在 {own.parent}：先跑 python tools/assets/rapid_models.py"
+    )
 
 
 OCR_DEVICES = ("cuda", "dml", "cpu")  # HIRO_OCR_DEVICE=auto 时按这个顺序试

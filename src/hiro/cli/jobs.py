@@ -127,7 +127,6 @@ def _hif_argv(p: dict, d: Path) -> list[str]:
 
 
 DAILY_ITEMS = ("activity_funds", "presents", "assignment", "contest", "mission_reward", "club_reward")
-DAILY_OWN = ("activity_funds", "presents", "mission_reward", "club_reward")  # 已迁到 hiro.daily 的（不经 KAA）
 DAILY_LABEL = {
     "activity_funds": "活動費",
     "presents": "礼物",
@@ -145,8 +144,6 @@ def _daily_argv(p: dict, d: Path) -> list[str]:
     items = [i for i in (p.get("items") or "").split(",") if i]
     if items:
         argv += ["--only", ",".join(items)]
-        if all(i in DAILY_OWN for i in items):
-            argv.append("--own")
     return argv
 
 

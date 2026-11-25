@@ -27,7 +27,7 @@ def test_landscape_guard_inactive_never_toggles_fullscreen():
 
 
 # ---------------------------------------------------------------- KAA 后端配置
-kaa_env = pytest.importorskip("hiro.kaa_env")
+formation_env = pytest.importorskip("hiro.formation_env")
 
 
 @pytest.fixture

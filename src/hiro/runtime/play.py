@@ -252,13 +252,13 @@ def run(args, session) -> int:
     """跑一段：new = 开局后打到结束；resume = 续跑到结束。返回退出码（0 正常，3 停机交给人）。
     日切换在开局或打的过程中都可能出现：回首页后，开局没开成就重新开局，已经在培育里就续跑；一段最多 MAX_DATE_CHANGES 次。
     （开局已经点了开始、正在开场剧情时日切换：重新开局会被「本机有进行中的培育」拦住停机，交给人，不盲目破弃。）"""
-    from hiro import kaa_env
+    from hiro import formation_env
     from hiro.devices import active, open_device
     from hiro.loop.date_change import DateChanged
     from hiro.runtime import finish, opening
 
-    kaa_env.apply_formation_plan(args.idol)
-    if args.command == "new" and (kaa_env.SUPPORT_SET is None or kaa_env.MEMORY_SET is None):
+    formation_env.apply_formation_plan(args.idol)
+    if args.command == "new" and (formation_env.SUPPORT_SET is None or formation_env.MEMORY_SET is None):
         logger.error("new 开局要编成号：设 HIRO_SUPPORT_SET / HIRO_MEMORY_SET，或先生成开局编成方案")
         return 2
     device = open_device()
@@ -279,8 +279,8 @@ def run(args, session) -> int:
                         # 上一局停在结算页时先回首页；本战开局时已经在本战开始确认页就留着（new_produce 从这里接着核对，
                         # 原来点回首页，再从首页进本战走完整编成，Mac p15-main 11-17）
                         finish.finish_produce_end(rt, go_home=True)
-                    opening.new_produce(rt, args.mode, idol=args.idol, support_set=kaa_env.SUPPORT_SET, memory_set=kaa_env.MEMORY_SET,
-                                        plan=kaa_env.ACTIVE_PLAN, rental_attr=args.main_attr, main_attr=args.main_attr,
+                    opening.new_produce(rt, args.mode, idol=args.idol, support_set=formation_env.SUPPORT_SET, memory_set=formation_env.MEMORY_SET,
+                                        plan=formation_env.ACTIVE_PLAN, rental_attr=args.main_attr, main_attr=args.main_attr,
                                         expect_memory=tuple(v.strip() for v in args.expect_memory.split(",") if v.strip()))  # fmt: skip
                     started = True
                 elif attempt or args.command == "resume":
