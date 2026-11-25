@@ -73,6 +73,18 @@ description: 用 hiro 命令行查学マス账号信息和游戏资料库、开�
 
 方案只存在本机；要写进游戏用下面的 `write-formation` 任务（先 `--dry-run` 看差在哪几格）。开局时程序按方案核对编成，对不上就停。
 
+## 模型用量与花费（只读，直接执行）
+
+对局里的决策、认不出画面时的兜底、对话助手，每次调用模型都记一笔（`HIRO_HOME/usage/`）。花费按 `prices.json` 估算（DeepSeek 分高峰 / 空闲时段），以服务商账单为准；Claude / Codex 订阅的调用不另收费，单列「折合 API 价」。
+
+| 命令 | 作用 |
+|---|---|
+| `hiro usage daily [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--breakdown]` | 按天汇总：次数、token（输入 / 输出 / 缓存读 / 缓存写）、花费（按币种）；`--breakdown` 再按模型拆 |
+| `hiro usage monthly [同上]` | 按月汇总 |
+| `hiro usage job <任务编号>` | 一局的用量：合计、按来源（决策 / 兜底）和模型拆、每次调用一行 |
+| `hiro usage chat [--thread <对话编号>]` | 对话助手的用量，按对话分组 |
+| `hiro usage recent [--limit N]` | 最近几局各花了多少（每局一行） |
+
 ## 开局和扫描（会动游戏：待确认）
 
 `hiro run start <种类> [参数]`，同一时间只能跑一个任务，已经有任务在跑会返回 `busy`。
