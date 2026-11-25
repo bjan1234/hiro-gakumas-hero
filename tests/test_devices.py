@@ -205,8 +205,6 @@ def test_maatools_empty_frames_retry_then_black_then_gone(monkeypatch):
         dev.screenshot()
 
 
-
-
 # ---------------------------------------------------------------- adb（假 adb 命令）
 
 

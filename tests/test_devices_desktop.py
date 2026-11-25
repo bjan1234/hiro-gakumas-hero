@@ -1,9 +1,9 @@
 """hiro.devices.desktop：Windows 桌面暂时不可用（UAC / 锁屏 / 远程切桌面，读光标报「拒绝访问」）时等它恢复。
 原在 hiro.loop.win_desktop（随 KAA 设备层删了），DMM 设备 hiro.devices.dmm_win32 用。"""
 
-import pytest
-
 from hiro.devices import desktop
+
+import pytest
 
 pytestmark = pytest.mark.synthetic
 
