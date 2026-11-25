@@ -2139,7 +2139,8 @@ class HifCore:
             logger.warning("%s 敗退，没有再挑戦按钮", label)
             return False
         if self._handoff_retry(label):
-            return False  # 人处理过了（亲手再挑戦打完 / 不打）：从当前画面接着收尾
+            # 人处理过了（亲手再挑戦打完 / 不打）：从当前画面接着收尾；交回时还在考试里（亲手打超时）= 考试重开了，主循环重新进考试
+            return self._handoff_in_exam
         kind = self._click_retry(label, btn, texts)
         if kind is None:
             return False
@@ -2172,6 +2173,7 @@ class HifCore:
                 return "result"
             return "other"
 
+        self._handoff_in_exam = False
         got = retry_handoff.wait(label, look=look)
         if self.s is not None:
             self.s.note(f"{label} 没过线，再挑戦交给人：{'人处理过了' if got == 'user' else '交回程序'}")
@@ -2180,6 +2182,7 @@ class HifCore:
                 in_exam = look() == "exam"
             except Exception:  # noqa: BLE001
                 in_exam = False
+            self._handoff_in_exam = in_exam
             if in_exam:
                 # 交回来时还在考试里（你点了再挑戦，没打完就交回）：这是同一场的再挑戦，场次不加
                 # （11-24 mao3：被记成 qualify-4，中转层不搜、过线条件按错的场次）
@@ -2214,6 +2217,7 @@ class HifCore:
         )
         return False
 
+    _handoff_in_exam = False  # 再挑戦交给人、交回时画面还在考试里（_handoff_retry 设）
     exam_restarted = False  # 刚点了再挑戦、同一场考试要重新进入（见 HiroController._rearm_exam）
     _retry_comm_error = False  # 上一次点再挑戦遇到通信エラー（不算决定不再挑戦）
     _retry_declined: tuple | None = None  # 已决定不再挑戦的本战结算页（label, 总分, 本轮分）：同一页不再点开确认框
@@ -2403,6 +2407,8 @@ class HifCore:
         if page_key == self._retry_declined:
             return False  # 这张结算页已经决定不再挑戦：别再点开确认框，让调用方点「次へ」收尾
         if self._handoff_retry(label):
+            if self._handoff_in_exam:
+                return True  # 交回时还在考试里：同一场重开了，主循环重新进考试
             self._retry_declined = page_key
             return False  # 人处理过了：从当前画面接着收尾
         if (gap := self._gap_to_first(f)) is not None and gap[1] > self._retry_gap_max():

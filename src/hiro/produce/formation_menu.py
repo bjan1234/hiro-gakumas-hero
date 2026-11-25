@@ -196,9 +196,8 @@ class Menu:
         ):
             self.dev.snap(img, "menu-not-home")
             raise FormationWriteError("不在主页也不在プロデュース編成页：请先回主页再运行")
-        tapped_idol = tapped_panel = (
-            0  # 点了几次（点了几轮画面没变就补点，最多 RETAP_MAX 次：11-24 DMM 机器负载高时第一下没生效）
-        )
+        # 点了几次：点了几轮画面没变就补点，最多 RETAP_MAX 次（11-24 DMM 机器负载高时第一下没生效）
+        tapped_idol = tapped_panel = 0
         idol_wait = panel_wait = 0
         for _ in range(WAIT_TRIES * 2):
             if (m := read_menu(img, texts)) is not None:
