@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_COMMIT = "d31baf6608ee4553091f28446f628cd3ad66ff01"
+DEFAULT_COMMIT = "edc305aac3ac0204806c96164ce36fb795ba81e1"
 REPO = "https://github.com/vertesan/gakumasu-diff"
 
 

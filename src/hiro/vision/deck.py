@@ -19,6 +19,7 @@
 
 import os
 import re
+import unicodedata
 from functools import cache
 from pathlib import Path
 
@@ -409,13 +410,18 @@ def _cards_by_full_name() -> dict[str, list[tuple[str, int]]]:
 _DASHES = str.maketrans({"一": "ー", "－": "ー", "-": "ー", "―": "ー", "ｰ": "ー", "!": "！", "?": "？"})
 
 
+def _dash_key(name: str) -> str:
+    """全角半角统一（NFKC：「200％スマイル＋」→「200%スマイル+」，回忆详情 11-24）后再统一长音、感叹号问号。"""
+    return unicodedata.normalize("NFKC", name).translate(_DASHES)
+
+
 @cache
 def _cards_by_dash_name() -> dict[str, tuple[str, list[tuple[str, int]]]]:
     """长音符号 / 感叹号问号统一后的卡名 → (主数据原名, [(card_id, upgrade)])；两张卡统一后撞名的不收（取不定）。"""
     out: dict[str, tuple[str, list[tuple[str, int]]]] = {}
     clash: set[str] = set()
     for name, hits in _cards_by_full_name().items():
-        key = name.translate(_DASHES)
+        key = _dash_key(name)
         if key in out and out[key][0] != name:
             clash.add(key)
         out[key] = (name, hits)
@@ -424,10 +430,10 @@ def _cards_by_dash_name() -> dict[str, tuple[str, list[tuple[str, int]]]]:
 
 def card_from_name(text: str, candidates: set[str] | None = None) -> dict | None:
     """卡名（OCR，带「+」）精确命中主数据 → {card_id, name, upgrade}；同名多张时按 candidates（如本页卡格认出的 id）取，取不定给 None。
-    精确没命中时把长音符号统一再查（RapidOCR 常把「ー」读成「一」：DMM dmm2 特別指導「えいえいお一+」，Windows 回归集 sg-dmm2-2c）。"""
+    精确没命中时把全角半角、长音符号统一再查（RapidOCR 常把「ー」读成「一」：DMM dmm2 特別指導「えいえいお一+」，Windows 回归集 sg-dmm2-2c）。"""
     name = text.replace("＋", "+").replace(" ", "").strip()
     hits = _cards_by_full_name().get(name) or []
-    if not hits and (alt := _cards_by_dash_name().get(name.translate(_DASHES))) is not None:
+    if not hits and (alt := _cards_by_dash_name().get(_dash_key(name))) is not None:
         name, hits = alt
     if candidates:
         hits = [h for h in hits if h[0] in candidates] or hits
