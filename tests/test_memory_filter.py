@@ -380,3 +380,149 @@ def test_open_on_blank_screen_says_cannot_see_game():
     picker.ocr = lambda img: [("何か", 1.0, (100, 300, 200, 320))]
     with pytest.raises(mf.MemoryFilterError, match="弹窗没出来"):
         mf._open(picker)
+
+
+# ---------------------------------------------------------------- N62：排序方向一帧认不出就停（G1 第 5 轮 11-27 Mac rc.9，写第 3 格回忆）
+
+
+def _dir_picker(frames_before_click, frames_after_click=None):
+    """shoot 依次给 frames_before_click 里的方向（None = 认不出的帧），点一次升降序按钮后换成 frames_after_click。"""
+    import numpy as np
+
+    p = FakePicker()
+    p.sort = "入手"
+    seq = {"cur": list(frames_before_click), "after": list(frames_after_click or [])}
+    p.dir_clicks, p.snaps = 0, []
+
+    def shoot():
+        d = seq["cur"].pop(0) if len(seq["cur"]) > 1 else seq["cur"][0]
+        return _icon_frame(d) if d else np.zeros((1280, 720, 3), np.uint8)
+
+    def click(x, y):
+        if (x, y) == mf.DIR_BTN:
+            p.dir_clicks += 1
+            seq["cur"] = seq["after"].pop(0) if seq["after"] else seq["cur"]
+            return
+        FakePicker.click(p, x, y)
+
+    p.shoot, p.click = shoot, click
+    p.snap = lambda img, tag: p.snaps.append(tag)
+    return p
+
+
+def test_direction_one_unreadable_frame_is_looked_again():
+    p = _dir_picker([None, "desc"])
+    mf.ensure_newest_first(p)
+    assert p.dir_clicks == 0
+
+
+def test_direction_unreadable_off_picker_does_not_click_blind():
+    """连排序按钮都读不到（不一定还在选择页）：不盲点升降序按钮的位置，直接停。"""
+    p = _dir_picker([None])
+    p.ocr = lambda img: []
+    with pytest.raises(mf.MemoryFilterError):
+        mf.ensure_newest_first(p)
+    assert p.dir_clicks == 0
+
+
+class _TogglePicker(FakePicker):
+    """升降序按钮真会翻方向；点完前 lag 帧还显示点之前的方向（渲染慢）。blind：第一次点之前图标读不出（全黑）。
+    never：图标一直读不出。"""
+
+    def __init__(self, start, lag=0, *, blind=False, never=False):
+        super().__init__(sort="入手")
+        self.dir, self.lag, self.shown_old = start, lag, 0
+        self.dir_clicks = 0
+        self.old = start
+        self.blind, self.never = blind, never
+        self.snaps = []
+
+    def snap(self, img, tag):
+        self.snaps.append(tag)
+
+    def shoot(self):
+        import numpy as np
+
+        if self.never or (self.blind and self.dir_clicks == 0):
+            return np.zeros((1280, 720, 3), np.uint8)
+        if self.shown_old > 0:
+            self.shown_old -= 1
+            return _icon_frame(self.old)
+        return _icon_frame(self.dir)
+
+    def click(self, x, y):
+        if (x, y) == mf.DIR_BTN and not self.popup:
+            self.dir_clicks += 1
+            self.old, self.dir = self.dir, ("desc" if self.dir == "asc" else "asc")
+            self.shown_old = self.lag
+            return
+        FakePicker.click(self, x, y)
+
+
+def test_direction_asc_flips_once_to_desc():
+    p = _TogglePicker("asc")
+    mf.ensure_newest_first(p)
+    assert p.dir == "desc" and p.dir_clicks == 1
+
+
+@pytest.mark.parametrize("lag", [1, 2, 3])
+def test_direction_slow_render_does_not_flip_back(lag):
+    """N62 review / #190 CodeRabbit：点完头几帧还显示旧方向（asc）。旧帧不算，要读到变化且两帧一致，不能据此再点一下翻回 asc。"""
+    p = _TogglePicker("asc", lag=lag)
+    mf.ensure_newest_first(p)
+    assert p.dir == "desc" and p.dir_clicks == 1
+
+
+def test_direction_dropped_click_is_clicked_again():
+    """点了按钮却一直没变（点击丢了）：看满几帧还是 asc，就再点一次。"""
+    p = _TogglePicker("asc")
+    real_click = p.click
+    drops = [1]
+
+    def click(x, y):
+        if (x, y) == mf.DIR_BTN and drops:
+            drops.pop()
+            return
+        real_click(x, y)
+
+    p.click = click
+    mf.ensure_newest_first(p)
+    assert p.dir == "desc" and p.dir_clicks == 1
+
+
+def test_direction_unknown_but_state_reads_desc_does_not_click(monkeypatch):
+    """#190 CodeRabbit：几帧都认不出，但再读状态时读到 desc，就直接返回，不要盲点（会翻回 asc）。"""
+    p = _TogglePicker("desc")
+    real, calls = mf.sort_direction, []
+    monkeypatch.setattr(
+        mf, "sort_direction", lambda img: calls.append(1) or (None if len(calls) <= mf.DIR_LOOKS else real(img))
+    )
+    mf.ensure_newest_first(p)
+    assert p.dir == "desc" and p.dir_clicks == 0
+
+
+def test_restore_reads_direction_over_several_frames(monkeypatch):
+    """恢复时第一帧认不出方向，也要多看几帧再决定要不要把方向改回玩家原来的。"""
+    p = _TogglePicker("desc")
+    real, calls = mf.sort_direction, []
+    monkeypatch.setattr(mf, "sort_direction", lambda img: calls.append(1) or (None if len(calls) == 1 else real(img)))
+    mf.restore(p, {"sort": "入手", "dir": "asc"})
+    assert p.dir == "asc" and p.dir_clicks == 1
+
+
+@pytest.mark.parametrize("start", ["asc", "desc"])
+@pytest.mark.parametrize("lag", [0, 2, 3])
+def test_direction_unknown_before_click_is_verified(start, lag):
+    """#190 CodeRabbit：点之前方向读不出（还在选择页），点完头几帧可能还是旧画面：等画面稳定后再读，最后真的是 desc。
+    start=desc、lag=2 就是 CodeRabbit 说的情况（点完两帧还显示旧的 desc，实际已经是 asc）。"""
+    p = _TogglePicker(start, lag=lag, blind=True)
+    mf.ensure_newest_first(p)
+    assert p.dir == "desc"
+
+
+def test_direction_never_readable_snaps_and_stops():
+    """一直读不出：点一下还读不出就停（不一直盲点），存帧。"""
+    p = _TogglePicker("asc", never=True)
+    with pytest.raises(mf.MemoryFilterError, match="None → None"):
+        mf.ensure_newest_first(p)
+    assert p.dir_clicks == 1 and p.snaps == ["sort-direction-unknown"]
