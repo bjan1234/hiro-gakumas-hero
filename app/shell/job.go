@@ -203,6 +203,9 @@ func (a *App) notify(id, before string, v *plugin.JobView) {
 			} else {
 				text = "「" + name + "」做完了，编成已经写进游戏。要开局点侧栏的「开局」。"
 			}
+		case v.DoneText() != "":
+			// 日常等任务的「结果：」（每项做了什么）
+			text = "「" + name + "」做完了：" + v.DoneText() + "。"
 		default:
 			text = "「" + name + "」做完了。"
 			// N31（G1 第 3 轮 11-26）：第一次三项扫描都做完后对话停在「做完了」，没说下一步能做什么。
