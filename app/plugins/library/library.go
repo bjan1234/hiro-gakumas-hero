@@ -342,7 +342,7 @@ func idolRow(c *ui.Context, h plugin.Host, it map[string]any) {
 	if chara == "" {
 		chara = str(it, "name")
 	}
-	// 按「游戏内容语言」用资料库的名字（「【卡名】偶像名」）；查不到用扫描读到的日文
+	// 用资料库的中文名（「【卡名】偶像名」）；查不到用扫描读到的日文
 	if t, ch := common.SplitIdolName(common.Shared.Name(h, id, "")); ch != "" {
 		chara, title = ch, t
 	}
@@ -367,14 +367,13 @@ func idolRow(c *ui.Context, h plugin.Host, it map[string]any) {
 }
 
 func planName(p string) string {
-	zh := common.Shared.Lang() != "ja"
 	switch strings.ToLower(p) {
 	case "sense":
-		return map[bool]string{true: "感性", false: "センス"}[zh]
+		return "感性"
 	case "logic":
-		return map[bool]string{true: "理性", false: "ロジック"}[zh]
+		return "理性"
 	case "anomaly":
-		return map[bool]string{true: "非凡", false: "アノマリー"}[zh]
+		return "非凡"
 	}
 	return p
 }
@@ -641,7 +640,7 @@ func (s *state) searchPanel(c *ui.Context, h plugin.Host) {
 			var d struct {
 				Items []map[string]any `json:"items"`
 			}
-			_ = h.Call(context.Background(), []string{"catalog", "search", q, "--lang", common.Shared.Lang()}).Decode(&d)
+			_ = h.Call(context.Background(), []string{"catalog", "search", q, "--lang", "zh"}).Decode(&d)
 			return func() { s.results = d.Items }
 		})
 	}

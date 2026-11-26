@@ -23,7 +23,7 @@ type IdolItem struct {
 type IdolPicker struct {
 	Query  string
 	Items  []IdolItem
-	Chosen IdolItem // Name 是点选时按「游戏内容语言」显示的名字
+	Chosen IdolItem // Name 是点选时显示的名字（资料库的中文名）
 	loaded bool
 }
 
@@ -66,7 +66,7 @@ func (p *IdolPicker) Draw(c *ui.Context, h plugin.Host, key string) {
 		kit.Note(c, "还没扫描过偶像卡：在资料库的「扫描」里扫一次偶像卡。")
 		return
 	}
-	// 名字按「游戏内容语言」取资料库的（info idols 的 name 是扫描读到的日文原文）；筛选时中日文都认
+	// 名字取资料库的中文名（info idols 的 name 是扫描读到的日文原文）；筛选时中日文都认
 	ids := make([]string, len(p.Items))
 	for i, it := range p.Items {
 		ids[i] = it.ID

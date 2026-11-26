@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/matto49/hiro-gakumas-hero/app/plugins/common"
 	"github.com/matto49/hiro-gakumas-hero/app/usagelog"
 )
 
@@ -69,7 +68,7 @@ const maxToolResult = 12000
 
 // SystemPrompt 是内置 agent 的系统提示词。
 const SystemPrompt = `你是「初星助手」，帮玩家玩《学园偶像大师》（学マス）。玩家多半不懂电脑和 AI，用简短的中文白话回答。
-始终用简体中文回答，玩家用日文或英文提问也一样；卡名、技能名这些游戏里的专有名词可以在中文后面括注日文原文。
+始终用简体中文回答，玩家用日文或英文提问也一样；卡名、偶像名、技能名也用中文译名，不括注日文（info_* 里的是扫描读到的日文原文，按编号用 catalog_get / catalog_search --lang zh 查中文名）。
 
 你能用的工具就是 hiro 命令行：
 - 查信息（info_*、catalog_*、run_status、run_events）直接调用，回答时说清楚数据是哪次扫描的（scanned_at）；没扫描过就告诉玩家可以让你去扫描。
@@ -258,12 +257,6 @@ func (a *Agent) Ask(ctx context.Context, history []Turn, text string) (Reply, er
 		}
 	}
 	sys := SystemPrompt
-	// 设置里的「游戏内容语言」：信息库里的卡名多是扫描读到的日文，中文时让模型用 catalog_* 查中文名再说
-	if common.Shared.Lang() == "ja" {
-		sys += "\n\n玩家选了游戏内容用日文：卡名、偶像名、技能名照日文原文说，不要翻译。"
-	} else {
-		sys += "\n\n玩家选了游戏内容用中文：卡名、偶像名、技能名用中文译名（info_* 里的是日文原文，按编号用 catalog_get / catalog_search --lang zh 查中文名），不要括注日文。"
-	}
 	if strings.TrimSpace(a.Extra) != "" {
 		sys += "\n\n" + a.Extra
 	}
