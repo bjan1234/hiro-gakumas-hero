@@ -836,7 +836,12 @@ class HifCore:
         sources = (*self.DRINK_FULL_SOURCES, "llm") if auto else self.DRINK_FULL_SOURCES
         if d.source not in sources:
             # 规则 / 模拟偏离（> 2 SE，第二十一局 06:01 source=sim 被当成「认不出」停机）都是有效决策；兜底 / LLM 才说明认不出
-            why = f"饮料已满（所持上限），持有或新饮料认不出，不能判断换不换：{d.reason}"
+            if d.source == "llm":
+                # G1-F8（11-26）：规则拿不准、LLM 给了换 / 不换，原来也写「认不出」，小白看不懂为什么停
+                why = (f"饮料已满（所持上限），规则拿不准换不换，LLM 的意见是「{d.reason}」；"
+                       "缺省只照规则 / 模拟的换饮料决定执行（设置 HIRO_DRINK_FULL_AUTO=1 才照 LLM 执行），请手动选一下")  # fmt: skip
+            else:
+                why = f"饮料已满（所持上限），持有或新饮料认不出，不能判断换不换：{d.reason}"
             if not auto:
                 self._stop("SELECT_DRINK", why, obs=obs, decision=d)
             # 开关 HIRO_DRINK_FULL_AUTO=1（协调 11-17，初 REGULAR 实机停在这里）：认不出就默认不收这瓶（跳一瓶饮料损失很小），不停机
@@ -913,11 +918,15 @@ class HifCore:
 
         cur = Path(self.s.trace.dir)
         base = re.sub(r"-r\d+$", "", cur.name)
-        dirs = [
-            d
-            for d in sorted(cur.parent.glob(base + "*"))
-            if d != cur and re.fullmatch(re.escape(base) + r"(-r\d+)?", d.name)
-        ]
+        # 按续打编号的数值排（基名段 = 0）：名字字典序会把 -r10 排在 -r9 前，局面打底取到旧段（#128 review）
+        dirs = sorted(
+            (
+                d
+                for d in cur.parent.glob(base + "*")
+                if d != cur and re.fullmatch(re.escape(base) + r"(-r\d+)?", d.name)
+            ),
+            key=lambda d: int(m.group(1)) if (m := re.search(r"-r(\d+)$", d.name)) else 0,
+        )
         steps = cur / "steps.jsonl"
         if steps.exists() and steps.stat().st_size > 0:
             dirs.append(cur)
