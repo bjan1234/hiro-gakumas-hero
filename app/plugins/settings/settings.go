@@ -330,7 +330,7 @@ func (s *S) closeGameAfter(h plugin.Host, v *plugin.JobView) {
 					// 侧栏的连接状态跟着变（CodeRabbit #123：原来还显示「已连上」）；下一次发起前要先开游戏（#123 review）
 					s.devMu.Lock()
 					off := false
-					s.device, s.deviceOK, s.probedAt = "游戏已关（跑完关游戏）· 点这里重连", &off, h.Now()
+					s.device, s.deviceOK, s.probedAt = "游戏已关 · 点这里重连", &off, h.Now()
 					s.devMu.Unlock()
 					h.Post("已按「跑完关游戏」关了游戏。下次发起任务前先把游戏打开。", nil)
 				}
