@@ -49,12 +49,30 @@ def home_button(f):
     return find(f, name, threshold=threshold, region=region)
 
 
+_TITLE = object()  # goto_home 的 step 认出标题页时返回它（交给 finish.leave_title，不在 drive 的计时里走）
+
+
+def at_title_screen(f) -> bool:
+    """游戏刚打开的标题页（背景是视频，下面「TAP TO START」一明一暗地闪）。按不闪的字认：左上「プロデューサーID: タップで表示」
+    + 「Ver.」/「メニュー」等（finish.at_title）；要求「タップで表示」或读到 TAP TO START，免得把プロフィール页（也有プロデューサーID）认成标题页。"""
+    from hiro.runtime.finish import at_title
+
+    texts = [t.text for t in f.texts]
+    if not at_title(texts):
+        return False
+    return any("タップで表示" in t for t in texts) or any("TAPTOSTART" in t.upper().replace(" ", "") for t in texts)
+
+
 def goto_home(rt, timeout: float = HOME_TIMEOUT):
-    """回首页：点首页 / 工具栏首页 / ✕，直到认出首页（同 KAA goto_home）；偶像之路结果页先点「一覧に戻る」。返回首页那一帧。"""
+    """回首页：点首页 / 工具栏首页 / ✕，直到认出首页（同 KAA goto_home）；偶像之路结果页先点「一覧に戻る」。返回首页那一帧。
+    游戏停在标题页（刚打开游戏就发起日常、扫描等）：走续跑同一条「标题页 → 首页」的路（finish.leave_title：点 TAP TO START，
+    闪到暗处读不到就点上方空白；数据下载确认、登录奖励 / 公告点掉；要「データ連携」就停下交给人）。"""
 
     def step(f):
         if at_home(f):
             return f
+        if at_title_screen(f):
+            return _TITLE
         if (m := home_button(f)) is not None:
             tap_match(rt, m)
             return None
@@ -65,6 +83,13 @@ def goto_home(rt, timeout: float = HOME_TIMEOUT):
             rt.device.tap(*xy)
         return None
 
+    for _ in range(2):
+        r = rt.drive(step, timeout, "回首页")
+        if r is not _TITLE:
+            return r
+        from hiro.runtime.finish import leave_title
+
+        leave_title(rt)  # 回首页可能要下载数据，单独计时；回不到首页抛 ResumeBlocked
     return rt.drive(step, timeout, "回首页")
 
 

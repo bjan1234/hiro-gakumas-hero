@@ -38,7 +38,7 @@ def at_title(texts: list[str]) -> bool:
     return any(TITLE_ID_HINT in t for t in texts) and any(h in t for t in texts for h in TITLE_OTHER_HINTS)
 
 
-def _leave_title(rt) -> None:
+def leave_title(rt) -> None:
     """标题页 → 首页，走日切换恢复同一条路（TAP TO START / 空白处、数据下载点确认、登录奖励 / 公告点掉，有购买字样不点）。
     点进去弹「機種変更…データ連携」框时 recover_to_home 抛 DataLinkBlocked 停机，交给玩家（登录 / 连携是用户本人的事）。"""
     from hiro.loop import date_change
@@ -67,7 +67,7 @@ def resume_produce(rt, timeout: float = RESUME_TIMEOUT) -> str:
 
     state = {"tapped_resume": False, "clicked_ongoing": False, "unknown_since": None}
     if at_title([t.text for t in rt.screen.shot().texts]):
-        _leave_title(rt)  # 回首页可能要下载数据，单独计时，不占续跑的 40 秒
+        leave_title(rt)  # 回首页可能要下载数据，单独计时，不占续跑的 40 秒
 
     def step(f):
         if (btn := rr.resume_button(f.texts)) is not None or (btn := nav.find(f, "Produce.ButtonResume")) is not None:
