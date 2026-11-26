@@ -62,6 +62,47 @@ def name_wanted(name: str, wants: list[str]) -> bool:
     return any(_norm(w) and (_norm(w) in n or _norm(w) in z) for w in wants)
 
 
+PRICE_FILE = "shop_prices.json"  # HIRO_HOME 下：点开看过的商品「名字 → 单价」
+
+
+def _price_path():
+    from hiro.cli.home import hiro_home
+
+    return hiro_home() / PRICE_FILE
+
+
+def load_prices() -> dict[str, int]:
+    """记下来的商品单价（点开过确认框的才有）。读不到就当没有。"""
+    import json
+
+    try:
+        d = json.loads(_price_path().read_text(encoding="utf-8"))
+        return {str(k): int(v) for k, v in d.items()}
+    except Exception:  # noqa: BLE001  没有 / 坏了：当没记过
+        return {}
+
+
+def save_prices(prices: dict[str, int]) -> None:
+    import json
+
+    try:
+        p = _price_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(prices, ensure_ascii=False, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def can_skip(price: int | None, wants: list[str], prices: dict[str, int]) -> bool:
+    """按名字买时，这个没标おすすめ的格子能不能不点开（11-27 用户：挨个点开看名字太慢，205 秒）。
+    格子上只有图标和价格、没有名字：只在这个价格**只**出现在记下来的、不要的商品上时跳过；没见过的价格、和要的商品同价的照样点开。
+    只会少点开，买之前照旧在确认框里核对名字；万一新出的、要的商品正好和不要的同价，会漏买（不会多买）。"""
+    if price is None or not wants:
+        return False
+    names = [n for n, p in prices.items() if p == price]
+    return bool(names) and not any(name_wanted(n, wants) for n in names)
+
+
 def text_at(f, word: str, *, y_min: int = 0, y_max: int = 1280, x_min: int = 0, x_max: int = 720):
     for t in f.texts:
         x, y = t.rect.center
@@ -248,6 +289,8 @@ def run(rt) -> str:
     if m == "off" and not ap_keys:
         return "商店：设置里关了"
     names = wanted_names() if m != "off" else []  # 「另外要买的」是推荐 / 全部的补充：不买时不算（#122 review）
+    prices = load_prices() if names else {}
+    seen_prices = dict(prices)
     bought: list[str] = []
     ap_got: list[str] = []
     money_short = False  # 有一件金币不够（跳过它接着看别的，CodeRabbit #122）
@@ -276,7 +319,7 @@ def run(rt) -> str:
                 if m == "recommended" and not tile["recommended"]:
                     if tile["price"] is not None:
                         cands[key] = tile  # 最低价兜底和指定名字无关（CodeRabbit #122）
-                    if not names:
+                    if not names or can_skip(tile["price"], names, prices):
                         continue
                 rt.device.tap(tile["x"], tile["y"])
                 g = wait_dialog(rt)
@@ -284,6 +327,8 @@ def run(rt) -> str:
                     continue
                 d = read_dialog(g)
                 name = (d or {}).get("name") or "?"
+                if name != "?" and tile["price"] is not None and d is not None and d["money"]:
+                    seen_prices[name] = tile["price"]
                 want = (
                     d is not None
                     and d["money"]
@@ -320,6 +365,8 @@ def run(rt) -> str:
     except ResumeBlocked as e:
         stopped = str(e) or "超时"
         logger.warning("商店中途停下：%s", stopped)
+    if names and seen_prices != prices:
+        save_prices(seen_prices)
     parts = []
     if bought:
         parts.append(

@@ -66,8 +66,14 @@ def main() -> int:
     summary = run_own(names, args.timeout, out)
     (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"→ {out}")
+
     # 给人看的一行（初星助手把它当这次任务的结果显示；11-25：原来只显示「完成」，看不出每项做了什么）
-    parts = [f"{LABEL.get(r['task'], r['task'])}：{r.get('result') or r.get('error') or '出错'}" for r in summary]
+    def part(r: dict) -> str:
+        label, text = LABEL.get(r["task"], r["task"]), r.get("result") or r.get("error") or "出错"
+        # 结果自己已经以「硬币扭蛋：」「商店」开头的不再加一遍（11-27：「硬币扭蛋：硬币扭蛋：友情 1 次」）
+        return text if text.startswith(label) else f"{label}：{text}"
+
+    parts = [part(r) for r in summary]
     print("结果：" + "；".join(parts), flush=True)
     bad = [r for r in summary if not r["ok"]]
     if bad:

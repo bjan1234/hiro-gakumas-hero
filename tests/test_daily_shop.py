@@ -216,3 +216,32 @@ def test_shop_dialog_reads_long_name():
 def test_coin_gacha_times_capped(monkeypatch):
     monkeypatch.setenv("HIRO_COIN_GACHA", "friend:999,sense:3")
     assert coin_gacha.plan() == [("friend", coin_gacha.MAX_TIMES), ("sense", 3)]
+
+
+def test_shop_can_skip_by_known_price():
+    """按名字买：价格只出现在记下来的、不要的商品上才不点开；没见过的价格、和要的同价的照样点开（11-27：挨个点开太慢）。"""
+    prices = {"ロジックノート(ボーカル)": 3000, "ロジックノート(ビジュアル)": 3000, "倉本千奈のピース": 1500}
+    wants = ["理性笔记（视觉）"]
+    assert shop.can_skip(1500, wants, prices)  # 只有碎片是这个价，不要
+    assert not shop.can_skip(3000, wants, prices)  # 同价里有要的
+    assert not shop.can_skip(4000, wants, prices)  # 没见过的价
+    assert not shop.can_skip(None, wants, prices)
+    assert not shop.can_skip(1500, [], prices)
+
+
+def test_shop_skips_known_unwanted_and_learns_prices(monkeypatch):
+    monkeypatch.setenv("HIRO_SHOP", "recommended")
+    monkeypatch.setenv("HIRO_SHOP_ITEMS", "再挑戦")
+    monkeypatch.delenv("HIRO_SHOP_AP", raising=False)
+    saved = {}
+    monkeypatch.setattr(shop, "load_prices", lambda: {"倉本千奈のピース": 1500})
+    monkeypatch.setattr(shop, "save_prices", lambda p: saved.update(p))
+    screen = frame(("おすすめ", 61, 319), ("3,000", 120, 480), ("あと1回", 104, 509),
+                   ("1,500", 290, 480), ("あと1回", 274, 509), ("2,000", 460, 480), ("あと1回", 444, 509))  # fmt: skip
+    goods = {104: ("ロジックノート", 3000, 1), 274: ("倉本千奈のピース", 1500, 1), 444: ("再挑戦チケット", 2000, 1)}
+    rt = _shop(monkeypatch, screen, goods, 100000)
+    r = shop.run(rt)
+    opened = {x for x, _ in rt.device.taps}
+    assert 274 not in opened and {104, 444} <= opened  # 碎片（已知不要的价）没点开
+    assert "再挑戦チケット" in r or "再挑战" in r
+    assert saved.get("再挑戦チケット") == 2000
