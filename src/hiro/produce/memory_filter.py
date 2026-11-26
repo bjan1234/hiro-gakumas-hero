@@ -45,6 +45,9 @@ class EmptySlice(MemoryFilterError):
     """这一片没有回忆：点「決定」后游戏提示「条件に当てはまるメモリーがありません」，弹窗不关（11-26 实机）。"""
 
 
+BLANK_SCREEN = "读不到游戏画面（一个字都没认出来）：电脑是不是锁屏了，或者游戏窗口被挡住 / 最小化了？解锁、把游戏窗口露出来后点「再试一次」"
+
+
 def _boxes(p) -> list[tuple[str, tuple[int, int, int, int]]]:
     return [(fold(t), (int(b[0]), int(b[1]), int(b[2]), int(b[3]))) for t, _, b in p.ocr(p.shoot())]
 
@@ -85,15 +88,21 @@ def _popup_open(boxes) -> bool:
 
 
 def _open(p) -> None:
+    seen_text = False
     for _ in range(OPEN_TRIES):
         boxes = _boxes(p)
+        seen_text |= bool(boxes)
         if _popup_open(boxes):
             return
         pill = next((b for t, b in boxes if 1030 <= _center(b)[1] <= 1075 and _sort_of(t)), None)
         p.click(*(_center(pill) if pill else PILL))
         p.sleep(1.5)
-        if _popup_open(_boxes(p)):
+        after = _boxes(p)
+        seen_text |= bool(after)
+        if _popup_open(after):
             return
+    if not seen_text:  # N60：每一帧都读不到字（锁屏 / 窗口被挡），别报成弹窗没出来（#189 review）
+        raise MemoryFilterError(BLANK_SCREEN)
     raise MemoryFilterError("点了排序按钮，「ソート・フィルタ」弹窗没出来")
 
 
@@ -124,8 +133,10 @@ def _scroll_top(p) -> None:
 def _section(p, header: str, labels: tuple[str, ...], stop: str | None):
     """往下滑到 header 标题和它下面的 labels 都在画面里（只认 header 和 stop 标题之间的），返回 (标题框, {label: 框})。"""
     _scroll_top(p)
+    blank = 0
     for _ in range(SCROLL_TRIES):
         boxes = _boxes(p)
+        blank += not boxes
         h = _find(boxes, header, exact=True, y_min=140, y_max=930)
         if h is not None:
             end = _find(boxes, stop, exact=True, y_min=h[3]) if stop else None
@@ -135,6 +146,9 @@ def _section(p, header: str, labels: tuple[str, ...], stop: str | None):
                 return h, got
         p.swipe(360, 850, 360, 550)
         p.sleep(0.6)
+    if blank == SCROLL_TRIES:
+        # N60（G1 第 5 轮 11-26）：本机锁屏时 MaaTools 只给空帧（拿黑帧顶上），一个字都读不到，原来报成「没找到那一组」像是筛选的问题
+        raise MemoryFilterError(BLANK_SCREEN)
     raise MemoryFilterError(f"滑了 {SCROLL_TRIES} 次没找到「{header}」那一组")
 
 
