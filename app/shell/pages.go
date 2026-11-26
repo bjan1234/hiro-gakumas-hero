@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/matto49/hiro-gakumas-hero/app/kit"
+	"github.com/matto49/hiro-gakumas-hero/app/labels"
 	"github.com/matto49/hiro-gakumas-hero/app/plugin"
 )
 
@@ -92,6 +93,14 @@ func (a *App) toastFor(text string, cards []plugin.Card) {
 			if len(args) > 0 {
 				t.Action = "再试一次"
 				t.OnAction = func() { a.runArgs("再试一次「"+summary+"」", args, nil) }
+			}
+		case "next":
+			// 「下一步」按钮（扫描做完：打一把初…）：提示条上只放一个，点了去问 AI 说这句
+			label, _ := c["label"].(string)
+			say, _ := c["say"].(string)
+			if say != "" && t.Action == "" {
+				t.Action = label
+				t.OnAction = func() { a.Ask(say) }
 			}
 		}
 	}
@@ -367,7 +376,9 @@ func (a *App) homeAction(c *ui.Context, i int, x HomeAction) {
 		ui.Column(c).Gap(3).Shrink(1).Children(func() {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 				if x.Attr != "" {
+					// 颜色不作唯一区分：色点旁边写属性（CodeRabbit #138）
 					ui.Box(c).Size(7, 7).Radius(4).Background(kit.AttrColor(x.Attr))
+					ui.Text(c, labels.Attr(x.Attr)).FontSize(11).TextColor(kit.Ink3)
 				}
 				ui.Text(c, x.Label).FontSize(kit.FSmall).FontWeight(600).TextColor(kit.Ink).MaxLines(1).Ellipsis("…")
 			})

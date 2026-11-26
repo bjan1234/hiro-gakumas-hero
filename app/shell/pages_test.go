@@ -197,3 +197,36 @@ func TestHomeActionsUsePageThenRun(t *testing.T) {
 		t.Errorf("再打一把走 Page：%q", ran)
 	}
 }
+
+// CodeRabbit #138：页面上点「开始」失败（确认框关了），提示条写出原因。
+func TestPagesConfirmFailureToasts(t *testing.T) {
+	call := &fakeCall{resp: map[string]hiroapiResult{
+		"run start daily": pendingResult("p3", "领日常奖励"),
+		"confirm p3":      {Error: &hiroapi.CliError{Code: "busy", Message: "已经有任务在跑"}},
+	}}
+	a, run := newPagesApp(call, nil)
+	tt := ui.NewTester(a.View, 1280, 800)
+	a.RunArgs("帮我领日常奖励", []string{"run", "start", "daily"})
+	run.Drain()
+	tt.Frame()
+	if err := tt.Click("开始"); err != nil {
+		t.Fatal(err)
+	}
+	run.Drain()
+	if len(a.toasts) != 1 || !strings.Contains(a.toasts[0].Title, "没能开始") || !strings.Contains(a.toasts[0].Description, "已经有任务在跑") {
+		t.Errorf("提示条 %+v", a.toasts)
+	}
+}
+
+// 扫描做完的「下一步」按钮在页面模式里变成提示条上的按钮，点了去问 AI。
+func TestNextCardBecomesToastAction(t *testing.T) {
+	a, _ := newPagesApp(&fakeCall{}, nil)
+	a.toastFor("扫描都做完了", []plugin.Card{{"type": "next", "label": "打一把初", "say": "打一把初"}})
+	if len(a.toasts) != 1 || a.toasts[0].Action != "打一把初" {
+		t.Fatalf("提示条 %+v", a.toasts)
+	}
+	a.toasts[0].OnAction()
+	if a.Mode() != ModeChat {
+		t.Error("点了应该去问 AI")
+	}
+}
