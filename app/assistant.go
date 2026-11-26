@@ -88,6 +88,8 @@ type Settings struct {
 	// MemorySlicesOff：关掉了「回忆按片扫描」（筛选 + 入手排序、增量补扫、一键全收集、首次进入走一键全收集）。
 	// D10（用户 11-26 18:14 定）缺省开：没写就是开，玩家关了才记 true。原来的 memory_slices（缺省关时勾上才写）不再读，开着照样是开。
 	MemorySlicesOff bool `json:"memory_slices_off,omitempty"`
+	// CloseGameAfter：任务做完（完成或出错）后自动关游戏（侧栏底部的开关，11-25 用户：要一个所有任务通用、随手开关的）
+	CloseGameAfter bool `json:"close_game_after,omitempty"`
 }
 
 // DefaultDeepSeek 是 DeepSeek 的缺省地址和模型。
