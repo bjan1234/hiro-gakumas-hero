@@ -121,6 +121,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--what", default="support,memory", help="准备哪几样（support / memory；开局命令里指定了编成号的那样不用管）"
     )
+    ap.add_argument(
+        "--overwrite",
+        default="",
+        help="玩家同意覆盖的编成位（memory=13 或 support=18,memory=13）：方案里正是这个号时，写编成不要求编成位是空的（N65）",
+    )
     opts = ap.parse_args(args[:i])
     inner = args[i + 1 :]
     if not inner:
@@ -134,6 +139,21 @@ def main(argv: list[str] | None = None) -> int:
     plan = fp.load(path)
     if not plan:
         return _stop(f"没有开局编成方案（{path}）", 2)
+    from hiro.cli.cmd_run import parse_overwrite
+    from hiro.cli.home import hiro_home
+
+    consent = parse_overwrite(opts.overwrite)
+    plan, changed = fp.apply_consent(plan, mode, consent)
+    if changed:
+        # N65：玩家点了确认、任务开始了，才把方案改用玩家同意的号（开局检查只在内存里套，玩家点「先不」时方案不变）
+        cid = (plan.get("idol") or {}).get("idol_card_id")
+        if cid and plan.get("version") == fp.PLAN_VERSION and path == plan_path() and path.parent == hiro_home():
+            fp.save_plan(hiro_home(), plan, mode)
+        else:
+            path.write_text(json.dumps(plan, ensure_ascii=False, indent=1), encoding="utf-8")
+        logger.info(
+            "开局前准备：编成方案改用玩家同意覆盖的 %s", "、".join(f"{LABEL[w]}编成 {n} 号" for w, n in consent.items())
+        )
     rec: dict = {"mode": mode, "picked": {}, "wrote": False}
     what = [w for w in ("support", "memory") if w in opts.what.split(",")]
     missing = [w for w in what if (plan.get(w) or {}).get("set") is None]
@@ -185,9 +205,18 @@ def main(argv: list[str] | None = None) -> int:
                 return _stop(f"{e.message}。{e.hint}", 5)
         # 编成号是之前读数里挑的空位（或沿用的）：初星助手没写过的位，写之前再看一眼，玩家后来填了卡就停下、不覆盖（#134 review）
         from hiro.cli.cmd_run import slot_written_by_us
-        from hiro.cli.home import hiro_home
 
-        guard = [w for w in todo if not slot_written_by_us(hiro_home(), mode, w, (plan.get(w) or {}).get("set"))]
+        # N65（G1 第 5 轮 11-27）：玩家在对话里说了「N 号可以覆盖」（--overwrite），那几样也不加闸；原来同意只写在确认卡的说明里，
+        # 任务照样按「只写空位」拒绝，报错又让玩家「告诉初星助手可以覆盖哪一号」，绕不出去
+        # 同意只对玩家点名的那个号有效：方案里的号变了（重新挑过）就照旧加闸
+        agreed = {w for w, n in consent.items() if (plan.get(w) or {}).get("set") == n}
+        guard = [w for w in todo
+                 if w not in agreed and not slot_written_by_us(hiro_home(), mode, w, (plan.get(w) or {}).get("set"))]  # fmt: skip
+        if agreed & set(todo):
+            logger.info(
+                "开局前准备：玩家同意覆盖 %s",
+                "、".join(f"{LABEL[w]}编成 {(plan.get(w) or {}).get('set')} 号" for w in todo if w in agreed),
+            )
         logger.info("开局前准备：把编成方案写进游戏（%s）", "、".join(LABEL[w] for w in todo))
         rc = _write(mode, todo, guard)
         if rc != 0:

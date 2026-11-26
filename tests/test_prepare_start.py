@@ -245,3 +245,28 @@ def test_exec_on_windows_waits_for_child_and_returns_its_code(monkeypatch):
     called.clear()
     ps._exec(["python", "-m", "x"], platform="darwin")
     assert called and called[0][0] == "execvp"
+
+
+def test_overwrite_consent_drops_blank_guard(home, calls):
+    """N65（G1 第 5 轮 11-27）：玩家说了「回忆 13 号可以覆盖」（--overwrite memory=13），回忆不加「只写空位」的闸；支援卡照旧。"""
+    _plan(home, sets=(4, 13))
+    assert ps.main(["--mode", "hajime", "--overwrite", "memory=13", "--", "x"]) == 0
+    assert ("blank_only", "support") in calls
+
+
+def test_overwrite_consent_rewrites_plan_at_run_time(home, calls):
+    """#192 review：开局检查不改方案文件；玩家点了确认、任务开始时 prepare_start 才把方案改用同意的号（12 → 13）、
+    去掉回忆的已写入标记，再按 13 号写（回忆不加闸，支援卡照旧）。"""
+    from hiro.brain import formation_plan as fp
+
+    _plan(home, sets=(4, 12), written=True)
+    assert ps.main(["--mode", "hajime", "--overwrite", "memory=13", "--", "x"]) == 0
+    plan = fp.load(home / "formation-plan.json")
+    assert plan["memory"]["set"] == 13
+    assert ("write_what", "memory") in calls and ("blank_only", "") in calls
+
+
+def test_no_consent_keeps_blank_guard(home, calls):
+    _plan(home, sets=(4, 13))
+    assert ps.main(["--mode", "hajime", "--", "x"]) == 0
+    assert ("blank_only", "support,memory") in calls
