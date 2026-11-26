@@ -342,6 +342,10 @@ func idolRow(c *ui.Context, h plugin.Host, it map[string]any) {
 	if chara == "" {
 		chara = str(it, "name")
 	}
+	// 按「游戏内容语言」用资料库的名字（「【卡名】偶像名」）；查不到用扫描读到的日文
+	if t, ch := common.SplitIdolName(common.Shared.Name(h, id, "")); ch != "" {
+		chara, title = ch, t
+	}
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Padding(4, 0).Children(func() {
 		kit.Thumb(c, art, 40, 40, 9)
 		ui.Column(c).Gap(2).Shrink(1).Children(func() {
@@ -363,13 +367,14 @@ func idolRow(c *ui.Context, h plugin.Host, it map[string]any) {
 }
 
 func planName(p string) string {
+	zh := common.Shared.Lang() != "ja"
 	switch strings.ToLower(p) {
 	case "sense":
-		return "センス"
+		return map[bool]string{true: "感性", false: "センス"}[zh]
 	case "logic":
-		return "ロジック"
+		return map[bool]string{true: "理性", false: "ロジック"}[zh]
 	case "anomaly":
-		return "アノマリー"
+		return map[bool]string{true: "非凡", false: "アノマリー"}[zh]
 	}
 	return p
 }
@@ -595,7 +600,7 @@ var scans = [][3]string{
 	{"scan-supports", "扫描支援卡", "翻一遍支援卡列表，记下等级和突破。"},
 	{"scan-memories", "扫描回忆", "翻一遍回忆列表，记下技能卡、参数和能力；设置里开了「回忆按片扫描」时只补扫新回忆。"},
 	{"scan-idols", "扫描偶像卡", "记下持有的偶像卡。"},
-	{"scan-account", "读首页数值", "PLv、AP、ジュエル。"},
+	{"scan-account", "读首页数值", "PLv、AP、钻石。"},
 	{"check-settings", "检查游戏设置", "快进、跳过演出那几项开没开。"},
 }
 
@@ -628,7 +633,7 @@ func (s *state) scanPanel(c *ui.Context, h plugin.Host) {
 }
 
 func (s *state) searchPanel(c *ui.Context, h plugin.Host) {
-	in := ui.SearchField(c, &s.query).Placeholder("搜卡名或效果，例如 好調、エウレカ")
+	in := ui.SearchField(c, &s.query).Placeholder("搜卡名或效果，例如 好调、尤里卡")
 	if in.Submitted() && strings.TrimSpace(s.query) != "" {
 		q := strings.TrimSpace(s.query)
 		s.searched = q
@@ -636,7 +641,7 @@ func (s *state) searchPanel(c *ui.Context, h plugin.Host) {
 			var d struct {
 				Items []map[string]any `json:"items"`
 			}
-			_ = h.Call(context.Background(), []string{"catalog", "search", q, "--lang", "zh"}).Decode(&d)
+			_ = h.Call(context.Background(), []string{"catalog", "search", q, "--lang", common.Shared.Lang()}).Decode(&d)
 			return func() { s.results = d.Items }
 		})
 	}

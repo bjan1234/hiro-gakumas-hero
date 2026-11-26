@@ -102,7 +102,7 @@ def open_chapter(rt, chapter: int):
         rt.sleep(1.5)
         return None
 
-    return rt.drive(step, TIMEOUT, f"进初星コミュ {chapter}章", every=0.5)
+    return rt.drive(step, TIMEOUT, f"进初星剧情第 {chapter} 章", every=0.5)
 
 
 def watch(rt, chapter: int, row: dict) -> None:

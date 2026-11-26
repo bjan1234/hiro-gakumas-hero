@@ -385,7 +385,7 @@ KINDS: dict[str, Kind] = {
             [_PY, "-m", "hiro.daily.story", "--out", str(d / "out.json"), "--chapter", str(p.get("chapter") or 1)]
             + (["--until", str(p["until"])] if p.get("until") else [])
         ),
-        lambda p: f"看初星コミュ {p.get('chapter') or 1}章" + (f"（到第 {p['until']} 话）" if p.get("until") else ""),
+        lambda p: f"看初星剧情第 {p.get('chapter') or 1} 章" + (f"（到第 {p['until']} 话）" if p.get("until") else ""),
         pausable=False,
     ),
     "contest-unit": Kind(
@@ -395,14 +395,14 @@ KINDS: dict[str, Kind] = {
             [_PY, "-m", "hiro.daily.contest_unit", "--out", str(d / "out.json")]
             + (["--read-only"] if p.get("dry_run") else [])
         ),
-        lambda p: "看竞赛编队总合力" + ("（只读）" if p.get("dry_run") else "（おまかせ重排）"),
+        lambda p: "看竞赛编队总合力" + ("（只读）" if p.get("dry_run") else "（自动编队重排）"),
         pausable=False,
     ),
     "scan-account": Kind(
         "scan-account",
         "读首页顶栏的 PLv、AP、ジュエル，再进菜单的プロフィール读プロデューサーID（信息库按账号分开，读到新账号就切过去）",
         lambda p, d: [_PY, "-m", ACCOUNT_SCAN, "--out", str(d / "out.json")],
-        lambda p: "读首页数值和プロデューサーID（会点开菜单的プロフィール）",
+        lambda p: "读首页数值和制作人 ID（会点开菜单里的个人资料）",
         output="account",
         pausable=False,
     ),

@@ -81,6 +81,10 @@ type Settings struct {
 	// Permission：操作权限档（ask / read / readwrite / all，空 = read）；AllowAllConfirmed：第一次切到 all 时确认过（只弹一次）。
 	Permission        string `json:"permission,omitempty"`
 	AllowAllConfirmed bool   `json:"allow_all_confirmed,omitempty"`
+	// GameLang：卡名、偶像名、效果文字等游戏内容用哪种语言显示（zh 中文 / ja 日文原文，空 = zh）。界面文字一直是中文。
+	GameLang string `json:"game_lang,omitempty"`
+	// CloseGameAfter：任务做完（完成或出错）后自动关游戏（侧栏底部的开关，11-25 用户：要一个所有任务通用、随手开关的）
+	CloseGameAfter bool `json:"close_game_after,omitempty"`
 	// ScanBeforeStart：开局前自动补扫回忆（设计 5.6，缺省关；hiro.memory_refresh 读 settings.json 的 scan_before_start）。
 	ScanBeforeStart bool `json:"scan_before_start,omitempty"`
 	// MemorySlices：回忆按片扫描（筛选 + 入手排序、增量补扫、一键全收集、首次进入走一键全收集；缺省关，#116 审查重要 5）。

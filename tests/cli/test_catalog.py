@@ -126,6 +126,12 @@ def test_sync_also_fetches_supports_and_lookup_gives_chinese_names(run_cli, serv
         "catalog", "lookup", "--texts", "初期ビジュアル上昇+15\n初期ビジュアル上昇+15B9", "--lang", "zh"
     )
     assert env["data"]["texts"] == {"初期ビジュアル上昇+15": "初始视觉+15"}
+    # 支援卡也按 lookup 给名字（supports.json 里 ja / zh 两份；11-26 游戏内容语言）
+    for lang, want in (("zh", "我也会做给你的！"), ("ja", "あなたにも作ってあげる！")):
+        code, env = run_cli("catalog", "lookup", "--ids", "s_card-3-0000,s_card-9-9999", "--lang", lang)
+        items = env["data"]["items"]
+        assert items["s_card-3-0000"]["name"] == want and items["s_card-3-0000"]["kind"] == "supports"
+        assert items["s_card-3-0000"]["asset"] == "support-s_card-3-0000" and "s_card-9-9999" not in items
 
 
 def test_sprite_falls_back_to_webp(run_cli, server):

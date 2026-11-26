@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/matto49/hiro-gakumas-hero/app/plugins/common"
 	"github.com/matto49/hiro-gakumas-hero/app/usagelog"
 )
 
@@ -257,6 +258,12 @@ func (a *Agent) Ask(ctx context.Context, history []Turn, text string) (Reply, er
 		}
 	}
 	sys := SystemPrompt
+	// 设置里的「游戏内容语言」：信息库里的卡名多是扫描读到的日文，中文时让模型用 catalog_* 查中文名再说
+	if common.Shared.Lang() == "ja" {
+		sys += "\n\n玩家选了游戏内容用日文：卡名、偶像名、技能名照日文原文说，不要翻译。"
+	} else {
+		sys += "\n\n玩家选了游戏内容用中文：卡名、偶像名、技能名用中文译名（info_* 里的是日文原文，按编号用 catalog_get / catalog_search --lang zh 查中文名），不要括注日文。"
+	}
 	if strings.TrimSpace(a.Extra) != "" {
 		sys += "\n\n" + a.Extra
 	}

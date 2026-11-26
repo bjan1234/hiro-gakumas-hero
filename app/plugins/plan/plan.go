@@ -69,6 +69,8 @@ type state struct {
 	supSet, memSet string
 	slots          []slotRow
 	slotsLoaded    bool
+	// 换偶像出方案（11-26 用户：编成方案页没法选偶像，原来只能在对话里说）；和开局页共用选择器
+	pick common.IdolPicker
 }
 
 type slotRow struct {
@@ -120,7 +122,18 @@ func New() *plugin.Plugin {
 				})
 			},
 		},
-		Panel:        func(c *ui.Context, h plugin.Host, _ string) { s.panel(c, h) },
+		Panel: func(c *ui.Context, h plugin.Host, _ string) { s.panel(c, h) },
+		OnJobEnd: func(_ plugin.Host, _ string, v *plugin.JobView) {
+			if v == nil || v.Job == nil {
+				return
+			}
+			switch v.Job.Kind {
+			case "scan-formations", "write-formation":
+				s.slotsLoaded = false // 编成位变了：空位重读
+			case "scan-idols":
+				s.pick.Reload()
+			}
+		},
 		ContextTitle: "编成方案",
 		Context:      func(ctx context.Context, h plugin.Host) string { return summaryText(ctx, h) },
 	}
@@ -225,7 +238,7 @@ func view(c *ui.Context, h plugin.Host, p *Summary, compact bool) {
 	for i, m := range p.Memory.Chosen {
 		ui.Row(c).Key(fmt.Sprintf("mem-%d", i)).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, labels.Timing(m.Timing)).FontSize(11).TextColor(kit.Ink2).Padding(1, 6).Radius(5).Background(kit.Surface2)
-			name := m.Name
+			name := common.Shared.Name(h, m.CardID, m.Name)
 			if m.Upgrade > 0 {
 				name += strings.Repeat("+", m.Upgrade)
 			}
@@ -364,12 +377,20 @@ func (s *state) panel(c *ui.Context, h plugin.Host) {
 			kit.Note(c, "出方案时间 "+s.plan.Created)
 		}
 	}
-	kit.Section(c, "重新出方案")
+	kit.Section(c, "出方案")
+	s.pick.Draw(c, h, "plan")
+	idol := s.pick.Chosen.ID
+	if idol == "" && s.plan != nil {
+		idol = s.plan.Idol.ID
+		if idol != "" {
+			kit.Note(c, "没选的话用现在方案的偶像。")
+		}
+	}
 	ui.Segmented(c, &s.attr, "主属性自动", "Vo", "Da", "Vi")
 	s.setInputs(c, h)
 	ui.Row(c).Gap(8).Children(func() {
-		if kit.Secondary(c, "重新出方案").Disabled(s.busy || s.plan == nil || s.plan.Idol.ID == "").Clicked() {
-			args := []string{"plan", "formation", "--idol", s.plan.Idol.ID}
+		if kit.Secondary(c, "出方案").Disabled(s.busy || idol == "").Clicked() {
+			args := []string{"plan", "formation", "--idol", idol}
 			if s.attr > 0 {
 				args = append(args, "--main-attr", []string{"", "Vo", "Da", "Vi"}[s.attr])
 			}
@@ -395,7 +416,6 @@ func (s *state) panel(c *ui.Context, h plugin.Host) {
 			})
 		}
 	})
-	kit.Note(c, "换偶像出方案：在对话里说「给篠澤広出一个 H.I.F 的编成」。")
 	kit.Section(c, "写进游戏")
 	names := make([]string, len(scenarios))
 	for i, x := range scenarios {
@@ -442,3 +462,4 @@ func summaryText(ctx context.Context, h plugin.Host) string {
 	}
 	return out
 }
+

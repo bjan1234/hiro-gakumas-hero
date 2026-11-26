@@ -12,6 +12,7 @@ import (
 	"github.com/matto49/hiro-gakumas-hero/app/hiroapi"
 	"github.com/matto49/hiro-gakumas-hero/app/plugin"
 	"github.com/matto49/hiro-gakumas-hero/app/plugins/cockpit"
+	"github.com/matto49/hiro-gakumas-hero/app/plugins/common"
 	"github.com/matto49/hiro-gakumas-hero/app/plugins/library"
 	"github.com/matto49/hiro-gakumas-hero/app/plugins/plan"
 	"github.com/matto49/hiro-gakumas-hero/app/plugins/settings"
@@ -39,6 +40,7 @@ func buildApp(d appDeps) *shell.App {
 	reg := &plugin.Registry{}
 	mgr := &extplugin.Manager{Home: d.Home, Reg: reg}
 	cache := &settingsCache{a: d.Assistant}
+	cache.Get() // 先读一次：游戏内容语言在第一次画名字之前就定下
 	var app *shell.App
 	sd := settingsDeps(d, cache)
 	sd.PluginsPanel = mgr.Panel
@@ -134,6 +136,7 @@ func (c *settingsCache) Get() Settings {
 	defer c.mu.Unlock()
 	if c.at.IsZero() || time.Since(c.at) > settingsTTL {
 		c.val, c.at, c.look = c.a.Settings(), time.Now(), nil
+		common.Shared.SetLang(c.val.GameLang) // 游戏内容语言：变了才清名字缓存
 	}
 	return c.val
 }

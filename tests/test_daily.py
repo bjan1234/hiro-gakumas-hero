@@ -549,7 +549,7 @@ def test_assignment_claims_reward_then_reassigns_both(monkeypatch):
     assert rig.taps[2:9] == [mini, (200, 760), select, h12, ok, start, online][:7]
     assert online in rig.taps and rig.taps.count(select) == 2 and rig.taps.count(h12) == 2
     assert ASSIGN_PAGE["Daily.ButtonAssignmentShortenTime"] not in rig.taps
-    assert "领了工作奖励" in out and "ミニライブ" in out and "ライブ配信" in out
+    assert "领了工作奖励" in out and "迷你演唱会" in out and "直播" in out
 
 
 def test_contest_nothing_to_do(monkeypatch):

@@ -13,6 +13,7 @@ import (
 	"github.com/matto49/hiro-gakumas-hero/app/hiroapi"
 	"github.com/matto49/hiro-gakumas-hero/app/kit"
 	"github.com/matto49/hiro-gakumas-hero/app/plugin"
+	"github.com/matto49/hiro-gakumas-hero/app/plugins/common"
 )
 
 // Settings 和 main 里 Assistant 的 Settings 同形（settings.json）。
@@ -26,6 +27,10 @@ type Settings struct {
 	// Permission 是操作权限档（ask / read / readwrite / all，空 = read）；AllowAllConfirmed 是第一次切到 all 时确认过。
 	Permission        string `json:"permission,omitempty"`
 	AllowAllConfirmed bool   `json:"allow_all_confirmed,omitempty"`
+	// GameLang 是游戏内容（卡名、偶像名、效果文字）的显示语言：zh / ja，空 = zh。
+	GameLang string `json:"game_lang,omitempty"`
+	// CloseGameAfter：任务做完（完成或出错）后自动关游戏（侧栏底部的开关，11-25 用户：要一个所有任务通用、随手开关的）
+	CloseGameAfter bool `json:"close_game_after,omitempty"`
 	// ScanBeforeStart：开局前自动补扫回忆（设计 5.6，缺省关；hiro.memory_refresh 读 settings.json 的 scan_before_start）。
 	ScanBeforeStart bool `json:"scan_before_start,omitempty"`
 	// MemorySlices：回忆按片扫描（筛选 + 入手排序、增量补扫、一键全收集、首次进入走一键全收集；缺省关，#116 审查重要 5）。
@@ -36,8 +41,8 @@ type Settings struct {
 var permLevels = []struct{ id, name, desc string }{
 	{"ask", "总是询问", "每件会动游戏的事都先出确认卡，你点了才做。"},
 	{"read", "允许读操作", "只看画面的（扫描、检查设置、对照编成）直接做；领日常、往空白编成位写编成也直接做。开局、改已有编成还是会问。"},
-	{"readwrite", "允许读写操作", "除了用掉培育次数的事（开局、接着打、初星課題），都直接做，包括改掉已有的编成。"},
-	{"all", "允许所有行为", "开局、接着打也直接开始，不再出确认卡。花ジュエル、放弃培育这些不管哪一档都不会做。"},
+	{"readwrite", "允许读写操作", "除了用掉培育次数的事（开局、接着打、初星课题），都直接做，包括改掉已有的编成。"},
+	{"all", "允许所有行为", "开局、接着打也直接开始，不再出确认卡。花钻石、放弃培育这些不管哪一档都不会做。"},
 }
 
 // Preset 是一家 API 服务商。
@@ -381,6 +386,24 @@ func (s *S) permNote(c *ui.Context) {
 		}
 	}
 	kit.Note(c, "现在是「"+name+"」。在对话框左下角点它就能换，哪些事不用确认就直接做都写在那里。")
+}
+
+// langSection 是「游戏内容语言」：偶像卡、支援卡、技能卡、回忆的名字和效果文字用中文（学マス汉化插件的翻译）还是日文原文。
+// 11-26 用户：界面中文，扫描出来的却全是日文，没法用。
+func (s *S) langSection(c *ui.Context) {
+	st := s.d.Settings()
+	idx := 0
+	if st.GameLang == "ja" {
+		idx = 1
+	}
+	before := idx
+	ui.Segmented(c, &idx, "中文", "日本語")
+	if idx != before {
+		st.GameLang = []string{"zh", "ja"}[idx]
+		_ = s.d.Save(st, "")
+		common.Shared.SetLang(st.GameLang)
+	}
+	kit.Note(c, "偶像卡、支援卡、技能卡、回忆的名字和效果文字。中文取自资料库（学园偶像大师汉化插件的翻译），资料库里查不到的（比如刚出的新卡）仍显示游戏里读到的日文。")
 }
 
 const (
@@ -760,6 +783,8 @@ func (s *S) panel(c *ui.Context, h plugin.Host, route string) {
 	s.modelSection(c, h)
 	ui.Text(c, "操作权限").FontSize(15).FontWeight(650).TextColor(kit.Ink).Padding(10, 0, 0, 0)
 	s.permNote(c)
+	ui.Text(c, "游戏内容语言").FontSize(15).FontWeight(650).TextColor(kit.Ink).Padding(10, 0, 0, 0)
+	s.langSection(c)
 	ui.Text(c, "扫描").FontSize(15).FontWeight(650).TextColor(kit.Ink).Padding(10, 0, 0, 0)
 	s.scanSection(c)
 	ui.Text(c, "游戏连接").FontSize(15).FontWeight(650).TextColor(kit.Ink).Padding(10, 0, 0, 0)

@@ -120,7 +120,7 @@ class Popup:
         self._last, self._hits = None, 0
         if self.on_action is not None:
             self.on_action(kind, f.img)
-        return "含ジュエル的确认框 → キャンセル" if kind == "cancel" else "说明框 → 閉じる"
+        return "要花钻石的确认框 → 取消" if kind == "cancel" else "说明框 → 关闭"
 
 
 class TaskTimeout(Exception):
