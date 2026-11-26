@@ -36,6 +36,7 @@ PARAMS = (
     "shop",
     "shop_items",
     "shop_ap",
+    "shop_refresh",
     "coin_gacha",
     "chapter",
     "until",
@@ -692,6 +693,12 @@ def _first_reason(out: str) -> str:
         Arg(
             "--shop-ap",
             "daily：体力（AP）商店买哪几样，逗号分隔：pt 支援强化点数获取提升 / note 笔记获取数提升 / retry 再挑战券 / regen 回忆再生成券（每样一天 2 次、一次 10 体力；缺省不买）",
+        ),
+        Arg(
+            "--shop-refresh",
+            "daily：买完以后用每日 1 次的免费刷新再买一轮（on / off，缺省 off）。只在右上角读到「リスト更新:1回無料」时点；"
+            "点了出确认框一律点空白关掉、不刷新（不花钻石）",
+            choices=("on", "off"),
         ),
         Arg(
             "--coin-gacha",

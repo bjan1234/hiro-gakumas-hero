@@ -47,6 +47,7 @@ def main() -> int:
     ap.add_argument("--shop", default=None, help="商店：off（缺省）/ recommended（推荐商品）/ all")
     ap.add_argument("--shop-items", default=None, help="商店另外要买的商品名，逗号分隔（名字包含就算）")
     ap.add_argument("--shop-ap", default=None, help="体力（AP）商店买哪几样：pt,note,retry,regen（缺省不买）")
+    ap.add_argument("--shop-refresh", default=None, help="商店买完用每日免费刷新再买一轮：on / off（缺省）")
     ap.add_argument("--coin-gacha", default=None, help="硬币扭蛋：off（缺省）/ auto（抽 1 次）/ friend:1,sense:2 …")
     args = ap.parse_args()
     for opt, var in (
@@ -54,6 +55,7 @@ def main() -> int:
         ("shop", "HIRO_SHOP"),
         ("shop_items", "HIRO_SHOP_ITEMS"),
         ("shop_ap", "HIRO_SHOP_AP"),
+        ("shop_refresh", "HIRO_SHOP_REFRESH"),
         ("coin_gacha", "HIRO_COIN_GACHA"),
     ):
         if getattr(args, opt) is not None:  # 空的也设：任务显式传「不买」时不继承环境里的值（CodeRabbit #138）

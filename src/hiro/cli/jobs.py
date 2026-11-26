@@ -215,6 +215,7 @@ def _daily_opts(p: dict) -> dict[str, str]:
         "shop": shop,
         "shop_items": str(p.get("shop_items") or "") if shop != "off" else "",
         "shop_ap": str(p.get("shop_ap") or ""),
+        "shop_refresh": "on" if shop != "off" and str(p.get("shop_refresh") or "off").lower() == "on" else "off",
         "coin_gacha": str(p.get("coin_gacha") or "off"),
     }
 
@@ -244,6 +245,8 @@ def _daily_summary(p: dict) -> str:
         shop = {"recommended": "商店买推荐商品（花金币）", "all": "商店能买的都买（花金币）"}.get(o["shop"], "商店不买")
         if o["shop_items"]:
             shop += f"，另外买：{o['shop_items']}"
+        if o["shop_refresh"] == "on":
+            shop += "，用免费刷新再买一轮（不花钻石）"
         spend.append(shop)
         if ap := [_AP_NAMES.get(k.strip(), k.strip()) for k in o["shop_ap"].split(",") if k.strip()]:
             spend.append("体力商店买" + "、".join(ap) + "（花体力）")

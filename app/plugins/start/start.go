@@ -65,6 +65,7 @@ type state struct {
 	contestPick int     // 0 综合力最低 1/2/3 第几个
 	shopMode    int     // 0 不买 1 推荐商品 2 全部（零值 = 不花钱，#122 review：老用户照常点日常不该第一次就花金币）
 	shopItems   string  // 另外要买的商品名，逗号分隔
+	shopRefresh bool    // 买完用每日 1 次的免费刷新再买一轮（缺省不勾）
 	shopAP      [4]bool // 体力商店买哪几样（apItems 的顺序）
 	gachaMode   int     // 0 不抽 1 自动抽 1 次 2 自己定
 	gachaN      [4]string
@@ -259,6 +260,9 @@ func (s *state) explain(h plugin.Host, cat *common.Catalog, p hiroapi.Pending) (
 		e.Rows = append(e.Rows, [2]string{"商店", map[string]string{"recommended": "买推荐商品", "all": "能买的都买", "off": "不买", "": "不买"}[r.Flags["shop"]]})
 		if v := r.Flags["shop-items"]; v != "" && r.Flags["shop"] != "" && r.Flags["shop"] != "off" {
 			e.Rows = append(e.Rows, [2]string{"另外买", v})
+		}
+		if r.Flags["shop-refresh"] == "on" && r.Flags["shop"] != "" && r.Flags["shop"] != "off" {
+			e.Rows = append(e.Rows, [2]string{"免费刷新", "买完用每日免费刷新再买一轮（要确认的不点）"})
 		}
 		if v := r.Flags["shop-ap"]; v != "" {
 			var names []string
@@ -505,6 +509,8 @@ func (s *state) dailyOptions(c *ui.Context) {
 			ui.TextInput(c, &s.shopItems).Grow(1).Placeholder("另外要买的（可不填）：商品名，逗号分隔，例如 仓本千奈的碎片,再挑战券").FontSize(kit.FSmall)
 		})
 		kit.Note(c, "推荐商品今天还没买过、又一个都没有时，买最便宜的一件（只买 1 个），让「在商店购物」这个日常任务完成。只用金币，要花钻石的一律不买。")
+		ui.Row(c).Key("shop-refresh").Children(func() { ui.Checkbox(c, &s.shopRefresh, "买完用每日免费刷新，再买一轮") })
+		kit.Note(c, "只在右上角写着「リスト更新:1回無料」时才点；点了要是弹出确认框，一律点空白关掉、不刷新（不花钻石）。")
 	}
 	kit.Section(c, "体力商店（可选，用体力）")
 	ui.Column(c).Gap(4).Children(func() {
@@ -559,6 +565,9 @@ func (s *state) dailyArgs() []string {
 	}
 	// 商店、扭蛋在命令行缺省是关的（花マニー / 币的事默认不做，review）：这里总是显式传选的那项
 	a = append(a, "--shop", []string{"off", "recommended", "all"}[s.shopMode])
+	if s.shopRefresh && s.shopMode != 0 {
+		a = append(a, "--shop-refresh", "on")
+	}
 	if t := strings.TrimSpace(strings.ReplaceAll(s.shopItems, "，", ",")); t != "" && s.shopMode != 0 {
 		a = append(a, "--shop-items", t)
 	}

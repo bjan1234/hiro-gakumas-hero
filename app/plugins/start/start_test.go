@@ -401,3 +401,15 @@ func TestTowerPassesBareIdolName(t *testing.T) {
 		t.Errorf("没有扫描名时去掉称号：%q", a)
 	}
 }
+
+// 每日免费刷新：缺省不传；勾了、又在买东西时才传 on。
+func TestDailyArgsShopRefresh(t *testing.T) {
+	s := &state{shopRefresh: true}
+	if strings.Contains(strings.Join(s.dailyArgs(), " "), "shop-refresh") {
+		t.Error("不买时不传免费刷新")
+	}
+	s.shopMode = 1
+	if !strings.Contains(strings.Join(s.dailyArgs(), " "), "--shop-refresh on") {
+		t.Errorf("勾了 %q", s.dailyArgs())
+	}
+}

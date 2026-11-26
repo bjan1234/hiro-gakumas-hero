@@ -52,6 +52,8 @@ DAILY_DEFAULTS = [
     "",
     "--shop-ap",
     "",
+    "--shop-refresh",
+    "off",
     "--coin-gacha",
     "off",
 ]
@@ -135,3 +137,12 @@ def test_final_rank_only_for_hajime():
         "nia", {"command": "new", "idol": "i_card-jsna-3-006", "difficulty": "pro", "final_rank": 1}
     )
     assert "--final-rank" not in argv("hajime", {"command": "new", "idol": "i_card-jsna-3-006", "difficulty": "pro"})
+
+
+def test_daily_shop_refresh_only_with_shop_on(hiro_home):
+    """免费刷新只在买东西时传 on（不买时刷新没意义）；确认摘要写出来。"""
+    a = argv("daily", {"shop": "off", "shop_refresh": "on"})
+    assert a[a.index("--shop-refresh") + 1] == "off"
+    a = argv("daily", {"shop": "recommended", "shop_refresh": "on"})
+    assert a[a.index("--shop-refresh") + 1] == "on"
+    assert "免费刷新" in KINDS["daily"].summary({"shop": "recommended", "shop_refresh": "on"})

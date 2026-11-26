@@ -3,6 +3,8 @@
 首页「ショップ」→「デイリー交换所」（マニー页签）→ 按设置逐个点商品，交換確認框里读商品名，要买就「決定」，不要就「キャンセル」。
 - HIRO_SHOP：`off`（缺省，不进商店：花マニー的事默认不做，开局页的日常选项会显式传）/ `recommended` = 买标「おすすめ」的，
   一个都没有时买最便宜的一件（让日常任务完成）/ `all` = 能买的都买。
+- HIRO_SHOP_REFRESH（缺省 off）：买完用每日 1 次的免费刷新再买一轮。只在右上角一字不差读到「リスト更新:1回無料」时点；
+  点了以后出了任何确认框都点框外空白关掉（再不行点キャンセル），绝不确认、不花钻石。
 - HIRO_SHOP_ITEMS：另外要买的商品名（逗号分隔，名字里包含这几个字就算，如「倉本千奈のピース,再挑戦」）。
 - 只用マニー：交換確認框里必须有「マニーを使用して」，看到「ジュエル」一律キャンセル；「リスト更新」不点。
 - HIRO_SHOP_AP（可选，缺省不买）：AP 页签（用体力换）买哪几样，逗号分隔：pt（入手サポート強化Ptアップ）/ note（入手ノート数アップ）
@@ -42,6 +44,76 @@ def ap_wanted() -> list[str]:
 def mode() -> str:
     v = (os.environ.get("HIRO_SHOP") or "off").strip().lower()
     return v if v in ("recommended", "all", "off") else "off"
+
+
+def refresh_on() -> bool:
+    """HIRO_SHOP_REFRESH=on：买完用每日 1 次的免费刷新再买一轮（缺省关）。"""
+    return (os.environ.get("HIRO_SHOP_REFRESH") or "off").strip().lower() in ("on", "1", "true")
+
+
+# 免费刷新：右上角那行字一字不差是「リスト更新:1回無料」才点（11-25 DMM 实测 OCR 读到的就是这行，框 [446,151,676,175]）；
+# 用完以后这里会变成别的字（要花钻石等），对不上就不点
+REFRESH_FREE = "リスト更新:1回無料"
+REFRESH_MAX_Y = 320  # 只认画面上方那条（列表里的商品名不会是这行字，保险起见限位置）
+DISMISS_TAP = (360, 60)  # 刷新后万一出了确认框：点框外上方空白关掉（不点「決定」「はい」）
+DIALOG_WORDS = ("キャンセル", "決定", "はい", "いいえ", "ジュエル", "確認", "OK", "購入", "消費")
+
+
+def _norm_refresh(text: str) -> str:
+    from hiro.vision.textnorm import fold
+
+    return fold(text).replace(" ", "").replace("　", "").replace("：", ":")
+
+
+def free_refresh_label(f):
+    """右上角一字不差的「リスト更新:1回無料」（OCR 拆成「リスト更新」「1回無料」两块、在同一行也算）；没有返回 None。"""
+    top = [t for t in f.texts if t.rect.center.y < REFRESH_MAX_Y]
+    for t in top:
+        if _norm_refresh(t.text) == REFRESH_FREE:
+            return t
+    for t in top:
+        if _norm_refresh(t.text) == "1回無料" and any(
+            _norm_refresh(o.text) in ("リスト更新", "リスト更新:")
+            and abs(o.rect.center.y - t.rect.center.y) < 20
+            and o.rect.center.x < t.rect.center.x
+            for o in top
+        ):
+            return t
+    return None
+
+
+def _dialog_up(f) -> bool:
+    """画面中间出了框（交換確認或任何带キャンセル / 決定 / はい / ジュエル 等字样的）。"""
+    if read_dialog(f) is not None:
+        return True
+    return any(w in t.text for t in f.texts if 300 < t.rect.center.y < 1200 for w in DIALOG_WORDS)
+
+
+def refresh_list(rt) -> str | None:
+    """用每日免费刷新换一批商品：刷新了返回 None，没刷新返回原因。
+    只在读到一字不差的「リスト更新:1回無料」时点；点了以后出了任何确认框都点框外空白关掉、绝不确认（11-27 用户：一定要谨慎，绝不买）。"""
+    for _ in range(MAX_SCREENS):
+        rt.device.swipe(SWIPE[0], SWIPE[3], SWIPE[2], SWIPE[1], duration=SWIPE_S)  # 回到顶，那行字在上面
+    rt.sleep(1.0)
+    label = free_refresh_label(common.frame(rt))
+    if label is None:
+        return "没看到「リスト更新:1回無料」（今天的免费刷新用过了，或没认出），不刷新"
+    logger.info("商店：点免费刷新（%s）", label.text)
+    rt.device.tap(*label.rect.center)
+    rt.sleep(1.5)
+    g = common.frame(rt)
+    if _dialog_up(g):
+        logger.warning("商店：点了免费刷新出了确认框，点空白关掉、不刷新：%s", " ".join(t.text for t in g.texts)[:160])
+        rt.device.tap(*DISMISS_TAP)
+        rt.sleep(1.0)
+        h = common.frame(rt)
+        if _dialog_up(h):
+            tap_word(rt, h, "キャンセル", y_min=600)  # 空白没关掉：点「キャンセル」（不点「決定」「はい」）
+            rt.sleep(1.0)
+        return "点免费刷新出了确认框，没刷新（关掉了，没花东西）"
+    if free_refresh_label(g) is not None:
+        return "点了免费刷新但列表没变"
+    return None
 
 
 def wanted_names() -> list[str]:
@@ -280,8 +352,72 @@ def _fallback(rt, cands: list[dict]) -> tuple[str | None, str | None]:
     return None, "回头没找到最便宜那件"
 
 
+def _buy_round(
+    rt, m: str, names: list[str], prices: dict[str, int], seen_prices: dict[str, int], bought: list[str]
+) -> dict:
+    """从当前列表的顶上往下买一轮。返回 {cands（兜底候选）, rec_seen（看到过おすすめ）, money_short（有一件买不起）}；买到的追加进 bought。"""
+    skip: set[tuple] = set()  # 看过框、决定不买（或买不起）的格子（屏号, x, y）：重读这一屏时不再点开
+    cands: dict[tuple, dict] = {}  # recommended 模式：没标おすすめ、还能买的格子（兜底挑最便宜的）
+    rec_seen = False  # 看到过おすすめ（含今天已经买光的）：有就不兜底，今天已经算买过了（#122 review）
+    money_short = False  # 有一件金币不够（跳过它接着看别的，CodeRabbit #122）
+    screens = 0
+    last_sig = None
+    while screens < MAX_SCREENS and len(bought) < MAX_BUYS:
+        f = common.frame(rt)
+        sig = tuple((t.text, t.rect.center.y // 20) for t in f.texts if t.rect.center.y < 1060)
+        if sig == last_sig:
+            break  # 滑不动了：到底
+        last_sig = sig
+        acted = False
+        for tile in tiles(f):
+            key = (screens, tile["x"] // 20, tile["y"] // 20)
+            rec_seen = rec_seen or tile["recommended"]
+            if tile["left"] <= 0 or key in skip:
+                continue
+            if m == "recommended" and not tile["recommended"]:
+                if tile["price"] is not None:
+                    cands[key] = tile  # 最低价兜底和指定名字无关（CodeRabbit #122）
+                if not names or can_skip(tile["price"], names, prices):
+                    continue
+            rt.device.tap(tile["x"], tile["y"])
+            g = wait_dialog(rt)
+            if g is None:
+                continue
+            d = read_dialog(g)
+            name = (d or {}).get("name") or "?"
+            if name != "?" and tile["price"] is not None and d is not None and d["money"]:
+                seen_prices[name] = tile["price"]
+            want = (
+                d is not None
+                and d["money"]
+                and not d["jewel"]
+                and (m == "all" or tile["recommended"] or name_wanted(name, names))
+            )
+            skip.add(key)
+            if not want:
+                if d is not None and d["jewel"]:
+                    logger.warning("兑换确认框里有钻石字样，不买：%s", name)
+                tap_word(rt, g, "キャンセル", y_min=1080)
+                wait_dialog(rt, gone=True)
+                continue
+            if not confirm(rt, g):  # 决定点了框不关：マニー不够（按钮灰）。跳过这件，接着看便宜的
+                money_short = True
+                continue
+            bought.append(name)
+            logger.info("商店买了：%s", name)
+            acted = True
+            break  # 画面变了，重新读这一屏
+        if acted:
+            last_sig = None
+            continue
+        rt.device.swipe(*SWIPE, duration=SWIPE_S)
+        rt.sleep(1.0)
+        screens += 1
+    return {"cands": cands, "rec_seen": rec_seen, "money_short": money_short}
+
+
 def run(rt) -> str:
-    """HIRO_SHOP / HIRO_SHOP_ITEMS / HIRO_SHOP_AP 见文件头。中途超时（ResumeBlocked）时照样报出已经买到的（#122 review）。"""
+    """HIRO_SHOP / HIRO_SHOP_ITEMS / HIRO_SHOP_AP / HIRO_SHOP_REFRESH 见文件头。中途超时（ResumeBlocked）时照样报出已经买到的（#122 review）。"""
     from hiro.loop.errors import ResumeBlocked
 
     m = mode()
@@ -293,68 +429,29 @@ def run(rt) -> str:
     seen_prices = dict(prices)
     bought: list[str] = []
     ap_got: list[str] = []
-    money_short = False  # 有一件金币不够（跳过它接着看别的，CodeRabbit #122）
+    money_short = False
     note: str | None = None
+    refresh_note: str | None = None  # 开了免费刷新但没刷成的原因
+    refreshed = False
     stopped: str | None = None
     try:
         if not goto_daily_exchange(rt):
             return "商店：没进到每日兑换所"
-        skip: set[tuple] = set()  # 看过框、决定不买（或买不起）的格子（屏号, x, y）：重读这一屏时不再点开
-        cands: dict[tuple, dict] = {}  # recommended 模式：没标おすすめ、还能买的格子（兜底挑最便宜的）
-        rec_seen = False  # 看到过おすすめ（含今天已经买光的）：有就不兜底，今天已经算买过了（#122 review）
-        screens = 0
-        last_sig = None
-        while m != "off" and screens < MAX_SCREENS and len(bought) < MAX_BUYS:
-            f = common.frame(rt)
-            sig = tuple((t.text, t.rect.center.y // 20) for t in f.texts if t.rect.center.y < 1060)
-            if sig == last_sig:
-                break  # 滑不动了：到底
-            last_sig = sig
-            acted = False
-            for tile in tiles(f):
-                key = (screens, tile["x"] // 20, tile["y"] // 20)
-                rec_seen = rec_seen or tile["recommended"]
-                if tile["left"] <= 0 or key in skip:
-                    continue
-                if m == "recommended" and not tile["recommended"]:
-                    if tile["price"] is not None:
-                        cands[key] = tile  # 最低价兜底和指定名字无关（CodeRabbit #122）
-                    if not names or can_skip(tile["price"], names, prices):
-                        continue
-                rt.device.tap(tile["x"], tile["y"])
-                g = wait_dialog(rt)
-                if g is None:
-                    continue
-                d = read_dialog(g)
-                name = (d or {}).get("name") or "?"
-                if name != "?" and tile["price"] is not None and d is not None and d["money"]:
-                    seen_prices[name] = tile["price"]
-                want = (
-                    d is not None
-                    and d["money"]
-                    and not d["jewel"]
-                    and (m == "all" or tile["recommended"] or name_wanted(name, names))
-                )
-                skip.add(key)
-                if not want:
-                    if d is not None and d["jewel"]:
-                        logger.warning("兑换确认框里有钻石字样，不买：%s", name)
-                    tap_word(rt, g, "キャンセル", y_min=1080)
-                    wait_dialog(rt, gone=True)
-                    continue
-                if not confirm(rt, g):  # 决定点了框不关：マニー不够（按钮灰）。跳过这件，接着看便宜的
-                    money_short = True
-                    continue
-                bought.append(name)
-                logger.info("商店买了：%s", name)
-                acted = True
-                break  # 画面变了，重新读这一屏
-            if acted:
-                last_sig = None
-                continue
-            rt.device.swipe(*SWIPE, duration=SWIPE_S)
-            rt.sleep(1.0)
-            screens += 1
+        rec_seen = False
+        cands: dict[tuple, dict] = {}
+        if m != "off":
+            r = _buy_round(rt, m, names, prices, seen_prices, bought)
+            rec_seen, cands, money_short = r["rec_seen"], r["cands"], r["money_short"]
+            if refresh_on():
+                if money_short:
+                    refresh_note = "金币不够，没用免费刷新"
+                elif why := refresh_list(rt):
+                    refresh_note = why
+                else:
+                    refreshed = True
+                    r = _buy_round(rt, m, names, prices, seen_prices, bought)
+                    rec_seen, cands = rec_seen or r["rec_seen"], r["cands"]
+                    money_short = money_short or r["money_short"]
         if m == "recommended" and not bought and not rec_seen and cands and not money_short:
             got, note = _fallback(rt, list(cands.values()))
             if got:
@@ -378,6 +475,10 @@ def run(rt) -> str:
         parts.append("商店：没有推荐商品，" + note)
     elif m != "off" and stopped is None:
         parts.append("商店：没有要买的（推荐商品今天买过了）" if m == "recommended" else "商店：没有要买的")
+    if refreshed:
+        parts.append("商店用了免费刷新")
+    elif refresh_note:
+        parts.append("免费刷新：" + refresh_note)
     if ap_keys:
         parts.append(
             "体力商店买了：" + "、".join(item_name(b) for b in ap_got)

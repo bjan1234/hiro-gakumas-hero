@@ -259,3 +259,86 @@ def test_coin_gacha_find_pool_no_initial_swipe(monkeypatch):
     assert title is not None and swipes == []
     _, title = coin_gacha.find_pool(rt, "logic")
     assert title is None and len(swipes) == 4 + 2 + 4  # 往下找 4 屏、回顶 2 下、再往下 4 屏
+
+
+# ---- 每日免费刷新（HIRO_SHOP_REFRESH，缺省关）：只在一字不差「リスト更新:1回無料」时点，出确认框点空白、绝不确认 ----
+
+
+def test_free_refresh_label_exact_only():
+    assert shop.free_refresh_label(frame(("リスト更新:1回無料", 561, 163))) is not None
+    assert shop.free_refresh_label(frame(("リスト更新：1回無料", 561, 163))) is not None  # 全角冒号
+    assert shop.free_refresh_label(frame(("リスト更新", 500, 163), ("1回無料", 630, 163))) is not None  # 拆成两块
+    assert shop.free_refresh_label(frame(("リスト更新:1回", 561, 163))) is None
+    assert shop.free_refresh_label(frame(("リスト更新:1回無料まで", 561, 163))) is None
+    assert shop.free_refresh_label(frame(("リスト更新:50", 561, 163))) is None
+    assert shop.free_refresh_label(frame(("1回無料", 630, 163))) is None  # 只有「1回無料」不算
+    assert shop.free_refresh_label(frame(("リスト更新:1回無料", 561, 700))) is None  # 不在上方
+
+
+def _seq_rt(monkeypatch, frames):
+    rt = _Rt()
+    it = iter(frames)
+    last = {"f": frames[0]}
+
+    def nxt(rt):
+        last["f"] = next(it, last["f"])
+        return last["f"]
+
+    monkeypatch.setattr(shop.common, "frame", nxt)
+    monkeypatch.setattr(shop, "tap_word", lambda rt, f, word, **k: rt.device.tap(0, 1 if word == "キャンセル" else 2))
+    return rt
+
+
+def test_refresh_dialog_is_dismissed_never_confirmed(monkeypatch):
+    label = frame(("リスト更新:1回無料", 561, 163))
+    dlg = frame(
+        ("リスト更新", 360, 500),
+        ("ジュエルを消費して更新しますか", 360, 600),
+        ("キャンセル", 168, 1143),
+        ("決定", 490, 1140),
+    )
+    rt = _seq_rt(monkeypatch, [label, dlg, frame(("デイリー交換所", 140, 55))])
+    why = shop.refresh_list(rt)
+    assert why is not None and "确认框" in why
+    assert rt.device.taps == [(561, 163), shop.DISMISS_TAP]  # 点了刷新、点空白，没点「決定」
+
+
+def test_refresh_dialog_still_up_taps_cancel_not_decide(monkeypatch):
+    label = frame(("リスト更新:1回無料", 561, 163))
+    dlg = frame(("確認", 360, 500), ("キャンセル", 168, 1143), ("決定", 490, 1140))
+    rt = _seq_rt(monkeypatch, [label, dlg, dlg])
+    shop.refresh_list(rt)
+    assert rt.device.taps == [(561, 163), shop.DISMISS_TAP, (0, 1)]  # 空白没关掉：点キャンセル
+
+
+def test_refresh_not_offered_does_not_tap(monkeypatch):
+    rt = _seq_rt(monkeypatch, [frame(("あと20時間27分で更新", 561, 220))])
+    assert shop.refresh_list(rt) is not None and rt.device.taps == []
+
+
+def test_refresh_then_buy_another_round(monkeypatch):
+    monkeypatch.setenv("HIRO_SHOP", "recommended")
+    monkeypatch.setenv("HIRO_SHOP_REFRESH", "on")
+    monkeypatch.delenv("HIRO_SHOP_ITEMS", raising=False)
+    monkeypatch.delenv("HIRO_SHOP_AP", raising=False)
+    rounds = []
+    monkeypatch.setattr(shop, "goto_daily_exchange", lambda rt: True)
+    monkeypatch.setattr(shop.nav, "goto_home", lambda rt: None)
+
+    def fake_round(rt, m, names, prices, seen, bought):
+        rounds.append(1)
+        bought.append(f"ロジックノート{len(rounds)}")
+        return {"cands": {}, "rec_seen": True, "money_short": False}
+
+    monkeypatch.setattr(shop, "_buy_round", fake_round)
+    monkeypatch.setattr(shop, "refresh_list", lambda rt: None)
+    r = shop.run(_Rt())
+    assert len(rounds) == 2 and "免费刷新" in r
+    monkeypatch.setattr(shop, "refresh_list", lambda rt: "没看到")
+    rounds.clear()
+    r = shop.run(_Rt())
+    assert len(rounds) == 1 and "免费刷新：没看到" in r
+    monkeypatch.setenv("HIRO_SHOP_REFRESH", "off")
+    rounds.clear()
+    shop.run(_Rt())
+    assert len(rounds) == 1
