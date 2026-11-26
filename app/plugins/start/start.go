@@ -51,21 +51,17 @@ func defaultDiff(kind string) string {
 	return ""
 }
 
-type idol struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Rarity string `json:"rarity"`
-}
+type idol = common.IdolItem
 
 type state struct {
 	mode    int
 	resume  bool
 	hifMain int // 0 选拔 1 本战
 	diff    int
-	query   string
-	idol    idol
-	idols   []idol
-	loaded  bool
+	pick    common.IdolPicker // 偶像卡（和编成方案页共用的选择器）
+
+	plan   *planBrief
+	planAt time.Time
 
 	recent        []plugin.Job
 	recentAt      time.Time
@@ -182,6 +178,12 @@ func New() *plugin.Plugin {
 			}},
 		},
 		Panel: func(c *ui.Context, h plugin.Host, _ string) { s.panel(c, h) },
+		OnJobEnd: func(_ plugin.Host, _ string, v *plugin.JobView) {
+			if v != nil && v.Job != nil && v.Job.Kind == "scan-idols" {
+				s.pick.Reload() // 扫完偶像卡：下次画面板重读列表（原来只读一次，要重开程序才看得到）
+			}
+			s.recentAt = time.Time{} // 「最近几局」也重读
+		},
 		Explain: func(h plugin.Host, p hiroapi.Pending) (plugin.Explained, bool) {
 			return s.explain(h, cat, p)
 		},
@@ -258,9 +260,9 @@ func (s *state) explain(h plugin.Host, cat *common.Catalog, p hiroapi.Pending) (
 		}
 		return e, true
 	case r.Kind == "main-task":
-		e.Title = "做初星課題"
+		e.Title = "做初星课题"
 	case r.Kind == "story":
-		e.Title = "看初星コミュ"
+		e.Title = "看初星剧情"
 		if ch := r.Flags["chapter"]; ch != "" {
 			e.Subtitle = "第 " + ch + " 章"
 		}
@@ -268,7 +270,7 @@ func (s *state) explain(h plugin.Host, cat *common.Catalog, p hiroapi.Pending) (
 		if dry {
 			e.Title, e.Cost = "看竞赛编队总合力", costReadOnly
 		} else {
-			e.Title, e.Cost = "竞赛编队", "会操作游戏 · 会改竞赛编队（おまかせ重排）"
+			e.Title, e.Cost = "竞赛编队", "会操作游戏 · 会改竞赛编队（自动编队重排）"
 		}
 	}
 	var sub []string
@@ -333,22 +335,7 @@ func intOr(p *int) string {
 
 // ---- 面板 ----
 
-func (s *state) loadIdols(h plugin.Host) {
-	if s.loaded {
-		return
-	}
-	s.loaded = true
-	h.Go(func() func() {
-		var d struct {
-			Items []idol `json:"items"`
-		}
-		_ = h.Call(context.Background(), []string{"info", "idols"}).Decode(&d)
-		return func() { s.idols = d.Items }
-	})
-}
-
 func (s *state) panel(c *ui.Context, h plugin.Host) {
-	s.loadIdols(h)
 	m := modes[s.mode]
 	kit.Section(c, "模式")
 	ui.Row(c).Gap(6).Wrap().Children(func() {
@@ -384,7 +371,7 @@ func (s *state) panel(c *ui.Context, h plugin.Host) {
 	}
 	needIdol := (produce && !s.resume) || m.id == "tower"
 	if needIdol {
-		s.idolPicker(c, h)
+		s.pick.Draw(c, h, "start")
 	}
 	args, label := s.args()
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(8, 0, 0, 0).Children(func() {
@@ -397,50 +384,6 @@ func (s *state) panel(c *ui.Context, h plugin.Host) {
 		}
 	})
 	kit.Note(c, "点「发起」后对话里会出一张确认卡，再点「开始」才动游戏。")
-}
-
-func (s *state) idolPicker(c *ui.Context, h plugin.Host) {
-	kit.Section(c, "偶像卡")
-	ui.TextInput(c, &s.query).Placeholder("输入偶像名或卡名筛选，例如 篠澤広").FontSize(kit.FSmall)
-	if s.idol.ID != "" {
-		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-			ui.Icon(c, kit.IcCheck).FontSize(13).TextColor(kit.Good)
-			ui.Text(c, "已选："+s.idol.Name).FontSize(kit.FSmall).TextColor(kit.Ink)
-		})
-	}
-	if len(s.idols) == 0 {
-		kit.Note(c, "还没扫描过偶像卡：可以在资料库里扫描，或者直接在对话里说「用某某打一把」。")
-		return
-	}
-	q := strings.TrimSpace(s.query)
-	list := make([]idol, 0, len(s.idols))
-	for _, it := range s.idols {
-		if q == "" || strings.Contains(it.Name, q) || strings.Contains(it.ID, q) {
-			list = append(list, it)
-		}
-	}
-	sort.SliceStable(list, func(i, j int) bool { return rank(list[i].Rarity) < rank(list[j].Rarity) })
-	ui.Column(c).Gap(2).Children(func() {
-		for i, it := range list {
-			if i >= 12 {
-				kit.Note(c, fmt.Sprintf("还有 %d 张，输入名字筛选", len(list)-12))
-				break
-			}
-			en := common.Shared.Get(h, it.ID)
-			art := ""
-			if en != nil {
-				art = common.Shared.Sprite(h, en.Asset)
-			}
-			if kit.RowButton(c, "idol-"+it.ID, it.Name, it.ID == s.idol.ID).Children(func() {
-				kit.Thumb(c, art, 28, 28, 6)
-				ui.Text(c, it.Name).FontSize(kit.FSmall).TextColor(kit.Ink).MaxLines(1).Ellipsis("…")
-				ui.Spacer(c)
-				ui.Text(c, it.Rarity).FontSize(10.5).FontWeight(700).TextColor(kit.Brand)
-			}).Clicked() {
-				s.idol = it
-			}
-		}
-	})
 }
 
 func rank(r string) int {
@@ -463,10 +406,10 @@ func (s *state) args() ([]string, string) {
 	case "daily":
 		return a, "帮我领日常奖励"
 	case "tower":
-		if s.idol.ID == "" {
+		if s.pick.Chosen.ID == "" {
 			return nil, ""
 		}
-		return append(a, "--idol", s.idol.ID), "开一局偶像之路（" + s.idol.Name + "）"
+		return append(a, "--idol", s.pick.Chosen.ID), "开一局偶像之路（" + s.pick.Chosen.Name + "）"
 	}
 	if s.resume {
 		a = append(a, "--command", "resume")
@@ -479,14 +422,14 @@ func (s *state) args() ([]string, string) {
 	if s.resume {
 		return a, "接着打 " + m.name
 	}
-	if s.idol.ID == "" {
+	if s.pick.Chosen.ID == "" {
 		return nil, ""
 	}
-	a = append(a, "--idol", s.idol.ID)
+	a = append(a, "--idol", s.pick.Chosen.ID)
 	if len(m.diffs) > 0 {
 		a = append(a, "--difficulty", m.diffs[min(s.diff, len(m.diffs)-1)])
 	}
-	return a, "开一局 " + m.name + "（" + s.idol.Name + "）"
+	return a, "开一局 " + m.name + "（" + s.pick.Chosen.Name + "）"
 }
 
 // ---- 上下文 ----
@@ -625,7 +568,7 @@ func (s *state) starters(h plugin.Host, cat *common.Catalog) []plugin.Starter {
 	if len(out) == 0 {
 		out = append(out, plugin.Starter{Label: "选个偶像开一局", Sub: "也可以直接说「帮我用某某打一把初」", Say: "/开局", Icon: kit.IcPlay})
 	}
-	out = append(out, plugin.Starter{Label: "领日常奖励", Sub: "活動費、礼物、工作、任务，不花ジュエル", Icon: kit.IcSparkles,
+	out = append(out, plugin.Starter{Label: "领日常奖励", Sub: "活动费、礼物、工作派遣、任务，不花钻石", Icon: kit.IcSparkles,
 		Run: func(h plugin.Host) { h.RunArgs("帮我领日常奖励", []string{"run", "start", "daily"}) }})
 	return out
 }

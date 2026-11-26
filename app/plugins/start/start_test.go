@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/matto49/hiro-gakumas-hero/app/hiroapi"
+	"github.com/matto49/hiro-gakumas-hero/app/plugin"
 	"github.com/matto49/hiro-gakumas-hero/app/plugins/plugintest"
 )
 
@@ -97,9 +98,9 @@ func TestExplainNonProduceKinds(t *testing.T) {
 	}{
 		{map[string]any{"kind": "write-formation", "dry_run": true}, "对照编成方案", "只看画面，不改东西"},
 		{map[string]any{"kind": "write-formation", "scenario": "hajime"}, "把编成方案写进游戏", "会改游戏里的编成"},
-		{map[string]any{"kind": "main-task"}, "做初星課題", "会操作游戏"},
+		{map[string]any{"kind": "main-task"}, "做初星课题", "会操作游戏"},
 		{map[string]any{"kind": "check-settings", "fix": true}, "把游戏设置改好", "只动快进、跳过演出那 5 个开关"},
-		{map[string]any{"kind": "story", "chapter": 2}, "看初星コミュ", "会操作游戏"},
+		{map[string]any{"kind": "story", "chapter": 2}, "看初星剧情", "会操作游戏"},
 		{map[string]any{"kind": "contest-unit", "dry_run": true}, "看竞赛编队总合力", "只看画面，不改东西"},
 		{map[string]any{"kind": "contest-unit"}, "竞赛编队", "会改竞赛编队"},
 		{map[string]any{"kind": "scan-memories"}, "扫描回忆", "只看画面，不改东西"},
@@ -191,6 +192,52 @@ func TestStartersWithoutHistoryOpenPanel(t *testing.T) {
 }
 
 func okResult(s string) hiroapi.Result { return hiroapi.Result{OK: true, Data: []byte(s)} }
+
+func TestIdolPickerShowsChineseName(t *testing.T) {
+	// 11-25 Windows：整页中文，只有偶像列表是扫描读到的日文
+	h, p := host(), New()
+	h.Resp["catalog lookup"] = hiroapi.Result{OK: true, Data: []byte(`{"items":{"i_card-skin-kcna-3-0099":{"kind":"idols","name":"【荆棘之路】仓本千奈","rarity":"SSR","asset":"idol-i_card-kcna-3-0099"}}}`)}
+	h.Resp["info idols"] = hiroapi.Result{OK: true, Data: []byte(`{"items":[{"id":"i_card-skin-kcna-3-0099","name":"【ガラクタロード】倉本千奈","rarity":"SSR"}]}`)}
+	tt := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "") }), 560, 760)
+	if err := tt.Click("初"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("【荆棘之路】仓本千奈") || tt.HasText("【ガラクタロード】倉本千奈") {
+		t.Fatalf("没换成中文名：%q", tt.Texts())
+	}
+	if err := tt.Click("【荆棘之路】仓本千奈"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("已选：【荆棘之路】仓本千奈") {
+		t.Errorf("已选不是中文名：%q", tt.Texts())
+	}
+}
+
+func TestScanIdolsEndReloadsList(t *testing.T) {
+	h, p := host(), New()
+	tt := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "") }), 560, 760)
+	if err := tt.Click("初"); err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, c := range h.Calls {
+		if strings.Join(c, " ") == "info idols" {
+			n++
+		}
+	}
+	p.OnJobEnd(h, "J1", &plugin.JobView{Job: &plugin.Job{ID: "J1", Kind: "scan-idols"}, State: "done"})
+	tt.Frame()
+	m := 0
+	for _, c := range h.Calls {
+		if strings.Join(c, " ") == "info idols" {
+			m++
+		}
+	}
+	if m != n+1 {
+		t.Errorf("扫完偶像卡没重读列表：%d → %d", n, m)
+	}
+}
 
 // 确认卡上的编成方案只看待确认里固定的那份，不再另外去读 plan show（PR #79 CodeRabbit：缓存 1 分钟，方案改了卡上还是旧的）
 func TestExplainUsesPendingPlanSnapshot(t *testing.T) {

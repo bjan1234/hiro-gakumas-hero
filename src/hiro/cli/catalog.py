@@ -118,9 +118,23 @@ def lookup(ids: list[str], texts: list[str], lang: str = "zh") -> dict:
                 by_text[t] = to
         trans = {t: by_text[t] for t in want if t in by_text}
     items: dict[str, dict] = {}
+    sup_cards = None
     for raw in ids:
         eid = raw.strip()
         if not eid or eid in items:
+            continue
+        if eid.startswith("s_card-"):
+            # 支援卡不在 catalog.<lang>.json 里，在 supports.json（名字带 ja / zh 两份）；11-26 用户要整页按所选语言显示
+            if sup_cards is None:
+                try:
+                    sup_cards = load_supports().get("cards") or {}
+                except CliError:
+                    sup_cards = {}
+            if (s := sup_cards.get(eid)) is not None:
+                names = s.get("name") or {}
+                items[eid] = {"kind": "supports", "id": eid, "name": names.get(lang) or names.get("ja"),
+                              "rarity": s.get("rarity"), "plan": s.get("plan"), "text": None, "type": s.get("type"),
+                              "asset": f"support-{eid}"}  # fmt: skip
             continue
         key = eid.replace("i_card-skin-", "i_card-", 1)
         for k in KINDS:
