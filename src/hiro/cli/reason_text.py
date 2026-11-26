@@ -41,6 +41,11 @@ _PHRASES: tuple[tuple[re.Pattern[str], str], ...] = tuple(
             r"^DeviceUnavailable: 截图方式 \S+ 截出来全黑.*",
             "游戏画面截出来是全黑的：游戏窗口可能最小化了，把它还原后再试",
         ),
+        # G3（11-26）：DMM 游戏是管理员运行、初星助手不是，PrintWindow / 发输入被拒（WinError 5）
+        (
+            r"^Device(?:Unavailable|Gone): .*(?:WinError 5\]|错误码 5）).*",
+            "系统拒绝了初星助手操作游戏（可能是游戏以管理员身份运行、初星助手不是）：到「设置 → 游戏连接」点「试连」看看，需要时那里会给「以管理员身份重新打开」",
+        ),
         (r"^DeviceGone: MaaTools 断开.*", "和游戏的连接断了：游戏可能退出或卡住了，重新打开游戏后点「接着打」"),
         (
             r"^DeviceGone: MaaTools 连续 \d+s 返回空帧.*",

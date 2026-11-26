@@ -72,6 +72,9 @@ type Deps struct {
 	OnWizardDone func()
 	// PluginsPanel 画「管理插件」页（外部插件，见 extplugin）。
 	PluginsPanel func(c *ui.Context, h plugin.Host)
+	// RelaunchAdmin 以管理员身份重新打开初星助手（Windows：DMM 游戏是管理员运行时普通权限截不到画面，G3）；
+	// 先关后台服务再提权重开、关掉当前窗口。nil 表示这个系统不需要（Mac）。
+	RelaunchAdmin func() error
 }
 
 var providerName = map[string]string{
@@ -98,6 +101,8 @@ type S struct {
 	step      int
 	sound     bool
 	modelOK   bool
+	// relaunchErr 是「以管理员身份重新打开」没成的原因（取消了「是否允许」等）
+	relaunchErr string
 
 	// 模型表单
 	formFor  string // 表单是按哪次读到的设置填的
@@ -125,11 +130,12 @@ type S struct {
 }
 
 type doctorItem struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	OK     *bool  `json:"ok"`
-	Detail string `json:"detail"`
-	Next   string `json:"next"`
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	OK        *bool  `json:"ok"`
+	Detail    string `json:"detail"`
+	Next      string `json:"next"`
+	NeedAdmin bool   `json:"need_admin"` // 游戏比初星助手权限高（Windows DMM 版），要以管理员身份重新打开
 }
 
 // New 建设置插件。
@@ -312,7 +318,7 @@ func (s *S) wizard(c *ui.Context, h plugin.Host) {
 						s.Probe(h)
 					}
 					kit.Note(c, "先把游戏打开、停在首页。Mac 用带 maaTools 的 PlayCover，并在游戏设置里打开 maaTools；Windows 用 DMM 版，窗口不要最小化。")
-					s.deviceLine(c)
+					s.deviceLine(c, h)
 					if kit.Secondary(c, "试连").Disabled(s.probing).Clicked() {
 						s.Probe(h)
 					}
@@ -403,7 +409,7 @@ func (s *S) scanSection(c *ui.Context) {
 	}
 }
 
-func (s *S) deviceLine(c *ui.Context) {
+func (s *S) deviceLine(c *ui.Context, h plugin.Host) {
 	text := s.device
 	if text == "" {
 		text = "还没试连"
@@ -417,6 +423,17 @@ func (s *S) deviceLine(c *ui.Context) {
 	ui.Text(c, text).FontSize(kit.FSmall).TextColor(col)
 	if it, ok := s.doctor["platform"]; ok && it.OK != nil && !*it.OK {
 		kit.Note(c, it.Detail+"　"+it.Next)
+		if it.NeedAdmin && s.d.RelaunchAdmin != nil && h.LiveJob() == "" { // 有任务在跑时不给（重开会停掉它，#140 review）
+			if kit.Secondary(c, "以管理员身份重新打开").Key("relaunch-admin").Label("以管理员身份重新打开").Clicked() {
+				s.relaunchErr = ""
+				if err := s.d.RelaunchAdmin(); err != nil {
+					s.relaunchErr = err.Error()
+				}
+			}
+			if s.relaunchErr != "" {
+				kit.Note(c, s.relaunchErr)
+			}
+		}
 	}
 }
 
@@ -763,7 +780,7 @@ func (s *S) panel(c *ui.Context, h plugin.Host, route string) {
 	ui.Text(c, "扫描").FontSize(15).FontWeight(650).TextColor(kit.Ink).Padding(10, 0, 0, 0)
 	s.scanSection(c)
 	ui.Text(c, "游戏连接").FontSize(15).FontWeight(650).TextColor(kit.Ink).Padding(10, 0, 0, 0)
-	s.deviceLine(c)
+	s.deviceLine(c, h)
 	if kit.Secondary(c, "试连").Key("probe").Disabled(s.probing || h.LiveJob() != "").Clicked() {
 		s.Probe(h)
 	}
