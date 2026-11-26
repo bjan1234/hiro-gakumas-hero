@@ -58,7 +58,7 @@ def _norm(s: str) -> str:
 
 def name_wanted(name: str, wants: list[str]) -> bool:
     """wants 里的名字中日文都行：和读到的日文名比，也和它的中文译名（names.item_name）比。"""
-    n, z = _norm(name), _norm(item_name(name, "zh"))
+    n, z = _norm(name), _norm(item_name(name))
     return any(_norm(w) and (_norm(w) in n or _norm(w) in z) for w in wants)
 
 

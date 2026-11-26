@@ -1,4 +1,4 @@
-"""日常结果里给人看的名字：按初星助手设置的「游戏内容语言」（HIRO_HOME/settings.json 的 game_lang，缺省中文）。
+"""日常结果里给人看的名字：一律中文（界面和游戏内容都用中文，作者 11-26）。
 
 商店里的东西（ノート、ピース、再挑戦チケット…）不在资料库里，按名字的固定写法翻：
 - 「ロジックノート(ボーカル)」→「理性笔记（歌唱）」
@@ -8,8 +8,6 @@
 
 from __future__ import annotations
 
-import json
-import os
 import re
 from functools import cache
 
@@ -22,19 +20,6 @@ FIXED = {
     "入手サポート強化Ptアップ": "支援强化点数获取提升",
     "入手ノート数アップ": "笔记获取数提升",
 }
-
-
-def game_lang() -> str:
-    """zh / ja：初星助手设置里的「游戏内容语言」；读不到当中文。HIRO_GAME_LANG 优先（命令行跑时用）。"""
-    if v := os.environ.get("HIRO_GAME_LANG"):
-        return "ja" if v.strip().lower() == "ja" else "zh"
-    try:
-        from hiro.cli.home import hiro_home
-
-        s = json.loads((hiro_home() / "settings.json").read_text(encoding="utf-8"))
-        return "ja" if s.get("game_lang") == "ja" else "zh"
-    except (OSError, ValueError, ImportError):
-        return "zh"
 
 
 @cache
@@ -61,10 +46,9 @@ def _fold(s: str) -> str:
     return re.sub(r"[\s\[\]【】()（）|]", "", fold(s).replace("一", "ー"))
 
 
-def item_name(name: str, lang: str | None = None) -> str:
-    """商店商品名 → 所选语言；日文模式或认不出原样返回。"""
-    lang = lang or game_lang()
-    if lang == "ja" or not name:
+def item_name(name: str) -> str:
+    """商店商品名 → 中文；认不出原样返回。"""
+    if not name:
         return name
     n = _fold(name)
     for ja, zh in FIXED.items():

@@ -82,9 +82,8 @@ def test_shop_ap_dialog_and_options(monkeypatch):
     monkeypatch.setenv("HIRO_SHOP_AP", "retry, regen,bogus")
     assert shop.ap_wanted() == ["retry", "regen"]
     assert shop.AP_ITEMS["regen"] in "メモリー再生成チケット" and shop.AP_ITEMS["pt"] in "入手サポート強化Ptアップ"
-    assert item_name("メモリー再生成チケット", "zh") == "回忆再生成券"
-    assert item_name("入手ノート数アップ", "zh") == "笔记获取数提升"
-    assert item_name("入手ノート数アップ", "ja") == "入手ノート数アップ"
+    assert item_name("メモリー再生成チケット") == "回忆再生成券"
+    assert item_name("入手ノート数アップ") == "笔记获取数提升"
 
 
 def test_shop_default_off_and_cost(monkeypatch):
