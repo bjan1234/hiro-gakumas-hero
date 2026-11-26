@@ -22,3 +22,30 @@ def test_tap_hours_falls_back_to_text(monkeypatch):
     rt = NS(device=NS(tap=lambda x, y: taps.append((x, y))), drive=lambda step, timeout, what, every=0.5: step(f))
     assignment._tap_hours(rt, 12)
     assert taps == [(584, 930)]
+
+
+def test_pass_stops_after_first_empty_screen_once_claimed(monkeypatch):
+    """通行证：领到过以后碰到一整屏没有可领的就停，不再拖到底（11-27 用户）。"""
+    from hiro.daily import mission_reward as mr
+
+    screens = [[], [1, 1], [], [1], []]  # 第 2 屏能领 2 个，第 3 屏没有：停在这里，第 4 屏那个不该碰（实际不会出现）
+    state = {"i": 0, "left": list(screens[0]), "scrolls": 0}
+
+    def claim(rt):
+        if state["left"]:
+            state["left"].pop()
+            return True
+        return False
+
+    def scroll(rt, rect, bar, step):
+        state["i"] += 1
+        state["scrolls"] += 1
+        state["left"] = list(screens[state["i"]])
+
+    monkeypatch.setattr(mr, "_enter", lambda *a: None)
+    monkeypatch.setattr(mr, "_claim_one_pass", claim)
+    monkeypatch.setattr(mr.common, "frame", lambda rt: NS(img=None))
+    monkeypatch.setattr(mr.common, "scrollbar", lambda img, rect: NS(position=state["i"] / 10))
+    monkeypatch.setattr(mr.common, "scroll_by", scroll)
+    rt = NS(sleep=lambda s: None)
+    assert mr.claim_pass(rt) == 2 and state["scrolls"] == 2
