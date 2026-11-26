@@ -90,6 +90,23 @@ def summarize(plan: dict) -> dict:
 MODES = ("hajime", "nia", "hif")
 
 
+def memory_inventory(st, style: str | None):
+    """出方案用的回忆库存：开了「回忆按片扫描」按流派取片（D16）；缺省（关）照旧用最新的整表扫描快照（#116 审查重要 5）。"""
+    from hiro.state import memory_slices
+
+    return st.memories_for_plan(style) if memory_slices.enabled() else st.latest_raw("memories")
+
+
+def _plan_style(fp, idol: str) -> str | None:
+    """偶像卡的流派（sense / logic / anomaly），决定出方案要哪几片回忆（设计 D16）；认不出（主数据缺、编号不对）时 None = 12 片全要。"""
+    from hiro.brain.guides import PLAN_OF
+
+    try:
+        return PLAN_OF.get(fp.idol_info(idol).get("plan"))
+    except Exception:  # noqa: BLE001  认不出交给后面 build 报 bad_idol
+        return None
+
+
 @command(
     "plan formation",
     Risk.READ,
@@ -124,16 +141,17 @@ def make_plan(home, idol: str, fam: str | None, *, difficulty: str | None = None
     """读信息库里最新的库存 → 出方案 → 存（给了模式按「偶像卡 × 模式」存并设为当前方案，没给只写当前方案）。
     plan formation 和开局前自动出方案（hiro run start）共用。"""
     st = open_store()
-    sup, mem = st.latest_raw("supports"), st.latest_raw("memories")
+    paths.apply_to_process(home)  # 主数据路径
+    from hiro.brain import formation_plan as fp
+    from hiro.state.catalog import CatalogUnavailable
+
+    sup, mem = st.latest_raw("supports"), memory_inventory(st, _plan_style(fp, idol))
     if sup is None and mem is None:
         raise CliError(
             "no_inventory",
             "还没有支援卡和回忆的库存",
             "先扫描支援卡和回忆（hiro run start scan-supports / scan-memories）",
         )
-    paths.apply_to_process(home)  # 主数据路径
-    from hiro.brain import formation_plan as fp
-    from hiro.state.catalog import CatalogUnavailable
 
     try:
         plan = fp.build(

@@ -25,6 +25,27 @@ type listing struct {
 	ScannedAt *string          `json:"scanned_at"`
 	Items     []map[string]any `json:"items"`
 	Hint      string           `json:"hint"`
+	Slices    map[string]any   `json:"slices"` // 回忆的片覆盖（info memories，设计 5.8）
+}
+
+// sliceLine：回忆按片扫描的覆盖情况一句话（设计 5.8）；没有片数据时空串。
+func sliceLine(sl map[string]any) string {
+	if sl == nil {
+		return ""
+	}
+	done, _ := sl["done"].(float64)
+	total, _ := sl["total"].(float64)
+	if total == 0 {
+		return ""
+	}
+	out := fmt.Sprintf("按片：%d 片里全读过 %d 片", int(total), int(done))
+	if o, _ := sl["oldest"].(string); o != "" {
+		out += " · 最旧 " + shortDate(o)
+	}
+	if p, _ := sl["pending"].([]any); len(p) > 0 {
+		out += fmt.Sprintf(" · 待补 %d 片", len(p))
+	}
+	return out
 }
 
 type state struct {
@@ -51,6 +72,10 @@ func New() *plugin.Plugin {
 		Commands: []plugin.Command{
 			{Name: "资料库", Hint: "看支援卡、回忆、偶像卡"},
 			{Name: "扫描", Hint: "扫描支援卡 / 回忆 / 偶像卡 / 首页数值", Route: "scan"},
+			// 设计 5.7 / D7：对话里「/全收集」发起一键全收集（同样出确认卡）
+			{Name: "全收集", Hint: "一键全收集：首页数值、偶像卡、支援卡、编成、回忆按顺序扫一遍", Run: func(h plugin.Host) {
+				h.RunArgs("一键全收集", []string{"run", "start", "collect-all"})
+			}},
 		},
 		Chips: []plugin.Chip{{Label: "/扫描", Say: "/扫描"}, {Label: "/资料库", Say: "/资料库"}},
 		Cards: map[string]plugin.CardView{
@@ -108,6 +133,9 @@ func (s *state) infoCard(c *ui.Context, h plugin.Host, card plugin.Card) {
 			ui.Spacer(c)
 			ui.Text(c, "资料库").FontSize(11).TextColor(kit.Ink3)
 		})
+		if sl, _ := card["slices"].(map[string]any); sliceLine(sl) != "" {
+			kit.Note(c, sliceLine(sl))
+		}
 		if len(items) == 0 {
 			kit.Note(c, or(hint, "没有符合的"))
 			return
@@ -482,6 +510,9 @@ func (s *state) listPanel(c *ui.Context, h plugin.Host, kind string) {
 	if l == nil {
 		return
 	}
+	if line := sliceLine(l.Slices); line != "" {
+		kit.Note(c, line)
+	}
 	if len(l.Items) == 0 {
 		kit.Note(c, or(l.Hint, "还没扫描过；到「扫描」里扫一次。"))
 		return
@@ -520,7 +551,7 @@ func (s *state) settingsFix(c *ui.Context, h plugin.Host, items []map[string]any
 
 var scans = [][3]string{
 	{"scan-supports", "扫描支援卡", "翻一遍支援卡列表，记下等级和突破。"},
-	{"scan-memories", "扫描回忆", "翻一遍回忆列表，记下技能卡、参数和能力。"},
+	{"scan-memories", "扫描回忆", "翻一遍回忆列表，记下技能卡、参数和能力；设置里开了「回忆按片扫描」时只补扫新回忆。"},
 	{"scan-idols", "扫描偶像卡", "记下持有的偶像卡。"},
 	{"scan-account", "读首页数值", "PLv、AP、ジュエル。"},
 	{"check-settings", "检查游戏设置", "快进、跳过演出那几项开没开。"},
@@ -528,6 +559,17 @@ var scans = [][3]string{
 
 func (s *state) scanPanel(c *ui.Context, h plugin.Host) {
 	kit.Note(c, "扫描会操作游戏（只看画面、翻列表，不改东西）。点了会在对话里出确认卡。")
+	// 设计 5.7：一键全收集（首页数值 → 偶像卡 → 支援卡 → 编成 → 回忆 12 片全读），放在最上面
+	ui.Row(c).Gap(10).AlignItems(ui.Center).Padding(8, 0).BorderColor(kit.Line).BorderWidth(0, 0, kit.Hair, 0).Children(func() {
+		ui.Column(c).Gap(2).Shrink(1).Children(func() {
+			ui.Text(c, "一键全收集").FontSize(kit.FSmall).FontWeight(600).TextColor(kit.Ink)
+			kit.Note(c, "首页数值、偶像卡、支援卡、编成、回忆（全读）按顺序扫一遍，约半小时；中途能停，扫完的照样入库。")
+		})
+		ui.Spacer(c)
+		if kit.Primary(c, "一键全收集").Key("scan-collect-all").Label("一键全收集").Clicked() {
+			h.RunArgs("一键全收集", []string{"run", "start", "collect-all"})
+		}
+	})
 	for _, sc := range scans {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Padding(8, 0).BorderColor(kit.Line).BorderWidth(0, 0, kit.Hair, 0).Children(func() {
 			ui.Column(c).Gap(2).Shrink(1).Children(func() {

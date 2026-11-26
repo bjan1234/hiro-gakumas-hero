@@ -104,6 +104,8 @@ class FakeGame:
             self.tab = "support"
         elif (x, y) == (333, 1093):
             self.tab = "memory"
+        elif (x, y) == fm.MEMORY_TILES[0] and self.tab == "memory":
+            self.where = "picker"
         elif (x, y) == fm.ARROWS["next"]:
             self.number = min(20, self.number + 1)
         elif (x, y) == fm.ARROWS["prev"]:
@@ -341,3 +343,74 @@ def test_find_tolerates_hen_misread():
     ]
     assert _find(texts, "メモリー編成", y_min=1040) == (276, 1081, 394, 1103)
     assert _find(texts, "サポート編成", y_min=1040) == (70, 1080, 189, 1104)  # 不会认成「メモリー綿成」
+
+
+def test_open_memory_picker_from_empty_set_and_report_original(game, monkeypatch):
+    """11-26 实机：回忆选择页顶栏 = 这份回忆 + 编成里其余 3 格。从全空的编成进去，读到的就是回忆本身的属性（设计 5.3）。
+    返回进去前的编成号，扫完切回去。"""
+    g, dev = game
+    g.mode, g.tab, g.number = "hif", "memory", 20
+    # 终审 I4：不只信资料库的编成快照，切过去后现场看 4 格是不是都空
+    monkeypatch.setattr(fm, "read_memory_icons", lambda img: [{"empty": img["number"] == 19}] * 4)
+    got = fm.open_picker(
+        dev,
+        "memory",
+        ready=lambda img: img["where"] == "picker",
+        use_set=lambda mode: ("hif", 19) if mode == "hif" else None,
+    )
+    assert g.where == "picker" and g.number == 19
+    assert got == {"mode": "hif", "set": 20, "used": 19, "used_mode": "hif", "empty": True}
+
+
+def test_open_memory_picker_without_empty_set_stays(game, monkeypatch):
+    g, dev = game
+    g.mode, g.tab, g.number = "hif", "memory", 20
+    monkeypatch.setattr(fm, "read_memory_icons", lambda img: [{"empty": img["number"] == 19}] * 4)
+    got = fm.open_picker(dev, "memory", ready=lambda img: img["where"] == "picker", use_set=lambda mode: None)
+    assert g.number == 20 and got == {"mode": "hif", "set": 20, "used": None, "used_mode": None, "empty": False}
+
+
+def test_snapshot_says_empty_but_set_is_not(game, monkeypatch):
+    """快照说 19 号空，现场有回忆（快照之后被写过）：empty=False，属性带偏移，入库时不当作本身属性。"""
+    g, dev = game
+    g.mode, g.tab, g.number = "hif", "memory", 20
+    monkeypatch.setattr(
+        fm, "read_memory_icons", lambda img: [{"empty": True}, {"empty": False}, {"empty": True}, {"empty": True}]
+    )
+    got = fm.open_picker(dev, "memory", ready=lambda img: img["where"] == "picker", use_set=lambda mode: ("hif", 19))
+    assert got["used"] == 19 and got["empty"] is False
+
+
+def test_open_picker_switches_mode_for_empty_set_and_back(game, monkeypatch):
+    """当前模式（初）没有空编成：切到 H.I.F 的 19 号扫，扫完（back_to）切回初的 10 号。"""
+    g, dev = game
+    g.mode, g.tab, g.number = "hajime", "memory", 10
+    monkeypatch.setattr(
+        fm, "read_memory_icons", lambda img: [{"empty": img["mode"] == "hif" and img["number"] == 19}] * 4
+    )
+    got = fm.open_picker(dev, "memory", ready=lambda img: img["where"] == "picker", use_set=lambda mode: ("hif", 19))
+    assert (
+        g.mode == "hif"
+        and g.number == 19
+        and got == {"mode": "hajime", "set": 10, "used": 19, "used_mode": "hif", "empty": True}
+    )
+    g.where = "menu"  # 扫完点キャンセル回到编成页
+    fm.back_to(dev, got)
+    assert (g.mode, g.number) == ("hajime", 10)
+
+
+def test_open_picker_switches_back_when_picker_never_opens(game, monkeypatch):
+    """#116 第二轮审查次要：切到空编成后选择页打不开（报错停下），要把模式和编成号切回去。"""
+    g, dev = game
+    g.mode, g.tab, g.number = "hajime", "memory", 10
+    monkeypatch.setattr(fm, "read_memory_icons", lambda img: [{"empty": True}] * 4)
+    from hiro.produce.formation_writer import FormationWriteError
+
+    orig = g.click
+    g.click = lambda x, y: (
+        None if (x, y) == fm.MEMORY_TILES[0] else orig(x, y)
+    )  # 点回忆格没反应：选择页打不开、还在编成页
+    dev.click = g.click
+    with pytest.raises(FormationWriteError):
+        fm.open_picker(dev, "memory", ready=lambda img: False, use_set=lambda mode: ("hif", 19))
+    assert (g.mode, g.number) == ("hajime", 10)

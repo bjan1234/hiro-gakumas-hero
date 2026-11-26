@@ -79,7 +79,9 @@ class FakeDevice:
         self.swipes += 1  # 画面不变 = 到底
 
     def ocr(self, im):
-        key = next(k for k, v in self.frames.items() if v is im)
+        # 翻页 / 读详情只 OCR 上半部分（im 是帧的切片，base 指向原帧）
+        key = next(k for k, v in self.frames.items() if v is im or getattr(im, "base", None) is v)
+        key = (key, im.shape[0])
         if key not in self._ocr:
             self._ocr[key] = ops.ocr_boxes(im)
         return self._ocr[key]
@@ -330,9 +332,20 @@ def test_mark_suspects_rules():
     es = [{"slot": 0, "thumb": "a", "card": {"card_id": "c1"}}, {"slot": 1, "thumb": "b", "card": {"card_id": "c1"}},
           {"slot": 2, "thumb": "b", "card": {"card_id": "c1"}}, {"slot": 3, "thumb": "c", "card": None},
           {"slot": 4, "thumb": "d", "card": {"card_id": "c4"}, "refreshed": False}]  # fmt: skip
-    assert mp.mark_suspects(es) == 3
-    # 同内容同缩略图：真的有两份一样的回忆（不是没刷新），不标
-    assert [e.get("suspect") for e in es] == [None, "same_as_prev", None, "card_unread", "detail_not_refreshed"]
+    assert mp.mark_suspects(es) == 2
+    # 同内容同缩略图：真的有两份一样的回忆（不是没刷新），不标；
+    # 详情栏像素没怎么变、但读到的内容和上一格不同：读对了（11-26 两次扫描都是同样 14 格误报），不标
+    assert [e.get("suspect") for e in es] == [None, "same_as_prev", None, "card_unread", None]
+
+
+def test_detail_not_refreshed_only_when_content_also_repeats():
+    """11-26 本机复核：相邻两格详情栏长得像，像素变化没过阈值（refreshed=False），但读到的内容不同 → 不是没刷新。
+    内容和上一格一样、缩略图也一样（真有两份一样的回忆、这次点了没变）才标 detail_not_refreshed。"""
+    es = [{"slot": 0, "thumb": "a", "card": {"card_id": "c1"}, "abilities": ["x"]},
+          {"slot": 1, "thumb": "b", "card": {"card_id": "c2"}, "abilities": ["y"], "refreshed": False},
+          {"slot": 2, "thumb": "b", "card": {"card_id": "c2"}, "abilities": ["y"], "refreshed": False}]  # fmt: skip
+    assert mp.mark_suspects(es) == 1
+    assert [e.get("suspect") for e in es] == [None, None, "detail_not_refreshed"]
 
 
 @pytest.mark.fixtures
@@ -619,3 +632,164 @@ def test_pale_rows_real_frame():
     assert len(rows) == 3 and all(108 <= y2 - y1 <= 128 for y1, y2 in rows)
     cells = mp.grid_cells(img)
     assert len(cells) == 9 and len({c["hash"] for c in cells}) == 9
+
+
+# ---------------------------------------------------------------- 增量补扫 / 预算 / 多片不退出（设计 5.4 / D6）
+class CancelCounting(ListPicker):
+    def __init__(self, lst, clock=lambda: 0.0):
+        super().__init__(lst)
+        self.clock, self.cancels = clock, 0
+
+    def cancel(self):
+        self.cancels += 1
+        return True
+
+
+@pytest.mark.fixtures
+def test_incremental_scan_stops_after_three_known(tmp_path, monkeypatch):
+    """前 2 格是新的，之后都是资料库里有的：读到第 3 格已知就停（读 5 格），new=2。"""
+    from hiro.produce.memory_sig import KnownSet
+
+    monkeypatch.setattr(mp, "picker_open", lambda boxes: True)
+    lst = ScrollList()
+    known = KnownSet([{"card": {"card_id": f"m{r}-{c}"}} for r, c in all_cells(lst)[2:]])
+    inv = mp.scan(CancelCounting(lst), tmp_path / "inv.json", known=known)
+    assert lst.read == [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1)]
+    assert inv["new"] == 2 and inv["stopped"] == "known" and inv["complete"]
+    assert [e.get("known", False) for e in inv["entries"]] == [False, False, True, True, True]
+
+
+@pytest.mark.fixtures
+def test_three_known_at_top_stop_immediately(tmp_path, monkeypatch):
+    from hiro.produce.memory_sig import KnownSet
+
+    monkeypatch.setattr(mp, "picker_open", lambda boxes: True)
+    lst = ScrollList()
+    cells = all_cells(lst)
+    known = KnownSet([{"card": {"card_id": f"m{r}-{c}"}} for r, c in cells if (r, c) != (1, 0)])
+    inv = mp.scan(CancelCounting(lst), tmp_path / "inv.json", known=known)
+    # 列表最上面 3 格都已知（最新的都扫过了）：读 3 格就停
+    assert len(lst.read) == 3 and inv["new"] == 0
+
+
+@pytest.mark.fixtures
+def test_budget_stops_scan_incomplete_and_keeps_entries(tmp_path, monkeypatch):
+    monkeypatch.setattr(mp, "picker_open", lambda boxes: True)
+    t = iter(range(0, 1000, 10))
+    p = CancelCounting(ScrollList(), clock=lambda: next(t))
+    inv = mp.scan(p, tmp_path / "inv.json", deadline=25)
+    assert inv["stopped"] == "budget" and not inv["complete"] and 1 <= len(inv["entries"]) < len(all_cells(p.lst))
+
+
+@pytest.mark.fixtures
+def test_close_false_leaves_picker_open(tmp_path, monkeypatch):
+    monkeypatch.setattr(mp, "picker_open", lambda boxes: True)
+    p = CancelCounting(ScrollList())
+    mp.scan(p, tmp_path / "inv.json", close=False)
+    assert p.cancels == 0
+    mp.scan(p, tmp_path / "inv2.json")
+    assert p.cancels == 1
+
+
+@pytest.mark.fixtures
+def test_each_page_advances_two_rows(tmp_path, monkeypatch):
+    """11-26 实机：每页只前进 1 行（读完把最后一行滑到 y≈605，第 3 行下沿刚过 ROW_BOTTOM_MAX 认不出）。
+    把最后一行滑到 SCROLL_TOP_TARGET（≈585），每屏 3 行都完整，每页前进 2 行：36 行的列表滑动次数减半，每格仍只读一次。"""
+    lst = ScrollList(copies=3)
+    swipes = []
+    orig = lst.swipe
+    lst.swipe = lambda *a, **k: (swipes.append(a), orig(*a, **k))[1]
+    inv = run_scan(tmp_path, lst, monkeypatch)
+    assert sorted(set(lst.read)) == all_cells(lst) and len(lst.read) == len(all_cells(lst)) and inv["complete"]
+    assert len(swipes) <= len(lst.rows) // 2 + 6, len(swipes)
+
+
+def test_scroll_brings_last_read_row_to_top_target():
+    """读完一页把最后一行滑到 SCROLL_TOP_TARGET（不是第一行原来的位置）：实机帧行上沿 605 / 743 时滑 158，
+    之后 3 行上沿 585 / 722 / 860，下沿都在 ROW_BOTTOM_MAX 以内，每页前进 2 行（11-26 实机每页只前进 1 行）。"""
+    rows = [[{"rect": (40, 605, 210, 118)}], [{"rect": (40, 743, 210, 118)}]]
+    assert mp.page_scroll_px(rows) == 743 - mp.SCROLL_TOP_TARGET
+    assert mp.SCROLL_TOP_TARGET + 2 * mp.ROW_PITCH + mp.ROW_H[1] <= mp.ROW_BOTTOM_MAX
+    assert mp.page_scroll_px([[{"rect": (40, 605, 210, 118)}]]) == int(mp.ROW_PITCH)  # 只认出 1 行：照旧滑一行
+
+
+def test_read_selected_starts_on_current_page_and_never_flips_back(monkeypatch):
+    """11-26 实机：选另一格后详情栏停在原来那一页。读完不翻回第 1 页，下一格从当前页读起：每格只翻一次页。"""
+    monkeypatch.setattr(mp, "read_stats", lambda boxes: {"Vo": 1})
+    monkeypatch.setattr(mp, "read_card_page", lambda boxes: {"card": {"card_id": "c"}})
+    monkeypatch.setattr(mp, "read_ability_page", lambda boxes: ["a"])
+    monkeypatch.setattr(mp, "picker_open", lambda boxes: True)  # 读完核对选择页还开着
+
+    class Pk(mp.Picker):
+        def __init__(self):
+            super().__init__(lambda: None, lambda x, y: None, lambda *a: None, ocr=lambda im: [], sleep=lambda s: None)
+            self.pages = []
+
+        def to_page(self, page):
+            self.pages.append(page)
+            self._page = page
+            return None, []
+
+    p = Pk()
+    e1, e2, e3 = p.read_selected(), p.read_selected(), p.read_selected()
+    assert p.pages == [1, 2, 2, 1, 1, 2]
+    assert e1 == e2 == e3 == {"stats": {"Vo": 1}, "card": {"card_id": "c"}, "abilities": ["a"]}
+
+
+def test_to_page_ocrs_only_detail_area():
+    """翻页 / 读详情只 OCR 画面上半部分（详情栏和页码都在 DETAIL_OCR_BOTTOM 以上）：整屏 OCR 0.38 秒，每格省两次。"""
+    import numpy as np
+
+    heights = []
+
+    def ocr(img):
+        heights.append(img.shape[0])
+        return [("1/2", 1.0, (330, 525, 390, 545))]
+
+    p = mp.Picker(lambda: np.zeros((1280, 720, 3), np.uint8), lambda x, y: None, lambda *a: None, ocr=ocr,
+                  sleep=lambda s: None, clock=lambda: 0.0)  # fmt: skip
+    p.to_page(1)
+    assert heights and all(h <= mp.DETAIL_OCR_BOTTOM for h in heights) and p._page == 1
+
+
+@pytest.mark.fixtures
+@pytest.mark.parametrize(
+    ("name", "want"), [("picker-vo-zero-hif-1126.png", (0, 62, 64)), ("picker-vo-zero-hif-1126-b.png", (0, 67, 49))]
+)
+def test_stats_fall_back_to_full_frame_when_a_digit_is_missed(name, want):
+    """11-26 实机：顶栏 Vo 只有一个「0」，只 OCR 上半部分时读不出来（整屏能读出）：有属性没读出时退回整屏再读。"""
+    img = frame(name)
+    boxes = ops.ocr_boxes(img[: mp.DETAIL_OCR_BOTTOM])
+    s = mp.stats_with_fallback(img, boxes, ops.ocr_boxes)
+    assert (s["Vo"], s["Da"], s["Vi"]) == want
+
+
+def test_read_selected_checks_picker_still_open(monkeypatch):
+    """#116 第二轮审查重要 1：读完一格要核对选择页还开着（点格子被当成「決定」时选择页会关）。
+    提速时只 OCR 上半部分、去掉了这层核对，一页最后一格 / 片尾 / 预算到时关了就发现不了。"""
+    monkeypatch.setattr(mp, "read_stats", lambda boxes: {"Vo": 1, "Da": 1, "Vi": 1, "hp": 0})
+    monkeypatch.setattr(mp, "read_card_page", lambda boxes: {"card": {"card_id": "c"}})
+    monkeypatch.setattr(mp, "read_ability_page", lambda boxes: [])
+
+    class Pk(mp.Picker):
+        def __init__(self):
+            super().__init__(lambda: None, lambda x, y: None, lambda *a: None, ocr=lambda im: [], sleep=lambda s: None)
+
+        def to_page(self, page):
+            self._page = page
+            return None, []
+
+    with pytest.raises(mp.PickerClosed):
+        Pk().read_selected()
+
+
+def test_to_page_checks_picker_before_flipping(monkeypatch):
+    """#116 第三轮：点翻页箭头前要对同一帧核对选择页还开着；选择页已经关了、编成页上的字被读成页码时，不能在编成页上点。"""
+    import numpy as np
+
+    clicks, t = [], iter(range(10**6))
+    p = mp.Picker(lambda: np.zeros((1280, 720, 3), np.uint8), lambda x, y: clicks.append((x, y)), lambda *a: None,
+                  ocr=lambda im: [("1/2", 1.0, (330, 525, 390, 545))], sleep=lambda s: None, clock=lambda: next(t))  # fmt: skip
+    with pytest.raises(mp.PickerClosed):
+        p.to_page(2)  # 整屏没有キャンセル / 決定：选择页不在了
+    assert clicks == []

@@ -42,7 +42,8 @@ FG_SAT_MIN, FG_VAL_MAX = 30, 180  # 分行用的「不是背景」像素：饱�
 ROW_PROBE_W = 120  # 分行时每列只量中间这么宽
 ROW_FG_MIN = 0.10  # 一条横线「不是背景」的占比 ≥ 这个算有内容（空隙实测 0.00，行内 ≥ 0.24）
 CELL_EMPTY_SAT = 15  # 格子平均饱和度低于这个算空格（空格约 0；浅色卡面整格只有 41–50，以前用的 40 太贴近）
-DETAIL_ROI = (40, 170, 640, 340)  # 详情栏 (x, y, w, h)：换选中回忆 / 换页时这里变
+DETAIL_ROI = (40, 170, 640, 340)
+DETAIL_OCR_BOTTOM = 560  # 详情栏 + 页码「1/2」（y≈535）的下沿；翻页 / 读详情只 OCR 这以上  # 详情栏 (x, y, w, h)：换选中回忆 / 换页时这里变
 STATS_ROI = (100, 30, 600, 90)
 PAGE_PREV, PAGE_NEXT = (230, 530), (485, 530)
 CANCEL_TAP = (211, 1162)
@@ -58,6 +59,9 @@ SWIPE_DURATION, SWIPE_HOLD = (
 CELL_MATCH_MAX = 14.0  # 两张格子缩略图（48x24 灰度）平均差 ≤ 这个算同一格（行带上下差 1–2 像素也能对上）
 MAX_BACKTRACK = 3
 ROW_PITCH = 137.5
+SCROLL_TOP_TARGET = (
+    585  # 读完一页把最后一行滑到这个上沿（11-26：滑到第一行原位 y≈605 时第 3 行下沿过 ROW_BOTTOM_MAX，每页只前进 1 行）
+)
 TIMING = {"開始時": "start", "中間試験": "mid", "オーディション後": "mid"}
 CLOSE_TEXTS = ("キャンセル", "閉じる", "戻る")
 ABILITY_GAP = 22  # 同一张能力卡片里相邻两行的间距 ≤ 这个；卡片之间更大
@@ -162,6 +166,15 @@ def read_stats(boxes) -> dict:
         m = re.match(r"\d+", hit.replace(" ", "")) if hit else None
         out[key] = int(m.group()) if m else None
     return out
+
+
+def stats_with_fallback(img, boxes, ocr) -> dict:
+    """顶栏属性；有一项没读出数字时退回整屏 OCR 再读（11-26 实机：Vo 只有一个「0」，只 OCR 上半部分读不出、整屏能读出）。"""
+    s = read_stats(boxes)
+    if img is not None and any(v is None for v in s.values()):
+        full = read_stats(ocr(img))
+        s = {k: v if v is not None else full.get(k) for k, v in s.items()}
+    return s
 
 
 OCR_SWAPS = (
@@ -319,30 +332,47 @@ class Picker:
             changed, img = self._wait_change(before, DETAIL_ROI)
         return changed, img
 
+    def _detail_ocr(self, img) -> list:
+        """只 OCR 画面上半部分（详情栏和页码「1/2」都在 DETAIL_OCR_BOTTOM 以上）：整屏 OCR 约 0.38 秒，读一格要好几次。
+        选择页还开着没有的核对在点格子时做（select_checked → ensure_open，整屏）。"""
+        return self.ocr(img[:DETAIL_OCR_BOTTOM])
+
     def to_page(self, page: int) -> tuple[np.ndarray, list]:
         """详情栏翻到第 page 页（1 / 2）。每次点翻页箭头前核对还在选择页、并且认出了页码（认不出页码就不盲点，等一下重读）。"""
         img = self.shoot()
-        boxes = self.ensure_open(self.ocr(img))
+        boxes = self._detail_ocr(img)
         for _ in range(3):
             cur = detail_page(boxes)
             if cur == page:
+                self._page = page
                 return img, boxes
             if cur is None:
                 self.sleep(0.4)
                 img = self.shoot()
-                boxes = self.ensure_open(self.ocr(img))
+                boxes = self._detail_ocr(img)
                 continue
+            # 点翻页箭头前对同一帧核对选择页还开着（整屏 OCR）：选择页关了时编成页上的字可能被读成页码，不能在编成页上点（#116 第三轮）
+            self.ensure_open(img=img)
             self.click(*(PAGE_NEXT if cur < page else PAGE_PREV))
             _, img = self._wait_change(img, DETAIL_ROI)
-            boxes = self.ensure_open(self.ocr(img))
+            boxes = self._detail_ocr(img)
+        self._page = detail_page(boxes)
         return img, boxes
 
     def read_selected(self) -> dict:
-        _img, boxes = self.to_page(1)
-        entry = {"stats": read_stats(boxes), **read_card_page(boxes)}
-        _img2, boxes2 = self.to_page(2)
-        entry["abilities"] = read_ability_page(boxes2)
-        self.to_page(1)
+        """读选中这一格的详情两页。从详情栏当前停的那页读起、读完不翻回去（11-26 实机：选另一格后详情栏停在原来那页），
+        每格只翻一次页。"""
+        first = 2 if getattr(self, "_page", None) == 2 else 1
+        entry: dict = {}
+        for page in (first, 3 - first):
+            _img, boxes = self.to_page(page)
+            if page == 1:
+                entry = {"stats": stats_with_fallback(_img, boxes, self.ocr), **read_card_page(boxes), **entry}
+            else:
+                entry["abilities"] = read_ability_page(boxes)
+        # 读完核对选择页还开着（整屏 OCR）：点格子被当成「決定」时选择页会关、编成可能被改；翻页只 OCR 上半部分看不到底部按钮，
+        # 这层核对不能省（#116 第二轮审查：一页最后一格 / 片尾 / 预算到时关了会发现不了）
+        self.ensure_open()
         return entry
 
     def scroll(
@@ -419,6 +449,14 @@ def row_overlap(prev: list[list[dict]], cur: list[list[dict]]) -> int:
         if all(same_row(prev[len(prev) - m + i], cur[i]) for i in range(m)):
             return m
     return 0
+
+
+def page_scroll_px(rows: list[list[dict]]) -> int:
+    """读完一页往上滑多少：把最后一个完整行滑到 SCROLL_TOP_TARGET（它留在新页最上面当对齐锚点），下面 2 行都完整；
+    只认出 1 行时照旧滑一行。"""
+    if len(rows) < 2:
+        return int(ROW_PITCH)
+    return max(int(ROW_PITCH), rows[-1][0]["rect"][1] - SCROLL_TOP_TARGET)
 
 
 def to_top(picker: "Picker", max_swipes: int = 80) -> np.ndarray:
@@ -535,7 +573,7 @@ def mark_suspects(entries: list[dict]) -> int:
     """标可疑记录（suspect 写原因；formation_plan 不选可疑的）：
     - card_unread：卡名读不出；
     - same_as_prev：和按格子顺序的上一格内容一模一样、但格子缩略图不同（点了格子详情栏没刷新，读到的是上一格；2026-11-15 账号 2）；
-    - detail_not_refreshed：点了两次详情栏都没变（且不是同一张缩略图）。
+    - detail_not_refreshed：点了两次详情栏像素都没变，读到的内容也和上一格一样（缩略图不同的已经算 same_as_prev）。
     返回可疑条数。"""
     n = 0
     prev = None
@@ -550,7 +588,9 @@ def mark_suspects(entries: list[dict]) -> int:
             and e.get("thumb") != prev.get("thumb")
         ):
             why = "same_as_prev"
-        if why is None and e.get("refreshed") is False and (prev is None or e.get("thumb") != prev.get("thumb")):
+        # 像素没怎么变不等于没刷新：相邻两格详情栏长得像时变化过不了阈值（11-26 两次扫描都是同样 14 格误报，读到的内容和上一格不同、
+        # 是对的）。只有读到的内容也和上一格一样时才算没刷新；第一格没有上一格可比，照旧按像素判断
+        if why is None and e.get("refreshed") is False and (prev is None or content_key(e) == content_key(prev)):
             why = "detail_not_refreshed"
         if why is not None:
             e["suspect"] = why
@@ -559,24 +599,39 @@ def mark_suspects(entries: list[dict]) -> int:
     return n
 
 
+STOP_AFTER_KNOWN = 3  # 增量补扫：连续这么多格都是资料库里有的就停（设计 D6）
 SCAN_BACKTRACK = 6  # 新页里找不到上一页最后一行时，最多往回滑几行再找
 
 
-def scan(picker: Picker, out: Path, *, max_pages: int = 600, on_entry: Callable[[dict], None] | None = None) -> dict:
+def scan(
+    picker: Picker,
+    out: Path,
+    *,
+    max_pages: int = 600,
+    on_entry: Callable[[dict], None] | None = None,
+    known=None,
+    stop_after_known: int = STOP_AFTER_KNOWN,
+    deadline: float | None = None,
+    close: bool = True,
+) -> dict:
     """从顶部开始逐行读。每页读完重新截一张图当「上一页」（读的时候点了格子，选中框会留在上一页最后一格，不重截会和新页对不上），
     再把最后一个完整行滑到最上面；新页里找上一页最后一行的位置（align），之后的行是新的。
     对不上：一行一行往回滑（最多 SCAN_BACKTRACK 行）找上一页最后一行；还找不到就停止扫描（gaps 记下，complete=False），不接着往下记
     （2026-11-15 账号 2：对不上后往回滑了 3 行接着记，旧行被当成新行记了一遍又一遍，行号全偏）。
     到底的判定：连续 2 次滑动后回忆格区都完全不变。每格读完核对详情栏有没有刷新，最后 mark_suspects 标可疑记录。
-    每个格子一条记录（slot = 全局行号 * 3 + 列，thumb = 格子缩略图指纹）；每读一格写一次 out。结束点「キャンセル」。只读。"""
+    每个格子一条记录（slot = 全局行号 * 3 + 列，thumb = 格子缩略图指纹）；每读一格写一次 out。结束点「キャンセル」。只读。
+    增量补扫（设计 5.4 / D6）：known（memory_sig.KnownSet，资料库这一片已有的）给了时，每格记 known，连续 stop_after_known 格
+    都已知就停（stopped="known"，算读完）；new = 新的格数。deadline（picker.clock 的时刻）到了就停（stopped="budget"，complete=False，
+    已读的照样输出）。close=False：结束时不点キャンセル（多片扫描在选择页里切筛选）。"""
     img = picker.shoot()
     if not picker_open(picker.ocr(img)):
         raise RuntimeError("不在回忆选择页（没看到 キャンセル / 決定 / 編成詳細）：请先在编成页点开一格回忆")
     if out.exists():
         out.with_suffix(out.suffix + ".bak").write_text(out.read_text(encoding="utf-8"), encoding="utf-8")
     img = to_top(picker)
-    inv = {"entries": [], "gaps": [], "scanned_at": None, "complete": False}
+    inv = {"entries": [], "gaps": [], "scanned_at": None, "complete": False, "new": 0}
     pages = new = 0
+    streak, stop = 0, False
     row_base, start = 0, 0  # 当前页第 0 行的全局行号；本页从第几行开始读（前面的行上一页读过）
     last = None  # 上一条记录：判断详情栏是不是没刷新
 
@@ -602,12 +657,27 @@ def scan(picker: Picker, out: Path, *, max_pages: int = 600, on_entry: Callable[
                     if last is not None and content_key(e) == content_key(last) and cell["hash"] != last.get("thumb"):
                         e["suspect"] = "same_as_prev"
                         logger.warning("回忆扫描：第 %s 格读到的和上一格一模一样（缩略图不同），记为可疑", e["cell"])
+                    if known is not None:
+                        e["known"] = known.take(e)
+                        streak = streak + 1 if e["known"] else 0
+                    inv["new"] += not e.get("known")
                     inv["entries"].append(e)
                     last = e
                     new += 1
                     if on_entry:
                         on_entry(e)
                     save()
+                    if known is not None and streak >= stop_after_known:
+                        inv["stopped"], inv["complete"], stop = "known", True, True
+                    elif deadline is not None and picker.clock() >= deadline:
+                        inv["stopped"], stop = "budget", True
+                    if stop:
+                        break
+                if stop:
+                    break
+            if stop:
+                logger.info("回忆扫描：%s，读了 %d 格、新的 %d 格", "连续已知、补扫完" if inv["stopped"] == "known" else "到预算时间", new, inv["new"])  # fmt: skip
+                break
             pages += 1
             if pages % PROGRESS_EVERY == 0:  # 初星助手的驾驶舱靠日志看进度
                 logger.info("回忆扫描：第 %d 页，已读 %d 格", pages, new)
@@ -620,7 +690,7 @@ def scan(picker: Picker, out: Path, *, max_pages: int = 600, on_entry: Callable[
                     break
                 row_base, start = prev_base, 0
                 continue
-            dy = prev[-1][0]["rect"][1] - prev[0][0]["rect"][1] if len(prev) > 1 else int(ROW_PITCH)
+            dy = page_scroll_px(prev)
             moved, img = scroll_moved(picker, prev_img, dy)
             if not moved:  # 原起点和换的几个起点都滑不动，还在选择页：到底
                 _at_end(picker, inv, img, pages)
@@ -656,7 +726,7 @@ def scan(picker: Picker, out: Path, *, max_pages: int = 600, on_entry: Callable[
         logger.error("回忆扫描：%s", inv["aborted"])
     inv["suspects"] = mark_suspects(inv["entries"])
     save()
-    if not closed and picker_open(picker.ocr(picker.shoot())):
+    if close and not closed and picker_open(picker.ocr(picker.shoot())):
         picker.cancel()  # 只在还在选择页时点キャンセル（不在了就别在别的画面上乱点）
     logger.info("回忆扫描：%d 页，读了 %d 格，可疑 %d 格，漏行 %d 处，complete=%s → %s", pages, new, inv["suspects"], len(inv["gaps"]),
                 inv["complete"], out)  # fmt: skip

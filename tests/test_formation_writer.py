@@ -446,3 +446,125 @@ def test_fix_support_waits_while_list_is_still_opening():
     g.click, g.shoot = click, shoot
     fw.fix_support(g.device(), _plan(["a", "b", "c", "d", "e"]), read_formation=g.read_formation, read_list=g.read_list)
     assert g.slots == ["a", "b", "c", "d", "e"]
+
+
+def test_fix_memory_applies_slice_filter_then_restores(monkeypatch):
+    """D15：分片库存里的回忆，行号是片内的（这一片的筛选 + 入手排序下）。写编成前先套同样的筛选，全部写完再开一次选择页恢复排序、
+    重置筛选、退出。"""
+    from hiro.produce import memory_filter, memory_picker
+
+    mem = FakeMemory(["act-2_062", "men-3_012", "act-3_050", "men-1_035"])
+    card_of = lambda r, c: "act-3_039" if (r, c) == (2, 0) else f"other{r}{c}"  # noqa: E731
+    log = []
+    monkeypatch.setattr(memory_filter, "read_state", lambda p: (log.append("read"), {"sort": "アイドル"})[1])
+    monkeypatch.setattr(memory_filter, "apply_slice", lambda p, k: log.append(f"apply {k}"))
+    monkeypatch.setattr(memory_filter, "restore", lambda p, st, **kw: (log.append(f"restore {st['sort']}"), True)[1])
+    monkeypatch.setattr(
+        memory_picker,
+        "iter_rows",
+        lambda p: (
+            (log.append("walk") or True)
+            and ((g, [{"row": g, "col": c, "center": (0, 0)} for c in range(3)]) for g in range(mem.rows))
+        ),
+    )
+    monkeypatch.setattr(memory_picker, "picker_open", lambda boxes: True)
+    monkeypatch.setattr(fw, "memory_key", lambda e: e["key_override"])
+    plan = {"memory": {"chosen": [{"card_id": "p_card-02-act-2_062"}, {"card_id": "p_card-00-men-3_012"}, {"card_id": "p_card-02-act-3_050"},
+                                  {"card_id": "p_card-02-act-3_039", "cell": [2, 0], "key": "key20", "slice": "sense:hif"}]}}  # fmt: skip
+    dev = fw.Device(shoot=mem.shoot, click=mem.click, swipe=lambda *a: None, sleep=lambda s: None)
+    done = fw.fix_memory(dev, plan, read_icons=mem.read_icons, make_picker=lambda: mem.picker(card_of))
+    assert done == [{"slot": 3, "from": "men-1_035", "to": "act-3_039"}]
+    assert log[:3] == ["read", "apply sense:hif", "walk"] and log[-1] == "restore アイドル"
+    assert mem.view == "step3"  # 恢复后退出了选择页
+
+
+def test_plan_records_slice_and_signature():
+    from hiro.brain import formation
+    from hiro.produce import memory_sig
+
+    raw = {"cell": [3, 1], "slot": 10, "stats": {"Vo": 0, "Da": 52, "Vi": 64, "hp": 0}, "slice": "common:nia",
+           "card": {"card_id": "p_card-x", "upgrade": 0}, "abilities": [{"text": "初期ビジュアル上昇+15"}]}  # fmt: skip
+    pos = formation._inventory_position(raw)
+    assert pos["cell"] == [3, 1] and pos["slice"] == "common:nia" and pos["signature"] == memory_sig.signature(raw)
+    del raw["slice"]
+    assert "slice" not in formation._inventory_position(raw)
+
+
+def test_fix_memory_picker_closed_skips_filter_restore(monkeypatch):
+    """#116 审查严重 2：找回忆途中选择页关了（PickerClosed，编成可能被改）：停下交给人，finally 不再开选择页恢复筛选。"""
+    from hiro.produce import memory_filter, memory_picker
+
+    mem = FakeMemory(["act-2_062", "men-3_012", "act-3_050", "men-1_035"])
+    log = []
+    monkeypatch.setattr(memory_filter, "read_state", lambda p: {"sort": "アイドル", "dir": "desc"})
+    monkeypatch.setattr(memory_filter, "apply_slice", lambda p, k: log.append("apply"))
+    monkeypatch.setattr(memory_filter, "restore", lambda p, st, **kw: (log.append("restore"), True)[1])
+    monkeypatch.setattr(memory_picker, "picker_open", lambda boxes: True)
+
+    def closed(picker, target, **kw):
+        raise memory_picker.PickerClosed("选择页不见了")
+
+    monkeypatch.setattr(fw, "pick_memory", closed)
+    plan = {"memory": {"chosen": [{"card_id": "p_card-02-act-2_062"}, {"card_id": "p_card-00-men-3_012"}, {"card_id": "p_card-02-act-3_050"},
+                                  {"card_id": "p_card-02-act-3_039", "cell": [2, 0], "key": "key20", "slice": "sense:hif"}]}}  # fmt: skip
+    dev = fw.Device(shoot=mem.shoot, click=mem.click, swipe=lambda *a: None, sleep=lambda s: None)
+    with pytest.raises(fw.FormationWriteError, match="选择页关了"):
+        fw.fix_memory(dev, plan, read_icons=mem.read_icons, make_picker=lambda: mem.picker(lambda r, c: "x"))
+    assert "restore" not in log
+
+
+def test_restore_filter_uses_open_picker_instead_of_tapping_tile(monkeypatch):
+    """严重 2 另一半：选择页还开着时（apply_slice 后判断方向出错），恢复不能再点回忆格的位置（落在格子区、可能被当成「決定」）。"""
+    from hiro.produce import memory_filter, memory_picker
+
+    clicks = []
+    monkeypatch.setattr(memory_picker, "picker_open", lambda boxes: True)
+    monkeypatch.setattr(memory_filter, "restore", lambda p, st, **kw: True)
+
+    class Pk:
+        def shoot(self):
+            return None
+
+        def ocr(self, img):
+            return []
+
+        def cancel(self):
+            clicks.append("cancel")
+            return True
+
+    dev = fw.Device(
+        shoot=lambda: None, click=lambda x, y: clicks.append((x, y)), swipe=lambda *a: None, sleep=lambda s: None
+    )
+    fw._restore_filter(dev, Pk, fw.STEP3_SLOTS[0], {"sort": "アイドル"})
+    assert clicks == ["cancel"]
+
+
+def test_restore_filter_does_not_tap_when_page_unknown(monkeypatch):
+    """#116 第二轮审查（第一轮 2 的另一半）：选择页没开着时，要确认在编成页（认得出回忆格的图标）才点格子去开选择页；
+    认不出（弹窗挡着、别的画面）就不点，提示去游戏里看。弹窗还开着先关弹窗。"""
+    from hiro.produce import memory_filter, memory_picker
+
+    log = []
+    monkeypatch.setattr(memory_picker, "picker_open", lambda boxes: False)
+    monkeypatch.setattr(memory_filter, "close_popup", lambda p: (log.append("close_popup"), True)[1])
+    monkeypatch.setattr(memory_filter, "restore", lambda p, st, **kw: (log.append("restore"), True)[1])
+
+    class Pk:
+        def shoot(self):
+            return None
+
+        def ocr(self, img):
+            return []
+
+        def cancel(self):
+            log.append("cancel")
+            return True
+
+    dev = fw.Device(
+        shoot=lambda: None, click=lambda x, y: log.append(("click", x, y)), swipe=lambda *a: None, sleep=lambda s: None
+    )
+    fw._restore_filter(dev, Pk, fw.STEP3_SLOTS[0], {"sort": "アイドル"}, read_icons=lambda img: [{"known": False}] * 4)
+    assert log == ["close_popup"]  # 先关弹窗；认不出编成页：不点格子、不恢复
+    log.clear()
+    fw._restore_filter(dev, Pk, fw.STEP3_SLOTS[0], {"sort": "アイドル"}, read_icons=lambda img: [{"known": True}] * 4)
+    assert ("click", *fw.STEP3_SLOTS[0]) in log

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from hiro.cli.registry import Arg, CliError, Risk, command
 from hiro.cli.store import KINDS, open_store
+from hiro.state.memory_slices import SLICES
 
 SCAN_HINT = {
     "account": "还没读过首页数值：游戏停在首页时运行 hiro run start scan-account",
@@ -78,7 +79,7 @@ def normalize_memories(inv: dict) -> list[dict]:
         ):  # 扫描时卡名没对上：入库时按现在的规则再对一次（11-24「200％スマイル＋」）
             from hiro.vision import deck
 
-            card = deck.card_from_name(e["card_text"]) or {}
+            card = deck.card_from_name(e["card_text"], allow_prefix=True) or {}
         out.append(
             {
                 "card_id": card.get("card_id"),
@@ -117,6 +118,21 @@ NORMALIZE = {
 
 
 def import_inventory(kind: str, inv: dict, source: str) -> dict:
+    if kind == "memories" and "slices" in inv:  # 按片扫的回忆（设计 5.1）：每片存进片表，不动整表快照
+        st, read, added = open_store(), 0, 0
+        for sl in [x for x in inv["slices"] if not x.get("rejected")]:  # 流派核对没过的片不入库（终审 C2）
+            # 增量补扫一路读到列表底（没因为「连续已知」停下）= 整片都读了，算全读（第一次扫的片资料库是空的，就是这样）
+            mode = "full" if sl["mode"] == "full" or (sl["complete"] and not sl.get("stopped")) else sl["mode"]
+            r = st.save_slice(sl["key"], sl["entries"], mode=mode, complete=sl["complete"],
+                              context=inv.get("context"), scanned_at=inv.get("scanned_at"))  # fmt: skip
+            read, added = read + r["read"], added + r["added"]
+        return {
+            "kind": kind,
+            "slices": sum(not x.get("rejected") for x in inv["slices"]),
+            "count": read,
+            "added": added,
+            "pending": inv.get("pending") or [],
+        }
     rows = NORMALIZE[kind](inv)
     complete = inv.get("complete")
     if kind == "game_settings":
@@ -191,6 +207,10 @@ def _summary(args: dict) -> dict:
             "scanned_at": meta["scanned_at"] if meta else None,
             "complete": meta["complete"] if meta else None,
         }
+    cov = st.slice_coverage()
+    if cov and kinds["memories"]["scanned_at"] is None:  # 只按片扫过（终审 I7）：回忆算扫过
+        kinds["memories"] = {"count": sum(v["count"] for v in cov.values()), "complete": st.slice_summary()["done"] == len(SLICES),
+                             "scanned_at": max(v["scanned_at"] for v in cov.values())}  # fmt: skip
     meta, rows = st.latest("account")
     return {"account": rows[0] if rows else None, "kinds": kinds}
 
@@ -223,7 +243,20 @@ def _supports(a: dict) -> dict:
     args=(Arg("--timing", "获得时机", choices=("start", "mid", "final")), Arg("--card", "回忆技能卡名字包含这几个字")),
 )
 def _memories(a: dict) -> dict:
-    return _listing("memories", lambda r: _match(r.get("timing"), a["timing"]) and _contains(r.get("card"), a["card"]))
+    keep = lambda r: _match(r.get("timing"), a["timing"]) and _contains(r.get("card"), a["card"])  # noqa: E731
+    st = open_store()
+    summary = st.slice_summary()
+    cov = st.slice_coverage()
+    whole, _ = st.latest("memories")
+    if summary["done"] == summary["total"] or (cov and whole is None):
+        # 12 片都完整全读过：列表用片数据（D16：不和旧整表混用）；没有整表、只按片扫过：列出已有的片（终审 I7）
+        entries = [e for k in SLICES for e in st.slice_entries(k)]
+        items = [r for r in normalize_memories({"entries": entries}) if keep(r)]
+        out = {"kind": "memories", "scanned_at": min(v["scanned_at"] for v in cov.values()), "source": "slices",
+               "complete": summary["done"] == summary["total"], "total": len(entries), "counts": counts(items), "items": items}  # fmt: skip
+    else:
+        out = _listing("memories", keep)
+    return {**out, "slices": summary}
 
 
 @command(

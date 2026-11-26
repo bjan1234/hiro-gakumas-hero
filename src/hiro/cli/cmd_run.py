@@ -36,6 +36,7 @@ PARAMS = (
     "final_rank",
     "plugins",
     "sources",
+    "only",
     "prepare",
     "prepare_note",
     "prepare_what",
@@ -104,14 +105,27 @@ def _check_memory_freshness(plan_path: Path, home: Path) -> None:
     db = home / "hiro.db"
     if not db.is_file():
         return
-    history = Store(db).history("memories")
-    if not history:
-        return
-    scanned = history[0]["scanned_at"]
     try:
         plan = json.loads(plan_path.read_text(encoding="utf-8"))
-        scanned_ts = datetime.strptime(scanned, "%Y-%m-%d %H:%M:%S").timestamp()
     except (OSError, ValueError):
+        return
+    st = Store(db)
+    # 方案来自分片库存（设计 5.6 / D14）：看方案用到的那几片里最早的一次扫描，不看旧的整表快照
+    used = {c["slice"] for c in (plan.get("memory") or {}).get("chosen") or [] if c.get("slice")}
+    if used:
+        cov = st.slice_coverage()
+        times = [cov[k]["scanned_at"] for k in used if k in cov]
+        if len(times) < len(used):
+            return
+        scanned = min(times)
+    else:
+        history = st.history("memories")
+        if not history:
+            return
+        scanned = history[0]["scanned_at"]
+    try:
+        scanned_ts = datetime.strptime(scanned, "%Y-%m-%d %H:%M:%S").timestamp()
+    except ValueError:
         return
     idol = (plan.get("idol") or {}).get("idol_card_id") or "<偶像卡编号>"
     replan = f"重新出方案：hiro plan formation --idol {idol}；再写编成"
@@ -403,7 +417,7 @@ def run_access(a: dict) -> str:
         return "all"
     if kind == "check-settings" and a.get("fix"):
         return "write"  # 改游戏里的设置开关（D3）
-    if kind.startswith("scan-") or kind in ("check-settings", "selftest"):
+    if kind.startswith("scan-") or kind in ("check-settings", "selftest", "collect-all"):
         return "read"
     if kind == "daily":
         return "daily"
@@ -537,6 +551,7 @@ def _first_reason(out: str) -> str:
         Arg("--no-llm", "决策只用规则和算法，不调用模型", type="bool"),
         Arg("--scenario", "write-formation：写哪个模式的编成", choices=("hif", "hajime", "nia")),
         Arg("--what", "write-formation：写哪些（support / memory，逗号分隔，缺省都写）"),
+        Arg("--only", "collect-all：只做这几步（account,idols,supports,memories,formations，逗号分隔；缺省全做）"),
         Arg("--dry-run", "write-formation：只看差在哪几格，不改；contest-unit：只读总合力，不重排", type="bool"),
         Arg("--fix", "check-settings：快进 / 跳过演出那几项不对的顺手改好（会改游戏设置）", type="bool"),
         Arg(

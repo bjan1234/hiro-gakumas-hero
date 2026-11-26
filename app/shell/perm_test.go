@@ -105,27 +105,45 @@ func TestPluginConfirmNeverAuto(t *testing.T) {
 	}
 }
 
-// R11：第一次用（向导走完）时，从没扫过的库存自己发起扫描，读操作在缺省权限下不用确认
+// R11：第一次用（向导走完）时，从没扫过的库存自己发起扫描，读操作在缺省权限下不用确认。
+// 设计 5.7：改成一次一键全收集，只做没扫过的种类（老用户不重扫已有的）
 func TestFirstScanStartsUnscannedKinds(t *testing.T) {
-	p1, p2 := accessPending("p1", "scan-supports", "read"), accessPending("p2", "scan-idols", "read")
+	p1 := accessPending("p1", "collect-all", "read")
 	call := &fakeCall{resp: map[string]hiroapi.Result{
-		"info summary":            ok(`{"kinds":{"supports":{"count":0,"scanned_at":null},"memories":{"count":40,"scanned_at":"2026-11-18 20:00:00"},"idols":{"count":0,"scanned_at":null}}}`),
-		"run start scan-supports": {OK: true, Pending: &p1},
-		"run start scan-idols":    {OK: true, Pending: &p2},
-		"confirm p1":              ok(`{"job":{"id":"j1","kind":"scan-supports"}}`),
+		"info summary": ok(`{"kinds":{"account":{"scanned_at":"2026-11-18 20:00:00"},"supports":{"count":0,"scanned_at":null},"memories":{"count":40,"scanned_at":"2026-11-18 20:00:00"},"idols":{"count":0,"scanned_at":null},"formations":{"scanned_at":null}}}`),
+		"run start collect-all --only idols,supports,formations": {OK: true, Pending: &p1},
+		"confirm p1": ok(`{"job":{"id":"j1","kind":"collect-all"}}`),
 	}}
 	a, run := newTestApp(newMem(), call, nil, viewReg())
+	a.d.MemorySlices = func() bool { return true } // 开了「回忆按片扫描」才走一键全收集（#116 审查重要 5）
 	a.FirstScan()
 	run.Drain()
-	if call.called("run start scan-memories") {
-		t.Error("扫过的不再扫")
+	if !call.called("run start collect-all --only idols,supports,formations") || !call.called("confirm p1") {
+		t.Fatalf("没扫过的应合成一次一键全收集自动开始：%v", call.calls)
 	}
-	if !call.called("run start scan-supports") || !call.called("run start scan-idols") || !call.called("confirm p1") {
-		t.Fatalf("没扫过的应自动开始：%v", call.calls)
+	for _, c := range call.calls {
+		if strings.HasPrefix(strings.Join(c, " "), "run start scan-") {
+			t.Errorf("不该再逐项发起扫描：%s", c)
+		}
 	}
 	card := lastCardsWith(a, "confirm")[0]
-	if b, _ := card["batch"].([]any); len(b) != 2 || card["auto"] != PermRead {
+	if card["auto"] != PermRead {
 		t.Errorf("首次扫描卡 %+v", card)
+	}
+}
+
+func TestFirstScanSkipsWhenAllScanned(t *testing.T) {
+	call := &fakeCall{resp: map[string]hiroapi.Result{
+		"info summary": ok(`{"kinds":{"account":{"scanned_at":"x"},"supports":{"scanned_at":"x"},"memories":{"scanned_at":"x"},"idols":{"scanned_at":"x"},"formations":{"scanned_at":"x"}}}`),
+	}}
+	a, run := newTestApp(newMem(), call, nil, viewReg())
+	a.d.MemorySlices = func() bool { return true }
+	a.FirstScan()
+	run.Drain()
+	for _, c := range call.calls {
+		if strings.HasPrefix(strings.Join(c, " "), "run start") {
+			t.Errorf("都扫过了不该发起：%s", c)
+		}
 	}
 }
 
@@ -178,16 +196,14 @@ func TestQueuedItemRecheckedWhenAutoStarted(t *testing.T) {
 	}
 }
 
-// 首次扫描有一项发不起来：要告诉用户
+// 首次扫描发不起来：要告诉用户
 func TestFirstScanReportsErrors(t *testing.T) {
-	p1 := accessPending("p1", "scan-supports", "read")
 	call := &fakeCall{resp: map[string]hiroapi.Result{
-		"info summary":            ok(`{"kinds":{"supports":{"scanned_at":null},"memories":{"scanned_at":"2026-11-18 20:00:00"},"idols":{"scanned_at":null}}}`),
-		"run start scan-supports": {OK: true, Pending: &p1},
-		"run start scan-idols":    {OK: false, Error: &hiroapi.CliError{Code: "service_down", Message: "游戏没连上", Hint: "到设置里试连"}},
-		"confirm p1":              ok(`{"job":{"id":"j1","kind":"scan-supports"}}`),
+		"info summary": ok(`{"kinds":{"supports":{"scanned_at":null},"memories":{"scanned_at":"2026-11-18 20:00:00"},"idols":{"scanned_at":null}}}`),
+		"run start collect-all --only account,idols,supports,formations": {OK: false, Error: &hiroapi.CliError{Code: "service_down", Message: "游戏没连上", Hint: "到设置里试连"}},
 	}}
 	a, run := newTestApp(newMem(), call, nil, viewReg())
+	a.d.MemorySlices = func() bool { return true }
 	a.FirstScan()
 	run.Drain()
 	errs := 0
@@ -340,5 +356,27 @@ func TestAutoStartDropsAskSentence(t *testing.T) {
 	ms := b.Current().Messages
 	if !strings.Contains(ms[len(ms)-1].Text, "点下面的确认卡") {
 		t.Errorf("要确认的还应提示点确认卡：%q", ms[len(ms)-1].Text)
+	}
+}
+
+// #116 审查重要 5：「回忆按片扫描」开关缺省关：首次进入照旧逐项扫没扫过的支援卡 / 回忆 / 偶像卡，不发一键全收集
+func TestFirstScanDefaultKeepsOldThreeKinds(t *testing.T) {
+	p1, p2 := accessPending("p1", "scan-supports", "read"), accessPending("p2", "scan-idols", "read")
+	call := &fakeCall{resp: map[string]hiroapi.Result{
+		"info summary":            ok(`{"kinds":{"supports":{"scanned_at":null},"memories":{"scanned_at":"2026-11-18 20:00:00"},"idols":{"scanned_at":null}}}`),
+		"run start scan-supports": {OK: true, Pending: &p1},
+		"run start scan-idols":    {OK: true, Pending: &p2},
+		"confirm p1":              ok(`{"job":{"id":"j1","kind":"scan-supports"}}`),
+	}}
+	a, run := newTestApp(newMem(), call, nil, viewReg())
+	a.FirstScan()
+	run.Drain()
+	if call.called("run start scan-memories") || !call.called("run start scan-supports") || !call.called("run start scan-idols") {
+		t.Fatalf("缺省应逐项扫没扫过的：%v", call.calls)
+	}
+	for _, c := range call.calls {
+		if strings.Contains(strings.Join(c, " "), "collect-all") {
+			t.Errorf("缺省不该发一键全收集：%v", c)
+		}
 	}
 }

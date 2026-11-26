@@ -147,6 +147,53 @@ func TestChoiceCardWaitsForNames(t *testing.T) {
 	}
 }
 
+// 设计 5.7：扫描页顶部「一键全收集」发起 collect-all（同样走确认卡）
+func TestScanPanelCollectAll(t *testing.T) {
+	h, p := host(), New()
+	tt := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "scan") }), 520, 700)
+	if err := plugintest.ClickButton(tt, "一键全收集"); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.RunArgs_) != 1 || strings.Join(h.RunArgs_[0][1:], " ") != "run start collect-all" {
+		t.Errorf("一键全收集：%v", h.RunArgs_)
+	}
+}
+
+// 设计 5.8：回忆信息卡带片覆盖（12 片里全读过几片、最旧哪天、有没有待补）
+func TestMemoryInfoCardShowsSliceCoverage(t *testing.T) {
+	tt := cardView(t, plugin.Card{"type": "info", "kind": "memories", "items": []any{map[string]any{"card": "魅惑の視線", "timing": "mid"}},
+		"slices": map[string]any{"done": 3.0, "total": 12.0, "oldest": "2026-11-26 04:00:00", "pending": []any{"logic:hif"}}})
+	if !tt.HasText("按片：12 片里全读过 3 片 · 最旧 11-26 · 待补 1 片") {
+		t.Errorf("回忆片覆盖：%q", tt.Texts())
+	}
+}
+
+func TestScanPanelMemoryButtonIsIncremental(t *testing.T) {
+	h, p := host(), New()
+	tt := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "scan") }), 520, 800)
+	if err := plugintest.ClickButton(tt, "扫描回忆"); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.RunArgs_) != 1 || strings.Join(h.RunArgs_[0][1:], " ") != "run start scan-memories" {
+		t.Errorf("补扫新回忆：%v", h.RunArgs_)
+	}
+}
+
+// 设计 5.7 / D7：对话里「/全收集」发起一键全收集（同样走确认卡）
+func TestCollectAllSlashCommand(t *testing.T) {
+	h, p := host(), New()
+	for _, cmd := range p.Commands {
+		if cmd.Name == "全收集" && cmd.Run != nil {
+			cmd.Run(h)
+			if len(h.RunArgs_) != 1 || strings.Join(h.RunArgs_[0][1:], " ") != "run start collect-all" {
+				t.Errorf("/全收集：%v", h.RunArgs_)
+			}
+			return
+		}
+	}
+	t.Fatal("没有 /全收集 命令")
+}
+
 // 11-22：「资料库把资源站的信息用上：先加上中文信息，然后再加上图标、悬浮说明」
 func TestLibraryRowsUseChineseNameIconAndTip(t *testing.T) {
 	common.Shared.Reset() // 别的测试查过同一编号（当时资料库是空的）

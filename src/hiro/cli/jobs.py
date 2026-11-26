@@ -276,6 +276,21 @@ def _hif_summary(p: dict) -> str:
     return "开一局 H.I.F 选拔" + (f"（{idol_name(p['idol'])}）" if p.get("idol") else "") + _prepare_suffix(p)
 
 
+def _slices_on() -> bool:
+    from hiro.state.memory_slices import enabled
+
+    return enabled()
+
+
+def _memory_scan_argv(p: dict, d: Path) -> list[str]:
+    """回忆扫描的命令：「回忆按片扫描」开关关着（缺省）照旧整表滚动扫；开了按片（#116 审查重要 5）。"""
+    base = [_PY, "-m", "hiro.memory_scan", "scan", "--from-home"]
+    if not _slices_on():
+        return [*base, "--out", str(d / "out.json")]
+    return [*base, "--slices", p.get("slices") or "all", *([] if p.get("full") else ["--incremental"]),
+            *(["--budget-s", str(p["budget_s"])] if p.get("budget_s") else []), "--out", str(d / "out.json")]  # fmt: skip
+
+
 KINDS: dict[str, Kind] = {
     "selftest": Kind(
         "selftest",
@@ -391,6 +406,23 @@ KINDS: dict[str, Kind] = {
         output="account",
         pausable=False,
     ),
+    "collect-all": Kind(
+        "collect-all",
+        "一键全收集（只读）：首页数值 → 偶像卡 → 支援卡 → 编成 → 回忆（12 片全读），每步跑完就入库；--only 只做其中几步",
+        lambda p, d: [
+            _PY,
+            "-m",
+            "hiro.collect_all",
+            "--dir",
+            str(d),
+            *(["--only", p["only"]] if p.get("only") else []),
+        ],
+        lambda p: (
+            "一键全收集：首页数值 → 偶像卡 → 支援卡 → 编成 → 回忆（12 片全读）（只读，不改编成）"
+            + (f"（只做 {p['only']}）" if p.get("only") else "")
+        ),
+        pausable=False,
+    ),
     "scan-idols": Kind(
         "scan-idols",
         "扫描偶像卡（只读：偶像一览里逐张点开读卡名，最后点「<<」退出，不点決定）",
@@ -416,9 +448,13 @@ KINDS: dict[str, Kind] = {
     ),
     "scan-memories": Kind(
         "scan-memories",
-        "扫描回忆（只读：在「メモリー選択」里逐格读）",
-        lambda p, d: [_PY, "-m", "hiro.memory_scan", "scan", "--from-home", "--out", str(d / "out.json")],
-        lambda p: "扫描回忆库存（只读，不改编成）",
+        "扫描回忆（只读：在「メモリー選択」里逐格读）。设置里开了「回忆按片扫描」时按片（流派 × 模式，12 片）读：缺省增量补扫新回忆，full=True 时全读",
+        lambda p, d: _memory_scan_argv(p, d),
+        lambda p: (
+            ("全读回忆库存" if p.get("full") else "补扫新回忆") + "（只读，不改编成）"
+            if _slices_on()
+            else "扫描回忆库存（只读，不改编成）"
+        ),
         output="memories",
         pausable=False,
     ),
@@ -443,10 +479,53 @@ KINDS: dict[str, Kind] = {
 }
 
 
+def _refresh_before_start(kind: Kind) -> Kind:
+    """开局前自动补扫回忆（设计 5.6，开关 HIRO_SCAN_BEFORE_START，缺省关）：开新一局时命令外面包 hiro.memory_refresh，
+    确认卡上写明。开关在调用时读（初星助手设置里改了不用重启服务）。续打（resume）不补扫。"""
+    from dataclasses import replace
+
+    def on(p: dict) -> bool:
+        from hiro.memory_refresh import enabled
+
+        return enabled() and (p.get("command") or "new") == "new" and bool(p.get("idol"))
+
+    def argv(p: dict, d: Path) -> list[str]:
+        orig = kind.argv(p, d)
+        if not on(p):
+            return orig
+        return [_PY, "-m", "hiro.memory_refresh", "--idol", p["idol"], "--", *orig]
+
+    def summary(p: dict) -> str:
+        return kind.summary(p) + ("（开局前会先补扫回忆，最多 3 分钟）" if on(p) else "")
+
+    return replace(kind, argv=argv, summary=summary)
+
+
+for _k in ("hif", "hajime", "nia"):
+    KINDS[_k] = _refresh_before_start(KINDS[_k])
+
+
 def jobs_dir(home: Path) -> Path:
     d = home / "jobs"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def _signal_tree(proc: subprocess.Popen, *, kill: bool) -> None:
+    """结束 proc 和它的子孙进程。POSIX：任务进程用 start_new_session 起，自成一组，向整组发信号；
+    Windows：taskkill /T 结束进程树（/F 强制）。"""
+    if sys.platform == "win32":
+        r = subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", *(["/F"] if kill else [])],
+                           capture_output=True, check=False)  # fmt: skip
+        if r.returncode != 0:
+            proc.kill() if kill else proc.terminate()
+        return
+    import signal
+
+    try:
+        os.killpg(proc.pid, signal.SIGKILL if kill else signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        proc.kill() if kill else proc.terminate()
 
 
 class Job:
@@ -586,6 +665,8 @@ class Job:
             sys.platform == "win32"
         ):  # 服务没有控制台；不加 CREATE_NO_WINDOW 会给每个任务弹一个黑窗口，用户一关这局就没了
             kw["creationflags"] = 0x00000200 | 0x08000000  # CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+        else:
+            kw["start_new_session"] = True  # 自成一个进程组：停止时连下一层子进程一起结束（终审 I1）
         self.emit("start", self.kind.summary(self.params), kind=self.kind.name)
         try:
             self.strategy_warnings()
@@ -701,8 +782,9 @@ class Job:
             return
         self.state = "stopping"
         self.flag.unlink(missing_ok=True)
-        self.proc.terminate()
+        # 结束整个进程组 / 进程树：一键全收集、开局前补扫多套了一层进程，只结束直接子进程时下一层还会接着点游戏（终审 I1）
+        _signal_tree(self.proc, kill=False)
         try:
             self.proc.wait(STOP_GRACE)
         except subprocess.TimeoutExpired:
-            self.proc.kill()
+            _signal_tree(self.proc, kill=True)
