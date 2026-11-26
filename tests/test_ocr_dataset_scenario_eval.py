@@ -75,9 +75,19 @@ def test_score_right_wrong_unread_and_skips():
     }
     rows = se.score_frame("exam", truth, got, item_status={"multiplier_pct": "disputed"})
     res = {r["path"]: r["result"] for r in rows}
-    assert res == {"hp": "对", "genki": "错", "selected_preview": "错", "top_scores[0]": "错", "top_scores[1]": "对",
+    assert res == {"hp": "对", "genki": "错", "top_scores[0]": "错", "top_scores[1]": "对",
                    "hand[0].name": "对", "hand[0].plus": "对"}  # fmt: skip
-    # deck_left：真值 null 且系统没读 → 不计；multiplier_pct 待定 → 不计
+    # deck_left、selected_preview：真值 null（画面上没有）不计，系统给不给都一样；multiplier_pct 待定 → 不计
+
+
+def test_null_truth_is_never_scored():
+    """用户 11-26：真值是 null 的项是无效测试项，不计分。mac-hif-mac-p13-01582（相談没开货架）：
+    upgrade_used / delete_used 真值 null，五个后端都给了 false（「没用过」），原来全记成「错」。"""
+    truth = {"hp": 15, "hp_max": 39, "p_points": 356, "shelf": None, "upgrade_price": None, "upgrade_used": None,
+             "delete_price": None, "delete_used": None}  # fmt: skip
+    got = {"hp": 15, "hp_max": 39, "p_points": 356, "upgrade_used": False, "delete_used": False}
+    res = {r["path"]: r["result"] for r in se.score_frame("consult", truth, got)}
+    assert res == {"hp": "对", "hp_max": "对", "p_points": "对"}
 
 
 def test_score_unread_when_system_lacks_item():
