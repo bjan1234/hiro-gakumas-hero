@@ -389,7 +389,7 @@ func (s *state) pinned(c *ui.Context, h plugin.Host, id string) {
 		})
 		s.controls(c, h, v, id, true)
 	}).Clicked() {
-		h.OpenPanel("cockpit", "")
+		h.OpenPanel("cockpit", "job:"+id)
 	}
 }
 

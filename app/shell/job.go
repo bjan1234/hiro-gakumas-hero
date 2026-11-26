@@ -316,7 +316,9 @@ func (a *App) onJobStarted(card map[string]any) {
 	}
 	a.ui.autoOpened[id] = true
 	if a.reg.ByID("cockpit") != nil {
-		a.OpenPanel("cockpit", "")
+		// 开的是这一局（route "job:<id>"）：结束 / 出错后面板还停在这局，看得到成绩和出错原因（11-25 Windows 实测：
+		// 原来开 route ""，任务一结束面板就变成「现在没有在跑的对局」，看不出成没成）
+		a.OpenPanel("cockpit", "job:"+id)
 	}
 }
 
@@ -365,7 +367,7 @@ func (a *App) pinned(c *ui.Context) {
 			}
 			ui.Text(c, labels.StateOf(kind, v.State)).FontSize(kit.FNote).TextColor(kit.Ink3)
 		}).Clicked() {
-			a.OpenPanel("cockpit", "")
+			a.OpenPanel("cockpit", "job:"+a.live)
 		}
 	})
 }

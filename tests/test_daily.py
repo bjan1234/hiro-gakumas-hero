@@ -154,9 +154,23 @@ def test_activity_funds_taps_red_dot_then_closes_dialog(monkeypatch):
     assert rig.taps == [entry, cross]
 
 
-def test_activity_funds_no_red_dot(monkeypatch):
+def test_activity_funds_without_red_dot_still_collects(monkeypatch):
+    """11-25 DMM：入口没有红点（26%）点进去也领了 8,243 マニー：不看红点，点了弹领取框就算领了，读出数额。"""
+    from hiro.vision.ocr import Box, Text
+
+    entry, close = tuple(box("Daily.ActivityFunds.EntryArea").center), (340, 1145)
+    dialog = frame({})
+    dialog.__dict__["texts"] = [Text("活動費", Box(30, 730, 150, 760)), Text("8,243マニ-", Box(300, 820, 560, 860)),
+                                Text("保管上限", Box(500, 900, 600, 920)), Text("閉じる", Box(300, 1130, 380, 1160))]  # fmt: skip
+    rig = Rig(monkeypatch, [frame(HOME)], on({entry: [dialog], close: [frame(HOME)]}))
+    assert activity_funds.run(rig.rt) == "领了活动费（8,243 金币）"
+    assert rig.taps == [entry, close]
+
+
+def test_activity_funds_no_dialog_gives_up_after_three_taps(monkeypatch):
+    entry = tuple(box("Daily.ActivityFunds.EntryArea").center)
     rig = Rig(monkeypatch, [frame(HOME)])
-    assert activity_funds.run(rig.rt) == "没有活动费可领" and rig.taps == []
+    assert activity_funds.run(rig.rt) == "点了活动费入口没有弹出领取框" and rig.taps == [entry] * 3
 
 
 # ---------------------------------------------------------------- mission_reward

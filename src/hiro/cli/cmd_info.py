@@ -276,7 +276,25 @@ def _affection(a: dict) -> dict:
 
 @command("info formations", Risk.READ, "编成位现状（最近一次读的那个模式）：每个编成号几格有东西、是哪些卡；0 是空的。")
 def _formations(a: dict) -> dict:
-    return _listing("formations")
+    out = _listing("formations")
+    # 空位直接算好给出来：11-25 助手里的模型自己从 40 行里数，把回忆的空位说成 7–14（实际 7–18，支援卡是 11–18）
+    empty: dict[str, list[int]] = {}
+    for r in out["items"]:
+        if r.get("filled") == 0 and r.get("kind") and r.get("set") is not None:
+            empty.setdefault(r["kind"], []).append(r["set"])
+    out = {**out, "empty": {k: {"sets": sorted(v), "text": _ranges(sorted(v))} for k, v in empty.items()}}
+    return out
+
+
+def _ranges(nums: list[int]) -> str:
+    """[7, 8, 9, 12] → 「7–9、12」。"""
+    parts: list[str] = []
+    for n in nums:
+        if parts and n == int(parts[-1].split("–")[-1]) + 1:
+            parts[-1] = f"{parts[-1].split('–')[0]}–{n}"
+        else:
+            parts.append(str(n))
+    return "、".join(parts)
 
 
 @command(

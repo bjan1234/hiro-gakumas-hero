@@ -97,3 +97,27 @@ func (h *Hiro) tryService(ctx context.Context, args []string) (Result, bool) {
 	}
 	return r, true
 }
+
+// shutdownService 让 hiro 后台服务停下（正在跑的任务先停，培育不放弃）：直接 POST /shutdown，不起 python。
+// 关窗口时调用（11-25 用户：点 ✕ 后后台服务还在，下次开助手连上的还是它；要关窗口就整个关掉）。没在跑就什么都不做。
+func shutdownService(timeout time.Duration) {
+	raw, err := os.ReadFile(filepath.Join(HiroHome(), "service.json"))
+	if err != nil {
+		return
+	}
+	var info serviceInfo
+	if json.Unmarshal(raw, &info) != nil || info.Port == 0 || info.Token == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://127.0.0.1:%d/shutdown", info.Port), bytes.NewReader([]byte("{}")))
+	if err != nil {
+		return
+	}
+	req.Header.Set("X-Hiro-Token", info.Token)
+	req.Header.Set("Content-Type", "application/json")
+	if resp, err := http.DefaultClient.Do(req); err == nil {
+		resp.Body.Close()
+	}
+}

@@ -79,7 +79,10 @@ def _start_process(home) -> None:
     kw: dict = (
         {"start_new_session": True}
         if sys.platform != "win32"
-        else {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
+        # CREATE_NO_WINDOW（不是 DETACHED_PROCESS）：uv 的 .venv\Scripts\python.exe 是个启动器，真正的 python 是它的子进程；
+        # DETACHED 时启动器没有控制台，子进程就自己开一个看得见的黑窗口，服务活多久它就开多久（11-25 用户：每次开初星助手都弹 python 窗口）。
+        # 给一个隐藏的控制台，子孙进程（任务、OCR 助手……）都继承它，不再弹。
+        else {"creationflags": subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP}
     )
     subprocess.Popen(
         [sys.executable, "-m", "hiro.cli.service"],

@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 
 from hiro.daily import common
@@ -39,6 +40,36 @@ SCORE_BOXES = ("Daily.Contest.BoxScore1", "Daily.Contest.BoxScore2", "Daily.Cont
 DOT = "#ff104a"  # 竞赛按钮右上角的通知红点（同 KAA）
 SKIP_POINT = (12, 12)
 TIMEOUT = 300.0
+MAX_FIGHTS = 5  # 每天 5 次挑战权（画面右上「N/5」）
+USED_UP_THRESHOLD = (
+    0.7  # 11-25 DMM：「本日の挑戦権を消費しました」模板 0.79，缺省阈值 0.8 认不出 → 一直点空白到 300 秒超时（卡死）
+)
+USED_UP_WORDS = ("挑戦権を消費", "本日の挑戦回数")
+IDLE_TICKS = 60  # 连续这么多拍什么都没认出（约 30 秒）就停：不再点空白干等
+PICKS = {"lowest": None, "1": 0, "2": 1, "3": 2}
+
+
+def pick_choice() -> str:
+    """挑哪个对手：HIRO_CONTEST_PICK = lowest（缺省，综合力最低）/ 1 / 2 / 3（由上到下第几个，难度和奖励不同）。"""
+    v = (os.environ.get("HIRO_CONTEST_PICK") or "lowest").strip().lower()
+    return v if v in PICKS else "lowest"
+
+
+def remaining(f) -> int | None:
+    """右上角「N/5」的 N（今天还剩几次）；读不到 None。"""
+    for t in f.texts:
+        if t.rect.y2 < 80 and t.rect.x1 > 360 and (m := re.fullmatch(r"\s*(\d)\s*/\s*5\s*", t.text)):
+            return int(m.group(1))
+    return None
+
+
+def used_up(f) -> bool:
+    """今天的挑战次数用完了：模板（放宽到 0.7）或文字「本日の挑戦権を消費しました」或右上「0/5」。"""
+    if nav.find(f, USED_UP, threshold=USED_UP_THRESHOLD) is not None:
+        return True
+    if any(w in t.text for t in f.texts for w in USED_UP_WORDS):
+        return True
+    return remaining(f) == 0
 
 
 def has_dot(f, m) -> bool:
@@ -99,7 +130,9 @@ def goto_contest(rt) -> bool:
 
 def pick_contestant(rt, f, ongoing: bool) -> tuple[bool, bool]:
     """选对手。返回（处理了没有，还要不要接着打）；次数用完返回 (True, False)。"""
-    if nav.find(f, USED_UP) is not None:
+    if nav.find(f, USED_UP, threshold=USED_UP_THRESHOLD) is not None:
+        return True, False
+    if nav.find(f, RANKING) is not None and used_up(f):  # 竞赛页上再用文字 / 「0/5」确认一次（整帧 OCR，只在这一页做）
         return True, False
     if ongoing or nav.find(f, RANKING) is None or nav.find(f, OVERALL) is None:
         return False, True
@@ -155,10 +188,12 @@ def run(rt, *, home: bool = True) -> str:
     if btn is None or not has_dot(f, btn):
         return "竞赛不用打"
     ongoing = goto_contest(rt)
-    fights = {"n": 0}
+    fights = {"n": 0, "idle": 0}
 
     def step(f):
         nonlocal ongoing
+        if fights["n"] >= MAX_FIGHTS and not ongoing and nav.find(f, RANKING) is not None:
+            return True  # 一天最多 5 场：打满了、回到竞赛页就收（不靠「用完」的提示认没认出）。要在选对手之前看，不然第 5 场刚点完就收了
         handled, go_on = pick_contestant(rt, f, ongoing)
         if not go_on:
             return True
@@ -169,12 +204,22 @@ def run(rt, *, home: bool = True) -> str:
             if r == NO_MEMORY_SET:
                 return r
             if not r:
+                fights["idle"] += 1
+                if fights["idle"] >= IDLE_TICKS:
+                    return "idle"
                 rt.device.tap(*SKIP_POINT)
+            else:
+                fights["idle"] = 0
+        else:
+            fights["idle"] = 0
         ongoing = False
         return None
 
-    if rt.drive(step, TIMEOUT, "打竞赛", every=0.5) == NO_MEMORY_SET:
+    r = rt.drive(step, TIMEOUT, "打竞赛", every=0.5)
+    if r == NO_MEMORY_SET:
         out = "回忆没编成，跳过竞赛（不自动编成）"
+    elif r == "idle":
+        out = f"打了 {fights['n']} 场后认不出画面，停下（约 30 秒没有可点的）"
     else:
         out = f"打了 {fights['n']} 场竞赛" if fights["n"] else "竞赛次数用完了"
     if home:

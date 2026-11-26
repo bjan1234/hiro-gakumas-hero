@@ -133,14 +133,19 @@ func (v *view) render(c *ui.Context, n Node, path string) {
 		ui.Progress(c, n.Progress)
 	case "input":
 		val := v.input(key, n.Value)
-		in := ui.TextInput(c, val).Key(key).Placeholder(n.Placeholder).FontSize(kit.FSmall)
-		if in.Submitted() && n.ID != "" {
-			v.onEvent(n.ID, *val)
-		}
+		// TextInput / Select 自己带状态，不能 .Key（mygo 直接 panic，整个程序退出）：key 给外面包的一层
+		ui.Row(c).Key(key).Children(func() {
+			in := ui.TextInput(c, val).Grow(1).Placeholder(n.Placeholder).FontSize(kit.FSmall)
+			if in.Submitted() && n.ID != "" {
+				v.onEvent(n.ID, *val)
+			}
+		})
 	case "select":
 		val := v.input(key, n.Value)
 		before := *val
-		ui.Select(c, val, n.Options).Key(key)
+		ui.Row(c).Key(key).Children(func() {
+			ui.Select(c, val, n.Options)
+		})
 		if *val != before && n.ID != "" {
 			v.onEvent(n.ID, *val)
 		}

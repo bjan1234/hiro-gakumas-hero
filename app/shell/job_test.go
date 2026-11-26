@@ -340,6 +340,34 @@ func TestChatJobNoticeGoesToItsThread(t *testing.T) {
 	}
 }
 
+func TestOtherPanelKeepsLiveJobStrip(t *testing.T) {
+	// 11-25 Windows：面板只有一个位置，开资料库后看不到任务还在不在跑
+	reg := viewReg()
+	reg.Add(&plugin.Plugin{ID: "cockpit", Name: "游戏运行现状", Panel: func(c *ui.Context, _ plugin.Host, route string) { ui.Text(c, "现状 "+route) }})
+	reg.Add(&plugin.Plugin{ID: "lib2", Name: "资料库2", Panel: func(c *ui.Context, _ plugin.Host, _ string) { ui.Text(c, "资料内容") }})
+	a, run := newTestApp(newMem(), liveCall("running"), nil, reg)
+	a.PollJobs()
+	run.Drain()
+	a.OpenPanel("lib2", "")
+	tt := ui.NewTester(a.View, 1280, 800)
+	if !tt.HasText("资料内容") {
+		t.Fatalf("没打开资料库：%q", tt.Texts())
+	}
+	n := 0
+	for _, s := range tt.Texts() {
+		if s == "初 · 月村手毬" {
+			n++
+		}
+	}
+	if n < 2 { // 对话顶上钉着一张，面板顶上一条
+		t.Fatalf("面板顶上没有正在跑的任务：%q", tt.Texts())
+	}
+	a.onJobStarted(map[string]any{"jobId": "j8"})
+	if a.ui.panelPlugin != "cockpit" || a.ui.panelRoute != "job:j8" {
+		t.Errorf("开局自动打开的不是这局：%q %q", a.ui.panelPlugin, a.ui.panelRoute)
+	}
+}
+
 // G1-F2（11-26）：扫描这类任务出错后给「再试一次」，按原参数重新发起；培育类不给（免得误开新一局）。
 func TestFailedScanOffersRetry(t *testing.T) {
 	fail := func(kind, params string) (*App, *SyncRunner, *fakeCall) {

@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -28,7 +29,16 @@ func Gather(ctx context.Context, r *Registry, h Host, now time.Time, timeout tim
 			cctx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
 			done := make(chan string, 1)
-			go func() { done <- p.Context(cctx, h) }()
+			go func() {
+				// 一个插件的 Context panic 不带走整个程序（没有 recover 时 goroutine panic = 进程退出）
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("插件 %s 的 Context 出错（已跳过）：%v", p.ID, r)
+						done <- ""
+					}
+				}()
+				done <- p.Context(cctx, h)
+			}()
 			select {
 			case s := <-done:
 				if cctx.Err() == nil {
