@@ -4,6 +4,7 @@ package settings
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -260,12 +261,14 @@ func (s *S) footer(c *ui.Context, h plugin.Host) {
 		s.Probe(h)
 	}
 	st := s.d.Settings()
-	// 「跑完关游戏」：常开常关，放在侧栏底部随手点（不进设置页）
+	// 「跑完关游戏」：常开常关，放在侧栏底部随手点（不进设置页）。只有 Windows 能关（DMM / MuMu / 雷电，#123 review：Mac 上每次都报错）
 	closeOn := st.CloseGameAfter
-	ui.Row(c).Key("close-game-after").Gap(8).AlignItems(ui.Center).Padding(3, 0).Children(func() {
-		ui.Switch(c, &closeOn)
-		ui.Text(c, "跑完关游戏").FontSize(kit.FNote).TextColor(kit.Ink2)
-	})
+	if CloseGameSupported {
+		ui.Row(c).Key("close-game-after").Gap(8).AlignItems(ui.Center).Padding(3, 0).Children(func() {
+			ui.Switch(c, &closeOn)
+			ui.Text(c, "跑完关游戏").FontSize(kit.FNote).TextColor(kit.Ink2)
+		}).Tooltip("任务做完（或出错停下）后关游戏；之后发起任务前要先自己把游戏打开")
+	}
 	if closeOn != st.CloseGameAfter {
 		st.CloseGameAfter = closeOn
 		_ = s.d.Save(st, "")
@@ -287,17 +290,23 @@ func (s *S) footer(c *ui.Context, h plugin.Host) {
 	}
 }
 
+// CloseGameSupported 是这个平台能不能自动关游戏（game close 只支持 Windows 上的 DMM / MuMu / 雷电；测试里可改）。
+var CloseGameSupported = runtime.GOOS == "windows"
+
+// closeWait 是任务结束后等多久再关（「全部开始」的下一项这时已经开始了就不关）；测试里调成 0。
+var closeWait = 5 * time.Second
+
 // closeGameAfter：「跑完关游戏」开着时，任务做完（完成 / 出错，不含被你停下的）后关游戏。
 // 等 5 秒再看：「全部开始」排着的下一项这时已经开始了，就不关（不然下一项连不上游戏）。
 func (s *S) closeGameAfter(h plugin.Host, v *plugin.JobView) {
-	if v == nil || (v.State != "done" && v.State != "failed") || !s.d.Settings().CloseGameAfter {
+	if !CloseGameSupported || v == nil || (v.State != "done" && v.State != "failed") || !s.d.Settings().CloseGameAfter {
 		return
 	}
 	if v.Job != nil && v.Job.Kind == "fit-window" {
 		return
 	}
 	h.Go(func() func() {
-		time.Sleep(5 * time.Second)
+		time.Sleep(closeWait)
 		return func() {
 			// 下一项已经开始 / 助手还在回复（可能马上接着开下一个任务）：不关
 			if h.LiveJob() != "" || h.Busy() || !s.d.Settings().CloseGameAfter {
@@ -316,7 +325,14 @@ func (s *S) closeGameAfter(h plugin.Host, v *plugin.JobView) {
 							why = r.Error.Message
 						}
 						h.Post("「跑完关游戏」没关成："+why, nil)
+						return
 					}
+					// 侧栏的连接状态跟着变（CodeRabbit #123：原来还显示「已连上」）；下一次发起前要先开游戏（#123 review）
+					s.devMu.Lock()
+					off := false
+					s.device, s.deviceOK, s.probedAt = "游戏已关（跑完关游戏）· 点这里重连", &off, h.Now()
+					s.devMu.Unlock()
+					h.Post("已按「跑完关游戏」关了游戏。下次发起任务前先把游戏打开。", nil)
 				}
 			})
 		}

@@ -757,7 +757,11 @@ def _game_close(a: dict) -> dict:
 
     if (cur := client.data("status").get("current")) and cur.get("state") in LIVE:
         raise CliError("busy", "有任务在跑，不关游戏", "等任务结束")
-    return {"closed": close_game.close(a.get("what") or "game", why="跑完关游戏（初星助手）")}
+    what = a.get("what") or "game"
+    if not close_game.commands(close_game.device_kind(), what):
+        # Mac（PlayCover）等后端没有关游戏的办法：说清楚，不再让界面以为是没有管理员权限（#123 review）
+        raise CliError("unsupported", "这个平台不能自动关游戏", "PlayCover 等请手动关；DMM / MuMu / 雷电可以")
+    return {"closed": close_game.close(what, why="跑完关游戏（初星助手）")}
 
 
 @command(
