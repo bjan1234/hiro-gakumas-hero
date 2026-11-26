@@ -483,3 +483,106 @@ def test_write_support_blank_only_writes_into_empty_slot(monkeypatch):
     dev = Device(shoot=lambda: None, click=None, swipe=None, sleep=lambda s: None)
     done = fm.write_support(dev, PLAN, read_formation=lambda img: next(pages), read_list=None, blank_only=True)
     assert len(done) == 5
+
+
+# ---------------------------------------------------------------- N63：动手写之前就记编成号（写到一半停下，重试别把自己写的当成玩家的）
+def test_write_memory_calls_on_write_before_fixing(monkeypatch):
+    empty = [{"slot": i, "card": None, "known": False, "empty": True} for i in range(4)]
+    it = iter([empty] * 2 + [_reads(["men-2_001", "men-2_002", "men-2_003", "men-2_004"])] * 2)
+    monkeypatch.setattr(fm, "read_memory_icons", lambda img: next(it))
+    order = []
+    monkeypatch.setattr(
+        fm, "fix_memory", lambda dev, plan, **kw: order.append("fix") or [{"slot": i} for i in range(4)]
+    )
+    dev = Device(shoot=lambda: None, click=None, swipe=None, sleep=lambda s: None)
+    fm.write_memory(dev, PLAN, make_picker=None, blank_only=True, on_write=lambda: order.append("record"))
+    assert order == ["record", "fix"]
+
+
+def test_write_memory_on_write_not_called_when_refused_or_nothing_to_do(monkeypatch):
+    calls = []
+    reads = [dict(r, empty=r["card"] is None) for r in _reads(["act-9_999", None, None, None])]
+    monkeypatch.setattr(fm, "read_memory_icons", lambda img: reads)
+    dev = Device(shoot=lambda: None, click=None, swipe=None, sleep=lambda s: None)
+    with pytest.raises(FormationWriteError, match="已经有卡"):
+        fm.write_memory(dev, PLAN, make_picker=None, blank_only=True, on_write=lambda: calls.append(1))
+    done = _reads(["men-2_001", "men-2_002", "men-2_003", "men-2_004"])
+    monkeypatch.setattr(fm, "read_memory_icons", lambda img: done)
+    fm.write_memory(dev, PLAN, make_picker=None, on_write=lambda: calls.append(1))  # 已经是方案的卡：不用改
+    fm.write_memory(dev, PLAN, make_picker=None, dry_run=True, on_write=lambda: calls.append(1))
+    assert calls == []
+
+
+def test_write_support_calls_on_write_only_when_changing(monkeypatch):
+    empty = {"view": "formation", "slots": [{"support_card_id": None, "level": None}] * 5}
+    full = {"view": "formation", "slots": [{"support_card_id": f"s_card-{i}", "level": 40} for i in range(5)]}
+    pages = iter([empty] * 2 + [full] * 2)
+    order = []
+    monkeypatch.setattr(fm, "fix_support", lambda dev, plan, **kw: order.append("fix") or [{"slot": 0}])
+    dev = Device(shoot=lambda: None, click=None, swipe=None, sleep=lambda s: None)
+    fm.write_support(
+        dev, PLAN, read_formation=lambda img: next(pages), read_list=None, on_write=lambda: order.append("record")
+    )
+    assert order == ["record", "fix"]
+
+
+def test_run_passes_kind_and_set_to_on_write(monkeypatch):
+    """#191 review：run() 里的接线——每一样按自己的 kind 和编成号回调（循环里绑定，不能都变成最后一样）。"""
+
+    class FakeMenu:
+        def __init__(self, dev):
+            pass
+
+        def open(self):
+            pass
+
+        def ensure_mode(self, mode):
+            pass
+
+        def ensure_tab(self, kind):
+            pass
+
+        def ensure_set(self, n):
+            pass
+
+    monkeypatch.setattr(fm, "Menu", FakeMenu)
+    monkeypatch.setattr(fm, "write_support", lambda dev, plan, *, on_write=None, **kw: on_write() or [])
+    monkeypatch.setattr(fm, "write_memory", lambda dev, plan, mp, *, on_write=None, **kw: on_write() or [])
+    got = []
+    plan = {"support": {"set": 18}, "memory": {"set": 13}}
+    fm.run(None, plan, "hajime", on_write=lambda kind, n: got.append((kind, n)))
+    assert got == [("support", 18), ("memory", 13)]
+
+
+def _fail_fix_memory(monkeypatch, after_reads):
+    """fix_memory 中途抛错；之后回读这一页给 after_reads。"""
+    from hiro.produce.memory_filter import MemoryFilterError
+
+    empty = [{"slot": i, "card": None, "known": False, "empty": True} for i in range(4)]
+    it = iter([empty] * 2 + [after_reads] * 4)
+    monkeypatch.setattr(fm, "read_memory_icons", lambda img: next(it))
+
+    def boom(*a, **k):
+        raise MemoryFilterError("认不出排序方向")
+
+    monkeypatch.setattr(fm, "fix_memory", boom)
+    return Device(shoot=lambda: None, click=None, swipe=None, sleep=lambda s: None)
+
+
+def test_record_undone_when_write_failed_before_any_change(monkeypatch):
+    """#191 review：动手前记了号，结果一格都没改就失败（这一页和动手前一样）：撤掉记录。"""
+    empty = [{"slot": i, "card": None, "known": False, "empty": True} for i in range(4)]
+    dev = _fail_fix_memory(monkeypatch, empty)
+    undone = []
+    with pytest.raises(RuntimeError):
+        fm.write_memory(dev, PLAN, make_picker=None, blank_only=True, on_write=lambda: lambda: undone.append(1))
+    assert undone == [1]
+
+
+def test_record_kept_when_write_failed_after_partial_change(monkeypatch):
+    """写了两格才失败（N63 现场）：保留记录，重试时能接着覆盖自己写了一半的。"""
+    dev = _fail_fix_memory(monkeypatch, _reads(["men-2_001", "men-2_002", None, None]))
+    undone = []
+    with pytest.raises(RuntimeError):
+        fm.write_memory(dev, PLAN, make_picker=None, blank_only=True, on_write=lambda: lambda: undone.append(1))
+    assert undone == []
