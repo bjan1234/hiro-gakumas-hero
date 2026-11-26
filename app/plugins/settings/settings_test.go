@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -175,9 +176,13 @@ func wizardAt(t *testing.T, f *fake, h *plugintest.Host, step int) (*S, *ui.Test
 func TestWizardConnectStepProbesByItself(t *testing.T) {
 	f := &fake{secrets: map[string]string{}, ready: true}
 	h := plugintest.New(map[string]string{"doctor": `{"items":[]}`, "doctor --probe": `{"items":[{"id":"platform","ok":true,"detail":"学マス（PlayCover）：已连上"}]}`})
-	_, tt := wizardAt(t, f, h, 1)
-	if !h.Called("doctor --probe") || !tt.HasText("学マス（PlayCover） 已连上") {
-		t.Errorf("进连游戏这一步应自己试连：%v %q", h.Calls, tt.Texts())
+	connectedPause = 0
+	defer func() { connectedPause = 1200 * time.Millisecond }()
+	s, tt := wizardAt(t, f, h, 1)
+	tt.Frame()
+	// 连上后自己进下一步（N27），「已连上」留在侧栏底部和设置里
+	if !h.Called("doctor --probe") || s.step != 2 || !strings.Contains(s.deviceContext(), "已连上") {
+		t.Errorf("进连游戏这一步应自己试连、连上后自己进下一步：step=%d %v %q", s.step, h.Calls, tt.Texts())
 	}
 }
 
@@ -464,7 +469,7 @@ func TestWizardStepSurvivesRestart(t *testing.T) {
 	tt := ui.NewTester(func(c *ui.Context) { s2.Gate(c, h) }, 1280, 900)
 	tt.Frame()
 	tt.Frame()
-	if s2.step != 2 || !tt.HasText("我在游戏里关好了") {
+	if s2.step != 2 || !tt.HasText("关好了，下一步") {
 		t.Fatalf("重开后应接着第 3 步：step=%d %q", s2.step, tt.Texts())
 	}
 }
@@ -527,5 +532,86 @@ func TestWizardDiskErrorRechecks(t *testing.T) {
 	tt.Frame()
 	if !f.ready {
 		t.Errorf("点「安装」应真的开始装（BootRun 没被调用）")
+	}
+}
+
+// N27（G3 第 2 轮：Windows 从安装到开局点了 18 下）：刚装好环境自己进「连游戏」；第一次连上停一下自己进下一步；
+// 「关游戏声音」一个按钮走完。
+func TestWizardAdvancesByItself(t *testing.T) {
+	connectedPause = 0
+	defer func() { connectedPause = 1200 * time.Millisecond }()
+	f := &fake{secrets: map[string]string{}}
+	h := plugintest.New(map[string]string{"doctor": `{"items":[]}`, "doctor --probe": `{"items":[{"id":"platform","ok":true,"detail":"学マス（PlayCover）：已连上"}]}`})
+	s := New(f.deps())
+	tt := ui.NewTester(func(c *ui.Context) { s.Gate(c, h) }, 1280, 900)
+	tt.Frame()
+	tt.Frame()
+	if err := plugintest.ClickButton(tt, "安装"); err != nil {
+		t.Fatalf("装环境：%v %q", err, tt.Texts())
+	}
+	for range 4 {
+		tt.Frame()
+	}
+	if s.step != 2 || !h.Called("doctor --probe") {
+		t.Fatalf("装好后应自己进「连游戏」、试连、连上再进下一步：step=%d calls=%v", s.step, h.Calls)
+	}
+	if err := plugintest.ClickButton(tt, "关好了，下一步"); err != nil {
+		t.Fatalf("关游戏声音应一个按钮走完：%v %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if s.step != 3 || !s.sound {
+		t.Fatalf("应到「配模型」：step=%d", s.step)
+	}
+	// 退回「连游戏」再试连：不再自己往前跳
+	s.step = 1
+	tt.Frame()
+	s.Probe(h)
+	tt.Frame()
+	if s.step != 1 {
+		t.Errorf("退回来看时不该自动前进：step=%d", s.step)
+	}
+}
+
+// #154 review：第一次到「连游戏」没连上，退回去再回来重试连上了：不自动前进（只认第一次停留期间）。
+func TestWizardNoAutoAdvanceAfterLeavingConnectStep(t *testing.T) {
+	connectedPause = 0
+	defer func() { connectedPause = 1200 * time.Millisecond }()
+	f := &fake{secrets: map[string]string{}, ready: true}
+	h := plugintest.New(map[string]string{"doctor": `{"items":[]}`, "doctor --probe": `{"items":[{"id":"platform","ok":false,"detail":"没连上"}]}`})
+	s, tt := wizardAt(t, f, h, 1)
+	if s.step != 1 {
+		t.Fatalf("没连上不该前进：step=%d", s.step)
+	}
+	s.step = 0 // 退回去
+	tt.Frame()
+	s.step = 1 // 再回来
+	tt.Frame()
+	h.Resp["doctor --probe"] = hiroapi.Result{OK: true, Data: []byte(`{"items":[{"id":"platform","ok":true,"detail":"学マス（PlayCover）：已连上"}]}`)}
+	s.Probe(h)
+	tt.Frame()
+	if s.step != 1 {
+		t.Errorf("离开过再回来重试连上，不该自动前进：step=%d", s.step)
+	}
+}
+
+// #154 review：重开程序从第 3 步之后恢复，退回「连游戏」连上也不自动前进。
+func TestWizardRestoredPastConnectNoAutoAdvance(t *testing.T) {
+	connectedPause = 0
+	defer func() { connectedPause = 1200 * time.Millisecond }()
+	f := &fake{secrets: map[string]string{}, ready: true}
+	f.s.WizardStep = 3
+	h := plugintest.New(map[string]string{"doctor": `{"items":[]}`, "doctor --probe": `{"items":[{"id":"platform","ok":true,"detail":"学マス（PlayCover）：已连上"}]}`})
+	s := New(f.deps())
+	tt := ui.NewTester(func(c *ui.Context) { s.Gate(c, h) }, 1280, 900)
+	tt.Frame()
+	tt.Frame()
+	if s.step != 3 {
+		t.Fatalf("应恢复到第 4 步：step=%d", s.step)
+	}
+	s.step = 1
+	tt.Frame()
+	tt.Frame()
+	if s.step != 1 {
+		t.Errorf("恢复过的向导退回连游戏不该自动前进：step=%d", s.step)
 	}
 }

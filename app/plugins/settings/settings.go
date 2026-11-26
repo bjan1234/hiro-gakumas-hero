@@ -101,7 +101,12 @@ type S struct {
 	booting   bool
 	step      int
 	sound     bool
-	modelOK   bool
+	// N27（G3 第 2 轮：Windows 从安装到开局点了 18 下）：这次刚装好环境 / 第一次走到「连游戏」并连上，就自己进下一步。
+	// connectAuto：第一次停在「连游戏」这一步期间才自动前进；离开过（往前或往后）就不再自动跳（#154 review）
+	installedNow bool
+	connectSeen  bool
+	connectAuto  bool
+	modelOK      bool
 	// relaunchErr 是「以管理员身份重新打开」没成的原因（取消了「是否允许」等）
 	relaunchErr string
 	// stepLoaded / savedStep：向导步数从设置里读过一次；上次存下的步数（变了才存）
@@ -202,9 +207,23 @@ func (s *S) Probe(h plugin.Host) {
 				}
 			}
 			s.deviceOK = &ok
+			if ok && s.step == 1 && s.connectAuto && !s.d.Settings().WizardDone {
+				// N27：向导第一次走到「连游戏」并连上：停一下让人看到「已连上」，再自己进下一步
+				h.Go(func() func() {
+					time.Sleep(connectedPause)
+					return func() {
+						if s.step == 1 && s.connectAuto {
+							s.step = 2
+						}
+					}
+				})
+			}
 		}
 	})
 }
+
+// connectedPause 是向导里连上游戏后停留多久再自己进下一步（测试里调成 0）。
+var connectedPause = 1200 * time.Millisecond
 
 func (s *S) deviceContext() string {
 	s.devMu.Lock()
@@ -291,8 +310,13 @@ func (s *S) wizard(c *ui.Context, h plugin.Host) {
 			s.stepLoaded = true
 			if n := s.d.Settings().WizardStep; n > 0 && n < len(steps) {
 				s.step = n
+				s.connectSeen = n > 1 // 重开时已经过了「连游戏」：退回去看不算第一次停留，不自动前进（#154 review）
 			}
 			s.savedStep = s.step
+		}
+		if s.step == 0 && s.installedNow { // 刚装好：不用再点「下一步」
+			s.installedNow = false
+			s.step = 1
 		}
 		if s.step != s.savedStep {
 			st := s.d.Settings()
@@ -301,6 +325,11 @@ func (s *S) wizard(c *ui.Context, h plugin.Host) {
 				s.savedStep = s.step
 			}
 		}
+	}
+	if s.step == 1 && !s.connectSeen {
+		s.connectSeen, s.connectAuto = true, true
+	} else if s.step != 1 {
+		s.connectAuto = false
 	}
 	ui.Row(c).Fill().Background(kit.Bg).AlignItems(ui.Stretch).Children(func() {
 		ui.Column(c).Width(232).Shrink(0).Background(kit.Side).Padding(22, 18).Gap(6).BorderColor(kit.Line).BorderWidth(0, kit.Hair, 0, 0).Children(func() {
@@ -349,7 +378,11 @@ func (s *S) wizard(c *ui.Context, h plugin.Host) {
 					kit.Note(c, "现在连不上也可以先往下走，之后在侧栏底部点状态行重试。")
 				case 2:
 					kit.Note(c, "初星助手打游戏时不出声：在游戏里打开设置 → 声音，把 BGM、语音、效果音都调到 0。不用动电脑的音量。")
-					ui.Checkbox(c, &s.sound, "我在游戏里关好了")
+					// N27：原来是勾「我在游戏里关好了」再点「下一步」两下，合成一下
+					if kit.Primary(c, "关好了，下一步").Clicked() {
+						s.sound = true
+						s.step++
+					}
 				case 3:
 					s.modelSection(c, h)
 				case 4:
@@ -373,7 +406,7 @@ func (s *S) wizard(c *ui.Context, h plugin.Host) {
 					if (s.step == 3 || s.step == 4) && kit.Secondary(c, "跳过").Clicked() {
 						s.step++
 					}
-					if s.step < len(steps)-1 {
+					if s.step < len(steps)-1 && s.step != 2 { // 「关游戏声音」的「关好了，下一步」在正文里
 						if kit.Primary(c, "下一步").Disabled(!canNext).Clicked() && canNext {
 							if s.step == 3 && !s.modelOK {
 								s.saveAndTest(h, true)
@@ -381,7 +414,7 @@ func (s *S) wizard(c *ui.Context, h plugin.Host) {
 								s.step++
 							}
 						}
-					} else if kit.Primary(c, "完成，去对话").Clicked() {
+					} else if s.step == len(steps)-1 && kit.Primary(c, "完成，去对话").Clicked() {
 						st := s.d.Settings()
 						st.WizardDone = true
 						_ = s.d.Save(st, "")
@@ -537,6 +570,8 @@ func (s *S) installEnv(h plugin.Host) {
 			s.booting = false
 			if err != nil {
 				s.bootLines = append(s.bootLines, "出错了："+err.Error())
+			} else {
+				s.installedNow = true
 			}
 			s.Recheck(h)
 			s.refreshOcr(h) // 装好 SIMD 之后，「文字识别」那行不能还是装之前读到的
