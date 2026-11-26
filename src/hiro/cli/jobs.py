@@ -183,12 +183,23 @@ def _hif_argv(p: dict, d: Path) -> list[str]:
     return argv
 
 
-DAILY_ITEMS = ("activity_funds", "presents", "assignment", "contest", "mission_reward", "club_reward")
+DAILY_ITEMS = (
+    "activity_funds",
+    "presents",
+    "assignment",
+    "contest",
+    "shop",
+    "coin_gacha",
+    "mission_reward",
+    "club_reward",
+)
 DAILY_LABEL = {
-    "activity_funds": "活動費",
+    "activity_funds": "活动费",
     "presents": "礼物",
-    "assignment": "工作",
+    "assignment": "工作派遣",
     "contest": "竞赛",
+    "shop": "商店",
+    "coin_gacha": "硬币扭蛋",
     "mission_reward": "任务奖励",
     "club_reward": "社团",
 }
@@ -201,6 +212,15 @@ def _daily_argv(p: dict, d: Path) -> list[str]:
     items = [i for i in (p.get("items") or "").split(",") if i]
     if items:
         argv += ["--only", ",".join(items)]
+    for key, flag in (
+        ("contest_pick", "--contest-pick"),
+        ("shop", "--shop"),
+        ("shop_items", "--shop-items"),
+        ("shop_ap", "--shop-ap"),
+        ("coin_gacha", "--coin-gacha"),
+    ):
+        if p.get(key):
+            argv += [flag, str(p[key])]
     return argv
 
 
@@ -827,7 +847,9 @@ class Job:
             self.emit("stopped", "已停止")
             self.state = "stopped"
         elif code == 0:
-            self.emit("done", "完成")
+            # 日常等任务最后打一行「结果：…」（每项做了什么）：结束事件就写它，界面上看得到（11-25：原来只有「完成」）
+            result = next((t.strip()[3:] for t in reversed(recent) if t.strip().startswith("结果：")), None)
+            self.emit("done", result or "完成")
             self.state = "done"
         else:
             self.reason = failure_reason([*tail, *recent])

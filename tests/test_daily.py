@@ -388,7 +388,16 @@ def test_scrollbar_reads_thumb():
 
 
 def test_registry_and_no_kaa_import():
-    assert set(TASKS) == {"activity_funds", "presents", "assignment", "contest", "mission_reward", "club_reward"}
+    assert set(TASKS) == {
+        "activity_funds",
+        "presents",
+        "assignment",
+        "contest",
+        "shop",
+        "coin_gacha",
+        "mission_reward",
+        "club_reward",
+    }
     code = (
         "import sys, hiro.daily;"
         "bad = sorted(m for m in sys.modules if m.split('.')[0] in ('kotonebot', 'kaa'));"

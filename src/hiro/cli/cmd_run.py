@@ -32,6 +32,11 @@ PARAMS = (
     "memory_set",
     "difficulty",
     "items",
+    "contest_pick",
+    "shop",
+    "shop_items",
+    "shop_ap",
+    "coin_gacha",
     "chapter",
     "until",
     "final_rank",
@@ -668,7 +673,29 @@ def _first_reason(out: str) -> str:
         ),
         Arg(
             "--items",
-            "daily：只领这几项（逗号分隔：activity_funds、presents、assignment、contest、mission_reward、club_reward）",
+            "daily：只领这几项（逗号分隔：activity_funds、presents、assignment、contest、shop、coin_gacha、mission_reward、club_reward）",
+        ),
+        Arg(
+            "--contest-pick",
+            "daily：竞赛挑哪个对手（lowest 综合力最低 / 1 / 2 / 3 由上到下第几个）",
+            choices=("lowest", "1", "2", "3"),
+        ),
+        Arg(
+            "--shop",
+            "daily：商店每日兑换所买什么（off 不买，缺省 / recommended 推荐商品 / all 能买的都买），只用金币",
+            choices=("recommended", "all", "off"),
+        ),
+        Arg(
+            "--shop-items",
+            "daily：商店另外要买的商品名，逗号分隔（名字包含就算，中文日文都行，如 仓本千奈的碎片 / 倉本千奈のピース）",
+        ),
+        Arg(
+            "--shop-ap",
+            "daily：体力（AP）商店买哪几样，逗号分隔：pt 支援强化点数获取提升 / note 笔记获取数提升 / retry 再挑战券 / regen 回忆再生成券（每样一天 2 次、一次 10 体力；缺省不买）",
+        ),
+        Arg(
+            "--coin-gacha",
+            "daily：硬币扭蛋（off 不抽，缺省 / auto 抽 1 次 / friend:1,sense:2，池：friend sense logic anomaly）",
         ),
         Arg("--layers", "tower：打几层", type="int"),
         Arg("--chapter", "story：初星コミュ第几章（缺省 1）", type="int"),
