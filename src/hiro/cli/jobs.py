@@ -15,6 +15,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,12 +37,35 @@ _LOG_PREFIX = re.compile(r"^\[\d{4}-\d\d-\d\d [\d:,.]+\]\s*\[([A-Z]+)\]\s*\[[^\]
 _SHOT_SUFFIX = re.compile(r"（截图在 [^）]*）\s*$")
 
 
+# 没接住的异常：traceback 最后一行「模块.异常名: 说明」（G1 §8 错误文案：游戏没开时任务直接抛 DeviceUnavailable，
+# 日志里没有「停下：」也没有 ERROR，原因是空的）
+_EXC_LINE = re.compile(
+    r"^(?:[A-Za-z_][\w]*\.)*((?:[A-Za-z_]\w*)?(?:Error|Exception|Gone|Unavailable|Blocked|Page)): (.+)$"
+)
+
+_TB_END = re.compile(r"^(?:[A-Za-z_]\w*\.)*([A-Za-z_]\w*)(?:: (.*))?$")
+_EXC_SUFFIX = re.compile(r"(?:Error|Exception|Gone|Unavailable|Blocked|Page)$")
+
+
 def failure_reason(lines: list[str]) -> str | None:
     """任务出错时给人看的一句原因：最后一条「停下：…」，没有就最后一条 ERROR 日志（去掉时间 / 级别 / 模块前缀和本机截图路径）。
     11-25 review：failed 事件只写「看上面的日志」，对话和对局卡里看不到原因。"""
-    stop = err = None
+    stop = err = exc = None
+    in_tb = False
     for line in lines:
         t = line.strip()
+        if t == "Traceback (most recent call last):":
+            in_tb = True
+        elif in_tb and line[:1] not in (" ", "\t") and (m := _TB_END.match(t)):
+            # traceback 后第一行不缩进的就是异常行：异常名不限后缀（StopIteration）、可以没有说明（AssertionError）（#130 review）
+            in_tb = False
+            name, msg = m.group(1), m.group(2)
+            if msg and _EXC_SUFFIX.search(name):
+                exc = f"{name}: {msg}"
+            else:
+                exc = f"程序出错停下了（{name}）" + (f"：{msg}" if msg else "")
+        elif (m := _EXC_LINE.match(t)) and not _LOG_PREFIX.match(t):  # traceback 开头被截掉时（日志只留最后 20 行）
+            exc = f"{m.group(1)}: {m.group(2)}"
         if t.startswith("停下："):
             stop = t[len("停下：") :]
         elif t.endswith("停下") and not _LOG_PREFIX.match(t) and len(t) > 2:
@@ -50,7 +74,7 @@ def failure_reason(lines: list[str]) -> str | None:
             )  # 工具把「停下」写在句尾（G1-F2：扫偶像卡「没进到偶像详情页（…），停下」）
         elif (m := _LOG_PREFIX.match(t)) and m.group(1) in ("ERROR", "CRITICAL"):
             err = t[m.end() :]
-    why = stop or err
+    why = stop or err or exc
     if not why:
         return None
     why = _SHOT_SUFFIX.sub("", why).strip()
@@ -776,10 +800,13 @@ class Job:
     def _pump(self) -> None:
         assert self.proc and self.proc.stdout
         tail: list[str] = []  # 出错原因从这里找（「停下：」/ ERROR 都在日志里）
+        # 最后几行原样留着：句尾写「…，停下」的工具（G1-F2）和没接住的异常（traceback 尾行，游戏没开）不带上面的标记（#130 review）
+        recent: deque[str] = deque(maxlen=20)
         for line in self.proc.stdout:
             line = line.rstrip("\n")
             if line:
                 self.emit("log", line)
+                recent.append(line)
                 if line.startswith("停下：") or "[ERROR]" in line or "[CRITICAL]" in line:
                     tail = [*tail[-19:], line]
         code = self.proc.wait()
@@ -799,7 +826,7 @@ class Job:
             self.emit("done", "完成")
             self.state = "done"
         else:
-            self.reason = failure_reason(tail)
+            self.reason = failure_reason([*tail, *recent])
             text = f"出错停下：{self.reason}" if self.reason else f"任务出错退出（代码 {code}），看上面的日志"
             self.emit("failed", text, exit_code=code, reason=self.reason)
             self.state = "failed"
