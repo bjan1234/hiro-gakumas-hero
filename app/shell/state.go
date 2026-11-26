@@ -55,6 +55,9 @@ type Deps struct {
 	AllowAllConfirmed func() bool
 	// AfterRun 是确认卡上「做完后」那一行（「跑完关游戏」开着时写会关游戏、之后要手动开，#123 review）；nil 或 "" 不写。
 	AfterRun func() string
+	// OpenIn 是打开时进哪种界面：ModeChat = 问 AI（对话），其余 = 页面模式（缺省，用户 11-26 定）。
+	// nil = 对话界面（没接设置的老用法和测试）。
+	OpenIn func() string
 }
 
 // App 是主界面的全部状态。只在界面线程里改。
@@ -82,14 +85,33 @@ type App struct {
 	notified map[string]bool
 	ended    map[string]bool // 已调过 OnJobEnd 的局
 	started  map[string]bool // 本会话里从确认卡开的局
+
+	// 页面模式（11-26 用户定：缺省进页面，「问 AI」是侧栏一项，进去是原来的对话界面）
+	mode   string  // ModePages / ModeChat
+	pages  *Thread // 页面模式里按「发起」的记录（不进对话列表、不存盘）：确认卡、对局卡、结果都挂在这里，复用对话里的确认 / 自动开始 / 通知
+	toasts []ui.Toast
 }
+
+// 界面模式。
+const (
+	ModePages = "pages"
+	ModeChat  = "chat"
+)
+
+// PagesThreadID 是页面模式那条隐藏记录的编号。
+const PagesThreadID = "pages"
+
 
 // New 建主界面，读出已存的对话。
 func New(d Deps, reg *plugin.Registry) *App {
 	if d.Now == nil {
 		d.Now = time.Now
 	}
-	a := &App{d: d, reg: reg, ctx: context.Background()}
+	a := &App{d: d, reg: reg, ctx: context.Background(), mode: ModePages}
+	if d.OpenIn == nil || d.OpenIn() == ModeChat {
+		a.mode = ModeChat
+	}
+	a.pages = &Thread{ID: PagesThreadID, Title: "页面", Messages: []*Message{}}
 	a.threads = loadThreads(d.Threads)
 	if len(a.threads) > 0 {
 		a.cur = a.threads[0]
@@ -168,6 +190,9 @@ func (a *App) add(role, text string, cards []plugin.Card) *Message {
 	}
 	t.Messages = append(t.Messages, m)
 	t.UpdatedAt = m.At
+	if t == a.pages && role == "agent" {
+		a.toastFor(text, cards)
+	}
 	// 同一条回复里还有在等的选择卡（还没选偶像）时，确认卡不自动开始（CodeRabbit #79）
 	choosing := false
 	for _, c := range cards {
@@ -191,7 +216,7 @@ func (a *App) add(role, text string, cards []plugin.Card) *Message {
 }
 
 func (a *App) save(t *Thread) {
-	if t == nil || len(t.Messages) == 0 {
+	if t == nil || t == a.pages || len(t.Messages) == 0 {
 		return
 	}
 	b, err := json.Marshal(t)
@@ -284,8 +309,8 @@ func (a *App) RunArgs(label string, args []string) { a.runArgs(label, args, nil)
 
 // runArgs 同 RunArgs；done（可以是 nil）在结果回到界面线程后调，带上这次命令成没成。
 func (a *App) runArgs(label string, args []string, done func(ok bool)) {
-	t := a.ensureThread()
-	a.add("user", label, nil)
+	t := a.actionThread()
+	a.addTo(t, "user", label, nil)
 	a.save(t)
 	call := a.d.Call
 	a.d.Run.Go(func() func() {
@@ -308,17 +333,22 @@ func (a *App) Call(ctx context.Context, args []string) hiroapi.Result { return a
 // Go 在后台跑。
 func (a *App) Go(work func() func()) { a.d.Run.Go(work) }
 
-// Ask 以用户身份发一句话。
-func (a *App) Ask(text string) { a.Send(text) }
+// Ask 以用户身份发一句话（页面模式里点了这类按钮：转到「问 AI」再发）。
+func (a *App) Ask(text string) {
+	if a.mode != ModeChat {
+		a.SetMode(ModeChat)
+	}
+	a.Send(text)
+}
 
-// Post 以初星助手的身份加一条消息。
+// Post 以初星助手的身份加一条消息（页面模式里变成提示条；确认卡弹出确认框）。
 func (a *App) Post(text string, card plugin.Card) {
-	t := a.ensureThread()
+	t := a.actionThread()
 	var cards []plugin.Card
 	if card != nil {
 		cards = []plugin.Card{card}
 	}
-	a.add("agent", text, cards)
+	a.addTo(t, "agent", text, cards)
 	a.save(t)
 }
 
@@ -331,8 +361,12 @@ func (a *App) Now() time.Time { return a.d.Now() }
 // RunArgs 以用户身份跑一条命令（见上面）；这里满足 plugin.Host。
 var _ plugin.Host = (*App)(nil)
 
-// OpenPanel 在侧边面板打开某插件的某页。
+// OpenPanel 在侧边面板打开某插件的某页；页面模式里是切到那一页。
 func (a *App) OpenPanel(pluginID, route string) {
+	if a.mode != ModeChat {
+		a.ui.pagePlugin, a.ui.pageRoute = pluginID, route
+		return
+	}
 	a.ui.panelOpen, a.ui.panelPlugin, a.ui.panelRoute = true, pluginID, route
 }
 

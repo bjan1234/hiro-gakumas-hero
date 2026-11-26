@@ -183,10 +183,21 @@ func New() *plugin.Plugin {
 				h.RunArgs("接着打进行中的培育", []string{"run", "start", "hif", "--command", "resume"})
 			}},
 			{Label: "领日常奖励", Run: func(h plugin.Host) {
-				h.RunArgs("帮我领日常奖励", []string{"run", "start", "daily"})
+				h.RunArgs("帮我领日常奖励", s.dailyArgv())
 			}},
 		},
-		Panel: func(c *ui.Context, h plugin.Host, _ string) { s.panel(c, h) },
+		// 日常的选项多了（竞赛对手、商店、体力商店、扭蛋），单独一页（11-26 两种界面方案）
+		Nav: []plugin.NavItem{
+			{Label: "开局", Icon: kit.IcPlay, Route: ""},
+			{Label: "日常", Icon: kit.IcCalendar, Route: "daily"},
+		},
+		Panel: func(c *ui.Context, h plugin.Host, route string) {
+			if route == "daily" {
+				s.dailyPanel(c, h)
+				return
+			}
+			s.panel(c, h)
+		},
 		OnJobEnd: func(_ plugin.Host, _ string, v *plugin.JobView) {
 			if v != nil && v.Job != nil && v.Job.Kind == "scan-idols" {
 				s.pick.Reload() // 扫完偶像卡：下次画面板重读列表（原来只读一次，要重开程序才看得到）
@@ -490,7 +501,29 @@ func (s *state) panel(c *ui.Context, h plugin.Host) {
 			h.RunArgs(label, args)
 		}
 	})
-	kit.Note(c, "点「发起」后对话里会出一张确认卡，再点「开始」才动游戏。")
+	kit.Note(c, "点「发起」后先给你看要做的事（确认卡），再点「开始」才动游戏。")
+}
+
+// dailyArgv 是按日常页现在的选项领日常的整条命令。
+func (s *state) dailyArgv() []string {
+	return append([]string{"run", "start", "daily"}, s.dailyArgs()...)
+}
+
+// dailyPanel 是单独的「日常」页：说明、几项选项、发起。
+func (s *state) dailyPanel(c *ui.Context, h plugin.Host) {
+	for _, m := range modes {
+		if m.id == "daily" {
+			kit.Note(c, m.desc)
+		}
+	}
+	s.dailyOptions(c)
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(8, 0, 0, 0).Children(func() {
+		ui.Spacer(c)
+		if kit.Primary(c, "发起").Key("daily-go").Clicked() {
+			h.RunArgs("帮我领日常奖励", s.dailyArgv())
+		}
+	})
+	kit.Note(c, "点「发起」后先给你看要做的事（确认卡），再点「开始」才动游戏。")
 }
 
 var apItems = [4][2]string{{"pt", "支援强化点数获取提升"}, {"note", "笔记获取数提升"}, {"retry", "再挑战券"}, {"regen", "回忆再生成券"}}
@@ -783,6 +816,7 @@ func (s *state) starters(h plugin.Host, cat *common.Catalog) []plugin.Starter {
 			Label: "用" + name + "再打一把" + mode,
 			Sub:   "上次 " + time.Unix(int64(j.StartedAt), 0).Format("01-02") + " · " + labels.State(j.State),
 			Say:   "帮我用" + name + "打一把" + mode,
+			Page:  replay(j, name, mode),
 		}
 		if e != nil {
 			st.Art, st.Attr = cat.Sprite(h, e.Asset), e.Attr
@@ -793,6 +827,22 @@ func (s *state) starters(h plugin.Host, cat *common.Catalog) []plugin.Starter {
 		out = append(out, plugin.Starter{Label: "选个偶像开一局", Sub: "也可以直接说「帮我用某某打一把初」", Say: "/开局", Icon: kit.IcPlay})
 	}
 	out = append(out, plugin.Starter{Label: "领日常奖励", Sub: "活动费、礼物、工作派遣、任务，不花钻石", Icon: kit.IcSparkles,
-		Run: func(h plugin.Host) { h.RunArgs("帮我领日常奖励", []string{"run", "start", "daily"}) }})
+		Run: func(h plugin.Host) { h.RunArgs("帮我领日常奖励", s.dailyArgv()) }})
 	return out
+}
+
+// replay 是首页「用某某再打一把」：按上次那局的参数重新发起（照样出确认卡）。参数拼不出来时 nil（首页不出这一项）。
+func replay(j plugin.Job, name, mode string) func(h plugin.Host) {
+	params := map[string]any{}
+	for k, v := range j.Params {
+		params[k] = v
+	}
+	if params["command"] == "resume" {
+		params["command"] = "new" // 上次是接着打的：再打一把是开新的
+	}
+	argv := common.StartArgv(j.Kind, params)
+	if len(argv) == 0 {
+		return nil
+	}
+	return func(h plugin.Host) { h.RunArgs("用"+name+"再打一把"+mode, argv) }
 }

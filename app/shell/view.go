@@ -18,6 +18,9 @@ type viewState struct {
 	resolving   map[string]bool // 正在确认 / 取消的待确认编号（防重复）
 	autoOpened  map[string]bool // 已自动打开过游戏运行现状的任务
 	chatPct     float32
+	// 页面模式当前那页（插件 id + route；插件 id 为空 = 首页）
+	pagePlugin string
+	pageRoute  string
 }
 
 // SidebarWidth 是左侧栏宽度（§4）。
@@ -37,6 +40,11 @@ func (a *App) View(c *ui.Context) {
 		a.TogglePanel()
 	}
 	a.hidden.Store(c.WindowHidden())
+	a.drainToasts(c)
+	if a.mode != ModeChat {
+		a.pagesView(c)
+		return
+	}
 	w, _ := c.Size()
 	ui.Row(c).Fill().Background(kit.Bg).AlignItems(ui.Stretch).Children(func() {
 		a.sidebar(c)

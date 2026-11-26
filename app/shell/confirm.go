@@ -65,7 +65,7 @@ func (a *App) resolve(m *Message, card plugin.Card, action string) {
 		return
 	}
 	a.ui.resolving[p.ID] = true
-	t, call := a.cur, a.d.Call
+	t, call := a.threadOf(m), a.d.Call
 	a.d.Run.Go(func() func() {
 		r := call(a.ctx, []string{action, p.ID})
 		return func() {

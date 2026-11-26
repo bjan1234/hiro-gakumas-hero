@@ -168,7 +168,7 @@ func (a *App) removeBatchItem(t *Thread, card plugin.Card, i int) {
 
 // continueBatch 在任务结束时接着做排队的下一项（jobEnded 调）。
 func (a *App) continueBatch(id string, v *plugin.JobView) {
-	for _, t := range a.threads {
+	for _, t := range a.allThreads() {
 		for _, m := range t.Messages {
 			for _, card := range m.Cards {
 				if card["type"] != "confirm" || card["queueJob"] != id {

@@ -90,6 +90,10 @@ type Settings struct {
 	MemorySlicesOff bool `json:"memory_slices_off,omitempty"`
 	// CloseGameAfter：任务做完（完成或出错）后自动关游戏（侧栏底部的开关，11-25 用户：要一个所有任务通用、随手开关的）
 	CloseGameAfter bool `json:"close_game_after,omitempty"`
+	// CloseSelfAfter：任务做完后连初星助手自己也关掉（侧栏底部，11-26 用户：这个用得很多）
+	CloseSelfAfter bool `json:"close_self_after,omitempty"`
+	// OpenIn：打开时进哪种界面："chat" = 问 AI，其余 = 页面（首页，缺省；11-26 用户定）
+	OpenIn string `json:"open_in,omitempty"`
 }
 
 // DefaultDeepSeek 是 DeepSeek 的缺省地址和模型。

@@ -249,6 +249,10 @@ func (a *App) notify(id, before string, v *plugin.JobView) {
 		text = "「" + name + "」" + labels.State(v.State) + "了。"
 	}
 	t := a.ownerThread(id)
+	if t != a.pages {
+		// 页面模式里开的局：下面 addTo 到页面记录时就会出提示条。对话里开的、命令行开的也出一条（两边都显示，用户 11-26 定）
+		a.toastFor(text, cards)
+	}
 	if t == nil {
 		return // 命令行等外部发起的：不进对话（11-25 review），在游戏运行现状的「后台任务」里看
 	}
@@ -350,7 +354,7 @@ func (h *jobHost) Post(text string, card plugin.Card) {
 
 // ownerThread 是有这局对局卡的对话（在对话里确认开的局）；命令行等外部发起的没有，返回 nil。
 func (a *App) ownerThread(id string) *Thread {
-	for _, t := range a.threads {
+	for _, t := range a.allThreads() {
 		for _, m := range t.Messages {
 			for _, c := range m.Cards {
 				if c["type"] == "run" && c["jobId"] == id {
