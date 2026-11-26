@@ -245,3 +245,17 @@ def test_shop_skips_known_unwanted_and_learns_prices(monkeypatch):
     assert 274 not in opened and {104, 444} <= opened  # 碎片（已知不要的价）没点开
     assert "再挑戦チケット" in r or "再挑战" in r
     assert saved.get("再挑戦チケット") == 2000
+
+
+def test_coin_gacha_find_pool_no_initial_swipe(monkeypatch):
+    """刚进扭蛋页就在顶上：看得见这个池就不先往上划（11-27 用户）；看不见才回顶重找。"""
+    swipes = []
+    rt = _Rt()
+    rt.device.swipe = lambda *a, **k: swipes.append(a)
+    top = frame(("フレンドコインガシャ", 360, 400))
+    monkeypatch.setattr(coin_gacha.common, "frame", lambda rt: top)
+    monkeypatch.setattr(coin_gacha, "_gacha_title", lambda f, pool: f.texts[0] if pool == "friend" else None)
+    _, title = coin_gacha.find_pool(rt, "friend")
+    assert title is not None and swipes == []
+    _, title = coin_gacha.find_pool(rt, "logic")
+    assert title is None and len(swipes) == 4 + 2 + 4  # 往下找 4 屏、回顶 2 下、再往下 4 屏

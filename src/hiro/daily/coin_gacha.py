@@ -87,12 +87,7 @@ def count(f) -> int | None:
     return None
 
 
-def find_pool(rt, pool: str):
-    """滑到能看见这个池的「引く」，返回 (帧, 标题)；找不到 (帧, None)。先回到顶再往下找。"""
-    for _ in range(2):
-        rt.device.swipe(SWIPE[0], SWIPE[3], SWIPE[2], SWIPE[1], duration=SWIPE_S)
-    rt.sleep(1.0)
-    f = common.frame(rt)
+def _scan_down(rt, pool: str, f):
     for _ in range(4):
         title = _gacha_title(f, pool)
         if title is not None and title.rect.center.y < 1080:
@@ -101,6 +96,18 @@ def find_pool(rt, pool: str):
         rt.sleep(1.0)
         f = common.frame(rt)
     return f, None
+
+
+def find_pool(rt, pool: str):
+    """滑到能看见这个池的「引く」，返回 (帧, 标题)；找不到 (帧, None)。
+    先在当前画面往下找（刚进扭蛋页就在顶上，11-27 用户：不用先往上划两次）；没找到再回到顶重找一遍。"""
+    f, title = _scan_down(rt, pool, common.frame(rt))
+    if title is not None:
+        return f, title
+    for _ in range(2):
+        rt.device.swipe(SWIPE[0], SWIPE[3], SWIPE[2], SWIPE[1], duration=SWIPE_S)
+    rt.sleep(1.0)
+    return _scan_down(rt, pool, common.frame(rt))
 
 
 class DrawStopped(Exception):
