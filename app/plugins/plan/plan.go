@@ -377,7 +377,7 @@ func (s *state) panel(c *ui.Context, h plugin.Host) {
 			kit.Note(c, "出方案时间 "+s.plan.Created)
 		}
 	}
-	kit.Section(c, "出方案")
+	kit.Section(c, "重新出方案")
 	s.pick.Draw(c, h, "plan")
 	idol := s.pick.Chosen.ID
 	if idol == "" && s.plan != nil {
@@ -389,7 +389,7 @@ func (s *state) panel(c *ui.Context, h plugin.Host) {
 	ui.Segmented(c, &s.attr, "主属性自动", "Vo", "Da", "Vi")
 	s.setInputs(c, h)
 	ui.Row(c).Gap(8).Children(func() {
-		if kit.Secondary(c, "出方案").Disabled(s.busy || idol == "").Clicked() {
+		if kit.Secondary(c, "重新出方案").Disabled(s.busy || idol == "").Clicked() {
 			args := []string{"plan", "formation", "--idol", idol}
 			if s.attr > 0 {
 				args = append(args, "--main-attr", []string{"", "Vo", "Da", "Vi"}[s.attr])
