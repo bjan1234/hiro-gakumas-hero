@@ -1,7 +1,7 @@
 """用真实系统去校验场景真值（规格 docs/ryugi/specs/2026-11-23-recognition-dataset-scenarios-design.md §5）。
 
 适配器：真实系统这一屏的读数（hiro.vision.extract.extract 的原始字段）→ 场景信息项的形状。系统根本不产出的项就不给，打分时算「没读」。
-打分：每个真值项三种结果——对 / 错 / 没读；真值是 null（画面上没有）且系统也没给的不计；待定 / 忽略的项不计。
+打分：每个真值项三种结果——对 / 错 / 没读；真值是 null（画面上没有）的项是无效测试项，不计（用户 11-26）；待定 / 忽略的项不计。
 """
 
 from __future__ import annotations
@@ -212,13 +212,11 @@ def score_frame(sid: str, truth: dict, got: dict, item_status: dict | None = Non
         leaf = _norm_item(p)
         if leaf in flags["unscored"]:
             continue  # 用户定的「不识别也没事」：真值留着，不计分
-        if (w is None or w == "none") and leaf in flags["derivable"]:
-            continue  # 画面上被遮住 / 看不到，系统按主数据补出来的不算错
         if w is None:
-            if g is None:
-                continue
-            res = "错"
-        elif g is None:
+            continue  # 真值 null（画面上没有）：无效测试项，系统给不给都不计（用户 11-26：相談没开货架时后端给 false 被记成错）
+        if w == "none" and leaf in flags["derivable"]:
+            continue  # 画面上被遮住 / 看不到，系统按主数据补出来的不算错
+        if g is None:
             res = "没读"
         elif g == w:
             res = "对"
