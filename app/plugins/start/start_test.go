@@ -3,6 +3,7 @@ package start
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/matto49/hiro-gakumas-hero/app/hiroapi"
 	"github.com/matto49/hiro-gakumas-hero/app/plugin"
+	"github.com/matto49/hiro-gakumas-hero/app/plugins/common"
 	"github.com/matto49/hiro-gakumas-hero/app/plugins/plugintest"
 )
 
@@ -360,5 +362,42 @@ func TestWriteFormationCardNamesSets(t *testing.T) {
 	e3, _ := p.Explain(h, hiroapi.Pending{Command: "run start", Args: map[string]any{"kind": "write-formation", "dry_run": true, "support_set": 3}})
 	if len(e3.Rows) != 0 {
 		t.Errorf("dry-run 不该有写进行 %+v", e3.Rows)
+	}
+}
+
+// #122 review：日常选项的零值是不买、不抽（老用户照常点日常不该第一次就花金币）；不买时不传「另外要买的」；扭蛋次数有上限。
+func TestDailyArgsDefaultSpendNothing(t *testing.T) {
+	s := &state{}
+	got := strings.Join(s.dailyArgs(), " ")
+	if got != "--shop off --coin-gacha off" {
+		t.Fatalf("缺省 %q", got)
+	}
+	s.shopItems = "再挑战券"
+	if strings.Contains(strings.Join(s.dailyArgs(), " "), "shop-items") {
+		t.Error("不买时不该传另外要买的")
+	}
+	s.shopMode, s.gachaMode, s.gachaN[0] = 1, 2, "999"
+	got = strings.Join(s.dailyArgs(), " ")
+	if !strings.Contains(got, "--shop recommended --shop-items 再挑战券") || !strings.Contains(got, fmt.Sprintf("--coin-gacha friend:%d", MaxGacha)) {
+		t.Errorf("选了以后 %q", got)
+	}
+}
+
+// CodeRabbit #122：偶像之路传偶像名（列表页按名字找路线），不传卡编号。
+func TestTowerPassesBareIdolName(t *testing.T) {
+	s := &state{}
+	for i, m := range modes {
+		if m.id == "tower" {
+			s.mode = i
+		}
+	}
+	s.pick.Chosen = common.IdolItem{ID: "i_card-skin-hski-3-001", Name: "【光景】篠泽广", Idol: "篠澤広"}
+	a, _ := s.args()
+	if a[len(a)-1] != "篠澤広" {
+		t.Errorf("偶像之路参数 %q", a)
+	}
+	s.pick.Chosen.Idol = ""
+	if a, _ := s.args(); a[len(a)-1] != "篠泽广" {
+		t.Errorf("没有扫描名时去掉称号：%q", a)
 	}
 }

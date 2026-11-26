@@ -56,7 +56,7 @@ def main() -> int:
         ("shop_ap", "HIRO_SHOP_AP"),
         ("coin_gacha", "HIRO_COIN_GACHA"),
     ):
-        if getattr(args, opt):
+        if getattr(args, opt) is not None:  # 空的也设：任务显式传「不买」时不继承环境里的值（CodeRabbit #138）
             os.environ[var] = getattr(args, opt)
     names = [n for n in (args.only.split(",") if args.only else TASKS) if n]
     if unknown := [n for n in names if n not in TASKS]:

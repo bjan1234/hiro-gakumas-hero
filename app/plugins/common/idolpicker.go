@@ -17,6 +17,19 @@ type IdolItem struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
 	Rarity string `json:"rarity"`
+	// Idol 是扫描读到的偶像名（日文原文，不带【称号】）：偶像之路在列表页按这个名字找路线（CodeRabbit #122）
+	Idol string `json:"idol"`
+}
+
+// BareIdol 是这张卡的偶像名（偶像之路用）：有扫描读到的就用它，没有从「【称号】偶像名」里去掉称号。
+func (it IdolItem) BareIdol() string {
+	if it.Idol != "" {
+		return it.Idol
+	}
+	if i := strings.LastIndex(it.Name, "】"); i >= 0 {
+		return strings.TrimSpace(it.Name[i+len("】"):])
+	}
+	return it.Name
 }
 
 // IdolPicker 是「选一张偶像卡」：读 info idols（扫描到的），筛选、点选。开局页和编成方案页共用。

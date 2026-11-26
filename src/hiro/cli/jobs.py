@@ -207,26 +207,60 @@ HAJIME_LEVELS = ("regular", "pro", "master")
 NIA_LEVELS = ("pro", "master")
 
 
+def _daily_opts(p: dict) -> dict[str, str]:
+    """日常的花钱选项，缺的按缺省（不买、不抽、综合力最低）补齐。「另外要买的」只在买推荐 / 全部时算（#122 review）。"""
+    shop = str(p.get("shop") or "off").strip().lower()
+    return {
+        "contest_pick": str(p.get("contest_pick") or "lowest"),
+        "shop": shop,
+        "shop_items": str(p.get("shop_items") or "") if shop != "off" else "",
+        "shop_ap": str(p.get("shop_ap") or ""),
+        "coin_gacha": str(p.get("coin_gacha") or "off"),
+    }
+
+
 def _daily_argv(p: dict, d: Path) -> list[str]:
     argv = [_PY, str(REPO / "tools" / "daily" / "run_daily.py")]
     items = [i for i in (p.get("items") or "").split(",") if i]
     if items:
         argv += ["--only", ",".join(items)]
-    for key, flag in (
-        ("contest_pick", "--contest-pick"),
-        ("shop", "--shop"),
-        ("shop_items", "--shop-items"),
-        ("shop_ap", "--shop-ap"),
-        ("coin_gacha", "--coin-gacha"),
-    ):
-        if p.get(key):
-            argv += [flag, str(p[key])]
+    # 每项都显式传（空的也传）：不让任务继承环境里的 HIRO_SHOP 等，执行的和确认摘要写的一样（CodeRabbit #138）
+    for key, val in _daily_opts(p).items():
+        argv += ["--" + key.replace("_", "-"), val]
     return argv
 
 
+_AP_NAMES = {"pt": "支援强化点数获取提升", "note": "笔记获取数提升", "retry": "再挑战券", "regen": "回忆再生成券"}
+_GACHA_NAMES = {"friend": "友情", "sense": "感性", "logic": "理性", "anomaly": "非凡"}
+
+
 def _daily_summary(p: dict) -> str:
+    """确认摘要：做哪几项，加上会花什么（商店、体力商店、扭蛋；不买不抽也写明，CodeRabbit #122）。"""
     items = [i for i in (p.get("items") or "").split(",") if i]
-    return "领日常奖励" + (f"（{'、'.join(DAILY_LABEL.get(i, i) for i in items)}）" if items else "")
+    o = _daily_opts(p)
+    run = lambda k: not items or k in items  # noqa: E731
+    spend = []
+    if run("shop"):
+        shop = {"recommended": "商店买推荐商品（花金币）", "all": "商店能买的都买（花金币）"}.get(o["shop"], "商店不买")
+        if o["shop_items"]:
+            shop += f"，另外买：{o['shop_items']}"
+        spend.append(shop)
+        if ap := [_AP_NAMES.get(k.strip(), k.strip()) for k in o["shop_ap"].split(",") if k.strip()]:
+            spend.append("体力商店买" + "、".join(ap) + "（花体力）")
+    if run("coin_gacha"):
+        g = o["coin_gacha"]
+        if g in ("", "off"):
+            spend.append("硬币扭蛋不抽")
+        elif g == "auto":
+            spend.append("硬币扭蛋抽 1 次（花硬币）")
+        else:
+            parts = []
+            for part in g.split(","):
+                k, _, n = part.strip().partition(":")
+                parts.append(f"{_GACHA_NAMES.get(k, k)} {n or 1} 次")
+            spend.append("硬币扭蛋抽" + "、".join(parts) + "（花硬币）")
+    head = "领日常奖励" + (f"（{'、'.join(DAILY_LABEL.get(i, i) for i in items)}）" if items else "")
+    return head + ("：" + "；".join(spend) if spend else "")
 
 
 def _produce_argv(module: str, default_level: str):

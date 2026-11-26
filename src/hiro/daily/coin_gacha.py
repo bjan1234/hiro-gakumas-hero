@@ -26,6 +26,7 @@ TIMEOUT = 40.0
 SWIPE = (600, 950, 600, 300)
 SWIPE_S = 1.5
 MAX_COUNT_TAPS = 30
+MAX_TIMES = 10  # 每个池一次最多抽几次（填得很大时会一直空点「＋」到超时，#122 review）；界面也限这个数
 
 
 def plan() -> list[tuple[str, int]] | str:
@@ -39,7 +40,7 @@ def plan() -> list[tuple[str, int]] | str:
     for part in v.split(","):
         k, _, n = part.strip().partition(":")
         if k in POOLS:
-            times = int(n) if n.strip().isdigit() else 1
+            times = min(int(n), MAX_TIMES) if n.strip().isdigit() else 1
             if times > 0:
                 out.append((k, times))
     return out
@@ -102,6 +103,14 @@ def find_pool(rt, pool: str):
     return f, None
 
 
+class DrawStopped(Exception):
+    """抽完以后关结果画面超时：已经抽了 n 次。"""
+
+    def __init__(self, pool: str, n: int, why: str) -> None:
+        super().__init__(why)
+        self.pool, self.n = pool, n
+
+
 def draw(rt, pool: str, times: int) -> int:
     """抽 times 次（币不够就抽能抽的），返回实际抽了几次。"""
     _, title = find_pool(rt, pool)
@@ -158,26 +167,40 @@ def draw(rt, pool: str, times: int) -> int:
             rt.device.tap(360, 1240)  # 抽卡演出：点下面空白跳过
         return None
 
-    rt.drive(back, 60, "关抽卡结果", every=1.0)
+    from hiro.loop.errors import ResumeBlocked
+
+    try:
+        rt.drive(back, 60, "关抽卡结果", every=1.0)
+    except ResumeBlocked as e:  # 已经抽了：带着次数往外报，结果里要看得到（#122 review）
+        raise DrawStopped(pool, n, str(e)) from e
     logger.info("%s扭蛋 抽了 %d 次", NAMES[pool], n)
     return n
 
 
 def run(rt) -> str:
+    """中途超时（ResumeBlocked，比如抽完关结果画面）时照样报出已经抽了的（#122 review）。"""
+    from hiro.loop.errors import ResumeBlocked
+
     p = plan()
     if p == []:
         return "硬币扭蛋：设置里关了"
-    if not goto_coin_gacha(rt):
-        return "硬币扭蛋：没进到硬币扭蛋页"
-    done = []
-    if isinstance(p, str):  # auto
-        for pool in POOLS:
-            if (n := draw(rt, pool, 1)) > 0:
-                done.append(f"{NAMES[pool]} {n} 次")
-                break
-    else:
-        for pool, times in p:
-            if (n := draw(rt, pool, times)) > 0:
-                done.append(f"{NAMES[pool]} {n} 次")
-    nav.goto_home(rt)
+    done: list[str] = []
+    try:
+        if not goto_coin_gacha(rt):
+            return "硬币扭蛋：没进到硬币扭蛋页"
+        if isinstance(p, str):  # auto
+            for pool in POOLS:
+                if (n := draw(rt, pool, 1)) > 0:
+                    done.append(f"{NAMES[pool]} {n} 次")
+                    break
+        else:
+            for pool, times in p:
+                if (n := draw(rt, pool, times)) > 0:
+                    done.append(f"{NAMES[pool]} {n} 次")
+        nav.goto_home(rt)
+    except (ResumeBlocked, DrawStopped) as e:
+        if isinstance(e, DrawStopped) and e.n > 0:
+            done.append(f"{NAMES[e.pool]} {e.n} 次")
+        logger.warning("硬币扭蛋中途停下：%s", e)
+        return "硬币扭蛋：" + ("、".join(done) + "；" if done else "") + f"中途停下：{e or '超时'}"
     return "硬币扭蛋：" + ("、".join(done) if done else "币不够，没抽")

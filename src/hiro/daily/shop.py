@@ -100,7 +100,8 @@ def read_dialog(f) -> dict | None:
     head = text_at(f, "を使用して")
     name = None
     if head is not None:
-        below = [t for t in f.texts if 20 < t.rect.center.y - head.rect.center.y < 110 and t.rect.x1 > 150]
+        # 名字在说明行下面一行；用文字中心判断（长名字左端会靠左，CodeRabbit #122）
+        below = [t for t in f.texts if 20 < t.rect.center.y - head.rect.center.y < 110 and 150 < t.rect.center.x < 650]
         if below:
             name = min(below, key=lambda t: t.rect.center.y).text.strip()
     texts = " ".join(t.text for t in f.texts)
@@ -202,112 +203,140 @@ def buy_ap(rt, keys: list[str]) -> list[str]:
     return got
 
 
+def _fallback(rt, cands: list[dict]) -> tuple[str | None, str | None]:
+    """没有おすすめ（今天也没卖过）时买最便宜的一件，让「ショップで買い物」完成：返回 (买到的名字, 没买的原因)。
+    滑动距离不固定，回到记下的坐标可能是别的格子（review）：回到顶后逐屏按价格找。确认框缺省是能买的最多个（あと N回），
+    只在框里实际扣的マニー正好是一件的价时「決定」（#122 review：原来按剩余次数整批买），所以优先挑只剩 1 次的。"""
+    pick = min(cands, key=lambda t: (t["left"] != 1, t["price"]))
+    price = pick["price"]
+    for _ in range(MAX_SCREENS):
+        rt.device.swipe(SWIPE[0], SWIPE[3], SWIPE[2], SWIPE[1], duration=SWIPE_S)  # 回到顶
+    rt.sleep(1.0)
+    for _ in range(MAX_SCREENS + 1):
+        tile = next(
+            (t for t in tiles(common.frame(rt)) if t["price"] == price and t["left"] == pick["left"] and t["left"] > 0),
+            None,
+        )
+        if tile is not None:
+            rt.device.tap(tile["x"], tile["y"])
+            g = wait_dialog(rt)
+            if g is None:
+                return None, "最便宜那件的确认框没出来"
+            d = read_dialog(g)
+            c = cost(g)
+            if d is not None and d["money"] and not d["jewel"] and c == price:
+                if confirm(rt, g):
+                    return d["name"] or "?", None
+                return None, "金币不够"
+            logger.info("最便宜那件对不上（价 %s，框里扣 %s），不买", price, c)
+            tap_word(rt, g, "キャンセル", y_min=1080)
+            wait_dialog(rt, gone=True)
+            if c is not None and price > 0 and c > price:
+                return None, f"最便宜那件一次要买 {c // price} 个，没买"
+            return None, "最便宜那件的价钱对不上，没买"
+        rt.device.swipe(*SWIPE, duration=SWIPE_S)
+        rt.sleep(1.0)
+    return None, "回头没找到最便宜那件"
+
+
 def run(rt) -> str:
+    """HIRO_SHOP / HIRO_SHOP_ITEMS / HIRO_SHOP_AP 见文件头。中途超时（ResumeBlocked）时照样报出已经买到的（#122 review）。"""
+    from hiro.loop.errors import ResumeBlocked
+
     m = mode()
     ap_keys = ap_wanted()
     if m == "off" and not ap_keys:
         return "商店：设置里关了"
-    names = wanted_names()
-    if not goto_daily_exchange(rt):
-        return "商店：没进到每日兑换所"
+    names = wanted_names() if m != "off" else []  # 「另外要买的」是推荐 / 全部的补充：不买时不算（#122 review）
     bought: list[str] = []
-    skip: set[tuple] = set()  # 看过框、决定不买的格子（屏号, x, y）：买了别的之后重读这一屏时不再点开
-    cheapest: dict | None = None  # recommended 模式一个おすすめ都没有时：最便宜的那件（屏号, 格）
-    no_money = False
-    screens = 0
-    last_sig = None
-    while m != "off" and screens < MAX_SCREENS and len(bought) < MAX_BUYS and not no_money:
-        f = common.frame(rt)
-        sig = tuple((t.text, t.rect.center.y // 20) for t in f.texts if t.rect.center.y < 1060)
-        if sig == last_sig:
-            break  # 滑不动了：到底
-        last_sig = sig
-        acted = False
-        for tile in tiles(f):
-            key = (screens, tile["x"] // 20, tile["y"] // 20)
-            if tile["left"] <= 0 or key in skip:
-                continue
-            if m == "recommended" and not names and not tile["recommended"]:
-                if tile["price"] is not None and (cheapest is None or tile["price"] < cheapest["price"]):
-                    cheapest = {**tile, "screen": screens}
-                continue
-            rt.device.tap(tile["x"], tile["y"])
-            g = wait_dialog(rt)
-            if g is None:
-                continue
-            d = read_dialog(g)
-            name = (d or {}).get("name") or "?"
-            want = (
-                d is not None
-                and d["money"]
-                and not d["jewel"]
-                and (m == "all" or tile["recommended"] or name_wanted(name, names))
-            )
-            if not want:
-                if d is not None and d["jewel"]:
-                    logger.warning("兑换确认框里有钻石字样，不买：%s", name)
-                skip.add(key)
-                tap_word(rt, g, "キャンセル", y_min=1080)
-                wait_dialog(rt, gone=True)
-                continue
-            if not confirm(rt, g):  # 决定点了框不关：マニー不够（按钮灰）
-                no_money = True
-                break
-            bought.append(name)
-            logger.info("商店买了：%s", name)
-            acted = True
-            break  # 画面变了，重新读这一屏
-        if acted:
-            last_sig = None
-            continue
-        rt.device.swipe(*SWIPE, duration=SWIPE_S)
-        rt.sleep(1.0)
-        screens += 1
-    if m == "recommended" and not names and not bought and cheapest is not None and not no_money:
-        # 一个おすすめ都没有：买最便宜的一件，让「ショップで買い物」完成。滑动距离不固定，回到记下的坐标可能是别的格子
-        # （review）：回到顶后逐屏按价格找，确认框里实际扣的マニー也得等于这个价才「決定」，对不上就キャンセル。
-        price = cheapest["price"]
-        for _ in range(MAX_SCREENS):
-            rt.device.swipe(SWIPE[0], SWIPE[3], SWIPE[2], SWIPE[1], duration=SWIPE_S)  # 回到顶
-        rt.sleep(1.0)
-        done = False
-        for _ in range(MAX_SCREENS + 1):
-            tile = next((t for t in tiles(common.frame(rt)) if t["price"] == price and t["left"] > 0), None)
-            if tile is not None:
+    ap_got: list[str] = []
+    money_short = False  # 有一件金币不够（跳过它接着看别的，CodeRabbit #122）
+    note: str | None = None
+    stopped: str | None = None
+    try:
+        if not goto_daily_exchange(rt):
+            return "商店：没进到每日兑换所"
+        skip: set[tuple] = set()  # 看过框、决定不买（或买不起）的格子（屏号, x, y）：重读这一屏时不再点开
+        cands: dict[tuple, dict] = {}  # recommended 模式：没标おすすめ、还能买的格子（兜底挑最便宜的）
+        rec_seen = False  # 看到过おすすめ（含今天已经买光的）：有就不兜底，今天已经算买过了（#122 review）
+        screens = 0
+        last_sig = None
+        while m != "off" and screens < MAX_SCREENS and len(bought) < MAX_BUYS:
+            f = common.frame(rt)
+            sig = tuple((t.text, t.rect.center.y // 20) for t in f.texts if t.rect.center.y < 1060)
+            if sig == last_sig:
+                break  # 滑不动了：到底
+            last_sig = sig
+            acted = False
+            for tile in tiles(f):
+                key = (screens, tile["x"] // 20, tile["y"] // 20)
+                rec_seen = rec_seen or tile["recommended"]
+                if tile["left"] <= 0 or key in skip:
+                    continue
+                if m == "recommended" and not tile["recommended"]:
+                    if tile["price"] is not None:
+                        cands[key] = tile  # 最低价兜底和指定名字无关（CodeRabbit #122）
+                    if not names:
+                        continue
                 rt.device.tap(tile["x"], tile["y"])
                 g = wait_dialog(rt)
-                d = read_dialog(g) if g is not None else None
-                c = cost(g) if g is not None else None
-                # 确认框缺省是能买的最多个（あと N回）：扣的マニー是单价的整数倍、不超过剩余次数才算这件
-                same = c is not None and price > 0 and c % price == 0 and 0 < c // price <= tile["left"]
-                if g is not None and d is not None and d["money"] and not d["jewel"] and same:
-                    if confirm(rt, g):
-                        bought.append(d["name"] or "?")
-                    done = True
-                elif g is not None:
-                    logger.info("最便宜那件对不上（价 %s，框里扣 %s），不买", price, cost(g))
+                if g is None:
+                    continue
+                d = read_dialog(g)
+                name = (d or {}).get("name") or "?"
+                want = (
+                    d is not None
+                    and d["money"]
+                    and not d["jewel"]
+                    and (m == "all" or tile["recommended"] or name_wanted(name, names))
+                )
+                skip.add(key)
+                if not want:
+                    if d is not None and d["jewel"]:
+                        logger.warning("兑换确认框里有钻石字样，不买：%s", name)
                     tap_word(rt, g, "キャンセル", y_min=1080)
                     wait_dialog(rt, gone=True)
-                    done = True
-            if done:
-                break
+                    continue
+                if not confirm(rt, g):  # 决定点了框不关：マニー不够（按钮灰）。跳过这件，接着看便宜的
+                    money_short = True
+                    continue
+                bought.append(name)
+                logger.info("商店买了：%s", name)
+                acted = True
+                break  # 画面变了，重新读这一屏
+            if acted:
+                last_sig = None
+                continue
             rt.device.swipe(*SWIPE, duration=SWIPE_S)
             rt.sleep(1.0)
-    ap_got = buy_ap(rt, ap_keys) if ap_keys else []
-    nav.goto_home(rt)
+            screens += 1
+        if m == "recommended" and not bought and not rec_seen and cands and not money_short:
+            got, note = _fallback(rt, list(cands.values()))
+            if got:
+                bought.append(got)
+        if ap_keys:
+            ap_got = buy_ap(rt, ap_keys)
+        nav.goto_home(rt)
+    except ResumeBlocked as e:
+        stopped = str(e) or "超时"
+        logger.warning("商店中途停下：%s", stopped)
     parts = []
     if bought:
         parts.append(
-            "商店买了：" + "、".join(item_name(b) for b in bought) + ("（金币不够，没买完）" if no_money else "")
+            "商店买了：" + "、".join(item_name(b) for b in bought) + ("（有的金币不够，没买）" if money_short else "")
         )
-    elif no_money:
+    elif money_short:
         parts.append("商店：金币不够")
-    elif m != "off":
-        parts.append("商店：没有要买的")
+    elif note:
+        parts.append("商店：没有推荐商品，" + note)
+    elif m != "off" and stopped is None:
+        parts.append("商店：没有要买的（推荐商品今天买过了）" if m == "recommended" else "商店：没有要买的")
     if ap_keys:
         parts.append(
             "体力商店买了：" + "、".join(item_name(b) for b in ap_got)
             if ap_got
-            else "体力商店：没买到（体力不够或今天买过了）"
+            else ("体力商店：没买到（体力不够或今天买过了）" if stopped is None else "体力商店：没买")
         )
+    if stopped is not None:
+        parts.append(f"商店中途停下：{stopped}")
     return "；".join(parts)

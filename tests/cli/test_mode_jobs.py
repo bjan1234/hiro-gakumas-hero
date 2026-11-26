@@ -43,11 +43,47 @@ def test_nia_job_defaults_to_pro(hiro_home):
     assert "N.I.A" in KINDS["nia"].summary({})
 
 
+DAILY_DEFAULTS = [
+    "--contest-pick",
+    "lowest",
+    "--shop",
+    "off",
+    "--shop-items",
+    "",
+    "--shop-ap",
+    "",
+    "--coin-gacha",
+    "off",
+]
+
+
 def test_daily_items(hiro_home):
-    assert argv("daily", {"items": "presents,mission_reward"})[2:] == ["--only", "presents,mission_reward"]
-    assert argv("daily", {"items": "assignment,contest"})[2:] == ["--only", "assignment,contest"]
-    assert argv("daily", {"items": "contest"})[2:] == ["--only", "contest"]
-    assert argv("daily", {})[2:] == []
+    assert argv("daily", {"items": "presents,mission_reward"})[2:] == [
+        "--only",
+        "presents,mission_reward",
+        *DAILY_DEFAULTS,
+    ]
+    assert argv("daily", {"items": "contest"})[2:] == ["--only", "contest", *DAILY_DEFAULTS]
+    # 花钱的选项总是显式传（不继承环境里的 HIRO_SHOP 等，CodeRabbit #138）
+    assert argv("daily", {})[2:] == DAILY_DEFAULTS
+
+
+def test_daily_shop_items_only_with_shop_on(hiro_home):
+    """「另外要买的」只在买推荐 / 全部时传（#122 review：不买时被静默忽略、确认卡却写着另外买）。"""
+    a = argv("daily", {"shop": "off", "shop_items": "再挑戦"})
+    assert a[a.index("--shop-items") + 1] == ""
+    a = argv("daily", {"shop": "recommended", "shop_items": "再挑戦"})
+    assert a[a.index("--shop-items") + 1] == "再挑戦"
+
+
+def test_daily_summary_lists_spending(hiro_home):
+    """确认摘要写出会花什么；不买不抽也写明（CodeRabbit #122）。"""
+    s = KINDS["daily"].summary({})
+    assert "商店不买" in s and "硬币扭蛋不抽" in s
+    s = KINDS["daily"].summary({"shop": "all", "shop_ap": "retry", "coin_gacha": "friend:2"})
+    assert "能买的都买" in s and "再挑战券" in s and "友情 2 次" in s and "花硬币" in s
+    s = KINDS["daily"].summary({"items": "presents", "shop": "all"})
+    assert "商店" not in s and "扭蛋" not in s
 
 
 def test_run_start_accepts_new_params(run_cli):

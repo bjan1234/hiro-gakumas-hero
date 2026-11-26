@@ -92,3 +92,127 @@ def test_shop_default_off_and_cost(monkeypatch):
     f = frame(("交換確認", 100, 425), ("2,017,701", 193, 992), ("→", 387, 997), ("2,014,701", 450, 992))
     assert shop.cost(f) == 3000
     assert shop.cost(frame(("2,017,701", 193, 992))) is None
+
+
+# ---- #122 review：同一天重跑不再兜底买一批、买不起跳过接着看、超时照样报已买的、长名字、扭蛋上限 ----
+
+
+class _Dev:
+    def __init__(self):
+        self.taps = []
+
+    def tap(self, x, y):
+        self.taps.append((x, y))
+
+    def swipe(self, *a, **k):
+        pass
+
+
+class _Rt:
+    def __init__(self):
+        self.device = _Dev()
+
+    def sleep(self, s):
+        pass
+
+
+def _shop(monkeypatch, screen, goods, money, *, home_raises=False):
+    """screen：商店这一屏；goods：格子 x → (名字, 单价, 一次买几个)；money：有多少金币。"""
+    from hiro.loop.errors import ResumeBlocked
+
+    rt = _Rt()
+    state = {"money": money}
+    monkeypatch.setattr(shop, "goto_daily_exchange", lambda rt: True)
+    monkeypatch.setattr(shop.common, "frame", lambda rt: screen)
+    monkeypatch.setattr(shop, "tap_word", lambda *a, **k: True)
+
+    def dialog(rt, gone=False):
+        if gone:
+            return screen
+        x = rt.device.taps[-1][0]
+        name, price, n = goods[x]
+        return frame(("交換確認", 100, 425), ("マニーを使用して、以下のアイテムと交換しますか?", 300, 512),
+                     (name, 380, 584), (f"{state['money']:,}", 193, 992), (f"{state['money'] - price * n:,}", 450, 992))  # fmt: skip
+
+    def confirm(rt, g):
+        x = rt.device.taps[-1][0]
+        _, price, n = goods[x]
+        if price * n > state["money"]:
+            return False
+        state["money"] -= price * n
+        return True
+
+    def home(rt):
+        if home_raises:
+            raise ResumeBlocked("回首页超时")
+
+    monkeypatch.setattr(shop, "wait_dialog", dialog)
+    monkeypatch.setattr(shop, "confirm", confirm)
+    monkeypatch.setattr(shop.nav, "goto_home", home)
+    return rt
+
+
+def test_shop_recommended_sold_out_means_done_today(monkeypatch):
+    """おすすめ今天已经买光（あと0回）：算今天买过了，不兜底买最便宜的（原来会按剩余次数整批买）。"""
+    monkeypatch.setenv("HIRO_SHOP", "recommended")
+    monkeypatch.delenv("HIRO_SHOP_ITEMS", raising=False)
+    monkeypatch.delenv("HIRO_SHOP_AP", raising=False)
+    screen = frame(("おすすめ", 61, 319), ("3,000", 120, 480), ("あと0回", 104, 509),
+                   ("1,000", 290, 480), ("あと2回", 274, 509))  # fmt: skip
+    rt = _shop(monkeypatch, screen, {274: ("ノート", 1000, 2)}, 100000)
+    r = shop.run(rt)
+    assert rt.device.taps == [] and "今天买过了" in r
+
+
+def test_shop_fallback_only_buys_exactly_one(monkeypatch):
+    """没有おすすめ：最便宜那件确认框里一次要买 2 个（扣 2 件的钱）就不买，写明原因。"""
+    monkeypatch.setenv("HIRO_SHOP", "recommended")
+    monkeypatch.delenv("HIRO_SHOP_ITEMS", raising=False)
+    monkeypatch.delenv("HIRO_SHOP_AP", raising=False)
+    screen = frame(("1,000", 290, 480), ("あと2回", 274, 509))
+    rt = _shop(monkeypatch, screen, {274: ("ノート", 1000, 2)}, 100000)
+    r = shop.run(rt)
+    assert "一次要买 2 个" in r and "买了" not in r
+    screen = frame(("1,000", 290, 480), ("あと1回", 274, 509))
+    rt = _shop(monkeypatch, screen, {274: ("ロジックノート", 1000, 1)}, 100000)
+    assert "商店买了" in shop.run(rt)
+
+
+def test_shop_all_skips_unaffordable_and_keeps_going(monkeypatch):
+    """all：先碰到买不起的 6,000，后面 3,000 的照样买（CodeRabbit #122）。"""
+    monkeypatch.setenv("HIRO_SHOP", "all")
+    monkeypatch.delenv("HIRO_SHOP_AP", raising=False)
+    screen = frame(("6,000", 120, 480), ("あと1回", 104, 509), ("3,000", 290, 480), ("あと1回", 274, 509))
+    rt = _shop(monkeypatch, screen, {104: ("高い物", 6000, 1), 274: ("ロジックノート", 3000, 1)}, 5000)
+    r = shop.run(rt)
+    assert "商店买了" in r and "有的金币不够" in r
+
+
+def test_shop_timeout_still_reports_bought(monkeypatch):
+    """买完回首页超时（ResumeBlocked）：结果里照样写出买了什么（#122 review）。"""
+    monkeypatch.setenv("HIRO_SHOP", "all")
+    monkeypatch.delenv("HIRO_SHOP_AP", raising=False)
+    screen = frame(("3,000", 120, 480), ("あと1回", 104, 509))
+    rt = _shop(monkeypatch, screen, {104: ("ロジックノート", 3000, 1)}, 5000, home_raises=True)
+    r = shop.run(rt)
+    assert "商店买了" in r and "中途停下" in r
+
+
+def test_shop_items_ignored_when_off(monkeypatch):
+    """不买时「另外要买的」不算（只是推荐 / 全部的补充），也不进商店。"""
+    monkeypatch.setenv("HIRO_SHOP", "off")
+    monkeypatch.setenv("HIRO_SHOP_ITEMS", "再挑戦")
+    monkeypatch.delenv("HIRO_SHOP_AP", raising=False)
+    assert shop.run(_Rt()) == "商店：设置里关了"
+
+
+def test_shop_dialog_reads_long_name():
+    """长名字左端靠左（x1 < 150）也读得到（CodeRabbit #122）。"""
+    f = frame(("交換確認", 100, 425), ("マニーを使用して、以下のアイテムと交換しますか?", 300, 512))
+    f.__dict__["texts"].append(Text("[Wonder Scale]倉本千奈のピース(とても長い名前)", Box(120, 572, 640, 596)))
+    assert shop.read_dialog(f)["name"].startswith("[Wonder Scale]")
+
+
+def test_coin_gacha_times_capped(monkeypatch):
+    monkeypatch.setenv("HIRO_COIN_GACHA", "friend:999,sense:3")
+    assert coin_gacha.plan() == [("friend", coin_gacha.MAX_TIMES), ("sense", 3)]

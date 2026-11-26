@@ -63,10 +63,10 @@ type state struct {
 
 	// 日常的选项（11-26）：竞赛挑哪个对手、商店买什么、硬币扭蛋抽哪个
 	contestPick int     // 0 综合力最低 1/2/3 第几个
-	shopMode    int     // 0 推荐商品 1 全部 2 不买
+	shopMode    int     // 0 不买 1 推荐商品 2 全部（零值 = 不花钱，#122 review：老用户照常点日常不该第一次就花金币）
 	shopItems   string  // 另外要买的商品名，逗号分隔
 	shopAP      [4]bool // 体力商店买哪几样（apItems 的顺序）
-	gachaMode   int     // 0 自动抽 1 次 1 不抽 2 自己定
+	gachaMode   int     // 0 不抽 1 自动抽 1 次 2 自己定
 	gachaN      [4]string
 	plan        *planBrief
 	planAt      time.Time
@@ -257,7 +257,7 @@ func (s *state) explain(h plugin.Host, cat *common.Catalog, p hiroapi.Pending) (
 		}
 		// 商店 / 扭蛋总是写出来：没传就是不买 / 不抽（review：确认卡上看不出会不会花マニー）
 		e.Rows = append(e.Rows, [2]string{"商店", map[string]string{"recommended": "买推荐商品", "all": "能买的都买", "off": "不买", "": "不买"}[r.Flags["shop"]]})
-		if v := r.Flags["shop-items"]; v != "" {
+		if v := r.Flags["shop-items"]; v != "" && r.Flags["shop"] != "" && r.Flags["shop"] != "off" {
 			e.Rows = append(e.Rows, [2]string{"另外买", v})
 		}
 		if v := r.Flags["shop-ap"]; v != "" {
@@ -499,11 +499,13 @@ func (s *state) dailyOptions(c *ui.Context) {
 	ui.Segmented(c, &s.contestPick, "综合力最低", "第一个", "第二个", "第三个")
 	kit.Note(c, "三个对手由上到下难度和奖励不同。每天 5 场，打完就停。")
 	kit.Section(c, "商店（每日兑换所，用金币）")
-	ui.Segmented(c, &s.shopMode, "买推荐商品", "能买的都买", "不买")
-	ui.Row(c).Key("shop-items").Children(func() {
-		ui.TextInput(c, &s.shopItems).Grow(1).Placeholder("另外要买的（可不填）：商品名，逗号分隔，例如 仓本千奈的碎片,再挑战券").FontSize(kit.FSmall)
-	})
-	kit.Note(c, "没有推荐商品时买最便宜的一件，让「在商店购物」这个日常任务完成。只用金币，要花钻石的一律不买。")
+	ui.Segmented(c, &s.shopMode, "不买", "买推荐商品", "能买的都买")
+	if s.shopMode != 0 { // 「另外要买的」是推荐 / 全部的补充，不买时不显示也不传（#122 review）
+		ui.Row(c).Key("shop-items").Children(func() {
+			ui.TextInput(c, &s.shopItems).Grow(1).Placeholder("另外要买的（可不填）：商品名，逗号分隔，例如 仓本千奈的碎片,再挑战券").FontSize(kit.FSmall)
+		})
+		kit.Note(c, "推荐商品今天还没买过、又一个都没有时，买最便宜的一件（只买 1 个），让「在商店购物」这个日常任务完成。只用金币，要花钻石的一律不买。")
+	}
 	kit.Section(c, "体力商店（可选，用体力）")
 	ui.Column(c).Gap(4).Children(func() {
 		for i, it := range apItems {
@@ -512,7 +514,7 @@ func (s *state) dailyOptions(c *ui.Context) {
 	})
 	kit.Note(c, "每日兑换所的体力页签：每样一天能买 2 次、一次 10 体力，勾了就买满。不勾不买。")
 	kit.Section(c, "硬币扭蛋")
-	ui.Segmented(c, &s.gachaMode, "自动抽 1 次", "不抽", "自己定")
+	ui.Segmented(c, &s.gachaMode, "不抽", "自动抽 1 次", "自己定")
 	if s.gachaMode == 2 {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
 			for i, p := range gachaPools {
@@ -522,9 +524,12 @@ func (s *state) dailyOptions(c *ui.Context) {
 				})
 			}
 		})
-		kit.Note(c, "每个池抽几次（每次 10 枚这个池自己的币，币不够就抽能抽的）。")
+		kit.Note(c, fmt.Sprintf("每个池抽几次（最多 %d 次；每次 10 枚这个池自己的币，币不够就抽能抽的）。", MaxGacha))
 	}
 }
+
+// MaxGacha 是每个池一次最多抽几次（和 hiro.daily.coin_gacha.MAX_TIMES 一样，#122 review）。
+const MaxGacha = 10
 
 // gachaLabel 把 --coin-gacha 的值说成人话（「友情 2 次、感性 1 次」）。
 func gachaLabel(v string) string {
@@ -553,8 +558,8 @@ func (s *state) dailyArgs() []string {
 		a = append(a, "--contest-pick", fmt.Sprint(s.contestPick))
 	}
 	// 商店、扭蛋在命令行缺省是关的（花マニー / 币的事默认不做，review）：这里总是显式传选的那项
-	a = append(a, "--shop", []string{"recommended", "all", "off"}[s.shopMode])
-	if t := strings.TrimSpace(strings.ReplaceAll(s.shopItems, "，", ",")); t != "" {
+	a = append(a, "--shop", []string{"off", "recommended", "all"}[s.shopMode])
+	if t := strings.TrimSpace(strings.ReplaceAll(s.shopItems, "，", ",")); t != "" && s.shopMode != 0 {
 		a = append(a, "--shop-items", t)
 	}
 	var ap []string
@@ -568,14 +573,15 @@ func (s *state) dailyArgs() []string {
 	}
 	switch s.gachaMode {
 	case 0:
-		a = append(a, "--coin-gacha", "auto")
-	case 1:
 		a = append(a, "--coin-gacha", "off")
+	case 1:
+		a = append(a, "--coin-gacha", "auto")
 	case 2:
 		var parts []string
 		for i, p := range gachaPools {
 			n := 0
 			if _, err := fmt.Sscanf(strings.TrimSpace(s.gachaN[i]), "%d", &n); err == nil && n > 0 {
+				n = min(n, MaxGacha)
 				parts = append(parts, fmt.Sprintf("%s:%d", p[0], n))
 			}
 		}
@@ -611,7 +617,8 @@ func (s *state) args() ([]string, string) {
 		if s.pick.Chosen.ID == "" {
 			return nil, ""
 		}
-		return append(a, "--idol", s.pick.Chosen.ID), "开一局偶像之路（" + s.pick.Chosen.Name + "）"
+		// 偶像之路按偶像名找路线，传卡编号会在列表页停下（CodeRabbit #122）
+		return append(a, "--idol", s.pick.Chosen.BareIdol()), "开一局偶像之路（" + s.pick.Chosen.Name + "）"
 	}
 	if s.resume {
 		a = append(a, "--command", "resume")
