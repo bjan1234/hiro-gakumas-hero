@@ -149,14 +149,14 @@ type deferHost struct {
 
 func (d *deferHost) Go(work func() func()) { *d.q = append(*d.q, work) }
 
-// 11-25 review：操作权限挪进对话框左下角，设置页只写现在是哪一档、去哪换。
+// 11-25 review：操作权限挪进对话框左下角（11-26 页面模式在侧栏底部），设置页只写现在是哪一档、去哪换。
 func TestPermissionPointsToComposer(t *testing.T) {
 	f := &fake{s: Settings{Provider: "deepseek", WizardDone: true}, secrets: map[string]string{}, ready: true}
 	p := New(f.deps()).Plugin()
 	h := plugintest.New(map[string]string{})
 	tt := ui.NewTester(func(c *ui.Context) { p.Panel(c, h, "") }, 760, 2400)
 	tt.Frame()
-	if !tt.HasText("现在是「允许读操作」。在对话框左下角点它就能换，哪些事不用确认就直接做都写在那里。") || tt.HasText("总是询问") {
+	if !tt.HasText("现在是「允许读操作」。在侧栏底部（页面）或对话框左下角（问 AI）点它就能换，哪些事不用确认就直接做都写在那里。") || tt.HasText("总是询问") {
 		t.Errorf("设置页应只写档位和去哪换：%q", tt.Texts())
 	}
 }
