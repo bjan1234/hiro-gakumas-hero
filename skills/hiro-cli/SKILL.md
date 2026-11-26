@@ -134,6 +134,8 @@ description: 用 hiro 命令行查学マス账号信息和游戏资料库、开�
 | `hiro run report --job <编号>` | 一局的成绩摘要：每场考试分数、决策来源（规则 / 算法 / LLM）、LLM 次数、故障恢复次数。对局结束时事件流里也有一条 `report` |
 | `hiro run review --job <编号>` | 生成复盘页（逐回合出牌和理由，带截图），返回本机 html 路径 |
 | `hiro run stop` | 停止任务（不放弃培育，游戏停在原地，之后可以 `hif --command resume` 续跑） |
+| `hiro game close [--what game\|emulator]` | 关游戏（缺省只关游戏）；有任务在跑时不关。桌面程序「跑完关游戏」开着时任务结束自动调用 |
+| `hiro service stop` | 关掉后台服务（正在跑的任务先停）；桌面程序关窗口时调用，平时不用 |
 
 任务结束的事件是 `done`、`failed`（看前面几条 `log` 判断原因，转告使用者）或 `stopped`。
 

@@ -745,6 +745,33 @@ def _start(a: dict) -> dict:
 
 
 @command(
+    "game close",
+    Risk.READ,
+    "关游戏（DMM 关 gakumas.exe；MuMu / 雷电关游戏应用）。--what emulator 连模拟器 / DMM Game Player 一起关。"
+    "初星助手的「跑完关游戏」开着时，任务结束后自动调用。培育进度在服务器上，关了不丢。",
+    args=(Arg("--what", "game 只关游戏（缺省）/ emulator 连模拟器一起关", choices=("game", "emulator")),),
+    agent=False,
+)
+def _game_close(a: dict) -> dict:
+    from hiro.runtime import close_game
+
+    if (cur := client.data("status").get("current")) and cur.get("state") in LIVE:
+        raise CliError("busy", "有任务在跑，不关游戏", "等任务结束")
+    return {"closed": close_game.close(a.get("what") or "game", why="跑完关游戏（初星助手）")}
+
+
+@command(
+    "service stop",
+    Risk.READ,
+    "关掉 hiro 后台服务（正在跑的任务会先停下，培育不放弃，之后可以 resume）。初星助手关窗口时调用。",
+    agent=False,
+)
+def _service_stop(a: dict) -> dict:
+    client.shutdown()
+    return {"stopped": True}
+
+
+@command(
     "run status", Risk.READ, "现在在跑什么任务（状态：running / paused / takeover / stopping），以及最近 10 个任务。"
 )
 def _status(a: dict) -> dict:
