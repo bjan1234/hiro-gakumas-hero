@@ -628,6 +628,7 @@ def scan(
         raise RuntimeError("不在回忆选择页（没看到 キャンセル / 決定 / 編成詳細）：请先在编成页点开一格回忆")
     if out.exists():
         out.with_suffix(out.suffix + ".bak").write_text(out.read_text(encoding="utf-8"), encoding="utf-8")
+    t0 = picker.clock()  # 已用时间从滑回顶部前算起（#146 review）
     img = to_top(picker)
     inv = {"entries": [], "gaps": [], "scanned_at": None, "complete": False, "new": 0}
     pages = new = 0
@@ -680,7 +681,15 @@ def scan(
                 break
             pages += 1
             if pages % PROGRESS_EVERY == 0:  # 初星助手的驾驶舱靠日志看进度
-                logger.info("回忆扫描：第 %d 页，已读 %d 格", pages, new)
+                # G3（11-26 Windows 小白验收）：账号 1 回忆多，27 分钟才 86 页；界面只有「第 N 页、已读 M 格」，小白以为卡死了。
+                # 回忆列表不显示总数，算不出剩余时间：写上已用多久，第一次全量扫描再说一句要多久、会自己停
+                mins = int((picker.clock() - t0) // 60)
+                tail = (
+                    "（第一次要把回忆全读一遍，回忆多的账号要半小时以上，扫完会自己停）"
+                    if known is None and mins >= 3
+                    else ""
+                )
+                logger.info("回忆扫描：第 %d 页，已读 %d 格，已用 %d 分钟%s", pages, new, mins, tail)
             prev_img = picker.shoot()  # 读完重截：选中框状态和下一页一致
             prev, prev_base = page_rows(prev_img) or rows, row_base
             if not prev:  # 一行都没认出：不能直接算到底，按整块列表区像素看滑不滑得动
