@@ -303,3 +303,19 @@ func TestScanProgressFollowsState(t *testing.T) {
 		}
 	}
 }
+
+// N8（11-26 G1 第 2 轮）：进度行不带本机路径和内部字段。
+func TestProgressHidesPaths(t *testing.T) {
+	for in, want := range map[string]string{
+		"74 张偶像卡 → /Users/matto/x/jobs/1/out.json（complete=True）":                            "74 张偶像卡",
+		"406 份回忆 → C:\\Users\\a\\out.json (complete=True)":                                   "406 份回忆",
+		"[2026-11-26 04:51:34,433] [INFO] [hiro.produce.memory_picker] 回忆扫描：第 70 页，已读 204 格": "回忆扫描：第 70 页，已读 204 格",
+		"406 份回忆 → C:\\Users\\Jane Doe\\hiro\\out.json（complete=True）":                       "406 份回忆",
+		"初星課題：总 36/60，这次做了 3 个":                                                              "初星課題：总 36/60，这次做了 3 个",
+		"截图存好了 /tmp/hiro/x.png":                                                              "截图存好了",
+	} {
+		if got := tidyProgress(in); got != want {
+			t.Errorf("%q → %q，要 %q", in, got, want)
+		}
+	}
+}
