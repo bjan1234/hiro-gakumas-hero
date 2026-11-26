@@ -6,6 +6,7 @@ import (
 	"context"
 	"log"
 	"path/filepath"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -21,6 +22,7 @@ var AppName = locales.AppTitle()
 func main() {
 	fixPath()
 	home := HiroHome()
+	logToHome(home)
 	hiro := &Hiro{}
 	assistant := &Assistant{Home: home, Keys: fileKeys{Path: filepath.Join(home, "model-keys.json")}, Hiro: hiro}
 	hiro.Env = assistant.jobEnv
@@ -58,6 +60,7 @@ func main() {
 		runner.set(shell.WindowRunner{Update: win.Update})
 		app.StartPolling(make(chan struct{}))
 	})
+	mygo.App.OnQuit(func() { shutdownService(3 * time.Second) }) // 关窗口 = 连后台服务一起关
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
 	}

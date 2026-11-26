@@ -81,6 +81,14 @@ class Win32:
     def is_window(self, hwnd: int | None) -> bool:
         return bool(hwnd) and bool(self.user32.IsWindow(hwnd))
 
+    def restore_if_minimized(self, hwnd: int) -> bool:
+        """窗口最小化了就还原（SW_SHOWNOACTIVATE：不抢焦点）。返回原来是不是最小化的。
+        最小化的窗口客户区是 0x0，截不了图（11-25：日常任务「客户区尺寸不对：0x0」退出）。"""
+        if not self.user32.IsIconic(hwnd):
+            return False
+        self.user32.ShowWindow(hwnd, 4)
+        return True
+
     def client_size(self, hwnd: int) -> tuple[int, int]:
         r = self._wt.RECT()
         if not self.user32.GetClientRect(hwnd, self._ct.byref(r)):
@@ -233,6 +241,9 @@ class DmmWin32Device:
         err: Exception | None = None
         for _ in (0, 1):
             hwnd = self._window()
+            restore = getattr(self.api(), "restore_if_minimized", None)
+            if restore is not None and restore(hwnd):
+                self._sleep(1.0)  # 等还原动画
             try:
                 image = self.api().capture(hwnd, self.capture)
             except Exception as e:  # noqa: BLE001  GDI 资源、窗口正在关……都重试一次

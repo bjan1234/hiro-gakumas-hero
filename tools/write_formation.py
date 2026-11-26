@@ -50,7 +50,7 @@ def main() -> int:
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
     d = open_tool_device()
-    from hiro.imgio import calib_root
+    from hiro.imgio import calib_root, imwrite
 
     calib_dir = calib_root() / f"{time.strftime('%Y%m%d-%H%M%S')}-编成菜单"
     n = [0]
@@ -58,7 +58,8 @@ def main() -> int:
     def calib(img, tag):
         calib_dir.mkdir(parents=True, exist_ok=True)
         n[0] += 1
-        cv2.imwrite(str(calib_dir / f"{n[0]:02d}-{tag}.jpg"), img, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        # 目录名带中文（「编成菜单」）：cv2.imwrite 在 Windows 上会静默不写（11-25 两次停下都没留下截图）
+        imwrite(calib_dir / f"{n[0]:02d}-{tag}.jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 90])
 
     dev = Device(shoot=d.screenshot, click=d.tap, swipe=lambda x1, y1, x2, y2, dur=None: d.swipe(x1, y1, x2, y2, duration=dur or 0.3),
                  ocr=lambda img: [(t.text, 1.0, tuple(int(v) for v in t.rect)) for t in screen_texts(img)], sleep=time.sleep,

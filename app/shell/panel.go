@@ -4,6 +4,8 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/matto49/hiro-gakumas-hero/app/kit"
+	"github.com/matto49/hiro-gakumas-hero/app/labels"
+	"github.com/matto49/hiro-gakumas-hero/app/plugin"
 )
 
 // MinChatWidth 是中间对话最少留多宽（§4）。
@@ -79,8 +81,36 @@ func (a *App) panel(c *ui.Context) {
 				a.ClosePanel()
 			}
 		})
+		a.panelLiveStrip(c)
 		ui.Scroll(c).Grow(1).Padding(14, 16).Gap(12).Children(func() {
 			p.Panel(c, a, a.ui.panelRoute)
 		})
+	})
+}
+
+// panelLiveStrip：面板只有一个位置，开了资料库 / 编成方案等别的页时，正在跑的任务还钉在面板顶上（点它回到这局）。
+// 11-25 Windows 实测：切到别的页就看不到任务还在不在跑、什么时候结束。
+func (a *App) panelLiveStrip(c *ui.Context) {
+	if a.live == "" || a.ui.panelPlugin == "cockpit" {
+		return
+	}
+	ui.Column(c).Shrink(0).Padding(10, 12, 10, 12).BorderColor(kit.Line).BorderWidth(0, 0, kit.Hair, 0).Children(func() {
+		if _, v := a.reg.CardView("run-pinned"); v != nil {
+			v(c, a, plugin.Card{"type": "run-pinned", "jobId": a.live})
+			return
+		}
+		v := a.Job(a.live)
+		title := a.live
+		if v.Job != nil && v.Job.Summary != "" {
+			title = v.Job.Summary
+		}
+		if kit.RowButton(c, "panel-live-"+a.live, title, false).Padding(8, 10).Radius(kit.R16-2).Background(kit.CardBg).Border(kit.Hair, kit.LineStr).Children(func() {
+			ui.Box(c).Size(7, 7).Radius(4).Background(kit.Brand)
+			ui.Text(c, title).FontSize(kit.FSmall).FontWeight(600).TextColor(kit.Ink).MaxLines(1).Ellipsis("…")
+			ui.Spacer(c)
+			ui.Text(c, labels.State(v.State)).FontSize(kit.FNote).TextColor(kit.Ink3)
+		}).Clicked() {
+			a.OpenPanel("cockpit", "job:"+a.live)
+		}
 	})
 }

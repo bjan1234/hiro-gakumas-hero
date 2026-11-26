@@ -53,6 +53,13 @@ def read_header(boxes) -> dict | None:
     names = [t for t in names if len(t.replace(" ", "")) >= 2]  # 详情页右上角的「L」等单字图标不是卡名
     if len(names) < 2:
         return None
+    plan_at = _at(boxes, lambda x, y: x > 560 and y < 110)
+    rarity_at = _at(boxes, lambda x, y: x < 130 and y < 90)
+    if not any(k in t for t in plan_at for k in PLANS) and not any(
+        t.replace(" ", "") == r for t in rarity_at for r in RARITIES
+    ):
+        # 一张偶像卡的顶部总有プラン（稀有度 R 卡常读不到）；两样都没有就不是卡的详情（11-25 DMM：扫到最后读出「【rr】LL」「【-9】3J」）
+        return None
     rarity = next(
         (r for t in _at(boxes, lambda x, y: x < 130 and y < 90) for r in RARITIES if t.replace(" ", "") == r), None
     )

@@ -113,7 +113,14 @@ func (pl *planBrief) groups(h plugin.Host, cat *common.Catalog) []plugin.Explain
 		}
 		return "?"
 	}
-	sup := plugin.ExplainGroup{Title: "支援卡"}
+	// 标题带上写进第几号（11-25 Windows：确认卡上看不出要写到哪个编成位）
+	setTitle := func(t string, n *int) string {
+		if n != nil {
+			return fmt.Sprintf("%s → %d 号编成", t, *n)
+		}
+		return t
+	}
+	sup := plugin.ExplainGroup{Title: setTitle("支援卡", pl.Support.Set)}
 	for _, o := range pl.Support.Own {
 		nm := name(o.ID, o.Name)
 		it := plugin.ExplainItem{Thumb: cat.Sprite(h, "support-"+o.ID), Name: nm}
@@ -141,7 +148,7 @@ func (pl *planBrief) groups(h plugin.Host, cat *common.Catalog) []plugin.Explain
 		it.Tip = common.Tip(cat.Get(h, r.ID), common.Both(it.Name, r.Name), note)
 		sup.Items = append(sup.Items, it)
 	}
-	mem := plugin.ExplainGroup{Title: "回忆"}
+	mem := plugin.ExplainGroup{Title: setTitle("回忆", pl.Memory.Set)}
 	for _, m := range pl.Memory.Chosen {
 		nm := name(m.CardID, m.Name) + strings.Repeat("+", m.Upgrade)
 		it := plugin.ExplainItem{Tag: labels.Timing(m.Timing), Name: nm}

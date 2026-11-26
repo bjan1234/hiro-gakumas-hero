@@ -67,3 +67,16 @@ def test_doctor_follows_goal_and_suggests_fix(run_cli, tmp_path):
     _, env = run_cli("doctor")
     gs = {i["id"]: i for i in env["data"]["items"]}["game_settings"]
     assert gs["ok"] is False and gs["detail"].startswith("这几项不对：親愛度映像跳过") and "--fix" in gs["next"]
+
+
+def test_info_formations_lists_empty_sets(run_cli, tmp_path):
+    # 11-25：助手里的模型从 40 行里自己数空位，把回忆空位说成 7–14；空位直接算好给出来
+    sets = [{"kind": "memory", "set": n, "filled": 0 if 7 <= n <= 18 else 4, "cards": []} for n in range(1, 21)]
+    sets += [{"kind": "support", "set": n, "filled": 0 if n in (3, 11, 12) else 5, "cards": []} for n in range(1, 21)]
+    p = tmp_path / "f.json"
+    p.write_text(json.dumps({"mode": "hif", "complete": True, "sets": sets}), encoding="utf-8")
+    run_cli("info", "import", "--kind", "formations", str(p))
+    _, env = run_cli("info", "formations")
+    e = env["data"]["empty"]
+    assert e["memory"]["sets"] == list(range(7, 19)) and e["memory"]["text"] == "7–18"
+    assert e["support"]["text"] == "3、11–12"

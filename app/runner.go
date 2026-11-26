@@ -26,8 +26,8 @@ func (l *lateRunner) set(r shell.Runner) {
 
 func (l *lateRunner) Go(work func() func()) {
 	go func() {
-		if apply := work(); apply != nil {
-			l.Post(apply)
+		if apply := shell.SafeWork(work); apply != nil {
+			l.Post(shell.Safe(apply))
 		}
 	}()
 }

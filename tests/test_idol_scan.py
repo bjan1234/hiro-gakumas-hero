@@ -19,6 +19,10 @@ def test_read_header():
     }
     assert m.read_header([("L", (640, 80, 660, 95)), ("L", (660, 80, 680, 95))]) is None  # 详情页的单字图标
     assert m.read_header([("世界一可愛い私", (150, 25, 320, 55))]) is None  # 只有卡名没有角色：不猜
+    # 11-25 DMM：扫到最后读出「【rr】LL」：没有プラン也没有稀有度的不是卡的详情
+    assert m.read_header([("rr", (150, 25, 320, 55)), ("LL", (150, 60, 320, 88))]) is None
+    # R 卡稀有度常读不到：有プラン就算
+    assert m.read_header(head("学園生活", "篠澤 広", rarity=""))["plan"] == "logic"
 
 
 def test_scan_dedupes_until_two_idle_screens_then_backs_out():

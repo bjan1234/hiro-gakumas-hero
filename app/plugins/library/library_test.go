@@ -2,11 +2,13 @@ package library
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/matto49/hiro-gakumas-hero/app/hiroapi"
 	"github.com/matto49/hiro-gakumas-hero/app/plugin"
 	"github.com/matto49/hiro-gakumas-hero/app/plugins/common"
 	"github.com/matto49/hiro-gakumas-hero/app/plugins/plugintest"
@@ -144,6 +146,36 @@ func TestChoiceCardWaitsForNames(t *testing.T) {
 	}
 	if len(h.Asked) != 0 || card["status"] != "waiting" {
 		t.Errorf("卡名没查到不该能选：asked=%v", h.Asked)
+	}
+}
+
+func TestJobEndRefreshesListing(t *testing.T) {
+	// 11-25 Windows：扫完要切走再切回来才看得到；任务结束后应重读
+	h, p := host(), New()
+	tt := ui.NewTester(func(c *ui.Context) { p.Panel(c, h, "supports") }, 400, 700)
+	tt.Frame()
+	h.Resp["info supports"] = hiroapi.Result{OK: true, Data: json.RawMessage(`{"kind":"supports","scanned_at":"2026-11-25 12:00:00","items":[{"id":"s_card-2-0002","name":"新しい支援","rarity":"SR","attr":"Da","level":40,"breaks":2}]}`)}
+	tt.Frame()
+	if tt.HasText("新しい支援") {
+		t.Fatal("没结束就重读了（应该用缓存）")
+	}
+	p.OnJobEnd(h, "J1", &plugin.JobView{Job: &plugin.Job{ID: "J1", Kind: "scan-supports"}, State: "done"})
+	tt.Frame()
+	tt.Frame()
+	if !tt.HasText("新しい支援") {
+		t.Errorf("扫描结束后没重读：%q", tt.Texts())
+	}
+}
+
+func TestFormationRowsReadable(t *testing.T) {
+	tt := ui.NewTester(func(c *ui.Context) {
+		formationRow(c, map[string]any{"kind": "memory", "set": 18.0, "filled": 0.0})
+		formationRow(c, map[string]any{"kind": "support", "set": 3.0, "filled": 5.0})
+	}, 400, 200)
+	for _, s := range []string{"回忆 18 号", "空", "支援卡 3 号", "5 格"} {
+		if !tt.HasText(s) {
+			t.Errorf("没有 %q：%q", s, tt.Texts())
+		}
 	}
 }
 

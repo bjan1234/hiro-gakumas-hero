@@ -89,7 +89,29 @@ func New() *plugin.Plugin {
 		},
 		ContextTitle: "账号和库存",
 		Context:      func(ctx context.Context, h plugin.Host) string { return summaryContext(ctx, h) },
+		OnJobEnd: func(_ plugin.Host, _ string, v *plugin.JobView) {
+			// 扫描 / 检查 / 写编成结束：信息库刚更新，作废这几类的缓存，面板下次画时重读（11-25 Windows 实测：
+			// 原来只在第一次打开时读，扫完要切走再切回来才看得到）。失败的也作废：可能写了一部分
+			if v == nil || v.Job == nil {
+				return
+			}
+			for _, kind := range jobListings[v.Job.Kind] {
+				delete(s.lists, kind)
+				delete(s.errs, kind)
+			}
+		},
 	}
+}
+
+// jobListings 是每种任务结束后要重读的列表（_summary 是概况页）。
+var jobListings = map[string][]string{
+	"scan-supports":   {"supports", "_summary"},
+	"scan-memories":   {"memories", "_summary"},
+	"scan-idols":      {"idols", "_summary"},
+	"scan-account":    {"_summary"},
+	"scan-formations": {"formations", "_summary"},
+	"check-settings":  {"game_settings", "_summary"},
+	"write-formation": {"formations", "_summary"},
 }
 
 func str(m map[string]any, k string) string {
@@ -271,6 +293,8 @@ func (s *state) row(c *ui.Context, h plugin.Host, kind string, it map[string]any
 		memoryRow(c, h, it)
 	case "game_settings":
 		settingRow(c, it)
+	case "formations":
+		formationRow(c, it)
 	default:
 		var parts []string
 		for k, v := range it {
@@ -278,6 +302,24 @@ func (s *state) row(c *ui.Context, h plugin.Host, kind string, it map[string]any
 		}
 		ui.Text(c, strings.Join(parts, "  ")).FontSize(kit.FNote).TextColor(kit.Ink2).Wrap()
 	}
+}
+
+// formationRow 是编成位一行：「回忆 18 号　空」/「支援卡 3 号　5 格」（原来走默认分支，字段原样堆在一起、顺序还随机）。
+func formationRow(c *ui.Context, it map[string]any) {
+	kind := map[string]string{"support": "支援卡", "memory": "回忆"}[str(it, "kind")]
+	if kind == "" {
+		kind = str(it, "kind")
+	}
+	filled := str(it, "filled")
+	state, color := filled+" 格", kit.Ink2
+	if filled == "0" {
+		state, color = "空", kit.Good
+	}
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(2, 0).Children(func() {
+		ui.Text(c, kind+" "+str(it, "set")+" 号").FontSize(kit.FSmall).TextColor(kit.Ink)
+		ui.Spacer(c)
+		ui.Text(c, state).FontSize(kit.FNote).FontWeight(600).TextColor(color)
+	})
 }
 
 func rarityColor(r string) ui.Color {

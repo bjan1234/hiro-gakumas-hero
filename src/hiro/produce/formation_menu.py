@@ -41,6 +41,7 @@ MENU_SCORE_MAX = 30.0
 SET_MAX_TAPS = 20
 SET_NUMBER_LEFT = 70  # 「/20」左边裁多宽去补读编号（两位数「20」约 40 像素宽）
 WAIT_TRIES, WAIT_GAP = 12, 0.5
+HOME_TRIES = 6  # 开始时认主页 / 编成页：每次隔 1 秒，最多约 6 秒（过场）
 ARROW_RETRIES = 2  # 翻编号的箭头点了没反应时再点几次
 
 
@@ -200,6 +201,11 @@ class Menu:
         """停在 プロデュース編成 页就直接用；在主页就点 アイドル →「プロデュース編成・スキルカード」→ 子菜单「プロデュース編成」；
         别的页面停下。11-17 Mac 第一次实机：面板上的「プロデュース編成・スキルカード」(243,832) 也含「プロデュース編成」，
         原来点了它就去等编成页，没点弹出的子菜单里的「プロデュース編成」(198,579)。"""
+
+        def at_home(texts) -> bool:
+            return bool(_find(texts, "ホーム", y_min=1050) and _find(texts, "コンテスト", y_min=1050))
+
+        # 上一个任务刚点了回主页、画面还在过场时只看一眼就停（11-25 DMM：扫完偶像卡紧接着写编成）：先等几秒
         img, texts, m = self.look()
         for _ in range(BACK_TRIES):
             if m is not None:
@@ -217,10 +223,16 @@ class Menu:
             img, texts, m = self.look()
         if m is not None:
             return m
-        if (
-            not (_find(texts, "ホーム", y_min=1050) and _find(texts, "コンテスト", y_min=1050))
-            and _find(texts, "プロデュース編成") is None
-        ):
+        for i in range(HOME_TRIES):
+            if i:
+                img, texts, m = self.look()
+                if m is not None:
+                    return m
+            if at_home(texts) or _find(texts, "プロデュース編成") is not None:
+                break
+            if i < HOME_TRIES - 1:
+                self.dev.sleep(WAIT_GAP * 2)
+        if not at_home(texts) and _find(texts, "プロデュース編成") is None:
             self.dev.snap(img, "menu-not-home")
             raise FormationWriteError("游戏不在首页，也没能自己退回首页：请先回到首页再试")
         # 点了几次：点了几轮画面没变就补点，最多 RETAP_MAX 次（11-24 DMM 机器负载高时第一下没生效）
