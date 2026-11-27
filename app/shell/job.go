@@ -366,8 +366,19 @@ func (a *App) ownerThread(id string) *Thread {
 	return nil
 }
 
-// ChatJob 是这局是不是在某个对话里开的。
-func (a *App) ChatJob(id string) bool { return a.ownerThread(id) != nil }
+// ChatJob 是这局是不是在某个对话里开的（页面上开的不算：对话界面的「后台任务」照样列出来，CodeRabbit #198）。
+func (a *App) ChatJob(id string) bool {
+	for _, t := range a.threads {
+		for _, m := range t.Messages {
+			for _, c := range m.Cards {
+				if c["type"] == "run" && c["jobId"] == id {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
 
 // StartPolling 在后台一直轮询，直到 stop 关上。
 func (a *App) StartPolling(stop <-chan struct{}) {

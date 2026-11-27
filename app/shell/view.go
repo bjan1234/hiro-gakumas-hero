@@ -34,6 +34,7 @@ func (a *App) View(c *ui.Context) {
 		return
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyN) {
+		a.SetMode(ModeChat) // 页面模式下按 ⌘N 也进对话（CodeRabbit #197）
 		a.NewThread()
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyBackslash) {
@@ -71,6 +72,7 @@ func (a *App) View(c *ui.Context) {
 		a.ui.chatPct = ClampChatPercent(a.ui.chatPct, main)
 		ui.SplitPercent(c, &a.ui.chatPct, chat, func() { a.panel(c) }).SplitReset(DefaultChatPercent(main)).Grow(1).FillHeight()
 	})
+	a.pageConfirm(c) // 页面上发起、还没确认的那一项：切到问 AI 也照样弹出来（CodeRabbit #198）
 }
 
 func (a *App) header(c *ui.Context) {

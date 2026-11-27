@@ -935,7 +935,7 @@ func (s *S) panel(c *ui.Context, h plugin.Host, route string) {
 	ui.Text(c, "界面").FontSize(15).FontWeight(650).TextColor(kit.Ink)
 	s.openInSection(c)
 	ui.Text(c, "模型").FontSize(15).FontWeight(650).TextColor(kit.Ink).Padding(10, 0, 0, 0)
-	kit.Note(c, "只有「问 AI」用；不配也能用全部页面。")
+	kit.Note(c, "「问 AI」靠它聊天；培育时规则拿不准的地方也会问它。不配也能用全部页面，培育只按规则打。")
 	s.modelSection(c, h)
 	ui.Text(c, "操作权限").FontSize(15).FontWeight(650).TextColor(kit.Ink).Padding(10, 0, 0, 0)
 	s.permNote(c)

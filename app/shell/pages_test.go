@@ -243,3 +243,41 @@ func TestQueuedAfterSeesPagesRecord(t *testing.T) {
 		t.Error("别的任务不算")
 	}
 }
+
+// CodeRabbit #197：页面模式下按 ⌘N 进对话界面的新对话。
+func TestCmdNInPagesOpensChat(t *testing.T) {
+	a, _ := newPagesApp(&fakeCall{}, nil)
+	tt := ui.NewTester(a.View, 1280, 800)
+	tt.Frame()
+	tt.Key(ui.Cmd, ui.KeyN)
+	tt.Frame()
+	if a.Mode() != ModeChat || !tt.HasText("新对话") {
+		t.Errorf("⌘N 没进对话：%s %q", a.Mode(), tt.Texts())
+	}
+}
+
+// CodeRabbit #198：页面上发起、还没确认时切到问 AI，确认框照样弹出来（不用回页面才能点）。
+func TestPageConfirmShownInChatMode(t *testing.T) {
+	call := &fakeCall{resp: map[string]hiroapiResult{"run start daily": pendingResult("p9", "领日常奖励")}}
+	a, run := newPagesApp(call, nil)
+	tt := ui.NewTester(a.View, 1280, 800)
+	a.RunArgs("帮我领日常奖励", []string{"run", "start", "daily"})
+	run.Drain()
+	a.SetMode(ModeChat)
+	tt.Frame()
+	if !tt.HasText("先不") || !tt.HasText("开始") {
+		t.Errorf("问 AI 里看不到页面的确认框：%q", tt.Texts())
+	}
+}
+
+// CodeRabbit #198：页面上开的局不算「对话里开的」，对话界面的后台任务照样列出来；通知照样找得到页面记录。
+func TestPageJobIsNotChatJob(t *testing.T) {
+	a, _ := newPagesApp(&fakeCall{}, nil)
+	a.pages.Messages = append(a.pages.Messages, &Message{ID: "m1", Role: "agent", Cards: []plugin.Card{{"type": "run", "jobId": "j1"}}})
+	if a.ChatJob("j1") {
+		t.Error("页面上开的局不该算对话里的")
+	}
+	if a.ownerThread("j1") != a.pages {
+		t.Error("通知找不到页面记录")
+	}
+}
