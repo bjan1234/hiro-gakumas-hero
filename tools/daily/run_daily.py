@@ -140,6 +140,11 @@ def run_own(names: list[str], timeout: float, out: Path) -> list[dict]:
         except Exception as e:  # noqa: BLE001  一项失败（ResumeBlocked / DangerBlocked …）记下来，继续下一项
             rec["ok"] = False
             _error(rec, e)
+            if getattr(e, "stop_all", False):  # 画面上留着关不掉的框（商店免费刷新后）：后面的项都不跑，交给人
+                rec["after"] = shot(f"{n}-after")
+                rec["seconds"] = round(time.monotonic() - t0, 1)
+                _finish(rec, summary)
+                break
         if popups:
             rec["popups"] = list(popups)
         rec["seconds"] = round(time.monotonic() - t0, 1)

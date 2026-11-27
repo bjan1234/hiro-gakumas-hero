@@ -56,7 +56,24 @@ def refresh_on() -> bool:
 REFRESH_FREE = "リスト更新:1回無料"
 REFRESH_MAX_Y = 320  # 只认画面上方那条（列表里的商品名不会是这行字，保险起见限位置）
 DISMISS_TAP = (360, 60)  # 刷新后万一出了确认框：点框外上方空白关掉（不点「決定」「はい」）
-DIALOG_WORDS = ("キャンセル", "決定", "はい", "いいえ", "ジュエル", "確認", "OK", "購入", "消費")
+DIALOG_WORDS = (
+    "キャンセル",
+    "決定",
+    "はい",
+    "いいえ",
+    "ジュエル",
+    "確認",
+    "OK",
+    "購入",
+    "消費",
+    "閉じる",
+    "やめる",
+    "更新する",
+)
+REFRESH_WATCH_S = 4.0  # 点了刷新后连看几秒有没有框（框可能弹得晚）
+REFRESH_POLL_S = 0.5
+REFRESH_CLOSE_TRIES = 3  # 点空白 1 次 + 点关闭字样 2 次，还在就停下
+REFRESH_CLOSE_WORDS = ("キャンセル", "いいえ", "閉じる", "やめる")  # 只点这些，绝不点「決定」「はい」「OK」
 
 
 def _norm_refresh(text: str) -> str:
@@ -100,20 +117,46 @@ def refresh_list(rt) -> str | None:
         return "没看到「リスト更新:1回無料」（今天的免费刷新用过了，或没认出），不刷新"
     logger.info("商店：点免费刷新（%s）", label.text)
     rt.device.tap(*label.rect.center)
-    rt.sleep(1.5)
-    g = common.frame(rt)
-    if _dialog_up(g):
-        logger.warning("商店：点了免费刷新出了确认框，点空白关掉、不刷新：%s", " ".join(t.text for t in g.texts)[:160])
-        rt.device.tap(*DISMISS_TAP)
-        rt.sleep(1.0)
-        h = common.frame(rt)
-        if _dialog_up(h):
-            tap_word(rt, h, "キャンセル", y_min=600)  # 空白没关掉：点「キャンセル」（不点「決定」「はい」）
-            rt.sleep(1.0)
-        return "点免费刷新出了确认框，没刷新（关掉了，没花东西）"
+    # 点完以后连看 REFRESH_WATCH_S 秒（确认框可能弹得晚、第一帧可能在过场里）：出了框就关掉、绝不确认；
+    # 关不掉就整个日常停下（RefreshDialogStuck），后面一下都不再点（#122 自检）
+    end = rt.clock() + REFRESH_WATCH_S
+    g = None
+    while True:
+        rt.sleep(REFRESH_POLL_S)
+        g = common.frame(rt)
+        if _dialog_up(g):
+            _close_refresh_dialog(rt, g)
+            return "点免费刷新出了确认框，没刷新（关掉了，没花东西）"
+        if rt.clock() >= end:
+            break
     if free_refresh_label(g) is not None:
         return "点了免费刷新但列表没变"
     return None
+
+
+class RefreshDialogStuck(Exception):
+    """免费刷新后弹出的框关不掉：整个日常停下（stop_all），后面的项一下都不点，交给人。"""
+
+    stop_all = True
+
+
+def _close_refresh_dialog(rt, g) -> None:
+    """刷新后弹出的框：先点框外空白，再点キャンセル / いいえ / 閉じる；每次都重新看，关不掉就停下。绝不点「決定」「はい」「OK」。"""
+    logger.warning("商店：点了免费刷新出了确认框，关掉、不刷新：%s", " ".join(t.text for t in g.texts)[:160])
+    for i in range(REFRESH_CLOSE_TRIES):
+        if i == 0:
+            rt.device.tap(*DISMISS_TAP)
+        else:
+            for w in REFRESH_CLOSE_WORDS:
+                if tap_word(rt, g, w, y_min=600):
+                    break
+            else:
+                rt.device.tap(*DISMISS_TAP)
+        rt.sleep(1.0)
+        g = common.frame(rt)
+        if not _dialog_up(g):
+            return
+    raise RefreshDialogStuck("商店：免费刷新后弹出的框关不掉，日常停下（没点确认，没花东西），请手动关掉")
 
 
 def wanted_names() -> list[str]:

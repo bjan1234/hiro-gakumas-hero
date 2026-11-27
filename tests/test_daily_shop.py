@@ -111,9 +111,13 @@ class _Dev:
 class _Rt:
     def __init__(self):
         self.device = _Dev()
+        self.t = 0.0
 
     def sleep(self, s):
-        pass
+        self.t += s
+
+    def clock(self):
+        return self.t
 
 
 def _shop(monkeypatch, screen, goods, money, *, home_raises=False):
@@ -285,7 +289,14 @@ def _seq_rt(monkeypatch, frames):
         return last["f"]
 
     monkeypatch.setattr(shop.common, "frame", nxt)
-    monkeypatch.setattr(shop, "tap_word", lambda rt, f, word, **k: rt.device.tap(0, 1 if word == "キャンセル" else 2))
+
+    def tap_word(rt, f, word, **k):  # 画面上有这个字才点（キャンセル 记成 (0, 1)，别的关闭字样 (0, 2)）
+        if not any(word in t.text for t in f.texts):
+            return False
+        rt.device.tap(0, 1 if word == "キャンセル" else 2)
+        return True
+
+    monkeypatch.setattr(shop, "tap_word", tap_word)
     return rt
 
 
@@ -306,9 +317,38 @@ def test_refresh_dialog_is_dismissed_never_confirmed(monkeypatch):
 def test_refresh_dialog_still_up_taps_cancel_not_decide(monkeypatch):
     label = frame(("リスト更新:1回無料", 561, 163))
     dlg = frame(("確認", 360, 500), ("キャンセル", 168, 1143), ("決定", 490, 1140))
-    rt = _seq_rt(monkeypatch, [label, dlg, dlg])
-    shop.refresh_list(rt)
+    rt = _seq_rt(monkeypatch, [label, dlg, dlg, frame(("デイリー交換所", 140, 55))])
+    assert "确认框" in shop.refresh_list(rt)
     assert rt.device.taps == [(561, 163), shop.DISMISS_TAP, (0, 1)]  # 空白没关掉：点キャンセル
+
+
+def test_refresh_dialog_that_wont_close_stops_shop(monkeypatch):
+    """框一直关不掉：整个日常停下（RefreshDialogStuck，shop.run 不接），后面不再点任何东西；从头到尾没点「決定」。"""
+    import pytest
+
+    label = frame(("リスト更新:1回無料", 561, 163))
+    dlg = frame(("確認", 360, 500), ("キャンセル", 168, 1143), ("決定", 490, 1140))
+    rt = _seq_rt(monkeypatch, [label, dlg])
+    with pytest.raises(shop.RefreshDialogStuck, match="关不掉"):
+        shop.refresh_list(rt)
+    assert (490, 1140) not in rt.device.taps and len(rt.device.taps) == 1 + shop.REFRESH_CLOSE_TRIES
+
+
+def test_refresh_late_dialog_is_caught(monkeypatch):
+    """框在点完 1.5 秒以后才弹（前几帧右上角的字还在 / 在过场里）：照样认出来关掉，不当成刷新成功。"""
+    label = frame(("リスト更新:1回無料", 561, 163))
+    blank = frame(("デイリー交換所", 140, 55))
+    dlg = frame(("リストを更新しますか", 360, 600), ("閉じる", 168, 1143), ("更新する", 490, 1140))
+    rt = _seq_rt(monkeypatch, [label, label, blank, blank, blank, dlg, blank])
+    assert "确认框" in shop.refresh_list(rt)
+    assert (490, 1140) not in rt.device.taps
+
+
+def test_refresh_success_after_watch_window(monkeypatch):
+    label = frame(("リスト更新:1回無料", 561, 163))
+    after = frame(("リスト更新:50", 561, 163))
+    rt = _seq_rt(monkeypatch, [label, after])
+    assert shop.refresh_list(rt) is None and rt.device.taps == [(561, 163)]
 
 
 def test_refresh_not_offered_does_not_tap(monkeypatch):
