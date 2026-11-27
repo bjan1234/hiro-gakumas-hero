@@ -58,7 +58,8 @@ def test_junk_cards(monkeypatch):
     cards = [{"index": 0, "card_id": "a-basic"}, {"index": 1, "card_id": "p_card-01-ido-3_1"}, {"index": 2, "card_id": "target"},
              {"index": 3, "card_id": "picked"}, {"index": 4, "card_id": "sleepy"}, {"index": 5, "card_id": None},
              {"index": 6, "card_id": "custom", "customized": True}]  # fmt: skip
-    assert [c["card_id"] for c in farm.junk_cards(cards, {"target"})] == ["sleepy", "picked"]
+    picked = {"a-basic": 1, "p_card-01-ido-3_1": 1, "target": 1, "picked": 1, "sleepy": 1, "custom": 1}
+    assert [c["card_id"] for c in farm.junk_cards(cards, {"target"}, picked)] == ["sleepy", "picked"]
 
 
 def test_target_cards_env():
@@ -142,7 +143,7 @@ def test_week7_goes_shop_when_deck_unread_but_cards_picked(monkeypatch):
 
     monkeypatch.setenv("HIRO_FARM_TARGET", "p_card-02-act-3_050")
     picked = {"p_card-02-act-1_010", "p_card-02-act-3_050"}
-    junk = farm.junk_cards([{"card_id": c} for c in picked], farm.target_cards())
+    junk = farm.junk_cards([{"card_id": c} for c in picked], farm.target_cards(), dict.fromkeys(picked, 1))
     assert [c["card_id"] for c in junk] == ["p_card-02-act-1_010"]  # 目标卡不算要删的
 
 
@@ -159,15 +160,13 @@ def test_remove_card_page_never_deletes_target(monkeypatch):
         {"index": 0, "card_id": "p_card-02-act-3_186", "upgrade": 0},  # 目标
         {"index": 1, "card_id": "p_card-02-act-1_010", "upgrade": 0},  # 这局拿的
     ]
-    d = ProduceDeciders(profile_for("i_card-hski-3-000"), None).decide(
-        "SKILL_CARD_REMOVAL", GameState(produce=prod, page_fields={"cards": cards})
-    )
+    dec = ProduceDeciders(profile_for("i_card-hski-3-000"), None)
+    dec.farm_picked.update({"p_card-02-act-1_010": 1, "p_card-02-act-3_186": 1})  # 这局领到过的（目标也领到过一张）
+    d = dec.decide("SKILL_CARD_REMOVAL", GameState(produce=prod, page_fields={"cards": cards}))
     assert d.action.args.get("index") == 1 and d.action.args.get("card_id") == "p_card-02-act-1_010", d
-    cards = cards[:1]  # 只剩目标卡：取消，不删
-    d = ProduceDeciders(profile_for("i_card-hski-3-000"), None).decide(
-        "SKILL_CARD_REMOVAL", GameState(produce=prod, page_fields={"cards": cards})
-    )
-    assert d.action.args.get("cancel"), d
+    assert dec.farm_picked["p_card-02-act-1_010"] == 0  # 决定删了：名单里减掉
+    d = dec.decide("SKILL_CARD_REMOVAL", GameState(produce=prod, page_fields={"cards": cards}))
+    assert d.action.args.get("cancel"), d  # 只剩目标卡（和名单里已经删过的那张）：取消，不删
 
 
 def test_consult_delete_carries_card_id(monkeypatch):
@@ -183,10 +182,48 @@ def test_consult_delete_carries_card_id(monkeypatch):
             "produce_point": 300, "params": {"Vo": 1, "Da": 1, "Vi": 1}, "growth_permil": {}, "rerolls_left": 0,
             "excludes_left": 0, "deck": [{"card_id": c, "upgrade": 0} for c in deck]}  # fmt: skip
     pf = {"shelf": [], "services": {"delete": {"price": 100, "available": True}}}
-    d = ProduceDeciders(profile_for("i_card-hski-3-000"), None).decide(
-        "CONSULT", GameState(produce=prod, page_fields=pf)
-    )
+    dec = ProduceDeciders(profile_for("i_card-hski-3-000"), None)
+    dec.farm_picked.update({"p_card-02-act-1_010": 1})
+    d = dec.decide("CONSULT", GameState(produce=prod, page_fields=pf))
     assert d.action.args.get("service") == "delete" and d.action.args.get("card_id") == "p_card-02-act-1_010", d
+
+
+def test_unrecorded_cards_are_never_deleted(monkeypatch):
+    """CodeRabbit #198：删卡候选只能是本局确认领到的卡（正向名单）。借用回忆带进来的卡不在任何名单里，原来也会被删；
+    现在没有记账的卡一律不删。同一张卡名单里记了几张最多删几张。"""
+    from hiro.brain.deciders import ProduceDeciders
+    from hiro.brain.state import profile_for
+    from hiro.contracts import ActionKind, GameState
+
+    monkeypatch.setenv("HIRO_FARM", "bad")
+    monkeypatch.setenv("HIRO_FARM_TARGET", "p_card-02-act-3_186")
+    deck = ["p_card-02-act-3_186", "p_card-02-act-2_001"]  # 目标 + 借用回忆带进来的卡（没有记账）
+    prod = {"idol_card_id": "i_card-hski-3-000", "mode": "produce-001", "step": 7, "stamina": 20, "max_stamina": 30,
+            "produce_point": 300, "params": {"Vo": 1, "Da": 1, "Vi": 1}, "growth_permil": {}, "rerolls_left": 0,
+            "excludes_left": 0, "deck": [{"card_id": c, "upgrade": 0} for c in deck]}  # fmt: skip
+    pf = {"shelf": [], "services": {"delete": {"price": 100, "available": True}}}
+    dec = ProduceDeciders(profile_for("i_card-hski-3-000"), None)
+    d = dec.decide("CONSULT", GameState(produce=prod, page_fields=pf))
+    assert d.action.kind is ActionKind.SHOP_END, d
+    cards = [{"index": 0, "card_id": "p_card-x"}, {"index": 1, "card_id": "p_card-x"}, {"index": 2, "card_id": "p_card-y"}]
+    assert [c["index"] for c in farm.junk_cards(cards, set(), {"p_card-x": 1})] == [0]  # 记了一张 x：只删一张
+
+
+def test_picked_cards_from_trace():
+    """续跑：删卡正向名单从 trace 里选卡领取成功的步骤恢复，减去之后删掉的；牌组快照（含借用回忆的卡）不算。"""
+    from hiro.loop.ledger import picked_cards
+
+    def pick(cid, ok=True):
+        return {"state": {"page": {"name": "SELECT_CARD"}, "page_fields": {"candidates": [{"card_id": cid}]}},
+                "decision": {"action": {"kind": "ActivateEffect", "args": {"pick_indexes": [0]}}}, "execution": {"ok": ok}}  # fmt: skip
+
+    deck = {"observation": {"page": {"name": "DECK_LIST"}, "fields": {"deck": [{"card_id": "p_card-rental"}]}},
+            "execution": {"ok": True}}  # fmt: skip
+    delete = {"state": {"page": {"name": "CONSULT"}},
+              "decision": {"action": {"kind": "ShopBuy", "args": {"service": "delete", "card_id": "p_card-a"}}},
+              "execution": {"ok": True}}  # fmt: skip
+    got = picked_cards([pick("p_card-a"), pick("p_card-b"), pick("p_card-c", ok=False), deck, delete])
+    assert dict(got) == {"p_card-b": 1}
 
 
 def _boxes(*items):
@@ -805,8 +842,12 @@ def test_picked_card_recorded_only_when_acquired(monkeypatch, ok, fast, slow, wa
     monkeypatch.setattr(cs, "select_card_options", lambda img: [NS(card=card, rect=NS(center=NS(x=222, y=937)))] * 3)
     monkeypatch.setattr(cs, "recommended_index", lambda img, options: None)
     monkeypatch.setattr(ex, "extract", lambda page, img: ({"options": [{"card_id": c} for c in "abc"]}, None))
+    from collections import Counter
+
     deciders = NS(
-        decide=lambda page, state, **kw: Decision(Action.activate_effect(0), "拿", "rule", 0.9), picked_musts=set()
+        decide=lambda page, state, **kw: Decision(Action.activate_effect(0), "拿", "rule", 0.9),
+        picked_musts=set(),
+        farm_picked=Counter(),
     )
     core = hif.HifCore.__new__(hif.HifCore)
     core.deciders, core.rec = deciders, NS(log=lambda *a, **k: None)
@@ -832,6 +873,7 @@ def test_picked_card_recorded_only_when_acquired(monkeypatch, ok, fast, slow, wa
     monkeypatch.setattr(core, "_act", act, raising=False)
     core.on_select_card()
     assert deciders.picked_musts == ({"p_card-02-act-1_010"} if want else set())
+    assert dict(deciders.farm_picked) == ({"p_card-02-act-1_010": 1} if want else {})  # 删卡正向名单同样只记领到的
     # CodeRabbit #198：没领到时 trace 里这一步也记成没生效（续跑记账不把它当已有）
     assert recorded[-1].ok is want
 
@@ -917,7 +959,8 @@ def test_junk_cards_keeps_memory_cards(monkeypatch):
         {"index": 1, "card_id": "p_card-picked"},
         {"index": 2, "card_id": "p_card-target"},
     ]
-    assert [c["card_id"] for c in farm.junk_cards(cards, {"p_card-target"})] == ["p_card-picked"]
+    picked = {"p_card-mem": 1, "p_card-picked": 1, "p_card-target": 1}
+    assert [c["card_id"] for c in farm.junk_cards(cards, {"p_card-target"}, picked)] == ["p_card-picked"]
 
 
 def test_cancel_decision_sticks_until_dialog_closes(monkeypatch):

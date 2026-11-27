@@ -120,21 +120,32 @@ def pick_action(step: int | None, opts: list[dict], criteria: dict | None, *, ha
     return None
 
 
-def junk_cards(cards: list[dict], targets: set[str]) -> list[dict]:
-    """这一局拿到的、该删掉的卡（不让它们进回忆抽选池）：不是初始的「○○の基本」、不是偶像固有卡（-ido-）、不是转写目标、
-    不是回忆编成带进来的卡。
-    定制过的、没认出的格不碰。"""
+def junk_cards(cards: list[dict], targets: set[str], picked) -> list[dict]:
+    """这一局拿到的、该删掉的卡（不让它们进回忆抽选池）。正向名单：只有本局确认拿到的卡（picked：card_id → 张数，
+    选卡领取成功时记、续跑从 trace 里选卡成功的步骤恢复）才删，没有记账的卡一律不删（CodeRabbit #198：原来是「保护名单以外都删」，
+    借用的回忆带进来的卡不在任何名单里，也会被删）。即使在名单里，初始的「○○の基本」、偶像固有卡（-ido-）、转写目标、
+    回忆编成带进来的卡也不删；同一张卡名单里记了几张最多删几张。定制过的、没认出的格不碰。"""
+    from collections import Counter
+
     from hiro.brain.deciders import _is_basic, _is_trouble_card
 
     keep = set(targets) | _memory_cards()  # 回忆编成带进来的卡也留着（和目标卡一样，不是这局拿的；CodeRabbit #198）
+    left = Counter(picked)
     out = []
     for c in cards:
         cid = c.get("card_id")
-        if not cid or c.get("customized") or "-ido-" in cid or cid in keep or _is_basic(cid):
+        if not cid or c.get("customized") or "-ido-" in cid or cid in keep or _is_basic(cid) or left[cid] <= 0:
             continue
+        left[cid] -= 1
         out.append(dict(c, farm_trouble=_is_trouble_card(cid)))
     out.sort(key=lambda c: (not c["farm_trouble"], c.get("index", 0)))  # 眠気等トラブル先删（不删会塞牌组）
     return out
+
+
+def forget_picked(picked, cid: str | None) -> None:
+    """决定删掉一张以后从「本局拿到的」名单里减一张（决策时就减：删没成功的话少删一张，是不删错的方向）。"""
+    if cid and picked.get(cid, 0) > 0:
+        picked[cid] -= 1
 
 
 def _memory_cards() -> set[str]:

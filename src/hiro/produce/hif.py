@@ -206,6 +206,7 @@ class HifCore:
         from hiro.formation_env import MEMORY_CARDS
 
         self.deciders.picked_musts |= set(MEMORY_CARDS) | self._picked_cards_from_trace()  # 回忆带的卡算已有
+        self.deciders.farm_picked = self._farm_picked_from_trace()  # 刷回忆删卡正向名单：之前各段里选卡确认领到的
         self._load_finals_context()
         self._seed_produce_from_trace()
         self._seed_idol_item()
@@ -731,6 +732,8 @@ class HifCore:
                 # 记下这局拿过的卡（牌组读不到时，刷回忆第 7 周靠它判断要不要去相談删卡，11-27）。
                 # 只在领取确认真的生效时记：没领成也记的话，会为一张没拿到的卡去相談（CodeRabbit #198）
                 self.deciders.picked_musts.add(str(cid))
+                if (fp := getattr(self.deciders, "farm_picked", None)) is not None:
+                    fp[str(cid)] += 1  # 刷回忆删卡的正向名单（CodeRabbit #198）
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
     def _stage(self) -> str:
@@ -1086,6 +1089,18 @@ class HifCore:
         owned = owned_cards(steps_of(dirs), MEMORY_CARDS)
         logger.info("续跑：从之前的 trace 记账恢复现有卡 %d 种", len(owned))
         return set(owned)
+
+    def _farm_picked_from_trace(self):
+        """同一局之前各 trace 段里三选一领取成功的卡（减去删掉的）：刷回忆删卡的正向名单（hiro.loop.ledger.picked_cards）。"""
+        from collections import Counter
+
+        from hiro.loop.ledger import picked_cards, steps_of
+
+        try:
+            dirs = self._prior_trace_dirs()
+        except Exception:  # noqa: BLE001  没有 trace（测试替身）
+            return Counter()
+        return picked_cards(steps_of(dirs)) if dirs else Counter()
 
     PDRINK_RETRIES = 3  # 饮料溢出页决策给不出（Wait）时重读几次
     PDRINK_RETRY_WAIT = 0.5

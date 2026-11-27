@@ -17,6 +17,7 @@ import logging
 import math
 import os
 import time
+from collections import Counter
 from dataclasses import replace
 from functools import cache, lru_cache  # noqa: F401
 
@@ -159,6 +160,8 @@ class ProduceDeciders:
             set()
         )  # 初 / N.I.A：这一次相談里已经用过的服务（删除 / 强化各一次，回到选行动页清空）
         self.picked_musts: set[str] = set()  # 本局决策器自己拿到的必拿卡（牌组没识别时用来判断还缺什么）
+        # 刷回忆删卡的正向名单：本局三选一确认领到的卡 → 张数（hif 选卡成功时记、续跑从 trace 恢复；hiro.brain.farm.junk_cards）
+        self.farm_picked: Counter = Counter()
         self.consult_delete_lean = False  # 选拔相談打开「削除」对话框时：只删 qualify_consult_deletable 的牌（用户 2026-11-03 顺序），没有就取消
         self._page_spend: dict = {}  # 选卡页（page.since_seq）→ 本页已用的刷新 / 禁用次数
         self._last_reroll: dict = {}  # 选卡页 → 最近一次刷新前的候选（刷新后没变 = 没生效）
@@ -439,10 +442,11 @@ class ProduceDeciders:
                 for i, c in enumerate(prod.get("deck") or [])
                 if isinstance(c, dict)
             ]
-            junk = bool(farm.junk_cards(deck, farm.target_cards()))
+            junk = bool(farm.junk_cards(deck, farm.target_cards(), self.farm_picked))
             if not deck and not junk:
                 # 牌组没读到（11-27 DMM：牌组按钮认不出，第 7 周以为没卡可删去了外出）：按这局拿过的卡（选卡记账、续跑从 trace 恢复）判断
-                junk = bool(farm.junk_cards([{"card_id": c} for c in self.picked_musts], farm.target_cards()))
+                junk = bool(farm.junk_cards([{"card_id": c} for c in self.farm_picked.elements()], farm.target_cards(),
+                                            self.farm_picked))  # fmt: skip
             got = farm.pick_action(st.step, opts, st.criteria, has_junk=junk, shop_ok=st.shop_ok)
             if got is not None:
                 o = opts[got[0]]
@@ -2016,7 +2020,7 @@ class ProduceDeciders:
 
         if farm.mode() == "bad":
             # 刷回忆：删卡页（相談没带 card_id 或删卡事件）也只删这局拿到的卡，转写目标 / 初始卡 / 固有卡不删（CodeRabbit #198）
-            pool = farm.junk_cards(cards, farm.target_cards())
+            pool = farm.junk_cards(cards, farm.target_cards(), self.farm_picked)
         lean = self.consult_delete_lean
         if lean and pool and "flow_tier" in pool[0]:
             self.consult_delete_lean = False  # 流派删卡池本来就只有明确该删的几档
@@ -2035,6 +2039,7 @@ class ProduceDeciders:
             return Decision(cancel, f"{why}：取消", "rule", 0.8 if lean else 0.7, warnings=warn, decider="remove_card")
         best = pool[0]
         if farm.mode() == "bad":
+            farm.forget_picked(self.farm_picked, best["card_id"])
             return Decision(Action(ActionKind.REMOVE_CARD, {"card_id": best["card_id"], "index": best.get("index"), "upgrade": best.get("upgrade")}),
                             f"刷回忆：删这局拿到的 {_card_label(best)}（转写目标 / 初始卡 / 固有卡不删）", "rule", 0.9, warnings=warn,
                             decider="remove_card")  # fmt: skip
@@ -2440,8 +2445,8 @@ class ProduceDeciders:
         counts, _ = self._deck_counts(state)
         if farming:
             pool = farm.junk_cards(
-                cards, farm.target_cards()
-            )  # 刷回忆：这一局拿到的卡全删（不进回忆抽选池），初始卡 / 固有卡 / 目标卡留着
+                cards, farm.target_cards(), self.farm_picked
+            )  # 刷回忆：这一局确认拿到的卡全删（不进回忆抽选池），初始卡 / 固有卡 / 目标卡 / 回忆带进来的卡留着
         elif flows.flow(ps.idol_card_id) not in (None, "yaruki"):
             pool = _flow_delete_pool(
                 cards, ps.idol_card_id, ps.mode
@@ -2462,6 +2467,7 @@ class ProduceDeciders:
         if farm.mode() == "bad":
             # 刷回忆：带上要删的卡 id，删卡页按它选，不再让 remove_card 重选（那边的删卡顺序不认转写目标，CodeRabbit #198）
             args["card_id"] = c["card_id"]
+            farm.forget_picked(self.farm_picked, c["card_id"])
         return Decision(Action(ActionKind.SHOP_BUY, args),
                         f"相談删{kind} {_card_label(c)}（{delete.get('price')}P；{hr.cite(rid)}）", "rule", 0.8,
                         decider="consult")  # fmt: skip
