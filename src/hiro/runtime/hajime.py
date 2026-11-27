@@ -245,9 +245,17 @@ def hajime_core(scenario_mode: str):
             self.s.state.exam_session.label = label
             self.s.state.exam_session.lesson = dict(info.d)
             gone = {"since": None}
+            from hiro.brain import farm
+
+            farming = farm.mode() == "bad"
+            live: dict = {}  # 刷回忆：每帧的「CLEARまで N」（BadLessonAdvisor 看它决定还出不出牌）
 
             def ended(shot) -> bool:
                 goal = hv.lesson_goal(shot)
+                if farming and goal == "clear":
+                    hud = hv.read_lesson_hud(shot) or {}
+                    if hud.get("left") is not None:
+                        live["left"] = hud["left"]
                 if goal is not None and info.needs(goal):
                     turns = hv.lesson_turns(shot) if info.d["turns_total"] is None else None
                     if info.feed(goal, hv.read_lesson_hud(shot), turns):
@@ -262,7 +270,16 @@ def hajime_core(scenario_mode: str):
                     gone["since"] = now
                 return now - gone["since"] >= LESSON_END_S
 
-            run_exam(self.brain, label, self.rec, ended, session=self.s, advisor=self.advisor)
+            advisor = self.advisor
+            if farming:
+                from hiro.exec.exam import _plugin
+
+                advisor = farm.BadLessonAdvisor(self.advisor or _plugin("exam_advisor"), live, lambda: info.d.get("clear_target"),
+                                                farm.margin_ratio())  # fmt: skip
+                logger.info("刷回忆 BAD：这节课离通关线还差通关线的 %.0f%% 以内就不再出牌", farm.margin_ratio() * 100)
+            run_exam(self.brain, label, self.rec, ended, session=self.s, advisor=advisor)
+            if farming:
+                self.s.note(f"刷回忆 BAD：{label} 结束时离通关还差 {live.get('left')}")
             self.rec.log("exam_end", image=active.device.screenshot(), exam=label, lesson=info.d)
             self.s.note(f"初练习课 {label}：{info.d}")
             self._lesson_done, self._lesson_done_at = True, time.monotonic()

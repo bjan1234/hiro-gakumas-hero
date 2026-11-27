@@ -413,6 +413,34 @@ func TestTowerPassesBareIdolName(t *testing.T) {
 	}
 }
 
+// 刷回忆：只有「初」；接着打时也带偶像卡和 --farm bad。
+func TestFarmArgs(t *testing.T) {
+	s := &state{}
+	for i, m := range modes {
+		if m.id == "hajime" {
+			s.mode = i
+		}
+	}
+	s.resume, s.farm, s.farmTarget = true, true, "p_card-02-act-3_186"
+	if a, _ := s.args(); a != nil {
+		t.Errorf("没选偶像卡不能发起：%q", a)
+	}
+	s.pick.Chosen = common.IdolItem{ID: "i_card-skin-hski-3-001", Name: "篠泽广"}
+	a, label := s.args()
+	got := strings.Join(a, " ")
+	if !strings.Contains(got, "--farm bad --farm-target p_card-02-act-3_186 --idol i_card-skin-hski-3-001") || !strings.Contains(label, "刷回忆") {
+		t.Errorf("%q %q", got, label)
+	}
+	s.farmTarget = ""
+	if a, _ := s.args(); a != nil {
+		t.Errorf("转写目标必填：%q", a)
+	}
+	s.farm = false
+	if a, _ := s.args(); strings.Contains(strings.Join(a, " "), "farm") {
+		t.Errorf("不勾不传：%q", a)
+	}
+}
+
 // 每日免费刷新：缺省不传；勾了、又在买东西时才传 on。
 func TestDailyArgsShopRefresh(t *testing.T) {
 	s := &state{shopRefresh: true}

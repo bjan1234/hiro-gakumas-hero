@@ -55,12 +55,15 @@ func defaultDiff(kind string) string {
 type idol = common.IdolItem
 
 type state struct {
-	mode    int
-	resume  bool
-	hifMain int // 0 选拔 1 本战
-	diff    int
-	pick    common.IdolPicker // 偶像卡（和编成方案页共用的选择器）
-	search  searchState       // 考试出牌：按场次选快速 / 搜索（examsearch.go）
+	mode   int
+	resume bool
+	// 刷回忆（只有「初」，HIRO_FARM=bad，实验）：BAD 育成、目标评价 B；farmTarget 是转写目标技能卡 id（可空）
+	farm       bool
+	farmTarget string
+	hifMain    int // 0 选拔 1 本战
+	diff       int
+	pick       common.IdolPicker // 偶像卡（和编成方案页共用的选择器）
+	search     searchState       // 考试出牌：按场次选快速 / 搜索（examsearch.go）
 
 	// 日常的选项（11-26）：竞赛挑哪个对手、商店买什么、硬币扭蛋抽哪个
 	contestPick int     // 0 综合力最低 1/2/3 第几个
@@ -374,6 +377,13 @@ func (s *state) explain(h plugin.Host, cat *common.Catalog, p hiroapi.Pending) (
 			e.Rows = append(e.Rows, [2]string{"主属性", labels.Attr(a)})
 		}
 	}
+	if r.Flags["farm"] == "bad" {
+		target := r.Flags["farm-target"]
+		if target == "" {
+			target = "回忆编成里带的卡"
+		}
+		e.Rows = append(e.Rows, [2]string{"刷回忆", "BAD 育成，目标评价 B（实验）"}, [2]string{"转写目标", target})
+	}
 	if row, ok := examSearchRow(r.Kind, r.Flags); ok {
 		e.Rows = append(e.Rows, row)
 	}
@@ -478,6 +488,16 @@ func (s *state) panel(c *ui.Context, h plugin.Host) {
 	if produce {
 		ui.Checkbox(c, &s.resume, "接着打游戏里开着的那局")
 	}
+	if m.id == "hajime" {
+		kit.Section(c, "刷回忆（实验）")
+		ui.Checkbox(c, &s.farm, "BAD 育成刷回忆（目标评价 B）")
+		if s.farm {
+			ui.Row(c).Key("farm-target").Children(func() {
+				ui.TextInput(c, &s.farmTarget).Grow(1).Placeholder("转写目标（必填）：技能卡名或编号，逗号分隔，例如 輝くキミへ").FontSize(kit.FSmall)
+			})
+			kit.Note(c, "只拿转写目标、初始卡和偶像固有卡，练习课刚好不过线，以 B 评价通关。租借回忆程序不会选：先在游戏里自己走开局、选好租借回忆、点「開始する」，再勾上面的「接着打」发起。偶像卡也要选（考试出牌要知道是谁）。")
+		}
+	}
 	if m.id == "hif" {
 		kit.Section(c, "打哪一段")
 		ui.Segmented(c, &s.hifMain, "选拔", "本战")
@@ -495,7 +515,7 @@ func (s *state) panel(c *ui.Context, h plugin.Host) {
 		s.dailyOptions(c)
 	}
 	s.search.draw(c, h, examGroups(m.id, s.hifMain, s.resume))
-	needIdol := (produce && !s.resume) || m.id == "tower"
+	needIdol := (produce && !s.resume) || m.id == "tower" || (m.id == "hajime" && s.farm)
 	if needIdol {
 		s.pick.Draw(c, h, "start")
 	}
@@ -679,13 +699,25 @@ func (s *state) args() ([]string, string) {
 		a = append(a, "--mode", []string{"qualify", "main"}[s.hifMain])
 	}
 	a = append(a, s.search.args(examGroups(m.id, s.hifMain, s.resume))...)
-	if s.resume {
+	farm := m.id == "hajime" && s.farm
+	if farm {
+		// 转写目标必填：不填时没有可靠的来源（租借回忆不在编成方案里），相談删卡会连目标一起删
+		t := strings.TrimSpace(strings.ReplaceAll(s.farmTarget, "，", ","))
+		if t == "" {
+			return nil, ""
+		}
+		a = append(a, "--farm", "bad", "--farm-target", t)
+	}
+	if s.resume && !farm {
 		return a, "接着打 " + m.name
 	}
 	if s.pick.Chosen.ID == "" {
 		return nil, ""
 	}
 	a = append(a, "--idol", s.pick.Chosen.ID)
+	if s.resume { // 刷回忆接着打：带上偶像卡（考试出牌要知道是谁）
+		return a, "接着打 " + m.name + "（刷回忆，" + s.pick.Chosen.Name + "）"
+	}
 	if len(m.diffs) > 0 {
 		a = append(a, "--difficulty", m.diffs[min(s.diff, len(m.diffs)-1)])
 	}

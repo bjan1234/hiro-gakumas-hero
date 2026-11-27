@@ -430,6 +430,27 @@ class ProduceDeciders:
         # step（第几周）N.I.A 画面上读不到，规则也只有初 MASTER「第 6 周前不能休息」用它：不算状态不全（N.I.A 实机 11-17 选行动 25 次全记成 fallback）
         missing = [k for k in ("stamina", "max_stamina") if prod.get(k) is None]
         st = self._hajime_nia_status(state)
+        from hiro.brain import farm
+
+        if farm.mode() == "bad":
+            # 刷回忆（HIRO_FARM=bad）：按 13 周固定日程选；这一周日程里没有 / 要的选项不在画面上时照原来的规则
+            deck = [
+                {"index": i, "card_id": c.get("card_id")}
+                for i, c in enumerate(prod.get("deck") or [])
+                if isinstance(c, dict)
+            ]
+            junk = bool(farm.junk_cards(deck, farm.target_cards()))
+            if not deck and not junk:
+                # 牌组没读到（11-27 DMM：牌组按钮认不出，第 7 周以为没卡可删去了外出）：按这局拿过的卡（选卡记账、续跑从 trace 恢复）判断
+                junk = bool(farm.junk_cards([{"card_id": c} for c in self.picked_musts], farm.target_cards()))
+            got = farm.pick_action(st.step, opts, st.criteria, has_junk=junk, shop_ok=st.shop_ok)
+            if got is not None:
+                o = opts[got[0]]
+                return Decision(Action.produce_next(o["option"], attr=o.get("attr"), sp=o.get("sp")), got[1], "rule", 0.9, cands,
+                                decider="action_select")  # fmt: skip
+            logger.warning(
+                "刷回忆 BAD：第 %s 周日程没有对应的选项（%s），按原来的规则选", st.step, [o.get("option") for o in opts]
+            )
         i, reason, _rules = choose_action(st, opts)
         o = opts[i]
         warn = [f"状态缺 {missing}，按默认值选"] if missing else []
@@ -2397,9 +2418,13 @@ class ProduceDeciders:
             for i, c in enumerate(ps.deck)
         ]
         counts, _ = self._deck_counts(state)
-        from hiro.brain import flows
+        from hiro.brain import farm, flows
 
-        if flows.flow(ps.idol_card_id) not in (None, "yaruki"):
+        if farm.mode() == "bad":
+            pool = farm.junk_cards(
+                cards, farm.target_cards()
+            )  # 刷回忆：这一局拿到的卡全删（不进回忆抽选池），初始卡 / 固有卡 / 目标卡留着
+        elif flows.flow(ps.idol_card_id) not in (None, "yaruki"):
             pool = _flow_delete_pool(
                 cards, ps.idol_card_id, ps.mode
             )  # 广以外的偶像：按自己的流派判冲突（协调 11-19 多偶像）+ 攻略的删卡条目
@@ -3319,6 +3344,11 @@ class ProduceDeciders:
         ps = self.produce_state(state)
         parsed = [ev.parse(c) for c in choices]
         vecs = [v for v, _ in parsed]
+        from hiro.brain import farm
+
+        if farm.mode():
+            # 刷回忆（BAD 育成）：这局除了转写目标什么卡都不要，拿技能卡的选项算坏处（占优判断和粗估分都按这个）
+            vecs = [{**v, "card": -v["card"]} for v in vecs]
         unparsed = {i for i, (_, ok) in enumerate(parsed) if not ok}  # choices 里的位置
         raw = state.produce or {}  # 局面不全（ProduceState 构造不出）时体力 / 成长率直接读原始字段
         kw = {"stamina": ps.stamina if ps else raw.get("stamina"), "max_stamina": ps.max_stamina if ps else raw.get("max_stamina"),
