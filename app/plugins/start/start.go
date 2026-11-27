@@ -851,6 +851,9 @@ func replay(j plugin.Job, name, mode string) func(h plugin.Host) {
 	}
 	// 续打时并进来的记录目录（resume_chain 的 trace）不带：run start 没有 --trace，新局自己建（CodeRabbit #138 / #197）
 	delete(params, "trace")
+	if idol, _ := params["idol"].(string); j.Kind == "tower" && strings.HasPrefix(idol, "i_card") {
+		return nil // 旧的偶像之路记录存的是偶像卡编号：列表页按偶像名找，重放会停在列表页（CodeRabbit #197），首页不出这一项
+	}
 	argv := common.StartArgv(j.Kind, params)
 	if len(argv) == 0 {
 		return nil
