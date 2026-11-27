@@ -273,34 +273,33 @@ def regen_step(boxes) -> tuple[int, int] | str | None:
     点了「再生成」以后（pending）画面一律这里管，不交回收尾的通用分支（那边会点「決定」「OK」，不看费用）：
     - 有キャンセル的框：只有读到「チケット」「無料」、没有ジュエル、和キャンセル同一行认得出确认按钮时才确认（白名单），否则点キャンセル；
     - 干净的结果页（没有框）：确认框关了 / 没弹，pending 结束；
-    - 别的（框认不全、过场）：WAIT，REGEN_WAIT_MAX_S 秒还这样就停下交给人（CodeRabbit #198）。"""
+    - 别的（框认不全、过场）：WAIT，REGEN_WAIT_MAX_S 秒还这样就停下交给人（CodeRabbit #198）。
+    pending 结束以后（框弹得比 DIALOG_GRACE_S 还晚、进程在框开着时重启）：只要画面是带キャンセル的再生成 / 含ジュエル的框，
+    也由这里按白名单确认或取消，绝不交回通用分支（审查 #198 第 1 条）。"""
     if mode() != "bad":
         return None
     texts = [_txt(b) for b in boxes]
+    cancel = next((b for b in boxes if "キャンセル" in _txt(b)), None)
     if _regen["pending"]:
-        cancel = next((b for b in boxes if "キャンセル" in _txt(b)), None)
         if cancel is not None:
             if _regen.get("confirmed"):
                 return _wait_or_stop(texts)  # 已经点过确认：框还在淡出，不再点
-            free = _free_regen(texts)
-            jewel = any("ジュエル" in t or "ジユエル" in t for t in texts)
-            cy = cancel.rect.center.y
-            # 确认按钮要和キャンセル在同一行（框里的按钮）：底下结果页的「再生成」（约 y 1160）不算
-            ok = next((b for b in boxes if _txt(b) in REGEN_CONFIRM_WORDS and abs(b.rect.center.y - cy) < 40
-                       and abs(b.rect.center.x - cancel.rect.center.x) > 100), None)  # fmt: skip
-            if jewel or not free or ok is None:
-                why = "有钻石" if jewel else ("没读到免费 / 再生成券" if not free else "认不出确认按钮")
-                logger.warning("刷回忆：再生成确认框%s，点キャンセル：%s", why, " ".join(texts)[:160])
-                return int(cancel.rect.center.x), int(cancel.rect.center.y)
-            logger.info("刷回忆：确认再生成（%s）", " ".join(texts)[:120])
-            _regen.update(confirmed=True, since=_clock())  # 超时从确认那一刻重新算
-            return int(ok.rect.center.x), int(ok.rect.center.y)
+            return _answer_dialog(boxes, texts, cancel)
         if any(w in t for t in texts for w in DIALOG_WORDS):
             return _wait_or_stop(texts)  # 还有框（认不全）：等
         if not _regen.get("confirmed") and _clock() - _regen.get("since", 0.0) < DIALOG_GRACE_S:
             return WAIT  # 刚点了再生成、框还没弹：先等一会儿
         # 没有框了：确认过的已经在重抽，没确认的 = 框没弹（直接重抽了）。交回收尾照常走（次へ / 点空白跳过演出）
         _regen["pending"] = False
+    elif cancel is not None and _is_regen_dialog(boxes, texts, cancel):
+        if _regen.get("confirmed"):
+            # 这局已经确认过一次再生成：又弹出来的框不是这里要的，取消（REGEN_MAX）
+            logger.warning("刷回忆：已经再生成过，又见到再生成 / 钻石确认框，点キャンセル：%s", " ".join(texts)[:160])
+            return int(cancel.rect.center.x), int(cancel.rect.center.y)
+        logger.warning("刷回忆：等确认框的时间过了 / 重启后才见到再生成 / 钻石确认框，照样按白名单处理：%s", " ".join(texts)[:160])
+        _regen["done"] = max(_regen["done"], 1)  # 框是点过再生成才会弹的（进程重启后计数从 0 开始）：不再点第二次
+        _regen.update(pending=True, since=_clock())  # 回到「等确认框」：点完以后框淡出那几帧也由这里管
+        return _answer_dialog(boxes, texts, cancel)
     r = memory_result(boxes)
     if r is None or not r["name"]:
         return None
@@ -321,6 +320,39 @@ def regen_step(boxes) -> tuple[int, int] | str | None:
     _regen.update(pending=True, since=_clock(), confirmed=False, cancelled=False)
     logger.info("刷回忆：不是目标，点「再生成」（还剩 %s 次，这局第 %d 次）", r["left"], _regen["done"])
     return r["regen_xy"]
+
+
+def _is_jewel(texts: list[str]) -> bool:
+    return any("ジュエル" in t or "ジユエル" in t for t in texts)
+
+
+def _is_regen_dialog(boxes, texts: list[str], cancel) -> bool:
+    """带キャンセル的框是不是再生成 / 花钻石的确认框：有ジュエル，或除了结果页那颗「再生成」按钮以外还有含「再生成」的字
+    （框标题「メモリー再生成」「〜再生成しますか」、和キャンセル同一行的「再生成する」）。结果页底下那颗「再生成」（y≈1160，
+    不在キャンセル那一行）不算，免得别的框（照片保存确认等）也被这里拦下。"""
+    if _is_jewel(texts):
+        return True
+    cy = cancel.rect.center.y
+    return any(
+        "再生成" in _txt(b) and (_txt(b) != "再生成" or abs(b.rect.center.y - cy) < 40) for b in boxes
+    )
+
+
+def _answer_dialog(boxes, texts: list[str], cancel) -> tuple[int, int]:
+    """再生成确认框：白名单（免费 / 用券、没有ジュエル、和キャンセル同一行认得出确认按钮）才确认，否则点キャンセル。"""
+    free = _free_regen(texts)
+    jewel = _is_jewel(texts)
+    cy = cancel.rect.center.y
+    # 确认按钮要和キャンセル在同一行（框里的按钮）：底下结果页的「再生成」（约 y 1160）不算
+    ok = next((b for b in boxes if _txt(b) in REGEN_CONFIRM_WORDS and abs(b.rect.center.y - cy) < 40
+               and abs(b.rect.center.x - cancel.rect.center.x) > 100), None)  # fmt: skip
+    if jewel or not free or ok is None:
+        why = "有钻石" if jewel else ("没读到免费 / 再生成券" if not free else "认不出确认按钮")
+        logger.warning("刷回忆：再生成确认框%s，点キャンセル：%s", why, " ".join(texts)[:160])
+        return int(cancel.rect.center.x), int(cancel.rect.center.y)
+    logger.info("刷回忆：确认再生成（%s）", " ".join(texts)[:120])
+    _regen.update(confirmed=True, since=_clock())  # 超时从确认那一刻重新算
+    return int(ok.rect.center.x), int(ok.rect.center.y)
 
 
 def _free_regen(texts: list[str]) -> bool:

@@ -388,3 +388,64 @@ def test_free_regen_ticket_count_ten_is_not_zero():
         assert farm._free_regen(["メモリー再生成チケットを1枚使用します", f"所持チケット{n}枚"]), n
     assert not farm._free_regen(["メモリー再生成チケットを1枚使用します", "所持チケット0"])
     assert not farm._free_regen(["メモリー再生成チケットを1枚使用します", "所持チケット：0枚"])
+
+
+def _late_dialog(*extra):
+    return _boxes(*RESULT, *extra)
+
+
+def test_regen_dialog_after_grace_never_goes_to_generic_branch(monkeypatch):
+    """审查 #198 第 1 条：点了再生成 5.5 秒才弹出带ジュエル的框（pending 已经结束）：原来返回 None，交给通用分支点「決定」花钻石。
+    现在 farm 开着时照样由这里接管：有钻石取消。"""
+    now = [0.0]
+    farm = _regen_started(monkeypatch, now)
+    now[0] = 4.5
+    assert farm.regen_step(_boxes(*RESULT)) is None and not farm._regen["pending"]  # 4 秒没框：交回收尾
+    now[0] = 5.5
+    dlg = _late_dialog(("ジュエルを50個使用して再生成しますか", 360, 640), ("キャンセル", 218, 1000), ("決定", 500, 1000))
+    assert farm.regen_step(dlg) == (218, 1000)
+    assert farm.regen_step(dlg) == (218, 1000)  # 还开着：再点キャンセル，绝不点決定
+
+
+def test_regen_late_free_dialog_is_confirmed_once(monkeypatch):
+    """审查 #198 第 1 条：晚弹的框是用券的（白名单）：照样确认；确认后淡出那几帧等着，不交回通用分支。"""
+    now = [0.0]
+    farm = _regen_started(monkeypatch, now)
+    now[0] = 4.5
+    assert farm.regen_step(_boxes(*RESULT)) is None
+    now[0] = 5.5
+    dlg = _boxes(("メモリー再生成チケットを1枚使用します", 360, 640), ("キャンセル", 218, 1000), ("再生成する", 500, 1000))
+    assert farm.regen_step(dlg) == (500, 1000)
+    assert farm.regen_step(dlg) == farm.WAIT  # 淡出中：不再点
+    assert farm.regen_step(_boxes(("TAP", 360, 1200))) is None and not farm._regen["pending"]
+    assert farm.regen_step(dlg) == (218, 1000)  # 已经确认过一次：再弹一次的框取消（REGEN_MAX）
+
+
+def test_regen_dialog_after_restart_is_handled(monkeypatch):
+    """审查 #198 第 1 条：进程在框开着时重启（_regen 清空、pending=False），框后面结果页读不全：照样按白名单处理，
+    有钻石取消；之后不会再点第二次再生成。"""
+    from hiro.brain import farm
+
+    monkeypatch.setenv("HIRO_FARM", "bad")
+    monkeypatch.setattr(farm, "_target_names", lambda: {"輝くキミへ"})
+    monkeypatch.setattr(farm, "_regen", {"done": 0, "pending": False, "reported": set()})
+    monkeypatch.setattr(farm, "_clock", lambda: 0.0)
+    dlg = _boxes(("メモリーを再生成しますか", 360, 600), ("ジユエル 50", 400, 650), ("キャンセル", 218, 1000), ("決定", 500, 1000))
+    assert farm.regen_step(dlg) == (218, 1000)
+    monkeypatch.setattr(farm, "_clock", lambda: 10.0)
+    assert farm.regen_step(_boxes(*RESULT)) is None  # 框关了：回到结果页，不再生成第二次
+    assert farm._regen["done"] == 1
+
+
+def test_unrelated_cancel_dialog_without_pending_is_left_alone(monkeypatch):
+    """没在等再生成、画面上的框和再生成 / 钻石无关（照片保存确认）：不归这里管，交回收尾（结果页的「再生成」按钮不算）。"""
+    from hiro.brain import farm
+
+    monkeypatch.setenv("HIRO_FARM", "bad")
+    monkeypatch.setattr(farm, "_target_names", lambda: {"リズミカル"})
+    monkeypatch.setattr(farm, "_regen", {"done": 0, "pending": False, "reported": set()})
+    other = _boxes(*RESULT, ("フォトを保存しますか", 360, 640), ("キャンセル", 218, 1000), ("決定", 500, 1000))
+    assert farm.regen_step(other) is None
+    monkeypatch.setenv("HIRO_FARM", "")
+    jewel = _boxes(("ジュエルを50個使用して再生成しますか", 360, 640), ("キャンセル", 218, 1000), ("決定", 500, 1000))
+    assert farm.regen_step(jewel) is None  # 刷回忆没开：完全不管
