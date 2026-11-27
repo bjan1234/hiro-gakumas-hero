@@ -658,8 +658,9 @@ def test_bad_lesson_advisor_reads_left_at_decision_time():
     adv = farm.BadLessonAdvisor(inner, live, lambda: 100, 0.3, read_left=lambda: fresh[0])
     d = adv.decide(None, None, None, legal)
     assert d.action.kind is ActionKind.SKIP and "20" in d.reason and live["left"] == 20
-    fresh[0] = None  # 现读读不到：退回 live
+    fresh[0] = None  # 现读读不到：退回 live（新一节课的实例：停手状态不带过来）
     live["left"] = 45
+    adv = farm.BadLessonAdvisor(inner, live, lambda: 100, 0.3, read_left=lambda: fresh[0])
     assert adv.decide(None, None, None, legal) == "inner"
     live["left"] = 25
     assert adv.decide(None, None, None, legal).action.kind is ActionKind.SKIP
@@ -752,3 +753,21 @@ def test_stray_dialog_after_confirm_stops_after_limit(monkeypatch):
     now[0] = 125.0
     with pytest.raises(ResumeBlocked, match="关不掉"):
         farm.regen_step(dlg)
+
+
+def test_bad_lesson_advisor_stays_stopped():
+    """CodeRabbit #198：一节课停过手以后，只要能跳过就一直跳过（好印象层数下降让余量变小时，原来会恢复出牌、过线掉卡）；
+    不能跳过时照常交给原顾问；新一节课（新实例）重置。"""
+    from hiro.contracts import Action, ActionKind
+
+    inner = NS(decide=lambda *a: "inner")
+    legal = [Action.play_card(0), Action.skip()]
+    live = {"left": 30}
+    adv = farm.BadLessonAdvisor(inner, live, 50, 0.4)  # 余量 20
+    assert adv.decide(NS(impression=5, remaining_turns=3), None, None, legal).action.kind is ActionKind.SKIP  # 20+14.4 ≥ 30
+    # 下一回合好印象掉了，余量只剩 20 < 30：仍然跳过，不恢复出牌
+    d = adv.decide(NS(impression=None, remaining_turns=2), None, None, legal)
+    assert d.action.kind is ActionKind.SKIP and "已经停手" in d.reason
+    assert adv.decide(None, None, None, [Action.play_card(0)]) == "inner"  # 不能跳过时照常
+    fresh = farm.BadLessonAdvisor(inner, {"left": 30}, 50, 0.4)  # 新一节课
+    assert fresh.decide(NS(impression=None, remaining_turns=2), None, None, legal) == "inner"

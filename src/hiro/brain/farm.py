@@ -252,6 +252,9 @@ class BadLessonAdvisor:
     def __init__(self, inner, live: dict, clear_target, ratio: float, read_left=None):
         self.inner, self.live, self.clear_target, self.ratio = inner, live, clear_target, ratio
         self.read_left = read_left
+        # 这节课停过手没有：停过以后只要能跳过就一直跳过（好印象自动加分会让余量变小，又恢复出牌就过线了；CodeRabbit #198）。
+        # 每节课 run_exam 包一个新实例，新一节课自然重置
+        self.stopped = False
 
     def _left(self):
         if self.read_left is not None:
@@ -274,6 +277,9 @@ class BadLessonAdvisor:
 
         m = self.margin()
         can_skip = any(getattr(a, "kind", None) is ActionKind.SKIP for a in legal)
+        if self.stopped and can_skip:
+            return Decision(Action.skip(), "刷回忆 BAD：这节课已经停手，继续跳过（不再出牌，以刚好没过结束）", "rule", 1.0,
+                            decider="battle")  # fmt: skip
         left = self._left() if m is not None and can_skip else None  # 只在停得了手时才多截一次图
         if left is not None and m is not None and can_skip:
             # 11-27 实机（藤田ことね 好印象流）：停手后好印象每回合结束还自动加参数，差 5 停手照样过线、拿了卡。
@@ -284,6 +290,7 @@ class BadLessonAdvisor:
                 extra = f"，之后好印象还会自动加约 {passive}" if passive else ""
                 if passive >= left:
                     logger.warning("刷回忆 BAD：离通关差 %s，好印象之后还会自动加约 %s，停手也会过线", left, passive)
+                self.stopped = True
                 return Decision(Action.skip(), f"刷回忆 BAD：离通关只差 {left}（≤ {limit:.0f}{extra}），不再出牌，这节课以刚好没过结束",
                                 "rule", 1.0, decider="battle")  # fmt: skip
         return self.inner.decide(state, memory, previews, legal)
