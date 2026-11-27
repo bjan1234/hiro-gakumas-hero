@@ -771,17 +771,23 @@ func (s *state) starters(h plugin.Host, cat *common.Catalog) []plugin.Starter {
 		}
 		seen[id+j.Kind] = true
 		e := cat.Get(h, id)
-		if e == nil {
+		if e == nil && j.Kind != "tower" {
 			continue
 		}
-		name, mode := shortIdol(e.Name), modeName(j.Kind)
-		out = append(out, plugin.Starter{
+		// 偶像之路的参数是偶像名（不是卡编号），资料库里查不到：直接用名字，不放卡面（CodeRabbit #197）
+		name, mode := id, modeName(j.Kind)
+		if e != nil {
+			name = shortIdol(e.Name)
+		}
+		st := plugin.Starter{
 			Label: "用" + name + "再打一把" + mode,
 			Sub:   "上次 " + time.Unix(int64(j.StartedAt), 0).Format("01-02") + " · " + labels.State(j.State),
 			Say:   "帮我用" + name + "打一把" + mode,
-			Art:   cat.Sprite(h, e.Asset),
-			Attr:  e.Attr,
-		})
+		}
+		if e != nil {
+			st.Art, st.Attr = cat.Sprite(h, e.Asset), e.Attr
+		}
+		out = append(out, st)
 	}
 	if len(out) == 0 {
 		out = append(out, plugin.Starter{Label: "选个偶像开一局", Sub: "也可以直接说「帮我用某某打一把初」", Say: "/开局", Icon: kit.IcPlay})

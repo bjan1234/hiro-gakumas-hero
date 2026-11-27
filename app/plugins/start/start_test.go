@@ -182,6 +182,17 @@ func TestStartersFromRecentRuns(t *testing.T) {
 	}
 }
 
+// CodeRabbit #197：偶像之路的参数是偶像名，资料库按编号查不到，首页照样给「再打一把」。
+func TestStartersTowerByName(t *testing.T) {
+	h, p := host(), New()
+	h.Resp["run status"] = okResult(`{"current":null,"recent":[{"id":"j1","kind":"tower","state":"done","started_at":1764000000,"params":{"idol":"篠澤広"}}]}`)
+	p.Starters(h)
+	st := p.Starters(h)
+	if len(st) == 0 || st[0].Label != "用篠澤広再打一把偶像之路" {
+		t.Errorf("偶像之路的再打一把：%+v", st)
+	}
+}
+
 func TestStartersWithoutHistoryOpenPanel(t *testing.T) {
 	h, p := host(), New()
 	h.Resp["run status"] = h.Resp["info idols"] // 形状不对 → 当没有最近几局
