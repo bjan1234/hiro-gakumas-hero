@@ -321,6 +321,7 @@ REGEN_WAIT_MAX_S = 20.0  # 点了再生成以后这么久还认不清画面：�
 DIALOG_WORDS = ("キャンセル", "決定", "OK", "はい", "ジュエル", "ジユエル")  # 画面上有这些 = 还有框
 DIALOG_GRACE_S = 4.0  # 点了再生成以后这么久没见到框也先等着（框可能弹得晚；早早放手，晚弹的框会被收尾的通用分支点掉）
 _clock = time.monotonic
+CLEAR_FRAMES = 2  # 已决定取消的框：连着这么多帧有字、没有框，才算框关了
 REGEN_CONFIRM_WORDS = ("再生成する", "再生成", "決定", "OK", "はい")
 
 
@@ -421,14 +422,22 @@ def regen_step(boxes) -> tuple[int, int] | str | None:
                 return _wait_or_stop(texts)  # 已经点过确认：框还在淡出，不再点
             # 点了キャンセル框还一直在（没反应）：同样受 REGEN_WAIT_MAX_S 上限，超时停下交给人（CodeRabbit #198）
             _stop_if_late(texts, "确认框一直关不掉（点キャンセル没反应）")
+            _regen["clear_frames"] = 0
             if _regen.get("cancelled"):
                 # 这个框已经决定取消（有ジュエル / 不在白名单）：框关掉之前一直点キャンセル，不再按白名单重判
                 # （漏读ジュエル的那一帧会被当成免费点了确认；CodeRabbit #198）
                 return int(cancel.rect.center.x), int(cancel.rect.center.y)
             return _answer_dialog(boxes, texts, cancel)
         if any(w in t for t in texts for w in DIALOG_WORDS):
+            _regen["clear_frames"] = 0
             return _wait_or_stop(texts)  # 还有框（认不全）：等
-        _regen["cancelled"] = False  # 框关了：「已决定取消」只管那一个框
+        if _regen.get("cancelled"):
+            # 「已决定取消」只在框确实关了才清：空帧（OCR 没读到字）不算，要连着 CLEAR_FRAMES 帧有字、又没有框。
+            # 之前一帧空帧就清掉，框再露出来、漏读ジュエル时会按白名单重判（CodeRabbit #198）。等的这几帧照样计入 20 秒超时
+            _regen["clear_frames"] = _regen.get("clear_frames", 0) + 1 if any(texts) else 0
+            if _regen["clear_frames"] < CLEAR_FRAMES:
+                return _wait_or_stop(texts)
+            _regen.update(cancelled=False, clear_frames=0)  # 框关了：「已决定取消」只管那一个框
         if not _regen.get("confirmed") and _clock() - _regen.get("since", 0.0) < DIALOG_GRACE_S:
             return WAIT  # 刚点了再生成、框还没弹：先等一会儿
         # 没有框了：确认过的已经在重抽，没确认的 = 框没弹（直接重抽了）。交回收尾照常走（次へ / 点空白跳过演出）

@@ -320,6 +320,7 @@ def test_regen_keeps_watching_after_cancel(monkeypatch):
     assert farm.regen_step(dlg) == (218, 1000)  # 还开着：再点キャンセル，绝不点決定
     now = farm._clock()
     monkeypatch.setattr(farm, "_clock", lambda: now + 5)
+    assert farm.regen_step(_boxes(*RESULT)) == farm.WAIT  # 取消过的框：要连着两帧没框才算关了
     assert farm.regen_step(_boxes(*RESULT)) is None and not farm._regen["pending"]
 
 
@@ -444,6 +445,7 @@ def test_regen_dialog_after_restart_is_handled(monkeypatch):
     )
     assert farm.regen_step(dlg) == (218, 1000)
     monkeypatch.setattr(farm, "_clock", lambda: 10.0)
+    assert farm.regen_step(_boxes(*RESULT)) == farm.WAIT  # 取消过的框：要连着两帧没框才算关了
     assert farm.regen_step(_boxes(*RESULT)) is None  # 框关了：回到结果页，不再生成第二次
     assert farm._regen["done"] == 1
 
@@ -924,5 +926,33 @@ def test_cancel_decision_sticks_until_dialog_closes(monkeypatch):
     now[0] = 1.0
     assert farm.regen_step(looks_free) == (218, 1000)  # 漏读ジュエル的一帧：不点确认
     now[0] = 2.0
-    farm.regen_step(_boxes(*RESULT))  # 框关了
+    farm.regen_step(_boxes(*RESULT))
+    farm.regen_step(_boxes(*RESULT))  # 框关了（连着两帧有字、没框）
     assert not farm._regen["cancelled"]
+
+
+def test_cancel_decision_survives_blank_frames(monkeypatch):
+    """CodeRabbit #198：已决定取消的框，空帧 / 一帧没框不能清掉这个决定（框再露出来、漏读ジュエル时会按白名单点确认）；
+    空帧继续 WAIT、计入 20 秒超时；连着两帧有字、没有框才清。"""
+    from hiro.loop.errors import ResumeBlocked
+
+    now = [0.0]
+    farm = _regen_started(monkeypatch, now)
+    paid = _boxes(("ジュエルを50個使用します", 360, 600), ("キャンセル", 218, 1000), ("再生成する", 500, 1000))
+    looks_free = _boxes(("メモリー再生成チケットを1枚使用します", 360, 640), ("キャンセル", 218, 1000), ("再生成する", 500, 1000))
+    assert farm.regen_step(paid) == (218, 1000)
+    now[0] = 1.0
+    assert farm.regen_step([]) == farm.WAIT and farm._regen["cancelled"]  # 空帧：不清
+    assert farm.regen_step(_boxes(*RESULT)) == farm.WAIT and farm._regen["cancelled"]  # 只一帧有字没框：还不清
+    assert farm.regen_step(looks_free) == (218, 1000)  # 框又露出来、漏读ジュエル：照样取消
+    assert farm.regen_step(_boxes(*RESULT)) == farm.WAIT
+    farm.regen_step(_boxes(*RESULT))  # 连着两帧有字、没框：清
+    assert not farm._regen["cancelled"]
+
+    farm = _regen_started(monkeypatch, now)
+    now[0] = 0.0
+    farm._regen["since"] = 0.0
+    assert farm.regen_step(paid) == (218, 1000)
+    now[0] = 25.0
+    with pytest.raises(ResumeBlocked):
+        farm.regen_step([])  # 一直空帧：20 秒停下
