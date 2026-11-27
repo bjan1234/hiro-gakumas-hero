@@ -755,7 +755,8 @@ def _start(a: dict) -> dict:
 def _game_close(a: dict) -> dict:
     from hiro.runtime import close_game
 
-    if (cur := client.data("status").get("current")) and cur.get("state") in LIVE:
+    # 停止中（stopping）的任务还没退出，也不关（CodeRabbit #197：停了马上关会把还在收尾的任务的游戏关掉）
+    if (cur := client.data("status").get("current")) and cur.get("state") in (*LIVE, "stopping"):
         raise CliError("busy", "有任务在跑，不关游戏", "等任务结束")
     what = a.get("what") or "game"
     if not close_game.commands(close_game.device_kind(), what):

@@ -309,3 +309,16 @@ def test_taskkill_not_found_counts_as_closed(monkeypatch):
 def test_no_close_commands_on_playcover():
     """Mac（PlayCover）没有关游戏的办法：commands 为空，game close 报「这个平台不能自动关游戏」。"""
     assert cg.commands("maatools", "game") == []
+
+
+def test_game_close_refuses_while_stopping(monkeypatch):
+    """CodeRabbit #197：任务停止中（还没退出）也不关游戏。"""
+    from hiro.cli import client, cmd_run
+    from hiro.cli.registry import CliError
+
+    import pytest
+
+    for state in ("running", "stopping"):
+        monkeypatch.setattr(client, "data", lambda what, s=state: {"current": {"state": s}})
+        with pytest.raises(CliError, match="有任务在跑"):
+            cmd_run._game_close({})
