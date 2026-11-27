@@ -17,6 +17,7 @@ type viewState struct {
 	md          markdown.Options
 	resolving   map[string]bool // 正在确认 / 取消的待确认编号（防重复）
 	inModal     bool            // 正在画页面确认框里的那张卡（不显示「↵」：确认框不接回车）
+	starting    int             // 合并确认里排着的下一项正在发起 / 确认的个数
 	autoOpened  map[string]bool // 已自动打开过游戏运行现状的任务
 	chatPct     float32
 	// 页面模式当前那页（插件 id + route；插件 id 为空 = 首页）

@@ -132,7 +132,7 @@ func (a *App) Busy() bool { return a.busy }
 
 // Pending 是有确认卡在等（当前对话 / 页面记录），或有确认 / 取消正在发（#138 review）。
 func (a *App) Pending() bool {
-	if len(a.ui.resolving) > 0 {
+	if len(a.ui.resolving) > 0 || a.ui.starting > 0 {
 		return true
 	}
 	// 所有对话（不只当前这个）和页面记录里还在等的确认卡都算（CodeRabbit #138 / #197：切到别的对话后，原对话的卡被漏看）

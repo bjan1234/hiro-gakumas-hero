@@ -224,6 +224,7 @@ func (a *App) startQueued(t *Thread, m *Message, card plugin.Card, item map[stri
 	if lv, _ := card["auto"].(string); lv != "" {
 		auto = a.permission() // 按当前档位重查（CodeRabbit #79）
 	}
+	a.ui.starting++ // 排队的下一项正在发起 / 确认：这时不能关游戏 / 关助手（Pending 算上，CodeRabbit #197）
 	a.d.Run.Go(func() func() {
 		r := call(a.ctx, argv)
 		var started hiroapi.Result
@@ -243,6 +244,7 @@ func (a *App) startQueued(t *Thread, m *Message, card plugin.Card, item map[stri
 			why = "没拿到待确认"
 		}
 		return func() {
+			a.ui.starting--
 			if ask != nil {
 				queue, _ := card["queue"].([]any)
 				card["queue"] = []any{}
