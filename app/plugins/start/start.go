@@ -840,6 +840,8 @@ func replay(j plugin.Job, name, mode string) func(h plugin.Host) {
 	if params["command"] == "resume" {
 		params["command"] = "new" // 上次是接着打的：再打一把是开新的
 	}
+	// 续打时并进来的记录目录（resume_chain 的 trace）不带：run start 没有 --trace，新局自己建（CodeRabbit #138 / #197）
+	delete(params, "trace")
 	argv := common.StartArgv(j.Kind, params)
 	if len(argv) == 0 {
 		return nil

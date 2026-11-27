@@ -148,7 +148,7 @@ func (a *App) pagesView(c *ui.Context) {
 			a.pageBody(c)
 		})
 	})
-	a.pageConfirm(c, true)
+	a.pageConfirm(c)
 }
 
 func (a *App) pagesSidebar(c *ui.Context) {
@@ -347,7 +347,7 @@ func (a *App) pageHome(c *ui.Context) {
 		for _, p := range a.reg.All() {
 			for _, n := range p.Navs() {
 				p, n := p, n
-				if kit.Secondary(c, n.Label).Key("home-go-"+p.ID+"-"+n.Route).Clicked() {
+				if kit.Secondary(c, n.Label).Key("home-go-" + p.ID + "-" + n.Route).Clicked() {
 					a.ui.pagePlugin, a.ui.pageRoute = p.ID, n.Route
 				}
 			}
@@ -413,8 +413,9 @@ func (a *App) pageWaiting() (*Message, plugin.Card) {
 }
 
 // pageConfirm 弹出确认框：同一张确认卡（对话里那张），点「开始」才动游戏；点外面 / Esc = 先不。
-// enter：回车直接「开始」。对话界面里不接回车（输入框空着时回车也会确认对话里的确认卡，一下确认两张；自检）。
-func (a *App) pageConfirm(c *ui.Context, enter bool) {
+// 不接回车（#138 review：缺省焦点在「先不」上，回车其实是取消，和「↵」提示相反；焦点不在按钮上时回车又会确认，
+// 而这里没有对话里「卡出现满 1 秒、不是插件塞来的」两道保护，插件刚塞来的卡会被正在打字的回车确认掉）。
+func (a *App) pageConfirm(c *ui.Context) {
 	m, card := a.pageWaiting()
 	if card == nil {
 		return
@@ -423,14 +424,37 @@ func (a *App) pageConfirm(c *ui.Context, enter bool) {
 	open := true
 	ui.Modal(c, &open, func() {
 		ui.Column(c).Width(600).MaxHeight(720).Children(func() {
+			a.ui.inModal = true
 			ui.Scroll(c).Children(func() { a.confirmCard(c, m, card) })
+			a.ui.inModal = false
 		})
-		if enter && !a.ui.resolving[p.ID] && c.Shortcut(0, ui.KeyEnter) {
-			a.resolve(m, card, "confirm")
-		}
 	})
 	if !open && !a.ui.resolving[p.ID] {
 		a.resolve(m, card, "cancel")
+	}
+	if a.ui.resolving[p.ID] {
+		a.cancelStalePages(card)
+	}
+}
+
+// cancelStalePages：页面上一次只弹最新那张确认卡；它点了「开始」/「先不」后，更早还在等的页面卡（弹框出来前连点了几下）一并取消，
+// 不再一张张重新弹出来、同一件事问两遍（#138 review）。自动开始了的不动。
+func (a *App) cancelStalePages(keep plugin.Card) {
+	if a.pages == nil {
+		return
+	}
+	kp, _ := pendingOf(keep)
+	for _, m := range a.pages.Messages {
+		for _, card := range m.Cards {
+			p, ok := pendingOf(card)
+			if !ok || p.ID == kp.ID || !a.waiting(card) || a.ui.resolving[p.ID] {
+				continue
+			}
+			if auto, _ := card["auto"].(string); auto != "" {
+				continue
+			}
+			a.resolve(m, card, "cancel")
+		}
 	}
 }
 

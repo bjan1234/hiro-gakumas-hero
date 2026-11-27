@@ -16,6 +16,7 @@ type viewState struct {
 	list        ui.ListState
 	md          markdown.Options
 	resolving   map[string]bool // 正在确认 / 取消的待确认编号（防重复）
+	inModal     bool            // 正在画页面确认框里的那张卡（不显示「↵」：确认框不接回车）
 	autoOpened  map[string]bool // 已自动打开过游戏运行现状的任务
 	chatPct     float32
 	// 页面模式当前那页（插件 id + route；插件 id 为空 = 首页）
@@ -72,7 +73,7 @@ func (a *App) View(c *ui.Context) {
 		a.ui.chatPct = ClampChatPercent(a.ui.chatPct, main)
 		ui.SplitPercent(c, &a.ui.chatPct, chat, func() { a.panel(c) }).SplitReset(DefaultChatPercent(main)).Grow(1).FillHeight()
 	})
-	a.pageConfirm(c, false) // 页面上发起、还没确认的那一项：切到问 AI 也照样弹出来（CodeRabbit #198）
+	a.pageConfirm(c) // 页面上发起、还没确认的那一项：切到问 AI 也照样弹出来（CodeRabbit #198）
 }
 
 func (a *App) header(c *ui.Context) {

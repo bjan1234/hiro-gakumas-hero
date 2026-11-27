@@ -208,7 +208,9 @@ func (a *App) confirmCard(c *ui.Context, m *Message, card plugin.Card) {
 				if kit.Primary(c, start).Key("confirm-" + p.ID).Disabled(busy).Clicked() {
 					a.resolve(m, card, "confirm")
 				}
-				ui.Text(c, "↵").FontSize(12).TextColor(kit.Ink3)
+				if !a.ui.inModal {
+					ui.Text(c, "↵").FontSize(12).TextColor(kit.Ink3)
+				}
 			})
 		})
 	})

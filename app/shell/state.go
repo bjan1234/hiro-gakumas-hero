@@ -101,7 +101,6 @@ const (
 // PagesThreadID 是页面模式那条隐藏记录的编号。
 const PagesThreadID = "pages"
 
-
 // New 建主界面，读出已存的对话。
 func New(d Deps, reg *plugin.Registry) *App {
 	if d.Now == nil {
@@ -130,6 +129,18 @@ func (a *App) Current() *Thread { return a.cur }
 
 // Busy 是不是在等 agent 回复。
 func (a *App) Busy() bool { return a.busy }
+
+// Pending 是有确认卡在等（当前对话 / 页面记录），或有确认 / 取消正在发（#138 review）。
+func (a *App) Pending() bool {
+	if len(a.ui.resolving) > 0 {
+		return true
+	}
+	if _, c := a.latestWaiting(); c != nil {
+		return true
+	}
+	_, c := a.pageWaiting()
+	return c != nil
+}
 
 // PendingTools 是这一轮已经调过的工具（等回复时显示）。
 func (a *App) PendingTools() []string { return a.tools }
@@ -372,11 +383,12 @@ func (a *App) OpenPanel(pluginID, route string) {
 
 // snapHost 是给后台线程用的宿主：任务数据是界面线程上拍下的快照；会改界面状态的动作都排回界面线程。
 type snapHost struct {
-	a    *App
-	jobs map[string]*plugin.JobView
-	live string
-	chat map[string]bool
-	busy bool
+	a       *App
+	jobs    map[string]*plugin.JobView
+	live    string
+	chat    map[string]bool
+	busy    bool
+	pending bool
 }
 
 // snapshotHost 在界面线程上拍一份快照（算上下文时用，免得后台读到正在改的 map）。
@@ -389,7 +401,7 @@ func (a *App) snapshotHost() plugin.Host {
 	for id := range a.jobs {
 		chat[id] = a.ChatJob(id)
 	}
-	return &snapHost{a: a, jobs: jobs, live: a.live, chat: chat, busy: a.busy}
+	return &snapHost{a: a, jobs: jobs, live: a.live, chat: chat, busy: a.busy, pending: a.Pending()}
 }
 
 func (s *snapHost) Call(ctx context.Context, args []string) hiroapi.Result {
@@ -413,6 +425,7 @@ func (s *snapHost) Job(id string) *plugin.JobView {
 }
 func (s *snapHost) LiveJob() string        { return s.live }
 func (s *snapHost) Busy() bool             { return s.busy }
+func (s *snapHost) Pending() bool          { return s.pending }
 func (s *snapHost) ChatJob(id string) bool { return s.chat[id] }
 func (s *snapHost) Home() string           { return s.a.d.Home }
 func (s *snapHost) Now() time.Time         { return s.a.d.Now() }

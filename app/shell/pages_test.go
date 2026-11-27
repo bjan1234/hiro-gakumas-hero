@@ -281,3 +281,65 @@ func TestPageJobIsNotChatJob(t *testing.T) {
 		t.Error("通知找不到页面记录")
 	}
 }
+
+// #138 review：页面确认框不接回车（缺省焦点在「先不」，回车其实是取消；焦点不在按钮上时又会确认插件刚塞来的卡），也不显示「↵」。
+func TestPageConfirmIgnoresEnter(t *testing.T) {
+	call := &fakeCall{resp: map[string]hiroapiResult{"run start daily": pendingResult("p3", "领日常奖励")}}
+	a, run := newPagesApp(call, nil)
+	tt := ui.NewTester(a.View, 1280, 800)
+	a.RunArgs("帮我领日常奖励", []string{"run", "start", "daily"})
+	run.Drain()
+	tt.Frame()
+	if tt.HasText("↵") {
+		t.Error("页面确认框不该显示「↵」")
+	}
+	tt.Key(0, ui.KeyEnter)
+	run.Drain()
+	tt.Frame()
+	if call.called("confirm") {
+		t.Fatal("回车不该确认")
+	}
+}
+
+// #138 review：弹框出来前连点了两下，处理掉最新那张后，更早那张不再重新弹出来（一并取消）。
+func TestPageConfirmCancelsStaleCards(t *testing.T) {
+	call := &fakeCall{resp: map[string]hiroapiResult{
+		"run start daily": pendingResult("p4", "领日常奖励"),
+		"cancel p4":       ok(`{}`),
+		"cancel p5":       ok(`{}`),
+	}}
+	a, run := newPagesApp(call, nil)
+	tt := ui.NewTester(a.View, 1280, 800)
+	a.RunArgs("帮我领日常奖励", []string{"run", "start", "daily"})
+	run.Drain()
+	call.resp["run start daily"] = pendingResult("p5", "领日常奖励")
+	a.RunArgs("帮我领日常奖励", []string{"run", "start", "daily"})
+	run.Drain()
+	tt.Frame()
+	if err := tt.Click("先不"); err != nil {
+		t.Fatal(err)
+	}
+	run.Drain()
+	tt.Frame()
+	run.Drain()
+	tt.Frame()
+	if !call.called("cancel p5") || !call.called("cancel p4") {
+		t.Fatalf("两张都该取消：%v", call.calls)
+	}
+	if _, c := a.pageWaiting(); c != nil {
+		t.Errorf("旧卡又弹出来了：%+v", c)
+	}
+}
+
+func TestPendingSeesWaitingCards(t *testing.T) {
+	call := &fakeCall{resp: map[string]hiroapiResult{"run start daily": pendingResult("p6", "领日常奖励")}}
+	a, run := newPagesApp(call, nil)
+	if a.Pending() {
+		t.Fatal("还没有确认卡")
+	}
+	a.RunArgs("帮我领日常奖励", []string{"run", "start", "daily"})
+	run.Drain()
+	if !a.Pending() {
+		t.Error("页面上有确认卡在等，Pending 应为真")
+	}
+}

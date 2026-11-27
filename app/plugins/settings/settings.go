@@ -309,6 +309,9 @@ var CloseGameSupported = runtime.GOOS == "windows"
 // closeWait 是任务结束后等多久再关（「全部开始」的下一项这时已经开始了就不关）；测试里调成 0。
 var closeWait = 5 * time.Second
 
+// closeRetries 是助手忙 / 有确认卡在等时最多再看几次（每次隔 closeWait，约 2 分钟）。
+var closeRetries = 24
+
 // closeGameAfter：「跑完关游戏」开着时，任务做完（完成 / 出错，不含被你停下的）后关游戏。
 // 等 5 秒再看：「全部开始」排着的下一项这时已经开始了，就不关（不然下一项连不上游戏）。
 // 「跑完关助手」也在这里：游戏要关的先关游戏，关成了再关助手（没关成留着窗口，让你看到原因）。
@@ -323,49 +326,63 @@ func (s *S) closeGameAfter(h plugin.Host, v *plugin.JobView) {
 	if v.Job != nil && v.Job.Kind == "fit-window" {
 		return
 	}
-	h.Go(func() func() {
-		time.Sleep(closeWait)
-		return func() {
-			// 下一项已经开始 / 助手还在回复（可能马上接着开下一个任务）：不关
-			game, self := want()
-			if h.LiveJob() != "" || h.Busy() || (!game && !self) {
-				return
-			}
-			quit := func() {
-				if _, self := want(); self {
-					s.d.Quit()
+	var check func(left int)
+	check = func(left int) {
+		h.Go(func() func() {
+			time.Sleep(closeWait)
+			return func() {
+				// 下一项已经开始：不关
+				game, self := want()
+				if h.LiveJob() != "" || (!game && !self) {
+					return
 				}
-			}
-			if !game {
-				quit()
-				return
-			}
-			h.Go(func() func() {
-				r := h.Call(context.Background(), []string{"game", "close"})
-				var d struct {
-					Closed bool `json:"closed"`
-				}
-				ok := r.OK && r.Decode(&d) == nil && d.Closed
-				return func() {
-					if !ok {
-						why := "关游戏的命令没成功（DMM 版要以管理员身份打开初星助手）"
-						if r.Error != nil && r.Error.Message != "" {
-							why = r.Error.Message
-						}
-						h.Post("「跑完关游戏」没关成："+why, nil)
-						return
+				// 助手还在回复 / 有确认卡在等你点 / 刚点了「开始」任务还没起来（可能马上接着开下一个任务）：过一会儿再看，
+				// 不直接放弃（CodeRabbit #197：原来这里 return，之后再没人检查，开关开着却不关）；也不在确认中途关（#138 review）
+				if h.Busy() || h.Pending() {
+					if left > 0 {
+						check(left - 1)
+					} else {
+						h.Post("「跑完关游戏 / 关助手」这次没执行：助手一直在回复或有确认卡在等。", nil)
 					}
-					// 侧栏的连接状态跟着变（CodeRabbit #123：原来还显示「已连上」）；下一次发起前要先开游戏（#123 review）
-					s.devMu.Lock()
-					off := false
-					s.device, s.deviceOK, s.probedAt = "游戏已关 · 点这里重连", &off, h.Now()
-					s.devMu.Unlock()
-					h.Post("已按「跑完关游戏」关了游戏。下次发起任务前先把游戏打开。", nil)
-					quit()
+					return
 				}
-			})
-		}
-	})
+				quit := func() {
+					if _, self := want(); self {
+						s.d.Quit()
+					}
+				}
+				if !game {
+					quit()
+					return
+				}
+				h.Go(func() func() {
+					r := h.Call(context.Background(), []string{"game", "close"})
+					var d struct {
+						Closed bool `json:"closed"`
+					}
+					ok := r.OK && r.Decode(&d) == nil && d.Closed
+					return func() {
+						if !ok {
+							why := "关游戏的命令没成功（DMM 版要以管理员身份打开初星助手）"
+							if r.Error != nil && r.Error.Message != "" {
+								why = r.Error.Message
+							}
+							h.Post("「跑完关游戏」没关成："+why, nil)
+							return
+						}
+						// 侧栏的连接状态跟着变（CodeRabbit #123：原来还显示「已连上」）；下一次发起前要先开游戏（#123 review）
+						s.devMu.Lock()
+						off := false
+						s.device, s.deviceOK, s.probedAt = "游戏已关 · 点这里重连", &off, h.Now()
+						s.devMu.Unlock()
+						h.Post("已按「跑完关游戏」关了游戏。下次发起任务前先把游戏打开。", nil)
+						quit()
+					}
+				})
+			}
+		})
+	}
+	check(closeRetries)
 }
 
 // ---- 第一次使用 ----

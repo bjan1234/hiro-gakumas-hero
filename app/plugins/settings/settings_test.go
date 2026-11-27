@@ -665,3 +665,46 @@ func TestCloseGameAfterUpdatesConnection(t *testing.T) {
 		t.Error("不支持的平台不显示「跑完关游戏」")
 	}
 }
+
+// CodeRabbit #197 / #138 review：任务结束时助手还在回复 / 有确认卡在等，不直接放弃关游戏：过一会儿再看；
+// 一直忙就发一句没执行（不悄悄不关）；下一项已经开始了就不关。
+func TestCloseGameAfterWaitsWhileBusy(t *testing.T) {
+	closeWait = 0
+	defer func() { closeWait = 5 * time.Second }()
+	old := CloseGameSupported
+	defer func() { CloseGameSupported = old }()
+	CloseGameSupported = true
+	f := &fake{s: Settings{Provider: "deepseek", WizardDone: true, CloseGameAfter: true}, secrets: map[string]string{}, ready: true}
+	s := New(f.deps())
+	done := &plugin.JobView{State: "done", Job: &plugin.Job{ID: "j1", Kind: "daily"}}
+
+	// 一直有确认卡在等：重试用完后发一句没执行，不关
+	h := plugintest.New(map[string]string{"game close": `{"closed":true}`})
+	h.Pending_ = true
+	s.closeGameAfter(h, done)
+	if h.Called("game close") || len(h.Posted) != 1 {
+		t.Fatalf("有确认卡在等不该关游戏，应说一句：called=%v posted=%d", h.Called("game close"), len(h.Posted))
+	}
+
+	// 助手忙了几下后空下来：照样关
+	h2 := plugintest.New(map[string]string{"game close": `{"closed":true}`})
+	h2.Busy_ = true
+	n := 0
+	h2.OnGo = func() {
+		if n++; n == 3 {
+			h2.Busy_ = false
+		}
+	}
+	s.closeGameAfter(h2, done)
+	if !h2.Called("game close") {
+		t.Fatal("助手空下来后应该关游戏")
+	}
+
+	// 下一项已经开始：不关
+	h3 := plugintest.New(map[string]string{"game close": `{"closed":true}`})
+	h3.Busy_, h3.Live = true, "j2"
+	s.closeGameAfter(h3, done)
+	if h3.Called("game close") || len(h3.Posted) != 0 {
+		t.Error("下一项已经开始不该关、也不用说")
+	}
+}

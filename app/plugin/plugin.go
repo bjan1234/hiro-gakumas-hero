@@ -35,6 +35,8 @@ type Host interface {
 	ChatJob(id string) bool
 	// Busy 是助手正在回复（这时 Ask 以玩家身份说的话会被丢掉）。
 	Busy() bool
+	// Pending 是有确认卡在等你点（对话里或页面上的确认框），或「开始」已经点了、任务还没起来（#138 review：这时不能关游戏 / 关助手）。
+	Pending() bool
 	// ClosePanel 关掉侧边面板。
 	ClosePanel()
 	// Home 是 HIRO_HOME（读本机图片用）。
