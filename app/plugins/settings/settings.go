@@ -347,9 +347,16 @@ func (s *S) closeGameAfter(h plugin.Host, v *plugin.JobView) {
 					return
 				}
 				quit := func() {
-					if _, self := want(); self {
-						s.d.Quit()
+					_, self := want()
+					if !self {
+						return
 					}
+					// 关游戏那段时间里又开了任务 / 弹了确认卡 / 助手在回复：不关助手（CodeRabbit #138）
+					if h.LiveJob() != "" || h.Busy() || h.Pending() {
+						h.Post("「跑完关助手」这次没关：又有任务或确认卡在等。", nil)
+						return
+					}
+					s.d.Quit()
 				}
 				if !game {
 					quit()

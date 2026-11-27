@@ -135,11 +135,17 @@ func (a *App) Pending() bool {
 	if len(a.ui.resolving) > 0 {
 		return true
 	}
-	if _, c := a.latestWaiting(); c != nil {
-		return true
+	// 所有对话（不只当前这个）和页面记录里还在等的确认卡都算（CodeRabbit #138 / #197：切到别的对话后，原对话的卡被漏看）
+	for _, t := range a.allThreads() {
+		for _, m := range t.Messages {
+			for _, card := range m.Cards {
+				if a.waiting(card) {
+					return true
+				}
+			}
+		}
 	}
-	_, c := a.pageWaiting()
-	return c != nil
+	return false
 }
 
 // PendingTools 是这一轮已经调过的工具（等回复时显示）。

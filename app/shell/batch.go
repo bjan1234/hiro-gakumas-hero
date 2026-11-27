@@ -139,7 +139,12 @@ func (a *App) batchFirstFailed(t *Thread, card plugin.Card) {
 	for _, it := range items[1:] {
 		rest = append(rest, it)
 	}
-	a.addTo(t, "agent", fmt.Sprintf("第 1 项没能开始，后面 %d 项没做：%s", len(rest), queueNames(rest)), nil)
+	// 带上第 1 项没开起来的原因（页面上只看得到这一句，原因原来只存在卡上看不到，CodeRabbit #138 / #197）
+	why := ""
+	if msg, _ := card["message"].(string); msg != "" {
+		why = "（" + msg + "）"
+	}
+	a.addTo(t, "agent", fmt.Sprintf("第 1 项没能开始%s，后面 %d 项没做：%s。可以改一下再发起。", why, len(rest), queueNames(rest)), nil)
 }
 
 // removeBatchItem 去掉合并确认卡里的一项（退掉它的待确认）。
