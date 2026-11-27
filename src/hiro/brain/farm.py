@@ -325,8 +325,9 @@ def regen_step(boxes) -> tuple[int, int] | str | None:
 
 def _free_regen(texts: list[str]) -> bool:
     """确认框说的是免费 / 用再生成券（白名单）：读到「無料」，或「チケット」和「使用 / 消費」在同一行；
-    出现「不足」或券数是 0（所持 0、0枚）一律不算（框里写「所持チケット 0」时不能当成免费，自检）。"""
-    if any("不足" in t or re.search(r"(所持|残り).*?[:：]?\s*0(枚|個)?$|(^|\D)0枚", t) for t in texts):
+    出现「不足」或券数是 0（所持 0、0枚）一律不算（框里写「所持チケット 0」时不能当成免费，自检）。
+    0 前面不能紧挨着数字：「所持チケット10」「20枚」是 10 / 20 张，不是 0 张（审查 #198 第 6 条）。"""
+    if any("不足" in t or re.search(r"(所持|残り)\D*?(?<!\d)0(枚|個)?$|(^|\D)0枚", t) for t in texts):
         return False
     return any("無料" in t for t in texts) or any("チケット" in t and ("使用" in t or "消費" in t) for t in texts)
 

@@ -377,3 +377,14 @@ def test_free_regen_whitelist():
     assert not farm._free_regen(["メモリーを再生成しますか", "所持チケット 0"])
     assert not farm._free_regen(["チケットが不足しています"])
     assert not farm._free_regen(["メモリーを再生成しますか", "50"])
+
+
+def test_free_regen_ticket_count_ten_is_not_zero():
+    """审查 #198 第 6 条：券数 10 / 20 / 30 张不能判成 0 张（原来 .*? 吃掉前面的 1，整数倍券时白名单无声失效）。"""
+    from hiro.brain import farm
+
+    for n in ("10", "20", "30"):
+        assert farm._free_regen(["メモリー再生成チケットを1枚使用します", f"所持チケット{n}"]), n
+        assert farm._free_regen(["メモリー再生成チケットを1枚使用します", f"所持チケット{n}枚"]), n
+    assert not farm._free_regen(["メモリー再生成チケットを1枚使用します", "所持チケット0"])
+    assert not farm._free_regen(["メモリー再生成チケットを1枚使用します", "所持チケット：0枚"])
