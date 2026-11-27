@@ -371,6 +371,8 @@ def regen_step(boxes) -> tuple[int, int] | str | None:
         if cancel is not None:
             if _regen.get("confirmed"):
                 return _wait_or_stop(texts)  # 已经点过确认：框还在淡出，不再点
+            # 点了キャンセル框还一直在（没反应）：同样受 REGEN_WAIT_MAX_S 上限，超时停下交给人（CodeRabbit #198）
+            _stop_if_late(texts, "确认框一直关不掉（点キャンセル没反应）")
             return _answer_dialog(boxes, texts, cancel)
         if any(w in t for t in texts for w in DIALOG_WORDS):
             return _wait_or_stop(texts)  # 还有框（认不全）：等
@@ -380,7 +382,10 @@ def regen_step(boxes) -> tuple[int, int] | str | None:
         _regen["pending"] = False
     elif cancel is not None and _is_regen_dialog(boxes, texts, cancel):
         if _regen.get("confirmed"):
-            # 这局已经确认过一次再生成：又弹出来的框不是这里要的，取消（REGEN_MAX）
+            # 这局已经确认过一次再生成：又弹出来的框不是这里要的，取消（REGEN_MAX）；一直关不掉就停下（CodeRabbit #198）
+            t0 = _regen.setdefault("stray_since", _clock())
+            if _clock() - t0 > REGEN_WAIT_MAX_S:
+                _raise_blocked(texts, "多出来的再生成 / 钻石确认框一直关不掉（点キャンセル没反应）")
             logger.warning("刷回忆：已经再生成过，又见到再生成 / 钻石确认框，点キャンセル：%s", " ".join(texts)[:160])
             return int(cancel.rect.center.x), int(cancel.rect.center.y)
         logger.warning(
@@ -389,6 +394,15 @@ def regen_step(boxes) -> tuple[int, int] | str | None:
         _regen["done"] = max(_regen["done"], 1)  # 框是点过再生成才会弹的（进程重启后计数从 0 开始）：不再点第二次
         _regen.update(pending=True, since=_clock())  # 回到「等确认框」：点完以后框淡出那几帧也由这里管
         return _answer_dialog(boxes, texts, cancel)
+    elif cancel is None and _is_regen_dialog_no_cancel(texts):
+        # pending 清掉以后才弹的框、キャンセル又没读到：不交回通用分支（会点「決定」），回到「等确认框」，
+        # 由上面的 pending 分支等着读出キャンセル再按白名单处理，REGEN_WAIT_MAX_S 还不行就停下（CodeRabbit #198）
+        logger.warning("刷回忆：见到再生成 / 钻石确认框但没读到キャンセル，先等：%s", " ".join(texts)[:160])
+        _regen["done"] = max(_regen["done"], 1)
+        _regen.update(pending=True, since=_clock())
+        return WAIT
+    else:
+        _regen.pop("stray_since", None)
     r = memory_result(boxes)
     if r is None or not r["name"]:
         return None
@@ -442,6 +456,23 @@ def _is_regen_dialog(boxes, texts: list[str], cancel) -> bool:
     )
 
 
+DIALOG_BUTTONS = ("決定", "OK", "はい", "再生成する")  # 确认框的确认按钮（整格读到才算；结果页只有「再生成」「次へ」）
+
+
+def _is_regen_dialog_no_cancel(texts: list[str]) -> bool:
+    """读不到キャンセル时判「是不是再生成 / 花钻石的确认框」（口径同 _is_regen_dialog，但没有キャンセル定不了框的区域）：
+    要有确认按钮（決定 / OK / はい / 再生成する），并且有框标题那样含「再生成」的字（结果页的「再生成」按钮、
+    「あと N 回」「再生成可能」说明不算），或者ジュエル和「使用 / 消費」同屏（付费确认；只有ジュエル的领奖画面不算，免得卡住正常收尾）。"""
+    if not any(t in DIALOG_BUTTONS for t in texts):
+        return False
+    if _is_jewel(texts) and any("使用" in t or "消費" in t for t in texts):
+        return True
+    return any(
+        "再生成" in t and t != "再生成" and t not in DIALOG_BUTTONS and "可能" not in t and not re.search(r"あと\d+回", t)
+        for t in texts
+    )
+
+
 def _answer_dialog(boxes, texts: list[str], cancel) -> tuple[int, int]:
     """再生成确认框：白名单（免费 / 用券、没有ジュエル、和キャンセル同一行认得出确认按钮）才确认，否则点キャンセル。"""
     free = _free_regen(_dialog_texts(boxes, cancel))  # 白名单只看框里的字；ジュエル看整屏
@@ -471,11 +502,17 @@ def _free_regen(texts: list[str]) -> bool:
     return any(("無料" in t or "チケット" in t) and ("使用" in t or "消費" in t) for t in texts)
 
 
-def _wait_or_stop(texts: list[str]) -> str:
-    if _clock() - _regen.get("since", _clock()) > REGEN_WAIT_MAX_S:
-        from hiro.loop.errors import ResumeBlocked
+def _raise_blocked(texts: list[str], why: str):
+    from hiro.loop.errors import ResumeBlocked
 
-        raise ResumeBlocked(
-            f"刷回忆：点了再生成以后 {REGEN_WAIT_MAX_S:.0f} 秒画面还认不清（没点确认），停下交给人：{' '.join(texts)[:120]}"
-        )
+    raise ResumeBlocked(f"刷回忆：点了再生成以后 {REGEN_WAIT_MAX_S:.0f} 秒{why}，停下交给人：{' '.join(texts)[:120]}")
+
+
+def _stop_if_late(texts: list[str], why: str) -> None:
+    if _clock() - _regen.get("since", _clock()) > REGEN_WAIT_MAX_S:
+        _raise_blocked(texts, why)
+
+
+def _wait_or_stop(texts: list[str]) -> str:
+    _stop_if_late(texts, "画面还认不清（没点确认）")
     return WAIT

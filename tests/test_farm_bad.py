@@ -650,3 +650,73 @@ def test_lesson_clear_left_only_on_clear_goal():
     assert lesson_clear_left({"goal": "perfect", "left": 12}, hv) is None
     assert lesson_clear_left({"goal": "clear"}, hv) is None
     assert lesson_clear_left({"goal": None, "left": 3}, hv) is None
+
+
+def test_late_dialog_without_cancel_waits_then_stops(monkeypatch):
+    """CodeRabbit #198：pending 清掉以后才弹的框、キャンセル没读到：不交回通用分支（会点「決定」），WAIT；20 秒还读不出就停下。"""
+    from hiro.loop.errors import ResumeBlocked
+
+    now = [0.0]
+    farm = _regen_started(monkeypatch, now)
+    now[0] = 4.5
+    assert farm.regen_step(_boxes(*RESULT)) is None and not farm._regen["pending"]
+    now[0] = 6.0
+    dlg = _boxes(*RESULT, ("メモリーを再生成しますか", 360, 600), ("50", 400, 650), ("決定", 500, 1000))
+    assert farm.regen_step(dlg) == farm.WAIT and farm._regen["pending"]
+    now[0] = 10.0
+    assert farm.regen_step(dlg) == farm.WAIT
+    # キャンセル读出来了：按白名单取消
+    assert farm.regen_step(_boxes(*RESULT, ("メモリーを再生成しますか", 360, 600), ("50", 400, 650), ("キャンセル", 218, 1000),
+                                  ("決定", 500, 1000))) == (218, 1000)  # fmt: skip
+    now[0] = 30.0
+    with pytest.raises(ResumeBlocked):
+        farm.regen_step(dlg)
+
+
+def test_late_jewel_dialog_without_cancel_waits(monkeypatch):
+    farm = _regen_started(monkeypatch, [0.0])
+    farm._regen["pending"] = False
+    dlg = _boxes(("ジュエル", 300, 640), ("50個使用します", 420, 640), ("OK", 500, 1000))
+    assert farm.regen_step(dlg) == farm.WAIT
+
+
+def test_no_cancel_reward_screens_are_not_regen_dialogs():
+    """读不到キャンセル时的口径不能拦下正常收尾：只有ジュエル的领奖画面、干净的结果页（「再生成可能」说明）都不算。"""
+    from hiro.brain import farm
+
+    assert not farm._is_regen_dialog_no_cancel(["ジュエル×30", "獲得しました", "OK"])
+    assert not farm._is_regen_dialog_no_cancel(["獲得可能スキルカード", "あと1回再生成可能", "再生成", "次へ"])
+    assert not farm._is_regen_dialog_no_cancel(["メモリーを再生成しますか"])  # 没有确认按钮：不是框
+    assert farm._is_regen_dialog_no_cancel(["メモリーを再生成しますか", "決定"])
+
+
+def test_cancel_not_responding_stops_after_limit(monkeypatch):
+    """CodeRabbit #198：点了キャンセル框还一直在（没反应）：20 秒上限，超时停下交给人，不无限点。"""
+    from hiro.loop.errors import ResumeBlocked
+
+    now = [0.0]
+    farm = _regen_started(monkeypatch, now)
+    dlg = _boxes(("メモリーを再生成しますか", 360, 600), ("50", 400, 650), ("キャンセル", 218, 1000), ("決定", 500, 1000))
+    for t in (1.0, 5.0, 15.0):
+        now[0] = t
+        assert farm.regen_step(dlg) == (218, 1000)
+    now[0] = 25.0
+    with pytest.raises(ResumeBlocked, match="关不掉"):
+        farm.regen_step(dlg)
+
+
+def test_stray_dialog_after_confirm_stops_after_limit(monkeypatch):
+    """CodeRabbit #198：已经确认过一次，又弹出的框点キャンセル一直关不掉：同样 20 秒停下。"""
+    from hiro.loop.errors import ResumeBlocked
+
+    now = [0.0]
+    farm = _regen_started(monkeypatch, now)
+    farm._regen.update(pending=False, confirmed=True)
+    dlg = _boxes(("メモリーを再生成しますか", 360, 600), ("キャンセル", 218, 1000), ("決定", 500, 1000))
+    now[0] = 100.0
+    assert farm.regen_step(dlg) == (218, 1000)
+    now[0] = 110.0
+    assert farm.regen_step(dlg) == (218, 1000)
+    now[0] = 125.0
+    with pytest.raises(ResumeBlocked, match="关不掉"):
+        farm.regen_step(dlg)
