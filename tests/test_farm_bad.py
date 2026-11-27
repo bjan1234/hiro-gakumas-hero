@@ -373,7 +373,9 @@ def test_free_regen_whitelist():
     from hiro.brain import farm
 
     assert farm._free_regen(["メモリー再生成チケットを1枚使用します"])
-    assert farm._free_regen(["本日1回無料"])
+    assert farm._free_regen(["本日1回無料で使用できます"])
+    assert not farm._free_regen(["本日1回無料"])  # CodeRabbit #198：单独的「無料」不算，要和「使用 / 消費」同一行
+    assert not farm._free_regen(["無料", "メモリーを再生成しますか"])
     assert not farm._free_regen(["メモリーを再生成しますか", "所持チケット 0"])
     assert not farm._free_regen(["チケットが不足しています"])
     assert not farm._free_regen(["メモリーを再生成しますか", "50"])
@@ -467,7 +469,7 @@ def test_unrelated_cancel_dialog_without_pending_is_left_alone(monkeypatch):
 def test_regen_whitelist_only_reads_dialog_area(monkeypatch):
     """审查 #198 第 7 条：白名单只看确认框区域（キャンセル那一行往上）。框外（屏幕顶上）的「無料」不能把付费框当成免费。"""
     farm = _regen_started(monkeypatch, [0.0])
-    dlg = _boxes(("本日1回無料", 360, 120), ("メモリーを再生成しますか", 360, 600), ("50", 400, 650),
+    dlg = _boxes(("本日1回無料で使用", 360, 120), ("メモリーを再生成しますか", 360, 600), ("50", 400, 650),
                  ("キャンセル", 218, 1000), ("決定", 500, 1000))  # fmt: skip
     assert farm.regen_step(dlg) == (218, 1000)
 

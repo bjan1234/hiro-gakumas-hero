@@ -358,7 +358,7 @@ def regen_step(boxes) -> tuple[int, int] | str | None:
     """刷回忆收尾：回忆结果页 / 再生成确认框要点哪里；不归这里管返回 None（照常点「次へ」）；WAIT = 这一帧什么都别点。
     只在：刷回忆开着、读到了卡名、不是目标、还有再生成次数、这局还没再生成过 REGEN_MAX 次。
     点了「再生成」以后（pending）画面一律这里管，不交回收尾的通用分支（那边会点「決定」「OK」，不看费用）：
-    - 有キャンセル的框：只有读到「チケット」「無料」、没有ジュエル、和キャンセル同一行认得出确认按钮时才确认（白名单），否则点キャンセル；
+    - 有キャンセル的框：只有读到「チケット / 無料」和「使用 / 消費」同一行、没有ジュエル、和キャンセル同一行认得出确认按钮时才确认（白名单），否则点キャンセル；
     - 干净的结果页（没有框）：确认框关了 / 没弹，pending 结束；
     - 别的（框认不全、过场）：WAIT，REGEN_WAIT_MAX_S 秒还这样就停下交给人（CodeRabbit #198）。
     pending 结束以后（框弹得比 DIALOG_GRACE_S 还晚、进程在框开着时重启）：只要画面是带キャンセル的再生成 / 含ジュエル的框，
@@ -460,14 +460,15 @@ def _answer_dialog(boxes, texts: list[str], cancel) -> tuple[int, int]:
 
 
 def _free_regen(texts: list[str]) -> bool:
-    """确认框说的是免费 / 用再生成券（白名单）：读到「無料」，或「チケット」和「使用 / 消費」在同一行；
+    """确认框说的是免费 / 用再生成券（白名单）：「無料」或「チケット」要和「使用 / 消費」在同一行（单独一个「無料」不算：
+    可能是框外别处的字、或「無料分は使い切りました」这类说明；CodeRabbit #198）；
     出现「不足」或券数是 0（所持 0、0枚）一律不算（框里写「所持チケット 0」时不能当成免费，自检）。
     0 前面不能紧挨着数字：「所持チケット10」「20枚」是 10 / 20 张，不是 0 张（审查 #198 第 6 条）。"""
     if any("不足" in t or re.search(r"(所持|残り)\D*?(?<!\d)0(枚|個)?$|(^|\D)0枚", t) for t in texts):
         return False
     if any(re.search(r"\d+個", t) and "チケット" not in t and "所持" not in t for t in texts):
         return False  # 「50個」这类不是券的数量 = 付费样式（ジュエル只显示成图标、字没读到时）：不算免费
-    return any("無料" in t for t in texts) or any("チケット" in t and ("使用" in t or "消費" in t) for t in texts)
+    return any(("無料" in t or "チケット" in t) and ("使用" in t or "消費" in t) for t in texts)
 
 
 def _wait_or_stop(texts: list[str]) -> str:
