@@ -26,6 +26,7 @@ sys.path.insert(0, str(ROOT / "src"))
 import hiro  # noqa: E402, F401  兼容层
 
 TASKS = ("activity_funds", "presents", "assignment", "contest", "shop", "coin_gacha", "mission_reward", "club_reward")
+SHOP_TIMEOUT = 600.0  # 商店单项至少给这么久
 LABEL = {
     "activity_funds": "活动费",
     "presents": "礼物",
@@ -130,6 +131,8 @@ def run_own(names: list[str], timeout: float, out: Path) -> list[dict]:
         popups.clear()
         rec = {"task": n, "impl": "own", "before": shot(f"{n}-before")}
         t0 = time.monotonic()
+        # 商店按名字买 + 免费刷新 + 体力商店，一项就可能超过 300 秒（按名字买一轮实测约 205 秒）：给它多一倍（#122 review）
+        deadline.seconds = max(timeout, SHOP_TIMEOUT) if n == "shop" else timeout
         deadline.start()
         try:
             rec["result"] = OWN[n](rt)
@@ -137,9 +140,14 @@ def run_own(names: list[str], timeout: float, out: Path) -> list[dict]:
         except PartialStop as e:  # 做到一半停下：已经做了的照样报（结果行），这一项算失败
             rec["ok"] = False
             rec["result"], rec["error"] = e.result, e.reason
+            if e.stop_all:  # 画面可能还停在框 / 抽卡结果页上：后面的项都不跑，交给人（CodeRabbit #197）
+                rec["after"] = shot(f"{n}-after")
+                rec["seconds"] = round(time.monotonic() - t0, 1)
+                _finish(rec, summary)
+                break
         except TaskTimeout:
             rec["ok"] = False
-            rec["error"] = f"超时 {timeout:.0f}s，已打断"
+            rec["error"] = f"超时 {deadline.seconds:.0f}s，已打断"
             rec["timeout_shot"] = shot(f"{n}-timeout")
         except Exception as e:  # noqa: BLE001  一项失败（ResumeBlocked / DangerBlocked …）记下来，继续下一项
             rec["ok"] = False

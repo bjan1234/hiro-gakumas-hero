@@ -143,9 +143,9 @@ def _shop(monkeypatch, screen, goods, money, *, home_raises=False):
         x = rt.device.taps[-1][0]
         _, price, n = goods[x]
         if price * n > state["money"]:
-            return False
+            return shop.SHORT
         state["money"] -= price * n
-        return True
+        return shop.BOUGHT
 
     def home(rt):
         if home_raises == "timeout":
@@ -226,7 +226,7 @@ def test_shop_ap_bought_kept_when_stopped(monkeypatch):
 
     monkeypatch.setattr(shop, "wait_dialog", dialog)
     monkeypatch.setattr(shop, "read_dialog", lambda g: {"name": "再挑戦チケット", "ap": True, "jewel": False})
-    monkeypatch.setattr(shop, "confirm", lambda rt, g: True)
+    monkeypatch.setattr(shop, "confirm", lambda rt, g: shop.BOUGHT)
     got: list[str] = []
     import pytest
 
@@ -412,7 +412,7 @@ def test_refresh_then_buy_another_round(monkeypatch):
     def fake_round(rt, m, names, prices, seen, bought):
         rounds.append(1)
         bought.append(f"ロジックノート{len(rounds)}")
-        return {"cands": {}, "rec_seen": True, "money_short": False}
+        return {"cands": {}, "rec_seen": True, "money_short": False, "tiles_seen": True}
 
     monkeypatch.setattr(shop, "_buy_round", fake_round)
     monkeypatch.setattr(shop, "refresh_list", lambda rt: None)
@@ -456,3 +456,193 @@ def test_shop_task_timeout_still_reports_bought(monkeypatch):
     with pytest.raises(shop.common.PartialStop) as e:
         shop.run(rt)
     assert "商店买了" in e.value.result and e.value.reason == "超时"
+
+
+# ---- 11-28 审查（CodeRabbit #197 / #198 上 shop.py:310 / 318 / 446、coin_gacha.py:43 / 226）----
+
+DIALOG = frame(("交換確認", 100, 425), ("マニーを使用して、以下のアイテムと交換しますか?", 300, 512),
+               ("ロジックノート", 380, 584), ("キャンセル", 200, 1110), ("決定", 520, 1110))  # fmt: skip
+LIST = frame(("3,000", 120, 480), ("あと1回", 104, 509))
+
+
+class _WaitRt(_Rt):
+    """wait_until 按给定的帧序列一帧帧看（每帧 0.5 秒），到 timeout 还没满足返回 (False, 最后一帧)。"""
+
+    def __init__(self, frames):
+        super().__init__()
+        self.frames = list(frames)
+
+    def wait_until(self, cond, timeout, every=0.5):
+        f = None
+        for _ in range(int(timeout / every)):
+            f = self.frames.pop(0) if len(self.frames) > 1 else self.frames[0]
+            if cond(f):
+                return True, f
+        return False, f
+
+
+def _word_taps(monkeypatch, module=shop):
+    taps = []
+
+    def tap_word(rt, f, word, **k):
+        if not any(word in t.text for t in f.texts):
+            return False
+        taps.append(word)
+        return True
+
+    monkeypatch.setattr(module, "tap_word", tap_word)
+    return taps
+
+
+def test_confirm_without_decide_button_is_not_bought(monkeypatch):
+    """没读到「決定」（没点）：取消、返回 MISSED，不当买成（原来只等标题消失就算买了）。"""
+    taps = _word_taps(monkeypatch)
+    no_decide = frame(*[(t.text, t.rect.center.x, t.rect.center.y) for t in DIALOG.texts if t.text != "決定"])
+    rt = _WaitRt([LIST, LIST])
+    monkeypatch.setattr(shop.common, "frame", lambda rt: LIST)
+    assert shop.confirm(rt, no_decide) == shop.MISSED and taps == ["キャンセル"]
+
+
+def test_dialog_gone_needs_two_frames_with_text():
+    """一帧漏读「交換確認」或空帧不算框关了：要连着两帧有字、都没这个框。"""
+    blank = frame()
+    rt = _WaitRt([DIALOG, blank, LIST, DIALOG] * 3)
+    assert shop.wait_dialog(rt, gone=True) is None  # 中间夹着的单帧不算
+    rt = _WaitRt([DIALOG, LIST, LIST])
+    assert shop.wait_dialog(rt, gone=True) is LIST
+
+
+def test_cancel_dialog_stuck_stops_everything(monkeypatch):
+    """点了キャンセル 框还在：抛 DialogStuck（stop_all），不接着点下一格（会读到旧框、买错东西）。"""
+    taps = _word_taps(monkeypatch)
+    monkeypatch.setattr(shop.common, "frame", lambda rt: DIALOG)
+    import pytest
+
+    with pytest.raises(shop.common.DialogStuck):
+        shop.cancel_dialog(_WaitRt([DIALOG]), DIALOG)
+    assert taps == ["キャンセル", "キャンセル"]
+
+
+def test_shop_dialog_stuck_reports_bought_and_stops_all(monkeypatch):
+    import pytest
+
+    monkeypatch.setenv("HIRO_SHOP", "all")
+    monkeypatch.delenv("HIRO_SHOP_AP", raising=False)
+    monkeypatch.delenv("HIRO_SHOP_ITEMS", raising=False)
+    monkeypatch.delenv("HIRO_SHOP_REFRESH", raising=False)
+    monkeypatch.setattr(shop, "goto_daily_exchange", lambda rt: True)
+
+    def stuck_round(rt, m, names, prices, seen, bought):
+        bought.append("ロジックノート")
+        raise shop.common.DialogStuck("商店：兑换确认框关不掉")
+
+    monkeypatch.setattr(shop, "_buy_round", stuck_round)
+    with pytest.raises(shop.common.PartialStop) as e:
+        shop.run(_Rt())
+    assert e.value.stop_all and "商店买了" in e.value.result
+
+
+def test_shop_refresh_stuck_keeps_bought(monkeypatch):
+    """免费刷新后框关不掉（RefreshDialogStuck）：第一轮买的照样报，整个日常停下（原来结果全丢）。"""
+    import pytest
+
+    monkeypatch.setenv("HIRO_SHOP", "all")
+    monkeypatch.setenv("HIRO_SHOP_REFRESH", "on")
+    monkeypatch.delenv("HIRO_SHOP_AP", raising=False)
+    monkeypatch.delenv("HIRO_SHOP_ITEMS", raising=False)
+    monkeypatch.setattr(shop, "goto_daily_exchange", lambda rt: True)
+
+    def one_round(rt, m, names, prices, seen, bought):
+        bought.append("ロジックノート")
+        return {"cands": {}, "rec_seen": True, "money_short": False, "tiles_seen": True}
+
+    def stuck(rt):
+        raise shop.RefreshDialogStuck("框关不掉")
+
+    monkeypatch.setattr(shop, "_buy_round", one_round)
+    monkeypatch.setattr(shop, "refresh_list", stuck)
+    with pytest.raises(shop.common.PartialStop) as e:
+        shop.run(_Rt())
+    assert e.value.stop_all and "商店买了" in e.value.result
+
+    def timeout(rt):  # 刷新观察期里超时：确认框可能还开着，也整个停下
+        raise shop.common.TaskTimeout()
+
+    monkeypatch.setattr(shop, "refresh_list", timeout)
+    with pytest.raises(shop.common.PartialStop) as e:
+        shop.run(_Rt())
+    assert e.value.stop_all
+
+
+def test_shop_bought_is_recorded_before_dismissing_prompt(monkeypatch):
+    """框关了（买成了）之后、关买完提示时超时：这一件照样记上（原来 confirm 里关提示，超时就漏记）。"""
+    import pytest
+
+    monkeypatch.setenv("HIRO_SHOP", "all")
+    monkeypatch.delenv("HIRO_SHOP_AP", raising=False)
+    monkeypatch.delenv("HIRO_SHOP_ITEMS", raising=False)
+    monkeypatch.delenv("HIRO_SHOP_REFRESH", raising=False)
+    rt = _shop(monkeypatch, LIST, {104: ("ロジックノート", 3000, 1)}, 5000)
+
+    def dismiss(rt):
+        raise shop.common.TaskTimeout()
+
+    monkeypatch.setattr(shop, "dismiss_bought", dismiss)
+    with pytest.raises(shop.common.PartialStop) as e:
+        shop.run(rt)
+    assert "商店买了" in e.value.result
+
+
+def test_shop_no_tiles_is_not_done_today(monkeypatch):
+    """一个商品格都没读到：不报「推荐商品今天买过了」，这一项算没做完。"""
+    import pytest
+
+    monkeypatch.setenv("HIRO_SHOP", "recommended")
+    monkeypatch.delenv("HIRO_SHOP_AP", raising=False)
+    monkeypatch.delenv("HIRO_SHOP_ITEMS", raising=False)
+    monkeypatch.delenv("HIRO_SHOP_REFRESH", raising=False)
+    rt = _shop(monkeypatch, frame(("デイリー交換所", 360, 40)), {}, 5000)
+    with pytest.raises(shop.common.PartialStop) as e:
+        shop.run(rt)
+    assert "没读到" in e.value.reason and "今天买过了" not in e.value.result
+
+
+def test_coin_gacha_plan_rejects_bad_counts(monkeypatch):
+    monkeypatch.setenv("HIRO_COIN_GACHA", "friend:-1,sense:abc,logic,anomaly:2")
+    assert coin_gacha.plan() == [("logic", 1), ("anomaly", 2)]
+
+
+def test_coin_gacha_draw_stopped_stops_all(monkeypatch):
+    """关抽卡结果页没关成：画面还停在结果页上，后面的项都不跑（CodeRabbit #197 / #198）。"""
+    import pytest
+
+    monkeypatch.setenv("HIRO_COIN_GACHA", "friend:2")
+    monkeypatch.setattr(coin_gacha, "goto_coin_gacha", lambda rt: True)
+
+    def draw(rt, pool, times):
+        raise coin_gacha.DrawStopped(pool, 2, "关结果超时")
+
+    monkeypatch.setattr(coin_gacha, "draw", draw)
+    with pytest.raises(coin_gacha.common.PartialStop) as e:
+        coin_gacha.run(_Rt())
+    assert e.value.stop_all
+
+    def timeout(rt, pool, times):  # 普通超时（没在结果页上）：不必整个停下
+        raise coin_gacha.common.TaskTimeout()
+
+    monkeypatch.setattr(coin_gacha, "draw", timeout)
+    with pytest.raises(coin_gacha.common.PartialStop) as e:
+        coin_gacha.run(_Rt())
+    assert not e.value.stop_all
+
+
+def test_coin_gacha_cancel_must_close_dialog(monkeypatch):
+    import pytest
+
+    box = frame(("コインガシャ確認", 360, 300), ("キャンセル", 200, 1110))
+    taps = _word_taps(monkeypatch, coin_gacha)
+    monkeypatch.setattr(coin_gacha.common, "frame", lambda rt: box)
+    with pytest.raises(coin_gacha.common.DialogStuck):
+        coin_gacha._cancel(_WaitRt([box]), box)
+    assert taps.count("キャンセル") >= 2
+    coin_gacha._cancel(_WaitRt([frame(("コインガシャ", 360, 40))]), box)  # 关了：不抛

@@ -292,7 +292,18 @@ def goto_daily_exchange(rt) -> bool:
 
 
 def wait_dialog(rt, gone: bool = False):
-    ok, f = rt.wait_until(lambda f: (read_dialog(f) is None) if gone else (read_dialog(f) is not None), 6.0, every=0.5)
+    """等交換確認框出来（gone=False）或关掉（gone=True），6 秒；等到返回那一帧，没等到 None。
+    关掉要连着两帧有字、都没有这个框才算（一帧漏读「交換確認」或空帧不算关了，CodeRabbit #197 / #198）。"""
+    if not gone:
+        ok, f = rt.wait_until(lambda f: read_dialog(f) is not None, 6.0, every=0.5)
+        return f if ok else None
+    streak = [0]
+
+    def closed(f) -> bool:
+        streak[0] = streak[0] + 1 if f.texts and read_dialog(f) is None else 0
+        return streak[0] >= 2
+
+    ok, f = rt.wait_until(closed, 6.0, every=0.5)
     return f if ok else None
 
 
@@ -303,20 +314,40 @@ def tap_word(rt, f, word: str, **kw) -> bool:
     return False
 
 
-def confirm(rt, g) -> bool:
-    """在交換確認框点「決定」：框关了（买成了）返回 True，顺手关掉买完的提示；6 秒还在（按钮灰 = 不够）点キャンセル 返回 False。
-    原来只等 1.5 秒，框关得慢就当成不够、买成了也没记上（review）。"""
-    tap_word(rt, g, "決定", y_min=1080)
+def cancel_dialog(rt, g) -> None:
+    """交換確認框点「キャンセル」，并确认框真的关了。没读到按钮 / 点了还在：抛 DialogStuck（整个日常停下）——
+    框还开着就去点下一格，读到的是这个旧框，会把不要的东西买下（CodeRabbit #197 / #198）。"""
+    tap_word(rt, g, "キャンセル", y_min=1080)
     if wait_dialog(rt, gone=True) is None:
-        tap_word(rt, common.frame(rt), "キャンセル", y_min=1080)
-        wait_dialog(rt, gone=True)
-        return False
-    for _ in range(3):  # 买完的提示框
+        tap_word(rt, common.frame(rt), "キャンセル", y_min=1080)  # 再点一次（第一次可能落在过场里）
+        if wait_dialog(rt, gone=True) is None:
+            raise common.DialogStuck("商店：兑换确认框关不掉，日常停下（没确认，没花东西），请手动关掉")
+
+
+BOUGHT, SHORT, MISSED = "bought", "short", "missed"  # confirm 的三种结果：买成了 / 买不起 / 没读到「決定」没点
+
+
+def confirm(rt, g) -> str:
+    """在交換確認框点「決定」：框关了（买成了）返回 BOUGHT；6 秒还在（按钮灰 = 不够）点キャンセル 返回 SHORT；
+    没读到「決定」（没点）就取消、返回 MISSED，不当买成（CodeRabbit #197 / #198）。原来只等 1.5 秒，框关得慢就当成不够（review）。
+    买完的提示框不在这里关：调用方先记账、再 dismiss_bought（关提示时超时也不漏记已买的，CodeRabbit #198）。"""
+    if not tap_word(rt, g, "決定", y_min=1080):
+        logger.warning("兑换确认框没读到「決定」，不买")
+        cancel_dialog(rt, g)
+        return MISSED
+    if wait_dialog(rt, gone=True) is None:
+        cancel_dialog(rt, common.frame(rt))
+        return SHORT
+    return BOUGHT
+
+
+def dismiss_bought(rt) -> None:
+    """关掉买完的提示框（閉じる / OK）。"""
+    for _ in range(3):
         h = common.frame(rt)
         if not (tap_word(rt, h, "閉じる", y_min=900) or tap_word(rt, h, "OK", y_min=900)):
             break
         rt.sleep(0.8)
-    return True
 
 
 def cost(f) -> int | None:
@@ -350,13 +381,16 @@ def buy_ap(rt, keys: list[str], got: list[str] | None = None) -> list[str]:
         name = (d or {}).get("name") or ""
         want = d is not None and d["ap"] and not d["jewel"] and any(AP_ITEMS[k] in name for k in keys)
         if not want:
-            tap_word(rt, g, "キャンセル", y_min=1080)
-            wait_dialog(rt, gone=True)
+            cancel_dialog(rt, g)
             continue
-        if not confirm(rt, g):  # 缺省数量就是能买的最多；没买成 = 体力不够
+        r = confirm(rt, g)  # 缺省数量就是能买的最多
+        if r == SHORT:  # 没买成 = 体力不够
             break
+        if r == MISSED:
+            continue
         got.append(name)
         logger.info("AP 商店买了：%s", name)
+        dismiss_bought(rt)
     return got
 
 
@@ -382,12 +416,12 @@ def _fallback(rt, cands: list[dict]) -> tuple[str | None, str | None]:
             d = read_dialog(g)
             c = cost(g)
             if d is not None and d["money"] and not d["jewel"] and c == price:
-                if confirm(rt, g):
+                r = confirm(rt, g)
+                if r == BOUGHT:
                     return d["name"] or "?", None
-                return None, "金币不够"
+                return None, ("金币不够" if r == SHORT else "确认框没读到「決定」，没买")
             logger.info("最便宜那件对不上（价 %s，框里扣 %s），不买", price, c)
-            tap_word(rt, g, "キャンセル", y_min=1080)
-            wait_dialog(rt, gone=True)
+            cancel_dialog(rt, g)
             if c is not None and price > 0 and c > price:
                 return None, f"最便宜那件一次要买 {c // price} 个，没买"
             return None, "最便宜那件的价钱对不上，没买"
@@ -404,6 +438,7 @@ def _buy_round(
     cands: dict[tuple, dict] = {}  # recommended 模式：没标おすすめ、还能买的格子（兜底挑最便宜的）
     rec_seen = False  # 看到过おすすめ（含今天已经买光的）：有就不兜底，今天已经算买过了（#122 review）
     money_short = False  # 有一件金币不够（跳过它接着看别的，CodeRabbit #122）
+    tiles_seen = False  # 一个商品格都没读到（页面没加载 / 读不到字）：不能当成「今天买过了」
     screens = 0
     last_sig = None
     start = len(bought)  # 上限按这一轮新买的算：免费刷新后的第二轮不被第一轮的件数挤掉（CodeRabbit #197）
@@ -415,6 +450,7 @@ def _buy_round(
         last_sig = sig
         acted = False
         for tile in tiles(f):
+            tiles_seen = True
             key = (screens, tile["x"] // 20, tile["y"] // 20)
             rec_seen = rec_seen or tile["recommended"]
             if tile["left"] <= 0 or key in skip:
@@ -442,14 +478,17 @@ def _buy_round(
             if not want:
                 if d is not None and d["jewel"]:
                     logger.warning("兑换确认框里有钻石字样，不买：%s", name)
-                tap_word(rt, g, "キャンセル", y_min=1080)
-                wait_dialog(rt, gone=True)
+                cancel_dialog(rt, g)
                 continue
-            if not confirm(rt, g):  # 决定点了框不关：マニー不够（按钮灰）。跳过这件，接着看便宜的
+            r = confirm(rt, g)
+            if r == SHORT:  # 决定点了框不关：マニー不够（按钮灰）。跳过这件，接着看便宜的
                 money_short = True
                 continue
-            bought.append(name)
+            if r == MISSED:  # 没读到「決定」、已取消：这格不再点开
+                continue
+            bought.append(name)  # 先记账再关提示（关提示时超时也不漏记，CodeRabbit #198）
             logger.info("商店买了：%s", name)
+            dismiss_bought(rt)
             acted = True
             break  # 画面变了，重新读这一屏
         if acted:
@@ -458,7 +497,7 @@ def _buy_round(
         rt.device.swipe(*SWIPE, duration=SWIPE_S)
         rt.sleep(1.0)
         screens += 1
-    return {"cands": cands, "rec_seen": rec_seen, "money_short": money_short}
+    return {"cands": cands, "rec_seen": rec_seen, "money_short": money_short, "tiles_seen": tiles_seen}
 
 
 def run(rt) -> str:
@@ -479,6 +518,9 @@ def run(rt) -> str:
     refresh_note: str | None = None  # 开了免费刷新但没刷成的原因
     refreshed = False
     stopped: str | None = None
+    stop_all = False  # 停在可能还开着框的地方（刷新确认框 / 兑换框关不掉）：后面的项都不跑
+    in_refresh = False  # 点免费刷新到确认没框之间
+    tiles_seen = True
     try:
         if not goto_daily_exchange(rt):
             return "商店：没进到每日兑换所"
@@ -486,11 +528,16 @@ def run(rt) -> str:
         cands: dict[tuple, dict] = {}
         if m != "off":
             r = _buy_round(rt, m, names, prices, seen_prices, bought)
-            rec_seen, cands, money_short = r["rec_seen"], r["cands"], r["money_short"]
+            rec_seen, cands, money_short, tiles_seen = r["rec_seen"], r["cands"], r["money_short"], r["tiles_seen"]
+            if not tiles_seen:
+                raise ResumeBlocked("一个商品都没读到（商店页没加载出来，或读不到画面上的字）")
             if refresh_on():
+                in_refresh = True
+                why = None if money_short else refresh_list(rt)
+                in_refresh = False
                 if money_short:
                     refresh_note = "金币不够，没用免费刷新"
-                elif why := refresh_list(rt):
+                elif why:
                     refresh_note = why
                 else:
                     refreshed = True
@@ -504,8 +551,10 @@ def run(rt) -> str:
         if ap_keys:
             buy_ap(rt, ap_keys, ap_got)
         nav.goto_home(rt)
-    except (ResumeBlocked, common.TaskTimeout) as e:  # 单项超时（Deadline）也照样报已买的（自检）
+    except (ResumeBlocked, common.TaskTimeout, RefreshDialogStuck, common.DialogStuck) as e:
+        # 单项超时（Deadline）也照样报已买的（自检）；框关不掉 / 刷新确认框还可能开着时整个日常停下，已买的照样报（CodeRabbit #197）
         stopped = str(e) or "超时"
+        stop_all = in_refresh or getattr(e, "stop_all", False)
         logger.warning("商店中途停下：%s", stopped)
     if names and seen_prices != prices:
         save_prices(seen_prices)
@@ -532,5 +581,7 @@ def run(rt) -> str:
         )
     if stopped is not None:
         parts.append(f"商店中途停下：{stopped}")
-        raise common.PartialStop("；".join(parts), stopped)  # 已买的照样报，这一项算没做完（CodeRabbit #197）
+        raise common.PartialStop(
+            "；".join(parts), stopped, stop_all=stop_all
+        )  # 已买的照样报，这一项算没做完（CodeRabbit #197）
     return "；".join(parts)

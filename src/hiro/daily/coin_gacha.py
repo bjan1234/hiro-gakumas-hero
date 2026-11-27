@@ -40,7 +40,11 @@ def plan() -> list[tuple[str, int]] | str:
     for part in v.split(","):
         k, _, n = part.strip().partition(":")
         if k in POOLS:
-            times = min(int(n), MAX_TIMES) if n.strip().isdigit() else 1
+            n = n.strip()
+            if n and not n.isdigit():  # friend:-1 / friend:abc：写错了就不抽这个池（不当成 1 次，CodeRabbit #197）
+                logger.warning("HIRO_COIN_GACHA 里「%s」的次数认不出，这个池不抽", part.strip())
+                continue
+            times = min(int(n), MAX_TIMES) if n else 1  # 只写池名 = 1 次
             if times > 0:
                 out.append((k, times))
     return out
@@ -116,6 +120,18 @@ def find_pool(rt, pool: str):
     return _scan_down(rt, pool, common.frame(rt))
 
 
+def _cancel(rt, f) -> None:
+    """确认框点「キャンセル」，并确认框真的关了；关不掉抛 DialogStuck（整个日常停下）：框还开着时去点下一个池的「引く」，
+    读到的是这个旧框，次数、決定会作用在它上面（CodeRabbit #197）。"""
+    tap_word(rt, f, "キャンセル", y_min=1080)
+    for _ in range(2):
+        ok, _f = rt.wait_until(lambda g: bool(g.texts) and text_at(g, "コインガシャ確認") is None, 6.0, every=0.5)
+        if ok:
+            return
+        tap_word(rt, common.frame(rt), "キャンセル", y_min=1080)
+    raise common.DialogStuck("硬币扭蛋：确认框关不掉，日常停下（没抽），请手动关掉")
+
+
 class DrawStopped(Exception):
     """抽完以后关结果画面超时：已经抽了 n 次。"""
 
@@ -137,11 +153,11 @@ def draw(rt, pool: str, times: int) -> int:
     texts = " ".join(t.text for t in g.texts)
     if "ジュエル" in texts or "コインを消費" not in texts.replace(" ", ""):
         logger.warning("扭蛋确认框不是用硬币的，不抽：%s", texts[:120])
-        tap_word(rt, g, "キャンセル", y_min=1080)
+        _cancel(rt, g)
         return 0
     line = text_at(g, "回数")
     if line is None:
-        tap_word(rt, g, "キャンセル", y_min=1080)
+        _cancel(rt, g)
         return 0
     y = line.rect.center.y + 80
     minus, plus = (133, y), (586, y)
@@ -155,7 +171,7 @@ def draw(rt, pool: str, times: int) -> int:
         rt.sleep(0.3)
         n = count(common.frame(rt))
     if n != 0:
-        tap_word(rt, common.frame(rt), "キャンセル", y_min=1080)
+        _cancel(rt, common.frame(rt))
         return 0
     for _ in range(times):
         rt.device.tap(*plus)
@@ -165,10 +181,10 @@ def draw(rt, pool: str, times: int) -> int:
     if n <= 0 or n > times:  # 币不够一次；或者读数比要的多（OCR 漏读了「回数」后的数字，没减到 0）：不抽，宁可少不可多
         if n > times:
             logger.warning("扭蛋次数读到 %d 次，比要的 %d 次多，不抽", n, times)
-        tap_word(rt, h, "キャンセル", y_min=1080)
+        _cancel(rt, h)
         return 0
     if not tap_word(rt, h, "決定", y_min=1080):  # 没点上「決定」= 没抽：关掉框，不报次数（CodeRabbit #197）
-        tap_word(rt, common.frame(rt), "キャンセル", y_min=1080)
+        _cancel(rt, common.frame(rt))
         return 0
 
     def back(f):
@@ -216,12 +232,14 @@ def run(rt) -> str:
                 if (n := draw(rt, pool, times)) > 0:
                     done.append(f"{NAMES[pool]} {n} 次")
         nav.goto_home(rt)
-    except (ResumeBlocked, DrawStopped, common.TaskTimeout) as e:
+    except (ResumeBlocked, DrawStopped, common.TaskTimeout, common.DialogStuck) as e:
         if isinstance(e, DrawStopped) and e.n > 0:
             done.append(f"{NAMES[e.pool]} {e.n} 次")
         logger.warning("硬币扭蛋中途停下：%s", e)
         why = str(e) or "超时"
+        # 关结果页没关成（DrawStopped）/ 确认框关不掉：画面还停在扭蛋结果或框上，后面的项都不跑（CodeRabbit #197 / #198）
+        stop_all = isinstance(e, (DrawStopped, common.DialogStuck))
         raise common.PartialStop(
-            "硬币扭蛋：" + ("、".join(done) + "；" if done else "") + f"中途停下：{why}", why
+            "硬币扭蛋：" + ("、".join(done) + "；" if done else "") + f"中途停下：{why}", why, stop_all=stop_all
         ) from e  # 已抽的照样报，这一项算没做完（CodeRabbit #197）
     return "硬币扭蛋：" + ("、".join(done) if done else "币不够，没抽")
