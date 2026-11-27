@@ -309,7 +309,7 @@ func TestPanelShowsTheOcrBackendFromDoctor(t *testing.T) {
 		h := plugintest.New(map[string]string{"doctor": `{"items":[]}`, "doctor --probe": `{"items":[` + tc.item + `]}`})
 		s := New(f.deps())
 		p := s.Plugin()
-		tt := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "") }), 560, 1600)
+		tt := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "") }), 560, 2400) // 「培育」一节加进来后页面更长：「重装运行环境」在 1600 底边上点不全
 		tt.Frame()
 		s.Probe(h)
 		tt.Frame()
@@ -328,7 +328,7 @@ func TestPanelHasNoOcrLineBeforeDoctorHasRun(t *testing.T) {
 	h := plugintest.New(map[string]string{"doctor": `{"items":[]}`})
 	s := New(f.deps())
 	p := s.Plugin()
-	tt := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "") }), 560, 1600)
+	tt := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "") }), 560, 2400) // 「培育」一节加进来后页面更长：「重装运行环境」在 1600 底边上点不全
 	tt.Frame()
 	tt.Frame()
 	if tt.HasText("文字识别：") {
@@ -351,7 +351,7 @@ func TestReinstallRefreshesTheOcrLine(t *testing.T) {
 	}
 	s := New(d)
 	p := s.Plugin()
-	tt := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "") }), 560, 1600)
+	tt := ui.NewTester(plugintest.PanelView(func(c *ui.Context) { p.Panel(c, h, "") }), 560, 2400) // 「培育」一节加进来后页面更长：「重装运行环境」在 1600 底边上点不全
 	tt.Frame()
 	s.Probe(h)
 	tt.Frame()

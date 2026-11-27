@@ -148,7 +148,7 @@ func TestPanelStartsWithChosenIdol(t *testing.T) {
 		t.Fatalf("没发起：%v", h.RunArgs_)
 	}
 	got := strings.Join(h.RunArgs_[0], " ")
-	if !strings.Contains(got, "run start hajime --command new --idol i_card-skin-hski-3-0001 --difficulty pro") {
+	if !strings.Contains(got, "run start hajime --command new --exam-search mid1,final,lesson --idol i_card-skin-hski-3-0001 --difficulty pro") {
 		t.Errorf("参数 %q", got)
 	}
 }
