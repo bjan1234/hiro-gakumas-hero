@@ -90,7 +90,12 @@ def goto_home(rt, timeout: float = HOME_TIMEOUT):
         from hiro.runtime.finish import leave_title
 
         leave_title(rt)  # 回首页可能要下载数据，单独计时；回不到首页抛 ResumeBlocked
-    return rt.drive(step, timeout, "回首页")
+    r = rt.drive(step, timeout, "回首页")
+    if r is _TITLE:  # 离开标题页两次都又回到标题页：停下，别把内部记号当首页帧交出去
+        from hiro.loop.errors import ResumeBlocked
+
+        raise ResumeBlocked("回不到首页：点了两次还停在游戏标题页")
+    return r
 
 
 def _photo_step(f):

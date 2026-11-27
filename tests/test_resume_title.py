@@ -115,6 +115,20 @@ def test_goto_home_leaves_title_then_returns_home(monkeypatch):
     assert calls == ["drive", "title", "drive"] and home.texts[0].text == "ホーム"
 
 
+def test_goto_home_stops_when_stuck_on_title(monkeypatch):
+    """离开标题页两次又回到标题页：停下讲原因，不把内部记号当首页帧交出去。"""
+    from hiro.loop.errors import ResumeBlocked
+    from hiro.runtime import nav
+
+    import pytest
+
+    monkeypatch.setattr(nav, "at_home", lambda f: False)
+    monkeypatch.setattr(finish, "leave_title", lambda rt: None)
+    rt = NS(drive=lambda step, timeout, what: step(_frame(DIM)), device=NS(tap=lambda x, y: None))
+    with pytest.raises(ResumeBlocked, match="标题页"):
+        nav.goto_home(rt)
+
+
 def test_recover_taps_blank_when_tap_to_start_is_dim():
     """TAP TO START 闪到暗处读不到：点上方空白（标题页点哪里都行），不点データ連携 / メニュー。"""
     clicks = []
