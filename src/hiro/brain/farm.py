@@ -322,8 +322,19 @@ def regen_step(boxes) -> tuple[int, int] | str | None:
     return r["regen_xy"]
 
 
+_JEWEL = re.compile(r"[ジシ][ュユ][エェ]ル")  # ジュエル 和 OCR 读错的变体（ジユエル / シュエル / ジュェル）
+DIALOG_SPAN = 650  # 确认框的字在キャンセル上方这么多像素以内（720×1280：框约 y 350–1050，キャンセル y≈1000）
+
+
 def _is_jewel(texts: list[str]) -> bool:
-    return any("ジュエル" in t or "ジユエル" in t for t in texts)
+    """整屏任何地方读到ジュエル（含 OCR 变体）都算：宁可错取消。"""
+    return any(_JEWEL.search(t) for t in texts)
+
+
+def _dialog_texts(boxes, cancel) -> list[str]:
+    """确认框区域的字：キャンセル那一行往上 DIALOG_SPAN 以内（框后面压暗的结果页上方、底下按钮行不算；审查 #198 第 7 条）。"""
+    cy = cancel.rect.center.y
+    return [_txt(b) for b in boxes if cy - DIALOG_SPAN <= b.rect.center.y <= cy + 40]
 
 
 def _is_regen_dialog(boxes, texts: list[str], cancel) -> bool:
@@ -340,7 +351,7 @@ def _is_regen_dialog(boxes, texts: list[str], cancel) -> bool:
 
 def _answer_dialog(boxes, texts: list[str], cancel) -> tuple[int, int]:
     """再生成确认框：白名单（免费 / 用券、没有ジュエル、和キャンセル同一行认得出确认按钮）才确认，否则点キャンセル。"""
-    free = _free_regen(texts)
+    free = _free_regen(_dialog_texts(boxes, cancel))  # 白名单只看框里的字；ジュエル看整屏
     jewel = _is_jewel(texts)
     cy = cancel.rect.center.y
     # 确认按钮要和キャンセル在同一行（框里的按钮）：底下结果页的「再生成」（约 y 1160）不算
@@ -361,6 +372,8 @@ def _free_regen(texts: list[str]) -> bool:
     0 前面不能紧挨着数字：「所持チケット10」「20枚」是 10 / 20 张，不是 0 张（审查 #198 第 6 条）。"""
     if any("不足" in t or re.search(r"(所持|残り)\D*?(?<!\d)0(枚|個)?$|(^|\D)0枚", t) for t in texts):
         return False
+    if any(re.search(r"\d+個", t) and "チケット" not in t and "所持" not in t for t in texts):
+        return False  # 「50個」这类不是券的数量 = 付费样式（ジュエル只显示成图标、字没读到时）：不算免费
     return any("無料" in t for t in texts) or any("チケット" in t and ("使用" in t or "消費" in t) for t in texts)
 
 

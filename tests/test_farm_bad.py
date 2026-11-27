@@ -449,3 +449,24 @@ def test_unrelated_cancel_dialog_without_pending_is_left_alone(monkeypatch):
     monkeypatch.setenv("HIRO_FARM", "")
     jewel = _boxes(("ジュエルを50個使用して再生成しますか", 360, 640), ("キャンセル", 218, 1000), ("決定", 500, 1000))
     assert farm.regen_step(jewel) is None  # 刷回忆没开：完全不管
+
+
+def test_regen_whitelist_only_reads_dialog_area(monkeypatch):
+    """审查 #198 第 7 条：白名单只看确认框区域（キャンセル那一行往上）。框外（屏幕顶上）的「無料」不能把付费框当成免费。"""
+    farm = _regen_started(monkeypatch, [0.0])
+    dlg = _boxes(("本日1回無料", 360, 120), ("メモリーを再生成しますか", 360, 600), ("50", 400, 650),
+                 ("キャンセル", 218, 1000), ("決定", 500, 1000))  # fmt: skip
+    assert farm.regen_step(dlg) == (218, 1000)
+
+
+def test_regen_jewel_variants_anywhere_cancel(monkeypatch):
+    """审查 #198 第 7 条：ジュエル看整屏、认 OCR 变体；框里写「50個」（钻石只显示成图标）也不算免费。"""
+    from hiro.brain import farm as f
+
+    for jewel in ("シュエル 50", "ジュェル×50"):
+        farm = _regen_started(monkeypatch, [0.0])
+        dlg = _boxes((jewel, 360, 60), ("メモリー再生成チケットを1枚使用します", 360, 640), ("キャンセル", 218, 1000),
+                     ("再生成する", 500, 1000))  # fmt: skip
+        assert farm.regen_step(dlg) == (218, 1000), jewel
+    assert not f._free_regen(["チケットを使用して再生成", "50個消費します"])
+    assert f._free_regen(["メモリー再生成チケットを1枚使用します", "所持数 3個"])  # 持有数不算付费
