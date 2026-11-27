@@ -857,7 +857,6 @@ func (s *state) starters(h plugin.Host, cat *common.Catalog) []plugin.Starter {
 		if id == "" || (j.Kind != "hajime" && j.Kind != "nia" && j.Kind != "hif" && j.Kind != "tower") || seen[id+j.Kind] {
 			continue
 		}
-		seen[id+j.Kind] = true
 		e := cat.Get(h, id)
 		if e == nil && j.Kind != "tower" {
 			continue
@@ -867,11 +866,17 @@ func (s *state) starters(h plugin.Host, cat *common.Catalog) []plugin.Starter {
 		if e != nil {
 			name = shortIdol(e.Name)
 		}
+		// 重放不了的记录（刷回忆的局等）不占名额、不写 seen：同一偶像 + 模式更早的普通局照样能出（CodeRabbit #198）
+		run := replay(j, name, mode)
+		if run == nil {
+			continue
+		}
+		seen[id+j.Kind] = true
 		st := plugin.Starter{
 			Label: "用" + name + "再打一把" + mode,
 			Sub:   "上次 " + time.Unix(int64(j.StartedAt), 0).Format("01-02") + " · " + labels.State(j.State),
 			Say:   "帮我用" + name + "打一把" + mode,
-			Page:  replay(j, name, mode),
+			Page:  run,
 		}
 		if e != nil {
 			st.Art, st.Attr = cat.Sprite(h, e.Asset), e.Attr

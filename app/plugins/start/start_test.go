@@ -214,6 +214,29 @@ func TestStartersTowerByName(t *testing.T) {
 	}
 }
 
+// CodeRabbit #198：重放不了的记录（刷回忆的局）不占首页名额、不挡住同一偶像更早的普通局；全都重放不了时保留「选个偶像开一局」。
+func TestStartersSkipUnreplayable(t *testing.T) {
+	h, p := host(), New()
+	h.Resp["run status"] = okResult(`{"current":null,"recent":[
+		{"id":"f1","kind":"hajime","state":"done","started_at":1764000000,"params":{"idol":"i_card-skin-ttmr-3-0012","command":"resume","farm":"bad","farm_target":"輝くキミへ"}},
+		{"id":"f2","kind":"hajime","state":"done","started_at":1763990000,"params":{"idol":"i_card-skin-ttmr-3-0012","command":"resume","farm":"bad","farm_target":"輝くキミへ"}},
+		{"id":"j1","kind":"hajime","state":"done","started_at":1763900000,"params":{"idol":"i_card-skin-ttmr-3-0012","command":"new"}}]}`)
+	p.Starters(h)
+	st := p.Starters(h)
+	if len(st) < 2 || st[0].Label != "用月村手毬再打一把初" || st[0].Page == nil || st[1].Label != "领日常奖励" {
+		t.Fatalf("刷回忆的局不占名额，下面那局普通的照样出：%+v", st)
+	}
+
+	h, p = host(), New()
+	h.Resp["run status"] = okResult(`{"current":null,"recent":[
+		{"id":"f1","kind":"hajime","state":"done","started_at":1764000000,"params":{"idol":"i_card-skin-ttmr-3-0012","command":"resume","farm":"bad"}}]}`)
+	p.Starters(h)
+	st = p.Starters(h)
+	if len(st) == 0 || st[0].Say != "/开局" {
+		t.Errorf("全都重放不了时保留「选个偶像开一局」：%+v", st)
+	}
+}
+
 func TestStartersWithoutHistoryOpenPanel(t *testing.T) {
 	h, p := host(), New()
 	h.Resp["run status"] = h.Resp["info idols"] // 形状不对 → 当没有最近几局
