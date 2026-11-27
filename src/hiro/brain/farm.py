@@ -131,10 +131,14 @@ def junk_cards(cards: list[dict], targets: set[str], picked) -> list[dict]:
 
     keep = set(targets) | _memory_cards()  # 回忆编成带进来的卡也留着（和目标卡一样，不是这局拿的；CodeRabbit #198）
     left = Counter(picked)
+    # 牌组里这张卡的份数比本局领到的多：有的副本是别处带进来的（借用回忆的卡、强化过的），按卡号分不清删哪份，一份都不删（CodeRabbit #198）
+    in_deck = Counter(c.get("card_id") for c in cards if c.get("card_id"))
     out = []
     for c in cards:
         cid = c.get("card_id")
         if not cid or c.get("customized") or "-ido-" in cid or cid in keep or _is_basic(cid) or left[cid] <= 0:
+            continue
+        if in_deck[cid] > Counter(picked)[cid]:
             continue
         left[cid] -= 1
         out.append(dict(c, farm_trouble=_is_trouble_card(cid)))

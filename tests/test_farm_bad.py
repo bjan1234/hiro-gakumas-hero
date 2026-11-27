@@ -210,7 +210,9 @@ def test_unrecorded_cards_are_never_deleted(monkeypatch):
         {"index": 1, "card_id": "p_card-x"},
         {"index": 2, "card_id": "p_card-y"},
     ]
-    assert [c["index"] for c in farm.junk_cards(cards, set(), {"p_card-x": 1})] == [0]  # 记了一张 x：只删一张
+    # 牌组里两份 x、只记了一张：分不清哪份是本局领的，一份都不删（CodeRabbit #198）；y 没记账也不删
+    assert [c["index"] for c in farm.junk_cards(cards, set(), {"p_card-x": 1})] == []
+    assert [c["index"] for c in farm.junk_cards(cards, set(), {"p_card-x": 2, "p_card-y": 1})] == [0, 1, 2]
 
 
 def test_picked_cards_from_trace():
@@ -1044,3 +1046,15 @@ def test_failed_pick_not_counted_on_resume():
 
     assert owned_cards([step(False)]) == {}
     assert owned_cards([step(True)])["p_card-x"] == 1
+
+
+def test_junk_cards_skips_ambiguous_copies():
+    """牌组里同一张卡两份、本局只领到一张：分不清哪份是借用回忆带进来的（可能是强化过的），一份都不删（CodeRabbit #198）。"""
+    from hiro.brain import farm
+
+    cards = [{"index": 0, "card_id": "p_card-02-act-1_010", "upgrade": 1}, {"index": 1, "card_id": "p_card-02-act-1_010"},
+             {"index": 2, "card_id": "p_card-02-act-1_020"}]  # fmt: skip
+    got = farm.junk_cards(cards, set(), {"p_card-02-act-1_010": 1, "p_card-02-act-1_020": 1})
+    assert [c["index"] for c in got] == [2]
+    got = farm.junk_cards(cards, set(), {"p_card-02-act-1_010": 2})  # 两份都是本局领的：照删
+    assert [c["index"] for c in got] == [0, 1]
