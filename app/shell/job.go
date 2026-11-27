@@ -262,7 +262,7 @@ func (a *App) notify(id, before string, v *plugin.JobView) {
 
 // queuedAfter：这个任务后面还有排队等着做的（「全部开始」的合并确认卡记着 queueJob = 它、queue 还没空）。
 func (a *App) queuedAfter(id string) bool {
-	for _, t := range a.threads {
+	for _, t := range a.allThreads() { // 页面上合并确认的批次记在页面记录里（CodeRabbit #138）
 		for _, m := range t.Messages {
 			for _, card := range m.Cards {
 				if card["type"] != "confirm" || card["queueJob"] != id {
