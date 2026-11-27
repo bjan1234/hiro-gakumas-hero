@@ -806,3 +806,16 @@ def test_picked_card_recorded_only_when_acquired(monkeypatch, ok):
     monkeypatch.setattr(core, "_act", lambda *a, **k: NS(ok=ok, error=None if ok else "没领成"), raising=False)
     core.on_select_card()
     assert deciders.picked_musts == ({"p_card-02-act-1_010"} if ok else set())
+
+
+def test_blank_target_falls_back_to_formation_in_both_entries(monkeypatch):
+    """CodeRabbit #198：目标栏只有空格时，check_targets 和 target_cards 口径一致：都回退到回忆编成；非空才覆盖编成。"""
+    from hiro import formation_env
+
+    farm, _ = _fake_catalog(monkeypatch)
+    monkeypatch.setattr(formation_env, "MEMORY_CARDS", ("p_card-02-act-3_186",))
+    for raw in ("", "   ", "\t "):
+        env = {"HIRO_FARM_TARGET": raw}
+        assert farm.check_targets(env) == farm.target_cards(env) == {"p_card-02-act-3_186"}, repr(raw)
+    env = {"HIRO_FARM_TARGET": " 輝くキミへ "}
+    assert farm.check_targets(env) == farm.target_cards(env) == {"p_card-02-act-3_050"}
