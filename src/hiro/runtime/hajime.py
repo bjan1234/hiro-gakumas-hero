@@ -278,7 +278,7 @@ def hajime_core(scenario_mode: str):
                                                 farm.margin_ratio())  # fmt: skip
                 logger.info("刷回忆 BAD：这节课离通关线还差通关线的 %.0f%% 以内就不再出牌", farm.margin_ratio() * 100)
             run_exam(self.brain, label, self.rec, ended, session=self.s, advisor=advisor)
-            if farming:
+            if farming and self.s is not None:
                 self.s.note(f"刷回忆 BAD：{label} 结束时离通关还差 {live.get('left')}")
             self.rec.log("exam_end", image=active.device.screenshot(), exam=label, lesson=info.d)
             self.s.note(f"初练习课 {label}：{info.d}")
