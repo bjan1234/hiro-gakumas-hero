@@ -26,7 +26,8 @@ sys.path.insert(0, str(ROOT / "src"))
 import hiro  # noqa: E402, F401  兼容层
 
 TASKS = ("activity_funds", "presents", "assignment", "contest", "shop", "coin_gacha", "mission_reward", "club_reward")
-SHOP_TIMEOUT = 600.0  # 商店单项至少给这么久
+DEFAULT_TIMEOUT = 300.0  # 单项超时缺省
+SHOP_TIMEOUT = 600.0  # 商店单项缺省（没显式给 --timeout 时）
 LABEL = {
     "activity_funds": "活动费",
     "presents": "礼物",
@@ -42,7 +43,7 @@ LABEL = {
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="", help="逗号分隔，只跑这些项")
-    ap.add_argument("--timeout", type=float, default=300.0, help="单项超时（秒），超时打断并截图")
+    ap.add_argument("--timeout", type=float, default=None, help="单项超时（秒），超时打断并截图；缺省 300（商店 600）")
     ap.add_argument("--own", action="store_true", help="兼容旧调用，不起作用（现在只有 hiro.daily 一种实现）")
     ap.add_argument("--contest-pick", default=None, help="竞赛挑哪个对手：lowest（综合力最低，缺省）/ 1 / 2 / 3")
     ap.add_argument("--shop", default=None, help="商店：off（缺省）/ recommended（推荐商品）/ all")
@@ -66,7 +67,7 @@ def main() -> int:
         ap.error(f"没有这些项：{unknown}")
     out = ROOT / "reports/live/daily" / datetime.now().strftime("%Y%m%d-%H%M%S")
     out.mkdir(parents=True, exist_ok=True)
-    summary = run_own(names, args.timeout, out)
+    summary = run_own(names, args.timeout, out)  # None = 缺省（300，商店 600）
     (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"→ {out}")
 
@@ -97,7 +98,7 @@ def _error(rec: dict, err: BaseException) -> None:
     rec["traceback"] = "".join(traceback.format_exception(type(err), err, err.__traceback__))[-1500:]
 
 
-def run_own(names: list[str], timeout: float, out: Path) -> list[dict]:
+def run_own(names: list[str], timeout: float | None, out: Path) -> list[dict]:
     """hiro.daily：设备 hiro.devices（HIRO_DEVICE），Runtime 的中断层带 Popup（说明框 / ジュエル框）和 Deadline（单项超时）。"""
     from hiro.daily import TASKS as OWN
     from hiro.daily import Deadline, Popup, TaskTimeout, make_runtime
@@ -117,6 +118,8 @@ def run_own(names: list[str], timeout: float, out: Path) -> list[dict]:
         popups.append({"kind": kind, "shot": str(p)})
 
     rt = make_runtime(dev, popup=Popup(on_popup))
+    explicit = timeout is not None  # 命令行显式给了 --timeout：每项（含商店）都照它（CodeRabbit #122）
+    timeout = DEFAULT_TIMEOUT if timeout is None else timeout
     deadline = Deadline(timeout, rt.clock)
     rt.interrupts = (*rt.interrupts, deadline)
 
@@ -132,7 +135,7 @@ def run_own(names: list[str], timeout: float, out: Path) -> list[dict]:
         rec = {"task": n, "impl": "own", "before": shot(f"{n}-before")}
         t0 = time.monotonic()
         # 商店按名字买 + 免费刷新 + 体力商店，一项就可能超过 300 秒（按名字买一轮实测约 205 秒）：给它多一倍（#122 review）
-        deadline.seconds = max(timeout, SHOP_TIMEOUT) if n == "shop" else timeout
+        deadline.seconds = SHOP_TIMEOUT if n == "shop" and not explicit else timeout
         deadline.start()
         try:
             rec["result"] = OWN[n](rt)
@@ -140,11 +143,7 @@ def run_own(names: list[str], timeout: float, out: Path) -> list[dict]:
         except PartialStop as e:  # 做到一半停下：已经做了的照样报（结果行），这一项算失败
             rec["ok"] = False
             rec["result"], rec["error"] = e.result, e.reason
-            if e.stop_all:  # 画面可能还停在框 / 抽卡结果页上：后面的项都不跑，交给人（CodeRabbit #197）
-                rec["after"] = shot(f"{n}-after")
-                rec["seconds"] = round(time.monotonic() - t0, 1)
-                _finish(rec, summary)
-                break
+            rec["stop_all"] = e.stop_all  # 画面可能还停在框 / 抽卡结果页上：后面的项都不跑，交给人（CodeRabbit #197）
         except TaskTimeout:
             rec["ok"] = False
             rec["error"] = f"超时 {deadline.seconds:.0f}s，已打断"
@@ -152,16 +151,14 @@ def run_own(names: list[str], timeout: float, out: Path) -> list[dict]:
         except Exception as e:  # noqa: BLE001  一项失败（ResumeBlocked / DangerBlocked …）记下来，继续下一项
             rec["ok"] = False
             _error(rec, e)
-            if getattr(e, "stop_all", False):  # 画面上留着关不掉的框（商店免费刷新后）：后面的项都不跑，交给人
-                rec["after"] = shot(f"{n}-after")
-                rec["seconds"] = round(time.monotonic() - t0, 1)
-                _finish(rec, summary)
-                break
+            rec["stop_all"] = getattr(e, "stop_all", False)  # 画面上留着关不掉的框（商店免费刷新后）：后面的项都不跑
         if popups:
             rec["popups"] = list(popups)
         rec["seconds"] = round(time.monotonic() - t0, 1)
         rec["after"] = shot(f"{n}-after")
-        _finish(rec, summary)
+        _finish(rec, summary)  # 弹框截图、耗时、完成截图都先记下，再按 stop_all 停（CodeRabbit #122）
+        if rec.pop("stop_all", False):
+            break
     return summary
 
 

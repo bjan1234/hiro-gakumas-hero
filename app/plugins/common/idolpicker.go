@@ -135,6 +135,7 @@ func (p *IdolPicker) Draw(c *ui.Context, h plugin.Host, key string) {
 				ui.Text(c, it.Rarity).FontSize(10.5).FontWeight(700).TextColor(kit.Brand)
 			}).Clicked() {
 				p.Chosen = it
+				p.Chosen.Idol = it.BareIdol() // 换成中文显示名前先记下游戏里的偶像名（偶像之路按它在列表页找，CodeRabbit #122）
 				p.Chosen.Name = label
 			}
 		}

@@ -134,6 +134,15 @@ def refresh_list(rt) -> str | None:
     return None
 
 
+def _closed_twice(rt, g) -> bool:
+    """框关了：这一帧和再下一帧都有字、都没框（一帧空 OCR 不算关了，CodeRabbit #122）。"""
+    if not g.texts or _dialog_up(g):
+        return False
+    rt.sleep(0.5)
+    h = common.frame(rt)
+    return bool(h.texts) and not _dialog_up(h)
+
+
 class RefreshDialogStuck(Exception):
     """免费刷新后弹出的框关不掉：整个日常停下（stop_all），后面的项一下都不点，交给人。"""
 
@@ -154,7 +163,7 @@ def _close_refresh_dialog(rt, g) -> None:
                 rt.device.tap(*DISMISS_TAP)
         rt.sleep(1.0)
         g = common.frame(rt)
-        if not _dialog_up(g):
+        if _closed_twice(rt, g):
             return
     raise RefreshDialogStuck("商店：免费刷新后弹出的框关不掉，日常停下（没点确认，没花东西），请手动关掉")
 
@@ -214,6 +223,9 @@ def can_skip(price: int | None, wants: list[str], prices: dict[str, int]) -> boo
     只会少点开，买之前照旧在确认框里核对名字；万一新出的、要的商品正好和不要的同价，会漏买（不会多买）。"""
     if price is None or not wants:
         return False
+    # 要买的每一样都见过价格才跳（CodeRabbit #122：没见过的新商品可能正好和不要的同价，按价格跳会漏买）
+    if not all(any(name_wanted(n, [w]) for n in prices) for w in wants):
+        return False
     names = [n for n, p in prices.items() if p == price]
     return bool(names) and not any(name_wanted(n, wants) for n in names)
 
@@ -224,6 +236,12 @@ def text_at(f, word: str, *, y_min: int = 0, y_max: int = 1280, x_min: int = 0, 
         if word in t.text and y_min <= y <= y_max and x_min <= x <= x_max:
             return t
     return None
+
+
+def amount(text: str) -> int | None:
+    """「3,000」→ 3000；只读到逗号 / 不是金额 None（原来「,」会走到 int("") 抛错，CodeRabbit #122）。"""
+    t = text.strip()
+    return int(t.replace(",", "")) if re.fullmatch(r"\d[\d,]*", t) else None
 
 
 def tiles(f) -> list[dict]:
@@ -239,8 +257,8 @@ def tiles(f) -> list[dict]:
         price = None
         for p in f.texts:
             px, py = p.rect.center
-            if abs(px - cx) < 75 and 0 < cy - py < 50 and (pm := re.fullmatch(r"[\d,]+", p.text.strip())):
-                price = int(pm.group(0).replace(",", ""))
+            if abs(px - cx) < 75 and 0 < cy - py < 50 and (v := amount(p.text)) is not None:
+                price = v
         rec = any(
             "おすすめ" in r.text and abs(r.rect.center.x - cx) < 85 and 150 < cy - r.rect.center.y < 230
             for r in f.texts
@@ -314,6 +332,17 @@ def tap_word(rt, f, word: str, **kw) -> bool:
     return False
 
 
+_open = {"dialog": False}  # 点了格子到确认框确认关掉之间：这时超时不能接着跑下一项（框可能还开着，CodeRabbit #122）
+
+
+def _late_dialog(rt) -> None:
+    """点了格子 6 秒没见到框：框可能弹得晚。再看一眼，有就取消（别让下一格读到它、买错东西，CodeRabbit #122）。"""
+    f = common.frame(rt)
+    if read_dialog(f) is not None:
+        cancel_dialog(rt, f)
+    _open["dialog"] = False
+
+
 def cancel_dialog(rt, g) -> None:
     """交換確認框点「キャンセル」，并确认框真的关了。没读到按钮 / 点了还在：抛 DialogStuck（整个日常停下）——
     框还开着就去点下一格，读到的是这个旧框，会把不要的东西买下（CodeRabbit #197 / #198）。"""
@@ -322,6 +351,7 @@ def cancel_dialog(rt, g) -> None:
         tap_word(rt, common.frame(rt), "キャンセル", y_min=1080)  # 再点一次（第一次可能落在过场里）
         if wait_dialog(rt, gone=True) is None:
             raise common.DialogStuck("商店：兑换确认框关不掉，日常停下（没确认，没花东西），请手动关掉")
+    _open["dialog"] = False
 
 
 BOUGHT, SHORT, MISSED = "bought", "short", "missed"  # confirm 的三种结果：买成了 / 买不起 / 没读到「決定」没点
@@ -338,6 +368,7 @@ def confirm(rt, g) -> str:
     if wait_dialog(rt, gone=True) is None:
         cancel_dialog(rt, common.frame(rt))
         return SHORT
+    _open["dialog"] = False
     return BOUGHT
 
 
@@ -354,8 +385,8 @@ def cost(f) -> int | None:
     """交換確認框最下面「持有 → 换完后」那一行算出的花费（前 − 后）；读不到 None。"""
     nums = []
     for t in f.texts:
-        if 940 < t.rect.center.y < 1060 and (m := re.fullmatch(r"[\d,]+", t.text.strip())):
-            nums.append((t.rect.center.x, int(m.group(0).replace(",", ""))))
+        if 940 < t.rect.center.y < 1060 and (v := amount(t.text)) is not None:
+            nums.append((t.rect.center.x, v))
     if len(nums) < 2:
         return None
     nums.sort()
@@ -373,9 +404,11 @@ def buy_ap(rt, keys: list[str], got: list[str] | None = None) -> list[str]:
     for tile in tiles(common.frame(rt)):
         if tile["left"] <= 0:
             continue
+        _open["dialog"] = True
         rt.device.tap(tile["x"], tile["y"])
         g = wait_dialog(rt)
         if g is None:
+            _late_dialog(rt)
             continue
         d = read_dialog(g)
         name = (d or {}).get("name") or ""
@@ -409,9 +442,11 @@ def _fallback(rt, cands: list[dict]) -> tuple[str | None, str | None]:
             None,
         )
         if tile is not None:
+            _open["dialog"] = True
             rt.device.tap(tile["x"], tile["y"])
             g = wait_dialog(rt)
             if g is None:
+                _late_dialog(rt)
                 return None, "最便宜那件的确认框没出来"
             d = read_dialog(g)
             c = cost(g)
@@ -460,9 +495,11 @@ def _buy_round(
                     cands[key] = tile  # 最低价兜底和指定名字无关（CodeRabbit #122）
                 if not names or can_skip(tile["price"], names, prices):
                     continue
+            _open["dialog"] = True
             rt.device.tap(tile["x"], tile["y"])
             g = wait_dialog(rt)
             if g is None:
+                _late_dialog(rt)
                 continue
             d = read_dialog(g)
             name = (d or {}).get("name") or "?"
@@ -521,6 +558,7 @@ def run(rt) -> str:
     stop_all = False  # 停在可能还开着框的地方（刷新确认框 / 兑换框关不掉）：后面的项都不跑
     in_refresh = False  # 点免费刷新到确认没框之间
     tiles_seen = True
+    _open["dialog"] = False
     try:
         if not goto_daily_exchange(rt):
             return "商店：没进到每日兑换所"
@@ -548,13 +586,14 @@ def run(rt) -> str:
             got, note = _fallback(rt, list(cands.values()))
             if got:
                 bought.append(got)
+                dismiss_bought(rt)  # 和普通购买一样先记账再关提示（不然挡住后面的 AP 页签，CodeRabbit #122）
         if ap_keys:
             buy_ap(rt, ap_keys, ap_got)
         nav.goto_home(rt)
     except (ResumeBlocked, common.TaskTimeout, RefreshDialogStuck, common.DialogStuck) as e:
         # 单项超时（Deadline）也照样报已买的（自检）；框关不掉 / 刷新确认框还可能开着时整个日常停下，已买的照样报（CodeRabbit #197）
         stopped = str(e) or "超时"
-        stop_all = in_refresh or getattr(e, "stop_all", False)
+        stop_all = in_refresh or _open["dialog"] or getattr(e, "stop_all", False)
         logger.warning("商店中途停下：%s", stopped)
     if names and seen_prices != prices:
         save_prices(seen_prices)

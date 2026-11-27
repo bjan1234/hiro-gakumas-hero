@@ -282,17 +282,23 @@ def test_shop_skips_known_unwanted_and_learns_prices(monkeypatch):
     monkeypatch.setenv("HIRO_SHOP_ITEMS", "再挑戦")
     monkeypatch.delenv("HIRO_SHOP_AP", raising=False)
     saved = {}
-    monkeypatch.setattr(shop, "load_prices", lambda: {"倉本千奈のピース": 1500})
     monkeypatch.setattr(shop, "save_prices", lambda p: saved.update(p))
     screen = frame(("おすすめ", 61, 319), ("3,000", 120, 480), ("あと1回", 104, 509),
                    ("1,500", 290, 480), ("あと1回", 274, 509), ("2,000", 460, 480), ("あと1回", 444, 509))  # fmt: skip
     goods = {104: ("ロジックノート", 3000, 1), 274: ("倉本千奈のピース", 1500, 1), 444: ("再挑戦チケット", 2000, 1)}
+    # 要的再挑戦券还没见过价格：同价可能就是它，碎片那格照样点开（CodeRabbit #122）；看过以后记下价格
+    monkeypatch.setattr(shop, "load_prices", lambda: {"倉本千奈のピース": 1500})
+    rt = _shop(monkeypatch, screen, goods, 100000)
+    r = shop.run(rt)
+    assert {104, 274, 444} <= {x for x, _ in rt.device.taps}
+    assert ("再挑戦チケット" in r or "再挑战" in r) and saved.get("再挑戦チケット") == 2000
+    # 要的都见过价格了：只出现在不要的商品上的价格不点开
+    monkeypatch.setattr(shop, "load_prices", lambda: {"倉本千奈のピース": 1500, "再挑戦チケット": 2000})
     rt = _shop(monkeypatch, screen, goods, 100000)
     r = shop.run(rt)
     opened = {x for x, _ in rt.device.taps}
     assert 274 not in opened and {104, 444} <= opened  # 碎片（已知不要的价）没点开
     assert "再挑戦チケット" in r or "再挑战" in r
-    assert saved.get("再挑戦チケット") == 2000
 
 
 def test_coin_gacha_find_pool_no_initial_swipe(monkeypatch):
@@ -610,6 +616,63 @@ def test_shop_no_tiles_is_not_done_today(monkeypatch):
 def test_coin_gacha_plan_rejects_bad_counts(monkeypatch):
     monkeypatch.setenv("HIRO_COIN_GACHA", "friend:-1,sense:abc,logic,anomaly:2")
     assert coin_gacha.plan() == [("logic", 1), ("anomaly", 2)]
+    monkeypatch.setenv(
+        "HIRO_COIN_GACHA", "friend:,sense:²,logic:8,logic:8"
+    )  # 有冒号没次数 / 上标数字不抽；同一个池合起来也不超上限
+    assert coin_gacha.plan() == [("logic", coin_gacha.MAX_TIMES)]
+
+
+def test_amount_needs_a_digit():
+    assert shop.amount("3,000") == 3000 and shop.amount(",") is None and shop.amount("") is None
+    assert shop.tiles(frame((",", 120, 480), ("あと1回", 104, 509)))[0]["price"] is None
+    assert shop.cost(frame((",", 193, 992), ("1,000", 450, 992))) is None
+
+
+def test_can_skip_only_when_every_wanted_item_has_a_known_price():
+    """要买的再挑戦券还没见过价格：同价的格子不跳（可能就是它）；见过以后才按价格跳不要的。"""
+    prices = {"かけらA": 1500}
+    assert not shop.can_skip(1500, ["再挑戦"], prices)
+    prices["再挑戦チケット"] = 2000
+    assert shop.can_skip(1500, ["再挑戦"], prices) and not shop.can_skip(2000, ["再挑戦"], prices)
+
+
+def test_late_dialog_is_cancelled_before_next_tile(monkeypatch):
+    """点了格子 6 秒没见到框、之后才弹出来：取消掉，不留给下一格。"""
+    taps = _word_taps(monkeypatch)
+    monkeypatch.setattr(shop.common, "frame", lambda rt: DIALOG)
+    monkeypatch.setattr(shop, "wait_dialog", lambda rt, gone=False: LIST if gone else None)
+    shop._open["dialog"] = True
+    shop._late_dialog(_Rt())
+    assert taps == ["キャンセル"] and shop._open["dialog"] is False
+
+
+def test_shop_timeout_while_dialog_open_stops_all(monkeypatch):
+    """点开格子、框还没确认关掉时超时：后面的项都不跑（框可能还开着）。"""
+    import pytest
+
+    monkeypatch.setenv("HIRO_SHOP", "all")
+    monkeypatch.delenv("HIRO_SHOP_AP", raising=False)
+    monkeypatch.delenv("HIRO_SHOP_ITEMS", raising=False)
+    monkeypatch.delenv("HIRO_SHOP_REFRESH", raising=False)
+    monkeypatch.setattr(shop, "goto_daily_exchange", lambda rt: True)
+
+    def opened_then_timeout(rt, m, names, prices, seen, bought):
+        shop._open["dialog"] = True
+        raise shop.common.TaskTimeout()
+
+    monkeypatch.setattr(shop, "_buy_round", opened_then_timeout)
+    with pytest.raises(shop.common.PartialStop) as e:
+        shop.run(_Rt())
+    assert e.value.stop_all
+
+
+def test_coin_gacha_pool_not_found_is_not_coin_short(monkeypatch):
+    monkeypatch.setenv("HIRO_COIN_GACHA", "friend:1")
+    monkeypatch.setattr(coin_gacha, "goto_coin_gacha", lambda rt: True)
+    monkeypatch.setattr(coin_gacha.nav, "goto_home", lambda rt: None)
+    monkeypatch.setattr(coin_gacha, "find_pool", lambda rt, pool: (None, None))
+    r = coin_gacha.run(_Rt())
+    assert "没认出来" in r and "币不够" not in r
 
 
 def test_coin_gacha_draw_stopped_stops_all(monkeypatch):
