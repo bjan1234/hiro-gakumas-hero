@@ -40,7 +40,7 @@ def env_from_settings(home: Path) -> dict[str, str]:
     if not isinstance(s, dict):
         s = {}
     env: dict[str, str] = {}
-    env.update(LIVE.get(s.get("live"), LIVE["play"]))
+    env.update(LIVE.get(str(s.get("live") or "play"), LIVE["play"]))
     env["HIRO_UNREAD_STORY"] = u if (u := s.get("unread_story")) in ("skip", "stop") else "skip"
     env["HIRO_RETRY_MAX"] = r if (r := str(s.get("retry_max", ""))) in ("0", "1", "2", "3") else "3"
     for key, var in (
