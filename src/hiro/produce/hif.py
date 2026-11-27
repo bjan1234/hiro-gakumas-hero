@@ -1271,6 +1271,29 @@ class HifCore:
                 return True
 
             self.s.note(f"{page}：按钮识别认出 {btn_n} 项，识别层 {len(choices)} 项（有选项被挡住），按识别层")
+        if page == "EVENT_CHOICE":
+            preview = self._preview_event_effects(choices)
+            if preview == "left":
+                self.s.note("EVENT_CHOICE：看效果时页面变了（点到已选中的那项 = 确认了），交给下一拍")
+                return
+            if preview is not None:
+                sel_i = [preview]  # 现在选中的是哪项（提交时更新：画面没变要重提交时，那项已经是选中态，只点一下）
+
+                def commit_index(i):  # noqa: F811
+                    """看过效果以后：要的那项没选中就先点一下选中，再点一下确认（不双击：双击已选中的项会把第二下点到下一页）。"""
+                    c = next((c for c in choices if c.get("index") == i and c.get("center")), None)
+                    if c is None:
+                        return False
+                    x, y = c["center"]
+                    if i != sel_i[0]:
+                        device.click(int(x), int(y))
+                        sleep(0.6)
+                        sel_i[0] = i
+                    device.click(int(x), int(y))
+                    sleep(2)
+                    return True
+
+                n_options = len(choices)
         d = self.deciders.decide(page, self.s.state, n_options=n_options)
         pf = self.s.state.page_fields or {}
         if (
@@ -1296,6 +1319,44 @@ class HifCore:
             lambda: commit_index(i), Action.event_select(i), page_before=page, taps=[], trust_commit=False
         )
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
+
+    PREVIEW_WAIT_S = 0.8  # 点一下选项后等效果说明框出来
+
+    def _preview_event_effects(self, choices: list) -> int | str | None:
+        """事件选项页：效果说明只在选中时出现（11-27 实机：二选一事件只看得到选中那项的效果，另一项读不到 → 规则选不了，
+        没开 LLM 就停）。像玩家一样把每项单击一下（单击只选中、不确认），读它上方新出的说明写进 choices[i]["effect"]。
+        原来选中的那项放最后点（那时它已经不是选中态，单击不会确认）。返回看完后选中的是第几项；
+        纯台词 / 少于 2 项 / 都已有效果时不看，返回 None；点完发现页面变了（误确认）返回 "left"。"""
+        from hiro.vision.classify import option_regions
+        from hiro.vision.event import effect_above
+
+        pf = self.s.state.page_fields or {}
+        live = [c for c in choices if c.get("center") and not c.get("disabled")]
+        if pf.get("dialogue_only") or len(live) < 2 or all(c.get("effect") for c in live):
+            return None
+        labels = [c.get("text") or "" for c in choices]
+        sel = next((c["index"] for c in live if c.get("selected")), None)
+        order = [c for c in live if c["index"] != sel] + [c for c in live if c["index"] == sel]
+        for c in order:
+            x, y = c["center"]
+            device.click(int(x), int(y))
+            sleep(self.PREVIEW_WAIT_S)
+            img = device.screenshot()
+            boxes = ops.ocr_boxes(img)
+            lab = labels[c["index"]]
+            if not option_regions(img) and not (lab and any(lab[:4] in t for t, _, _ in boxes)):
+                return "left"  # 选项按钮和这项的字都不见了：页面已经往下走了
+            c["effect"] = effect_above(boxes, int(y), labels)
+            c["selected"] = True
+            for o in choices:
+                if o is not c:
+                    o["selected"] = False
+            sel = c["index"]
+            self.s.note(
+                f"EVENT_CHOICE：看第 {sel + 1} 项「{c.get('text') or ''}」的效果：{c['effect'] or '（没读到）'}"
+            )
+        pf["selected"] = sel
+        return sel
 
     OPTION_WAIT_S = 2.0  # 选项按钮还没出来（入场动画）时最多等这么久
 
