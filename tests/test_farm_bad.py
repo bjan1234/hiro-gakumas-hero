@@ -455,6 +455,10 @@ def test_unrelated_cancel_dialog_without_pending_is_left_alone(monkeypatch):
     monkeypatch.setattr(farm, "_regen", {"done": 0, "pending": False, "reported": set()})
     other = _boxes(*RESULT, ("フォトを保存しますか", 360, 640), ("キャンセル", 218, 1000), ("決定", 500, 1000))
     assert farm.regen_step(other) is None
+    # 结果页底下「あと1回再生成可能」这类说明（不在框里）也不算再生成框
+    other = _boxes(*RESULT, ("あと1回再生成可能", 360, 1120), ("フォトを保存しますか", 360, 640),
+                   ("キャンセル", 218, 1000), ("決定", 500, 1000))  # fmt: skip
+    assert farm.regen_step(other) is None
     monkeypatch.setenv("HIRO_FARM", "")
     jewel = _boxes(("ジュエルを50個使用して再生成しますか", 360, 640), ("キャンセル", 218, 1000), ("決定", 500, 1000))
     assert farm.regen_step(jewel) is None  # 刷回忆没开：完全不管

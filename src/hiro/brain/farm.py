@@ -433,7 +433,13 @@ def _is_regen_dialog(boxes, texts: list[str], cancel) -> bool:
     if _is_jewel(texts):
         return True
     cy = cancel.rect.center.y
-    return any("再生成" in _txt(b) and (_txt(b) != "再生成" or abs(b.rect.center.y - cy) < 40) for b in boxes)
+    # 只看确认框区域（キャンセル那一行往上 DIALOG_SPAN）：结果页底下「再生成」按钮、「あと N 回再生成可能」之类的说明不算，
+    # 免得结果页上弹的别的框也被这里取消掉
+    return any(
+        "再生成" in _txt(b) and (_txt(b) != "再生成" or abs(b.rect.center.y - cy) < 40)
+        for b in boxes
+        if cy - DIALOG_SPAN <= b.rect.center.y <= cy + 40
+    )
 
 
 def _answer_dialog(boxes, texts: list[str], cancel) -> tuple[int, int]:
