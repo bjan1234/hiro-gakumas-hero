@@ -163,3 +163,6 @@ def test_event_abort_strikes_count_per_event():
     assert strikes(b, "left") == 0
     assert strikes(b, "abort") == 1
     assert strikes(b, 0) == 0  # 看成了
+    # 上一拍 abort、这一拍认不出选中项（None）：也算一次，abort / None 交替照样到 2（CodeRabbit #196）
+    assert strikes(a, "abort") == 1 and strikes(a, None) == 2
+    assert strikes(b, None) == 0  # 没 abort 过的 None：照旧
