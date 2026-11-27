@@ -237,6 +237,37 @@ func TestStartersSkipUnreplayable(t *testing.T) {
 	}
 }
 
+// CodeRabbit #198：续打的记录缺难度时，「再打一把」不改成 new 按缺省开 REGULAR：不出这一项，找更早的完整记录。
+func TestReplayResumeWithoutDifficulty(t *testing.T) {
+	j := plugin.Job{Kind: "hajime", Params: map[string]any{"command": "resume", "idol": "i_card-skin-ttmr-3-0012"}}
+	if replay(j, "手毬", "初") != nil {
+		t.Error("续打记录缺难度：不能按缺省难度新开")
+	}
+	j.Params["difficulty"] = "master"
+	if replay(j, "手毬", "初") == nil {
+		t.Error("续打记录带了难度：照常再打一把")
+	}
+	hif := plugin.Job{Kind: "hif", Params: map[string]any{"command": "resume", "idol": "i_card-skin-ttmr-3-0012", "mode": "qualify"}}
+	if replay(hif, "手毬", "H.I.F") == nil {
+		t.Error("H.I.F 没有难度：续打记录照常再打一把")
+	}
+
+	h, p := host(), New()
+	h.Resp["run status"] = okResult(`{"current":null,"recent":[
+		{"id":"r1","kind":"hajime","state":"done","started_at":1764000000,"params":{"idol":"i_card-skin-ttmr-3-0012","command":"resume"}},
+		{"id":"j1","kind":"hajime","state":"done","started_at":1763900000,"params":{"idol":"i_card-skin-ttmr-3-0012","command":"new","difficulty":"pro"}}]}`)
+	p.Starters(h)
+	st := p.Starters(h)
+	if len(st) < 2 || st[0].Label != "用月村手毬再打一把初" || st[0].Page == nil {
+		t.Fatalf("缺难度的续打不占名额，更早那局完整的照样出：%+v", st)
+	}
+	ph := plugintest.New(nil)
+	st[0].Page(ph)
+	if len(ph.RunArgs_) != 1 || !strings.Contains(strings.Join(ph.RunArgs_[0], " "), "--difficulty pro") {
+		t.Errorf("按那局的难度开：%q", ph.RunArgs_)
+	}
+}
+
 func TestStartersWithoutHistoryOpenPanel(t *testing.T) {
 	h, p := host(), New()
 	h.Resp["run status"] = h.Resp["info idols"] // 形状不对 → 当没有最近几局
@@ -493,7 +524,7 @@ func TestFarmArgs(t *testing.T) {
 
 // 审查 #198 第 8 条：上次是刷回忆（接着打）的局，首页不出「再打一把」（会变成刷回忆新开一局）；普通局照常。
 func TestReplaySkipsFarm(t *testing.T) {
-	j := plugin.Job{Kind: "hajime", Params: map[string]any{"command": "resume", "idol": "i_card-skin-hski-3-001", "farm": "bad", "farm_target": "輝くキミへ"}}
+	j := plugin.Job{Kind: "hajime", Params: map[string]any{"command": "resume", "idol": "i_card-skin-hski-3-001", "difficulty": "regular", "farm": "bad", "farm_target": "輝くキミへ"}}
 	if replay(j, "广", "初") != nil {
 		t.Error("刷回忆的局不能按上次参数新开")
 	}

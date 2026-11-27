@@ -41,6 +41,16 @@ func modeName(kind string) string {
 	return labels.Kind(kind)
 }
 
+// hasDiffs 是这种培育开新局要不要选难度（初 / N.I.A）。
+func hasDiffs(kind string) bool {
+	for _, m := range modes {
+		if m.id == kind {
+			return len(m.diffs) > 0
+		}
+	}
+	return false
+}
+
 // 默认难度（和 agent 提示词的固定流程一致：初 regular，N.I.A pro）。
 func defaultDiff(kind string) string {
 	switch kind {
@@ -901,6 +911,11 @@ func replay(j plugin.Job, name, mode string) func(h plugin.Host) {
 		return nil // 刷回忆只能接着打（程序不选租借回忆），不能按上次参数新开一局（审查 #198 第 8 条）
 	}
 	if params["command"] == "resume" {
+		// 续打的记录多半不带难度（续打不选难度）：改成 new 会按缺省开 REGULAR，不是上次那局的难度。
+		// 参数不全就不出这一项，starters 去找更早的完整记录（CodeRabbit #198）
+		if d, _ := params["difficulty"].(string); d == "" && hasDiffs(j.Kind) {
+			return nil
+		}
 		params["command"] = "new" // 上次是接着打的：再打一把是开新的
 	}
 	// 续打时并进来的记录目录（resume_chain 的 trace）不带：run start 没有 --trace，新局自己建（CodeRabbit #138 / #197）
