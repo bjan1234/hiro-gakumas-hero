@@ -112,6 +112,11 @@ def claim_pass(rt) -> int:
             got += 1
         n += got
         if n > 0 and got == 0:
+            rt.sleep(1.0)  # 一帧没认出「受取」不算：画面稳了再看一次（CodeRabbit #138）
+            while got < MAX_CLAIMS_PER_SCREEN and _claim_one_pass(rt):
+                got += 1
+            n += got
+        if n > 0 and got == 0:
             # 能领的都连在当前等级附近：领到过以后又一整屏没有可领的，下面也不会有，不再往下拖（11-27 用户：每天划到底浪费时间）
             break
         rt.sleep(0.5)

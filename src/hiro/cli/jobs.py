@@ -257,11 +257,15 @@ def _daily_summary(p: dict) -> str:
         elif g == "auto":
             spend.append("硬币扭蛋抽 1 次（花硬币）")
         else:
-            parts = []
-            for part in g.split(","):
-                k, _, n = part.strip().partition(":")
-                parts.append(f"{_GACHA_NAMES.get(k, k)} {n or 1} 次")
-            spend.append("硬币扭蛋抽" + "、".join(parts) + "（花硬币）")
+            from hiro.daily.coin_gacha import plan
+
+            # 和真正抽的时候同一套解析（写错的次数不抽、同一个池合起来不超上限），确认时看到的就是实际要抽的（CodeRabbit #122）
+            got = plan(g)
+            parts = [f"{_GACHA_NAMES.get(k, k)} {n} 次" for k, n in got] if isinstance(got, list) else []
+            spend.append("硬币扭蛋抽" + "、".join(parts) + "（花硬币）" if parts else "硬币扭蛋不抽（次数没写对）")
+    if run("contest"):  # 竞赛选哪个对手，确认时也写出来（CodeRabbit #138）
+        pick = o["contest_pick"]
+        spend.append("竞赛挑" + ("综合力最低的对手" if pick == "lowest" else f"第 {pick} 个对手"))
     head = "领日常奖励" + (f"（{'、'.join(DAILY_LABEL.get(i, i) for i in items)}）" if items else "")
     return head + ("：" + "；".join(spend) if spend else "")
 

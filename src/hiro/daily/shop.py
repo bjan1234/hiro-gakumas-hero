@@ -131,6 +131,13 @@ def refresh_list(rt) -> str | None:
             break
     if free_refresh_label(g) is not None:
         return "点了免费刷新但列表没变"
+    # 要有刷新成了的正面证据：最后看到的是商品列表（读得到格子）。空帧 / 过场不算（CodeRabbit #138 / #197）
+    if not (g.texts and tiles(g)):
+        g = common.frame(rt)
+        if free_refresh_label(g) is not None:
+            return "点了免费刷新但列表没变"
+        if not tiles(g):
+            return "点了免费刷新，但没认出刷新后的商品列表，不再买第二轮"
     return None
 
 
@@ -140,7 +147,8 @@ def _closed_twice(rt, g) -> bool:
         return False
     rt.sleep(0.5)
     h = common.frame(rt)
-    return bool(h.texts) and not _dialog_up(h)
+    # 还要认得出兑换所的商品列表（只看「框的字没了」不够：漏读一帧框的字也会算关了，CodeRabbit #138）
+    return bool(h.texts) and not _dialog_up(h) and bool(tiles(h))
 
 
 class RefreshDialogStuck(Exception):
@@ -373,12 +381,14 @@ def confirm(rt, g) -> str:
 
 
 def dismiss_bought(rt) -> None:
-    """关掉买完的提示框（閉じる / OK）。"""
+    """关掉买完的提示框（閉じる / OK）。关的时候超时：提示可能还开着，后面的项都不跑（_open，CodeRabbit #197）。"""
+    _open["dialog"] = True
     for _ in range(3):
         h = common.frame(rt)
         if not (tap_word(rt, h, "閉じる", y_min=900) or tap_word(rt, h, "OK", y_min=900)):
             break
         rt.sleep(0.8)
+    _open["dialog"] = False
 
 
 def cost(f) -> int | None:
@@ -473,6 +483,7 @@ def _buy_round(
     cands: dict[tuple, dict] = {}  # recommended 模式：没标おすすめ、还能买的格子（兜底挑最便宜的）
     rec_seen = False  # 看到过おすすめ（含今天已经买光的）：有就不兜底，今天已经算买过了（#122 review）
     money_short = False  # 有一件金币不够（跳过它接着看别的，CodeRabbit #122）
+    missed = False  # 有一件要买的没读到「決定」、没买（不能报成「今天买过了」，CodeRabbit #138）
     tiles_seen = False  # 一个商品格都没读到（页面没加载 / 读不到字）：不能当成「今天买过了」
     screens = 0
     last_sig = None
@@ -522,6 +533,7 @@ def _buy_round(
                 money_short = True
                 continue
             if r == MISSED:  # 没读到「決定」、已取消：这格不再点开
+                missed = True
                 continue
             bought.append(name)  # 先记账再关提示（关提示时超时也不漏记，CodeRabbit #198）
             logger.info("商店买了：%s", name)
@@ -534,7 +546,13 @@ def _buy_round(
         rt.device.swipe(*SWIPE, duration=SWIPE_S)
         rt.sleep(1.0)
         screens += 1
-    return {"cands": cands, "rec_seen": rec_seen, "money_short": money_short, "tiles_seen": tiles_seen}
+    return {
+        "cands": cands,
+        "rec_seen": rec_seen,
+        "money_short": money_short,
+        "tiles_seen": tiles_seen,
+        "missed": missed,
+    }
 
 
 def run(rt) -> str:
@@ -556,6 +574,7 @@ def run(rt) -> str:
     refreshed = False
     stopped: str | None = None
     stop_all = False  # 停在可能还开着框的地方（刷新确认框 / 兑换框关不掉）：后面的项都不跑
+    missed = False
     in_refresh = False  # 点免费刷新到确认没框之间
     tiles_seen = True
     _open["dialog"] = False
@@ -567,6 +586,7 @@ def run(rt) -> str:
         if m != "off":
             r = _buy_round(rt, m, names, prices, seen_prices, bought)
             rec_seen, cands, money_short, tiles_seen = r["rec_seen"], r["cands"], r["money_short"], r["tiles_seen"]
+            missed = r.get("missed", False)
             if not tiles_seen:
                 raise ResumeBlocked("一个商品都没读到（商店页没加载出来，或读不到画面上的字）")
             if refresh_on():
@@ -582,6 +602,11 @@ def run(rt) -> str:
                     r = _buy_round(rt, m, names, prices, seen_prices, bought)
                     rec_seen, cands = rec_seen or r["rec_seen"], r["cands"]
                     money_short = money_short or r["money_short"]
+                    missed = missed or r.get("missed", False)
+                    if not r["tiles_seen"]:  # 刷新后一个格子都没读到：第二轮没做成（CodeRabbit #197）
+                        raise ResumeBlocked("免费刷新后一个商品都没读到（第二轮没买）")
+        if missed and not bought:
+            raise ResumeBlocked("要买的商品确认框里没读到「決定」，没买，可以再试一次")
         if m == "recommended" and not bought and not rec_seen and cands and not money_short:
             got, note = _fallback(rt, list(cands.values()))
             if got:

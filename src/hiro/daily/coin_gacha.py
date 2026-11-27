@@ -29,9 +29,9 @@ MAX_COUNT_TAPS = 30
 MAX_TIMES = 10  # 每个池一次最多抽几次（填得很大时会一直空点「＋」到超时，#122 review）；界面也限这个数
 
 
-def plan() -> list[tuple[str, int]] | str:
-    """[(池, 次数)]；auto 返回 "auto"；off 返回 []。"""
-    v = (os.environ.get("HIRO_COIN_GACHA") or "off").strip().lower()
+def plan(value: str | None = None) -> list[tuple[str, int]] | str:
+    """[(池, 次数)]；auto 返回 "auto"；off 返回 []。value 不给就读 HIRO_COIN_GACHA（确认摘要用同一套解析）。"""
+    v = (value if value is not None else os.environ.get("HIRO_COIN_GACHA") or "off").strip().lower() or "off"
     if v == "off":
         return []
     if v == "auto":
@@ -223,7 +223,13 @@ def _draw_in_dialog(rt, pool: str, times: int, g) -> int:
         _cancel(rt, common.frame(rt))
         return 0
 
+    left = [
+        False
+    ]  # 确认框关掉过（点了「決定」之后进了演出 / 结果页）：没关掉过就是「決定」没生效、没抽（CodeRabbit #138）
+
     def back(f):
+        if text_at(f, "コインガシャ確認") is None and f.texts:
+            left[0] = True
         if (
             text_at(f, "コインガシャ", y_max=80) is not None
             and text_at(f, "コインガシャ確認") is None
@@ -242,7 +248,7 @@ def _draw_in_dialog(rt, pool: str, times: int, g) -> int:
         ResumeBlocked,
         common.TaskTimeout,
     ) as e:  # 已经抽了：带着次数往外报，结果里要看得到（#122 review；单项超时同样）
-        raise DrawStopped(pool, n, str(e)) from e
+        raise DrawStopped(pool, n if left[0] else 0, str(e)) from e
     logger.info("%s扭蛋 抽了 %d 次", NAMES[pool], n)
     return n
 

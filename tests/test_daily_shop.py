@@ -123,10 +123,15 @@ class _Rt:
 
 def _shop(monkeypatch, screen, goods, money, *, home_raises=False):
     """screen：商店这一屏；goods：格子 x → (名字, 单价, 一次买几个)；money：有多少金币。"""
+    import tempfile
+    from pathlib import Path
+
     from hiro.loop.errors import ResumeBlocked
 
     rt = _Rt()
     state = {"money": money}
+    tmp = Path(tempfile.mkdtemp(prefix="hiro-shop-test-"))
+    monkeypatch.setattr(shop, "_price_path", lambda: tmp / shop.PRICE_FILE)  # 不写真实 HIRO_HOME（CodeRabbit #138）
     monkeypatch.setattr(shop, "goto_daily_exchange", lambda rt: True)
     monkeypatch.setattr(shop.common, "frame", lambda rt: screen)
     monkeypatch.setattr(shop, "tap_word", lambda *a, **k: True)
@@ -350,6 +355,13 @@ def _seq_rt(monkeypatch, frames):
     return rt
 
 
+SHOPLIST = (
+    ("デイリー交換所", 140, 55),
+    ("3,000", 120, 480),
+    ("あと1回", 104, 509),
+)  # 兑换所商品列表（关框 / 刷新成了的正面证据）
+
+
 def test_refresh_dialog_is_dismissed_never_confirmed(monkeypatch):
     label = frame(("リスト更新:1回無料", 561, 163))
     dlg = frame(
@@ -358,7 +370,7 @@ def test_refresh_dialog_is_dismissed_never_confirmed(monkeypatch):
         ("キャンセル", 168, 1143),
         ("決定", 490, 1140),
     )
-    rt = _seq_rt(monkeypatch, [label, dlg, frame(("デイリー交換所", 140, 55))])
+    rt = _seq_rt(monkeypatch, [label, dlg, frame(*SHOPLIST)])
     why = shop.refresh_list(rt)
     assert why is not None and "确认框" in why
     assert rt.device.taps == [(561, 163), shop.DISMISS_TAP]  # 点了刷新、点空白，没点「決定」
@@ -367,7 +379,7 @@ def test_refresh_dialog_is_dismissed_never_confirmed(monkeypatch):
 def test_refresh_dialog_still_up_taps_cancel_not_decide(monkeypatch):
     label = frame(("リスト更新:1回無料", 561, 163))
     dlg = frame(("確認", 360, 500), ("キャンセル", 168, 1143), ("決定", 490, 1140))
-    rt = _seq_rt(monkeypatch, [label, dlg, dlg, frame(("デイリー交換所", 140, 55))])
+    rt = _seq_rt(monkeypatch, [label, dlg, dlg, frame(*SHOPLIST)])
     assert "确认框" in shop.refresh_list(rt)
     assert rt.device.taps == [(561, 163), shop.DISMISS_TAP, (0, 1)]  # 空白没关掉：点キャンセル
 
@@ -387,7 +399,7 @@ def test_refresh_dialog_that_wont_close_stops_shop(monkeypatch):
 def test_refresh_late_dialog_is_caught(monkeypatch):
     """框在点完 1.5 秒以后才弹（前几帧右上角的字还在 / 在过场里）：照样认出来关掉，不当成刷新成功。"""
     label = frame(("リスト更新:1回無料", 561, 163))
-    blank = frame(("デイリー交換所", 140, 55))
+    blank = frame(*SHOPLIST)
     dlg = frame(("リストを更新しますか", 360, 600), ("閉じる", 168, 1143), ("更新する", 490, 1140))
     rt = _seq_rt(monkeypatch, [label, label, blank, blank, blank, dlg, blank])
     assert "确认框" in shop.refresh_list(rt)
@@ -396,7 +408,7 @@ def test_refresh_late_dialog_is_caught(monkeypatch):
 
 def test_refresh_success_after_watch_window(monkeypatch):
     label = frame(("リスト更新:1回無料", 561, 163))
-    after = frame(("リスト更新:50", 561, 163))
+    after = frame(("リスト更新:50", 561, 163), *SHOPLIST[1:])
     rt = _seq_rt(monkeypatch, [label, after])
     assert shop.refresh_list(rt) is None and rt.device.taps == [(561, 163)]
 
@@ -709,3 +721,40 @@ def test_coin_gacha_cancel_must_close_dialog(monkeypatch):
         coin_gacha._cancel(_WaitRt([box]), box)
     assert taps.count("キャンセル") >= 2
     coin_gacha._cancel(_WaitRt([frame(("コインガシャ", 360, 40))]), box)  # 关了：不抛
+
+
+# ---- CodeRabbit 第三轮（#138 / #197 上看到的 #122 部分）----
+
+
+def test_shop_missed_decide_is_not_done_today(monkeypatch):
+    """推荐商品确认框没读到「決定」：不报「今天买过了」，这一项算没做完。"""
+    import pytest
+
+    monkeypatch.setenv("HIRO_SHOP", "recommended")
+    monkeypatch.delenv("HIRO_SHOP_AP", raising=False)
+    monkeypatch.delenv("HIRO_SHOP_ITEMS", raising=False)
+    monkeypatch.delenv("HIRO_SHOP_REFRESH", raising=False)
+    screen = frame(("おすすめ", 61, 319), ("3,000", 120, 480), ("あと1回", 104, 509))
+    rt = _shop(monkeypatch, screen, {104: ("ロジックノート", 3000, 1)}, 100000)
+    monkeypatch.setattr(shop, "confirm", lambda rt, g: shop.MISSED)
+    with pytest.raises(shop.common.PartialStop) as e:
+        shop.run(rt)
+    assert "決定" in e.value.reason and "今天买过了" not in e.value.result
+
+
+def test_refresh_needs_list_after_tap(monkeypatch):
+    """点了免费刷新、观察期最后一帧是空的（过场）：没认出刷新后的列表就不算刷成，不买第二轮。"""
+    label = frame(("リスト更新:1回無料", 561, 163), ("3,000", 120, 480), ("あと1回", 104, 509))
+    rt = _seq_rt(
+        monkeypatch, [label, frame(), frame(), frame(), frame(), frame(), frame(), frame(), frame(), frame(), frame()]
+    )
+    assert shop.refresh_list(rt) is not None
+
+
+def test_daily_summary_uses_real_gacha_plan_and_contest_pick():
+    from hiro.cli.jobs import KINDS
+
+    s = KINDS["daily"].summary({"items": "contest,coin_gacha", "coin_gacha": "friend:8,friend:8", "contest_pick": "3"})
+    assert f"友情 {coin_gacha.MAX_TIMES} 次" in s or "10 次" in s
+    assert "第 3 个对手" in s
+    assert "不抽" in KINDS["daily"].summary({"items": "coin_gacha", "coin_gacha": "friend:abc"})
