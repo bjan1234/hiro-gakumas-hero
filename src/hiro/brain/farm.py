@@ -186,9 +186,11 @@ def check_targets(env: dict | None = None) -> set[str]:
                 "请检查卡名和游戏里写的是否完全一致（也可以填技能卡编号 p_card-…），以及资料库有没有下载好"
             )
         return set(ids)
-    ids = target_cards(src)
+    ids = target_cards(env)
     if not ids:
-        raise ResumeBlocked("刷回忆：没有转写目标（没填转写目标，回忆编成里也没读到卡），没开始（相談删卡会把目标卡一起删掉）")
+        raise ResumeBlocked(
+            "刷回忆：没有转写目标（没填转写目标，回忆编成里也没读到卡），没开始（相談删卡会把目标卡一起删掉）"
+        )
     return ids
 
 
@@ -381,7 +383,9 @@ def regen_step(boxes) -> tuple[int, int] | str | None:
             # 这局已经确认过一次再生成：又弹出来的框不是这里要的，取消（REGEN_MAX）
             logger.warning("刷回忆：已经再生成过，又见到再生成 / 钻石确认框，点キャンセル：%s", " ".join(texts)[:160])
             return int(cancel.rect.center.x), int(cancel.rect.center.y)
-        logger.warning("刷回忆：等确认框的时间过了 / 重启后才见到再生成 / 钻石确认框，照样按白名单处理：%s", " ".join(texts)[:160])
+        logger.warning(
+            "刷回忆：等确认框的时间过了 / 重启后才见到再生成 / 钻石确认框，照样按白名单处理：%s", " ".join(texts)[:160]
+        )
         _regen["done"] = max(_regen["done"], 1)  # 框是点过再生成才会弹的（进程重启后计数从 0 开始）：不再点第二次
         _regen.update(pending=True, since=_clock())  # 回到「等确认框」：点完以后框淡出那几帧也由这里管
         return _answer_dialog(boxes, texts, cancel)
@@ -429,9 +433,7 @@ def _is_regen_dialog(boxes, texts: list[str], cancel) -> bool:
     if _is_jewel(texts):
         return True
     cy = cancel.rect.center.y
-    return any(
-        "再生成" in _txt(b) and (_txt(b) != "再生成" or abs(b.rect.center.y - cy) < 40) for b in boxes
-    )
+    return any("再生成" in _txt(b) and (_txt(b) != "再生成" or abs(b.rect.center.y - cy) < 40) for b in boxes)
 
 
 def _answer_dialog(boxes, texts: list[str], cancel) -> tuple[int, int]:

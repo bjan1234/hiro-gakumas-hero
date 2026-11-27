@@ -402,7 +402,9 @@ def test_regen_dialog_after_grace_never_goes_to_generic_branch(monkeypatch):
     now[0] = 4.5
     assert farm.regen_step(_boxes(*RESULT)) is None and not farm._regen["pending"]  # 4 秒没框：交回收尾
     now[0] = 5.5
-    dlg = _late_dialog(("ジュエルを50個使用して再生成しますか", 360, 640), ("キャンセル", 218, 1000), ("決定", 500, 1000))
+    dlg = _late_dialog(
+        ("ジュエルを50個使用して再生成しますか", 360, 640), ("キャンセル", 218, 1000), ("決定", 500, 1000)
+    )
     assert farm.regen_step(dlg) == (218, 1000)
     assert farm.regen_step(dlg) == (218, 1000)  # 还开着：再点キャンセル，绝不点決定
 
@@ -414,7 +416,9 @@ def test_regen_late_free_dialog_is_confirmed_once(monkeypatch):
     now[0] = 4.5
     assert farm.regen_step(_boxes(*RESULT)) is None
     now[0] = 5.5
-    dlg = _boxes(("メモリー再生成チケットを1枚使用します", 360, 640), ("キャンセル", 218, 1000), ("再生成する", 500, 1000))
+    dlg = _boxes(
+        ("メモリー再生成チケットを1枚使用します", 360, 640), ("キャンセル", 218, 1000), ("再生成する", 500, 1000)
+    )
     assert farm.regen_step(dlg) == (500, 1000)
     assert farm.regen_step(dlg) == farm.WAIT  # 淡出中：不再点
     assert farm.regen_step(_boxes(("TAP", 360, 1200))) is None and not farm._regen["pending"]
@@ -430,7 +434,12 @@ def test_regen_dialog_after_restart_is_handled(monkeypatch):
     monkeypatch.setattr(farm, "_target_names", lambda: {"輝くキミへ"})
     monkeypatch.setattr(farm, "_regen", {"done": 0, "pending": False, "reported": set()})
     monkeypatch.setattr(farm, "_clock", lambda: 0.0)
-    dlg = _boxes(("メモリーを再生成しますか", 360, 600), ("ジユエル 50", 400, 650), ("キャンセル", 218, 1000), ("決定", 500, 1000))
+    dlg = _boxes(
+        ("メモリーを再生成しますか", 360, 600),
+        ("ジユエル 50", 400, 650),
+        ("キャンセル", 218, 1000),
+        ("決定", 500, 1000),
+    )
     assert farm.regen_step(dlg) == (218, 1000)
     monkeypatch.setattr(farm, "_clock", lambda: 10.0)
     assert farm.regen_step(_boxes(*RESULT)) is None  # 框关了：回到结果页，不再生成第二次
@@ -520,7 +529,7 @@ def test_check_targets_blocks_on_unresolved(monkeypatch):
     from hiro.loop.errors import ResumeBlocked
 
     farm, _ = _fake_catalog(monkeypatch)
-    with pytest.raises(ResumeBlocked, match="輝くキミヘ.*卡名"):
+    with pytest.raises(ResumeBlocked, match=r"輝くキミヘ.*卡名"):
         farm.check_targets({"HIRO_FARM_TARGET": "輝くキミヘ"})
     with pytest.raises(ResumeBlocked, match="没有这张"):
         farm.check_targets({"HIRO_FARM_TARGET": "輝くキミへ,没有这张"})  # 多个目标只有一个解析不出也停
