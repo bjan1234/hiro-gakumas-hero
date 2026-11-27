@@ -565,3 +565,35 @@ def test_hajime_run_stops_before_device_on_bad_target(monkeypatch, capsys):
     monkeypatch.setattr("hiro.devices.open_device", lambda: opened.append(1))
     assert hajime.run(NS(idol="i_card-hski-3-000", command="resume")) == 3
     assert not opened and "輝くキミヘ" in capsys.readouterr().out
+
+
+def _consult(monkeypatch, farm_on: bool, deck: list):
+    from hiro.brain.deciders import ProduceDeciders
+    from hiro.brain.state import profile_for
+    from hiro.contracts import GameState
+
+    monkeypatch.setenv("HIRO_FARM", "bad" if farm_on else "")
+    monkeypatch.setenv("HIRO_FARM_TARGET", "p_card-02-act-3_186")
+    prod = {"idol_card_id": "i_card-hski-3-000", "mode": "produce-001", "step": 7, "stamina": 20, "max_stamina": 30,
+            "produce_point": 300, "params": {"Vo": 1, "Da": 1, "Vi": 1}, "growth_permil": {}, "rerolls_left": 0,
+            "excludes_left": 0, "deck": deck}  # fmt: skip
+    pf = {"shelf": [], "services": {"delete": {"price": 100, "available": True}}}
+    dec = ProduceDeciders(profile_for("i_card-hski-3-000"), None)
+    return dec, dec.decide("CONSULT", GameState(produce=prod, page_fields=pf))
+
+
+def test_consult_deck_unread_still_opens_delete_dialog(monkeypatch):
+    """审查 #198 第 3 条 / CodeRabbit deciders.py:2403：牌组没读到时，选行动按这局拿过的卡判断去了相談，
+    进去却直接结束不删卡（白花一周、垃圾卡进抽选池）。刷回忆时改为打开删卡对话框，在对话框里由 remove_card 选。"""
+    from hiro.contracts import ActionKind
+
+    dec, d = _consult(monkeypatch, True, [])
+    assert d.action.kind is ActionKind.SHOP_BUY and d.action.args == {"service": "delete"}, d
+    assert "delete" in dec.consult_used  # 一次相談只删一张：对话框里取消了也不再开
+
+
+def test_consult_deck_unread_normal_mode_unchanged(monkeypatch):
+    from hiro.contracts import ActionKind
+
+    _, d = _consult(monkeypatch, False, [])
+    assert d.action.kind is ActionKind.SHOP_END and "牌组没识别" in d.reason, d

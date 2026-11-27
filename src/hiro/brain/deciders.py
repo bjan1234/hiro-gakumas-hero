@@ -2400,7 +2400,11 @@ class ProduceDeciders:
         p = ps.produce_point if "produce_point" not in unknown else (state.page_fields.get("produce_point") or 0)
         delete = services.get("delete") or {}
         rid = "nia.delete_order" if family(ps.mode) == NIA else "hajime.consult_price"
-        if "deck" in unknown or not ps.deck:
+        from hiro.brain import farm, flows
+
+        deck_unknown = "deck" in unknown or not ps.deck
+        farming = farm.mode() == "bad"
+        if deck_unknown and not farming:
             return Decision(
                 Action(ActionKind.SHOP_END),
                 "相談：牌组没识别，不删卡",
@@ -2422,14 +2426,19 @@ class ProduceDeciders:
                 0.6,
                 decider="consult",
             )
+        if deck_unknown:
+            # 刷回忆：选行动按这局拿过的卡判断「有卡可删」才进的相談，牌组没读到也要删（原来直接结束，这周白花、垃圾卡进抽选池；
+            # 审查 #198 第 3 条）。不带 card_index / card_id：打开删卡对话框，由 remove_card 按对话框卡格只删这局拿到的卡，没有就取消
+            self.consult_used.add("delete")
+            return Decision(Action(ActionKind.SHOP_BUY, {"service": "delete"}),
+                            f"刷回忆：牌组没识别，打开删卡对话框，在对话框里选这局拿到的卡删（{delete.get('price')}P）", "rule", 0.7,
+                            warnings=["牌组未识别：在删卡对话框里选卡"], decider="consult")  # fmt: skip
         cards = [
             {"index": i, "card_id": c.card_id, "upgrade": c.upgrade, "customized": c.customized}
             for i, c in enumerate(ps.deck)
         ]
         counts, _ = self._deck_counts(state)
-        from hiro.brain import farm, flows
-
-        if farm.mode() == "bad":
+        if farming:
             pool = farm.junk_cards(
                 cards, farm.target_cards()
             )  # 刷回忆：这一局拿到的卡全删（不进回忆抽选池），初始卡 / 固有卡 / 目标卡留着
