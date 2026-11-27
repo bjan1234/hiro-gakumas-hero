@@ -149,3 +149,17 @@ def test_unread_effect_is_unknown_not_empty(monkeypatch):
 
     assert not any(ok for _, ok in (ev.parse(c) for c in choices))  # 效果未知：不完整，不当成没效果去选第一项
     assert ev.parse({"text": "", "effect": ""})[1]  # 确认没有效果（纯台词）照旧算完整
+
+
+def test_event_abort_strikes_count_per_event():
+    """#196 review：「连着两次对不上就停」只算同一个事件；换了事件、页面走了、看成了都重新数。"""
+    core = NS()
+    strikes = lambda choices, preview: hif.HifCore._event_strikes(core, choices, preview)  # noqa: E731
+    a = [{"text": "レッスンする"}, {"text": "休む"}]
+    b = [{"text": "話を聞く"}, {"text": "断る"}]
+    assert strikes(a, "abort") == 1
+    assert strikes(b, "abort") == 1  # 换了事件：不和上一个事件的凑成两次
+    assert strikes(b, "abort") == 2  # 同一个事件连着两次：停
+    assert strikes(b, "left") == 0
+    assert strikes(b, "abort") == 1
+    assert strikes(b, 0) == 0  # 看成了

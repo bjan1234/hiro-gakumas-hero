@@ -1274,18 +1274,17 @@ class HifCore:
         if page == "EVENT_CHOICE":
             assert self.s is not None  # 上面的嵌套函数让类型收窄丢了
             preview = self._preview_event_effects(choices)
+            strikes = self._event_strikes(choices, preview)
             if preview == "left":
                 self.s.note("EVENT_CHOICE：看效果时页面变了（点到已选中的那项 = 确认了），交给下一拍")
                 return
             if preview == "abort":
                 # 点过以后中途对不上（选中没生效 / 认不出选中项）：选中态可能已经变了，原来的双击提交会把已选中的那项确认掉，
                 # 交给下一拍重新看画面（CodeRabbit #196 / #198）。连着两次对不上 = 选中态读不准，再点下去可能把没选的那项确认掉：停下交给人（自检）
-                self._event_aborts = getattr(self, "_event_aborts", 0) + 1
-                if self._event_aborts >= 2:
+                if strikes >= 2:
                     raise ResumeBlocked("事件选项：连着两次读不准哪项是选中态，停下交给人（再点可能确认到没选的那项）")
                 self.s.note("EVENT_CHOICE：看效果中途对不上，交给下一拍重新看")
                 return
-            self._event_aborts = 0
             if preview is not None:
                 sel_i = [preview]  # 现在选中的是哪项（提交时更新：画面没变要重提交时，那项已经是选中态，只点一下）
 
@@ -1350,6 +1349,19 @@ class HifCore:
     def _is_selected(self, img, y) -> bool:
         sy = self._selected_y(img)
         return sy is not None and abs(sy - int(y)) <= self.SELECTED_DY
+
+    def _event_strikes(self, choices: list, preview) -> int:
+        """事件选项看效果「对不上」（abort）连着几次：只算同一个事件（按选项文字认），换了事件 / 页面走了（left）/ 看成了就重新数
+        （#196 review：上一个事件的一次 abort 加下一个事件第一次读不准，原来会凑成两次、整局停下）。"""
+        key = tuple(str(c.get("text") or "") for c in choices)
+        if preview == "left" or getattr(self, "_event_abort_key", None) != key:
+            self._event_aborts = 0
+        self._event_abort_key = key
+        if preview == "abort":
+            self._event_aborts = getattr(self, "_event_aborts", 0) + 1
+        elif preview != "left":
+            self._event_aborts = 0
+        return self._event_aborts
 
     def _preview_event_effects(self, choices: list) -> int | str | None:
         """事件选项页：效果说明只在选中时出现（11-27 实机：二选一事件只看得到选中那项的效果，另一项读不到 → 规则选不了，
