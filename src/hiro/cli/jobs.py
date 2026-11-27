@@ -183,12 +183,23 @@ def _hif_argv(p: dict, d: Path) -> list[str]:
     return argv
 
 
-DAILY_ITEMS = ("activity_funds", "presents", "assignment", "contest", "mission_reward", "club_reward")
+DAILY_ITEMS = (
+    "activity_funds",
+    "presents",
+    "assignment",
+    "contest",
+    "shop",
+    "coin_gacha",
+    "mission_reward",
+    "club_reward",
+)
 DAILY_LABEL = {
-    "activity_funds": "活動費",
+    "activity_funds": "活动费",
     "presents": "礼物",
-    "assignment": "工作",
+    "assignment": "工作派遣",
     "contest": "竞赛",
+    "shop": "商店",
+    "coin_gacha": "硬币扭蛋",
     "mission_reward": "任务奖励",
     "club_reward": "社团",
 }
@@ -196,17 +207,68 @@ HAJIME_LEVELS = ("regular", "pro", "master")
 NIA_LEVELS = ("pro", "master")
 
 
+def _daily_opts(p: dict) -> dict[str, str]:
+    """日常的花钱选项，缺的按缺省（不买、不抽、综合力最低）补齐。「另外要买的」只在买推荐 / 全部时算（#122 review）。"""
+    shop = str(p.get("shop") or "off").strip().lower()
+    return {
+        "contest_pick": str(p.get("contest_pick") or "lowest"),
+        "shop": shop,
+        "shop_items": str(p.get("shop_items") or "") if shop != "off" else "",
+        "shop_ap": str(p.get("shop_ap") or ""),
+        "shop_refresh": "on" if shop != "off" and str(p.get("shop_refresh") or "off").lower() == "on" else "off",
+        "coin_gacha": str(p.get("coin_gacha") or "off"),
+    }
+
+
 def _daily_argv(p: dict, d: Path) -> list[str]:
     argv = [_PY, str(REPO / "tools" / "daily" / "run_daily.py")]
     items = [i for i in (p.get("items") or "").split(",") if i]
     if items:
         argv += ["--only", ",".join(items)]
+    # 每项都显式传（空的也传）：不让任务继承环境里的 HIRO_SHOP 等，执行的和确认摘要写的一样（CodeRabbit #138）
+    for key, val in _daily_opts(p).items():
+        argv += ["--" + key.replace("_", "-"), val]
     return argv
 
 
+_AP_NAMES = {"pt": "支援强化点数获取提升", "note": "笔记获取数提升", "retry": "再挑战券", "regen": "回忆再生成券"}
+_GACHA_NAMES = {"friend": "友情", "sense": "感性", "logic": "理性", "anomaly": "非凡"}
+
+
 def _daily_summary(p: dict) -> str:
+    """确认摘要：做哪几项，加上会花什么（商店、体力商店、扭蛋；不买不抽也写明，CodeRabbit #122）。"""
     items = [i for i in (p.get("items") or "").split(",") if i]
-    return "领日常奖励" + (f"（{'、'.join(DAILY_LABEL.get(i, i) for i in items)}）" if items else "")
+    o = _daily_opts(p)
+    run = lambda k: not items or k in items  # noqa: E731
+    spend = []
+    if run("shop"):
+        shop = {"recommended": "商店买推荐商品（花金币）", "all": "商店能买的都买（花金币）"}.get(o["shop"], "商店不买")
+        if o["shop_items"]:
+            shop += f"，另外买：{o['shop_items']}"
+        if o["shop_refresh"] == "on":
+            shop += "，用免费刷新再买一轮（不花钻石）"
+        spend.append(shop)
+        # 体力商店：和执行端同一套解析（小写、只认 pt / note / retry / regen；CodeRabbit #138）
+        keys = [k for k in (x.strip().lower() for x in o["shop_ap"].split(",")) if k in _AP_NAMES]
+        if ap := [_AP_NAMES[k] for k in dict.fromkeys(keys)]:
+            spend.append("体力商店买" + "、".join(ap) + "（花体力）")
+    if run("coin_gacha"):
+        from hiro.daily.coin_gacha import plan
+
+        # 和真正抽的时候同一套解析（大小写 / 空格、写错的次数不抽、同一个池合起来不超上限）：确认时看到的就是实际要抽的（CodeRabbit #122 / #138）
+        g = o["coin_gacha"]
+        got = plan(g)
+        if got == "auto":
+            spend.append("硬币扭蛋抽 1 次（花硬币）")
+        elif got:
+            spend.append("硬币扭蛋抽" + "、".join(f"{_GACHA_NAMES.get(k, k)} {n} 次" for k, n in got) + "（花硬币）")
+        else:
+            spend.append("硬币扭蛋不抽" if g.strip().lower() in ("", "off") else "硬币扭蛋不抽（次数没写对）")
+    if run("contest"):  # 竞赛选哪个对手，确认时也写出来（CodeRabbit #138）
+        pick = o["contest_pick"]
+        spend.append("竞赛挑" + ("综合力最低的对手" if pick == "lowest" else f"第 {pick} 个对手"))
+    head = "领日常奖励" + (f"（{'、'.join(DAILY_LABEL.get(i, i) for i in items)}）" if items else "")
+    return head + ("：" + "；".join(spend) if spend else "")
 
 
 def _produce_argv(module: str, default_level: str):
@@ -827,10 +889,16 @@ class Job:
             self.emit("stopped", "已停止")
             self.state = "stopped"
         elif code == 0:
-            self.emit("done", "完成")
+            # 日常等任务最后打一行「结果：…」（每项做了什么）：结束事件就写它，界面上看得到（11-25：原来只有「完成」）
+            result = next((t.strip()[3:] for t in reversed(recent) if t.strip().startswith("结果：")), None)
+            self.emit("done", result or "完成")
             self.state = "done"
         else:
             self.reason = failure_reason([*tail, *recent])
+            # 日常有一项出错时退出码是 1，但别的项（含已买 / 已抽的）做了什么照样要看得到：界面显示的是 reason，接在后面（#122 review）
+            result = next((t.strip()[3:] for t in reversed(recent) if t.strip().startswith("结果：")), None)
+            if result:  # 原因没认出来时也留着做了的（CodeRabbit #198）
+                self.reason = f"{self.reason or f'任务出错退出（代码 {code}）'}。做了的：{result}"
             text = f"出错停下：{self.reason}" if self.reason else f"任务出错退出（代码 {code}），看上面的日志"
             self.emit("failed", text, exit_code=code, reason=self.reason)
             self.state = "failed"
