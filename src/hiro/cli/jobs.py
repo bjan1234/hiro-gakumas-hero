@@ -896,8 +896,8 @@ class Job:
             self.reason = failure_reason([*tail, *recent])
             # 日常有一项出错时退出码是 1，但别的项（含已买 / 已抽的）做了什么照样要看得到：界面显示的是 reason，接在后面（#122 review）
             result = next((t.strip()[3:] for t in reversed(recent) if t.strip().startswith("结果：")), None)
-            if result and self.reason:
-                self.reason = f"{self.reason}。做了的：{result}"
+            if result:  # 原因没认出来时也留着做了的（CodeRabbit #198）
+                self.reason = f"{self.reason or f'任务出错退出（代码 {code}）'}。做了的：{result}"
             text = f"出错停下：{self.reason}" if self.reason else f"任务出错退出（代码 {code}），看上面的日志"
             self.emit("failed", text, exit_code=code, reason=self.reason)
             self.state = "failed"
