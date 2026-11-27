@@ -491,7 +491,7 @@ func (s *state) panel(c *ui.Context, h plugin.Host) {
 	if m.id == "daily" {
 		s.dailyOptions(c)
 	}
-	s.search.draw(c, h, examGroup(m.id, s.hifMain))
+	s.search.draw(c, h, examGroups(m.id, s.hifMain, s.resume))
 	needIdol := (produce && !s.resume) || m.id == "tower"
 	if needIdol {
 		s.pick.Draw(c, h, "start")
@@ -675,7 +675,7 @@ func (s *state) args() ([]string, string) {
 	if m.id == "hif" {
 		a = append(a, "--mode", []string{"qualify", "main"}[s.hifMain])
 	}
-	a = append(a, s.search.args(examGroup(m.id, s.hifMain))...)
+	a = append(a, s.search.args(examGroups(m.id, s.hifMain, s.resume))...)
 	if s.resume {
 		return a, "接着打 " + m.name
 	}

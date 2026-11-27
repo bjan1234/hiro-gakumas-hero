@@ -814,7 +814,7 @@ class Job:
                 env["HIRO_SETTLE_MIN_S"] = "1.5"
         from hiro.cli import play_prefs
 
-        # 设置页「培育」那一节（LIVE / 照片 / 未读剧情 / 没过线重打 / H.I.F 攻略包和选拔搜索）：盖过启动环境（11-27）
+        # 设置页「培育」那一节（LIVE / 照片 / 未读剧情 / 没过线重打 / H.I.F 攻略包和审查日程）：盖过启动环境（11-27）
         for var, val in play_prefs.env_from_settings(self.work.parent).items():
             if val:
                 env[var] = val
@@ -1002,7 +1002,7 @@ SIM_STATE_SOURCE = "hiro.sim.screen_source:SimScreenExamStateSource"
 
 def exam_search_env(kind: str, value, base: dict | None = None) -> dict[str, str]:
     """--exam-search（mid1,final / none）→ 环境变量。没给这个参数时不动（各家族的缺省）。
-    H.I.F 本战要搜索得有模拟器跟踪的局面来源：没设 HIRO_EXAM_STATE_SOURCE 时补上 play.ps1 的那套（模拟器 1 个进程、预演只在 R2）。"""
+    H.I.F 本战要搜索得有模拟器跟踪的局面来源：没设 HIRO_EXAM_STATE_SOURCE、也没 HIRO_SIM=0 时补上 play.ps1 的那套（模拟器 1 个进程、预演只在 R2）。"""
     if value is None or kind not in EXAM_SEARCH_KEYS:
         return {}
     keys = EXAM_SEARCH_KEYS[kind]
@@ -1014,7 +1014,7 @@ def exam_search_env(kind: str, value, base: dict | None = None) -> dict[str, str
     qual = [k[1] for k in picked if k.startswith("q")]
     main = [k for k in picked if k.startswith("r")]
     env = {"HIRO_EXAM_SEARCH_HIF": ",".join(qual) or "off", "HIRO_EXAM_SEARCH_MAIN": ",".join(main) or "off"}
-    if main and not (base or {}).get("HIRO_EXAM_STATE_SOURCE"):
+    if main and not (base or {}).get("HIRO_EXAM_STATE_SOURCE") and (base or {}).get("HIRO_SIM") != "0":
         env["HIRO_EXAM_STATE_SOURCE"] = SIM_STATE_SOURCE
         if not (base or {}).get("HIRO_SIM_WORKERS"):
             env["HIRO_SIM_WORKERS"] = "1"  # 模拟器每个 worker 约 600 MB

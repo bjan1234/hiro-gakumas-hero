@@ -11,6 +11,8 @@ def test_hajime_rounds(monkeypatch):
     assert A.exam_search_algo_spec("hajime-lesson-vo-sp") == A.EXAM_DEFAULT_ALGO
     monkeypatch.setenv("HIRO_EXAM_SEARCH_HAJIME", "0")
     assert A.hajime_search_rounds() == set() and not A.hajime_search_on()  # 旧写法照样
+    monkeypatch.setenv("HIRO_EXAM_SEARCH_HAJIME", "2")
+    assert A.hajime_search_rounds() == {"mid1", "final", "lesson"}  # 认不出场次：照缺省，不悄悄变成全关
     monkeypatch.setenv("HIRO_EXAM_SEARCH_HAJIME", "final")
     assert A.exam_search_algo_spec("hajime-final") == A.EXAM_DEFAULT_ALGO
     assert A.exam_search_algo_spec("hajime-mid1") == ""
@@ -48,6 +50,7 @@ def test_exam_search_param_to_env():
     assert env == {"HIRO_EXAM_SEARCH_HIF": "1", "HIRO_EXAM_SEARCH_MAIN": "off"}  # 本战不搜：不补模拟器
     env = exam_search_env("hif", "r1", {"HIRO_EXAM_STATE_SOURCE": "my.plugin:Src"})
     assert "HIRO_EXAM_STATE_SOURCE" not in env  # 自己设了局面来源就不动
+    assert "HIRO_EXAM_STATE_SOURCE" not in exam_search_env("hif", "r1", {"HIRO_SIM": "0"})  # 关了模拟器不补
     assert exam_search_env("daily", "mid1") == {}
 
 

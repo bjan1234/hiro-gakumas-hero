@@ -252,7 +252,13 @@ def round_set(var: str, keys: tuple[str, ...], default_all: bool) -> set[str]:
         return set(keys)
     if v in ("0", "off", "false", "no", "none"):
         return set()
-    return {x.strip() for x in v.split(",") if x.strip() in keys}
+    picked = {x.strip() for x in v.split(",") if x.strip() in keys}
+    if (
+        not picked
+    ):  # 一个场次都认不出（如「2」「yes,」）：按原来的开关含义，照缺省（初全搜、N.I.A 不搜），不悄悄变成全关
+        logging.getLogger(__name__).warning("%s=%r 认不出场次，按缺省", var, v)
+        return set(keys) if default_all else set()
+    return picked
 
 
 def _hajime_key(base: str) -> str:

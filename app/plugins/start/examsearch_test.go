@@ -38,7 +38,15 @@ func TestExamSearchDefaultsAndArgs(t *testing.T) {
 	if a, _ := s.args(); !strings.Contains(strings.Join(a, " "), "--mode main --exam-search r2") {
 		t.Errorf("本战只 R2 搜：%q", a)
 	}
-	s.mode, s.resume = modeIndex("hajime"), true
+	s.resume = true // H.I.F 接着打：不知道是选拔还是本战，两组都带（选拔缺省不搜 + 本战这里只 R2）
+	if a, _ := s.args(); !strings.Contains(strings.Join(a, " "), "--exam-search r2") {
+		t.Errorf("H.I.F 接着打两组都带：%q", a)
+	}
+	s.search.set("hif-q", "q3", true)
+	if a, _ := s.args(); !strings.Contains(strings.Join(a, " "), "--exam-search q3,r2") {
+		t.Errorf("H.I.F 接着打两组都带：%q", a)
+	}
+	s.mode = modeIndex("hajime")
 	if a, _ := s.args(); !strings.Contains(strings.Join(a, " "), "--command resume --exam-search") {
 		t.Errorf("接着打也带：%q", a)
 	}
@@ -57,6 +65,10 @@ func TestExamSearchRow(t *testing.T) {
 	if row[1] != "快速：本战 R1、本战 R2" {
 		t.Errorf("%q", row)
 	}
+	row, _ = examSearchRow("hif", map[string]string{"exam-search": "q3,r2", "command": "resume", "mode": "qualify"})
+	if row[1] != "搜索：选拔第 3 场、本战 R2；快速：选拔第 1 场、选拔第 2 场、本战 R1" {
+		t.Errorf("接着打两组都写：%q", row)
+	}
 	if _, ok := examSearchRow("hajime", map[string]string{}); ok {
 		t.Error("没带参数不写")
 	}
@@ -68,7 +80,7 @@ func TestExamSearchRemembered(t *testing.T) {
 	h := plugintest.New(map[string]string{})
 	h.HomeDir = home
 	s := &state{mode: modeIndex("nia")}
-	tt := ui.NewTester(func(c *ui.Context) { s.search.draw(c, h, "nia") }, 600, 400)
+	tt := ui.NewTester(func(c *ui.Context) { s.search.draw(c, h, []string{"nia"}) }, 600, 400)
 	tt.Frame()
 	if !tt.HasText("第 2 场试镜") {
 		t.Fatalf("%q", tt.Texts())
@@ -81,7 +93,7 @@ func TestExamSearchRemembered(t *testing.T) {
 	}
 	s2 := &state{}
 	s2.search.load(h)
-	if a := s2.search.args("nia"); strings.Join(a, " ") != "--exam-search final" {
+	if a := s2.search.args([]string{"nia"}); strings.Join(a, " ") != "--exam-search final" {
 		t.Errorf("读回来 %q", a)
 	}
 }

@@ -28,15 +28,19 @@ var examRounds = map[string][]examRound{
 	"hif-m":  {{"r1", "本战 R1", true}, {"r2", "本战 R2", true}},
 }
 
-// examGroup 是这个模式（H.I.F 再按选拔 / 本战）对应的那组场次；没有考试选择的模式返回 ""。
-func examGroup(mode string, hifMain int) string {
+// examGroups 是这个模式（H.I.F 再按选拔 / 本战）对应的场次组；没有考试选择的模式返回空。
+// H.I.F「接着打」不知道进行中的是选拔还是本战（页签可能停在另一个），两组都带上（只带一组时，另一组会被工具层写成全快速）。
+func examGroups(mode string, hifMain int, resume bool) []string {
 	switch mode {
 	case "hajime", "nia":
-		return mode
+		return []string{mode}
 	case "hif":
-		return []string{"hif-q", "hif-m"}[min(max(hifMain, 0), 1)]
+		if resume {
+			return []string{"hif-q", "hif-m"}
+		}
+		return []string{[]string{"hif-q", "hif-m"}[min(max(hifMain, 0), 1)]}
 	}
-	return ""
+	return nil
 }
 
 type startPrefs struct {
@@ -97,15 +101,16 @@ func (ss *searchState) set(group, key string, v bool) {
 }
 
 // args 是 --exam-search 参数（这个模式没有考试选择时为空）。
-func (ss *searchState) args(group string) []string {
-	rounds := examRounds[group]
-	if len(rounds) == 0 {
+func (ss *searchState) args(groups []string) []string {
+	if len(groups) == 0 {
 		return nil
 	}
 	var on []string
-	for _, r := range rounds {
-		if ss.on(group, r) {
-			on = append(on, r.key)
+	for _, group := range groups {
+		for _, r := range examRounds[group] {
+			if ss.on(group, r) {
+				on = append(on, r.key)
+			}
 		}
 	}
 	if len(on) == 0 {
@@ -115,14 +120,29 @@ func (ss *searchState) args(group string) []string {
 }
 
 // draw 画「考试出牌」：每场一行「快速 / 搜索」。
-func (ss *searchState) draw(c *ui.Context, h plugin.Host, group string) {
-	rounds := examRounds[group]
-	if len(rounds) == 0 {
+func (ss *searchState) draw(c *ui.Context, h plugin.Host, groups []string) {
+	if len(groups) == 0 {
 		return
 	}
 	ss.load(h)
 	kit.Section(c, "考试出牌")
-	for _, r := range rounds {
+	for _, group := range groups {
+		ss.drawGroup(c, group)
+	}
+	note := "快速：每步不到 1 秒。搜索：更准，每步约 5 秒。搜索缺东西或出错时那一步自动用快速。"
+	for _, group := range groups {
+		if group == "hif-m" {
+			note = "快速：每步不到 1 秒。搜索：更准，每步约 5 秒（H.I.F 本战约 15 秒，多占约 600 MB 内存，内存紧时模拟器可能被系统关掉）。搜索缺东西或出错时那一步自动用快速。"
+		}
+		if group == "nia" {
+			note += "N.I.A 的搜索还在验证，缺省都是快速。"
+		}
+	}
+	kit.Note(c, note)
+}
+
+func (ss *searchState) drawGroup(c *ui.Context, group string) {
+	for _, r := range examRounds[group] {
 		i := 0
 		if ss.on(group, r) {
 			i = 1
@@ -136,14 +156,6 @@ func (ss *searchState) draw(c *ui.Context, h plugin.Host, group string) {
 			ss.save()
 		}
 	}
-	note := "快速：每步不到 1 秒。搜索：更准，每步约 5 秒。搜索缺东西或出错时那一步自动用快速。"
-	if group == "hif-m" {
-		note = "快速：每步不到 1 秒。搜索：更准，每步约 15 秒，多占约 600 MB 内存（内存紧时模拟器可能被系统关掉）。搜索缺东西或出错时那一步自动用快速。"
-	}
-	if group == "nia" {
-		note += "N.I.A 的搜索还在验证，缺省都是快速。"
-	}
-	kit.Note(c, note)
 }
 
 // examSearchRow 是确认卡上「考试出牌」那一行：哪几场搜索、哪几场快速。没带 --exam-search 时 ok=false。
@@ -152,14 +164,17 @@ func examSearchRow(kind string, flags map[string]string) ([2]string, bool) {
 	if !has {
 		return [2]string{}, false
 	}
-	group := kind
-	if kind == "hif" {
-		group = "hif-q"
-		if flags["mode"] == "main" {
-			group = "hif-m"
-		}
+	var rounds []examRound
+	switch {
+	case kind == "hif" && flags["command"] == "resume":
+		rounds = append(append(rounds, examRounds["hif-q"]...), examRounds["hif-m"]...)
+	case kind == "hif" && flags["mode"] == "main":
+		rounds = examRounds["hif-m"]
+	case kind == "hif":
+		rounds = examRounds["hif-q"]
+	default:
+		rounds = examRounds[kind]
 	}
-	rounds := examRounds[group]
 	if len(rounds) == 0 {
 		return [2]string{}, false
 	}
