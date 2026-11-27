@@ -146,6 +146,49 @@ def test_week7_goes_shop_when_deck_unread_but_cards_picked(monkeypatch):
     assert [c["card_id"] for c in junk] == ["p_card-02-act-1_010"]  # 目标卡不算要删的
 
 
+def test_remove_card_page_never_deletes_target(monkeypatch):
+    """CodeRabbit #198：删卡页（相談没带 card_id / 删卡事件）刷回忆时也只删这局拿到的卡，转写目标不删。"""
+    from hiro.brain.deciders import ProduceDeciders
+    from hiro.brain.state import profile_for
+    from hiro.contracts import GameState
+
+    monkeypatch.setenv("HIRO_FARM", "bad")
+    monkeypatch.setenv("HIRO_FARM_TARGET", "p_card-02-act-3_186")
+    prod = {"idol_card_id": "i_card-hski-3-000", "mode": "produce-001", "step": 7, "deck": []}
+    cards = [
+        {"index": 0, "card_id": "p_card-02-act-3_186", "upgrade": 0},  # 目标
+        {"index": 1, "card_id": "p_card-02-act-1_010", "upgrade": 0},  # 这局拿的
+    ]
+    d = ProduceDeciders(profile_for("i_card-hski-3-000"), None).decide(
+        "SKILL_CARD_REMOVAL", GameState(produce=prod, page_fields={"cards": cards})
+    )
+    assert d.action.args.get("index") == 1 and d.action.args.get("card_id") == "p_card-02-act-1_010", d
+    cards = cards[:1]  # 只剩目标卡：取消，不删
+    d = ProduceDeciders(profile_for("i_card-hski-3-000"), None).decide(
+        "SKILL_CARD_REMOVAL", GameState(produce=prod, page_fields={"cards": cards})
+    )
+    assert d.action.args.get("cancel"), d
+
+
+def test_consult_delete_carries_card_id(monkeypatch):
+    """CodeRabbit #198：刷回忆相談删卡带上 card_id（删卡页按它选，不让 remove_card 重选），也不选转写目标。"""
+    from hiro.brain.deciders import ProduceDeciders
+    from hiro.brain.state import profile_for
+    from hiro.contracts import GameState
+
+    monkeypatch.setenv("HIRO_FARM", "bad")
+    monkeypatch.setenv("HIRO_FARM_TARGET", "p_card-02-act-3_186")
+    deck = ["p_card-02-act-3_186", "p_card-02-act-1_010"]
+    prod = {"idol_card_id": "i_card-hski-3-000", "mode": "produce-001", "step": 7, "stamina": 20, "max_stamina": 30,
+            "produce_point": 300, "params": {"Vo": 1, "Da": 1, "Vi": 1}, "growth_permil": {}, "rerolls_left": 0,
+            "excludes_left": 0, "deck": [{"card_id": c, "upgrade": 0} for c in deck]}  # fmt: skip
+    pf = {"shelf": [], "services": {"delete": {"price": 100, "available": True}}}
+    d = ProduceDeciders(profile_for("i_card-hski-3-000"), None).decide(
+        "CONSULT", GameState(produce=prod, page_fields=pf)
+    )
+    assert d.action.args.get("service") == "delete" and d.action.args.get("card_id") == "p_card-02-act-1_010", d
+
+
 def _boxes(*items):
     from types import SimpleNamespace as NS
 
@@ -230,3 +273,63 @@ def test_regen_dialog_needs_ticket_or_free(monkeypatch):
         ("決定", 500, 1000),
     )
     assert farm.regen_step(dlg) == (218, 1000)
+
+
+def _regen_started(monkeypatch, now):
+    from hiro.brain import farm
+
+    monkeypatch.setenv("HIRO_FARM", "bad")
+    monkeypatch.setattr(farm, "_target_names", lambda: {"輝くキミへ"})
+    monkeypatch.setattr(farm, "_regen", {"done": 0, "pending": False, "reported": set()})
+    monkeypatch.setattr(farm, "_clock", lambda: now[0])
+    assert farm.regen_step(_boxes(*RESULT)) == (130, 1160)
+    return farm
+
+
+def test_regen_dialog_without_cancel_waits_then_stops(monkeypatch):
+    """CodeRabbit #198：等确认框时认不出キャンセル（只读到费用和「決定」）：不交回通用分支（会点決定），等着；20 秒还这样就停下。"""
+    from hiro.loop.errors import ResumeBlocked
+
+    now = [0.0]
+    farm = _regen_started(monkeypatch, now)
+    dlg = _boxes(*RESULT, ("50", 400, 650), ("決定", 500, 1000))
+    assert farm.regen_step(dlg) == farm.WAIT
+    now[0] = 25
+    with pytest.raises(ResumeBlocked, match="再生成"):
+        farm.regen_step(dlg)
+
+
+def test_regen_confirm_must_be_on_cancel_row(monkeypatch):
+    """CodeRabbit #198：框里认不出确认按钮时，不能把底下结果页的「再生成」（y 1160）当确认按钮。"""
+    farm = _regen_started(monkeypatch, [0.0])
+    dlg = _boxes(*RESULT, ("再生成チケットを1枚使用します", 360, 640), ("キャンセル", 218, 1000))
+    assert farm.regen_step(dlg) == (218, 1000)
+
+
+def test_regen_keeps_watching_after_cancel(monkeypatch):
+    """CodeRabbit #198：点了キャンセル框还开着：照样按白名单处理（不放给通用分支）；框关了回到干净的结果页才结束。"""
+    farm = _regen_started(monkeypatch, [0.0])
+    dlg = _boxes(
+        ("メモリーを再生成しますか", 360, 600), ("50", 400, 650), ("キャンセル", 218, 1000), ("決定", 500, 1000)
+    )
+    assert farm.regen_step(dlg) == (218, 1000)
+    assert farm.regen_step(dlg) == (218, 1000)  # 还开着：再点キャンセル，绝不点決定
+    assert farm.regen_step(_boxes(*RESULT)) is None and not farm._regen["pending"]
+
+
+def test_bad_wrapper_goes_outside_strategy_plugin(monkeypatch):
+    """CodeRabbit #198：strategy.json 换了出牌插件时，BAD 停手包在最后选定的出招外面（原来被放进 GuardedAdvisor 的退路里，插件出牌时不停手）。"""
+    from hiro.exec import exam as ex
+
+    plugin_adv, given = object(), object()
+    monkeypatch.setattr(ex, "_plugin", lambda kind: None)  # 没有局面来源：包完之后报错停下，正好看包的是谁
+    monkeypatch.setattr(ex, "pick_advisor", lambda exam, mode, given=None: plugin_adv)
+    seen = []
+
+    def wrap(a):
+        seen.append(a)
+        return a
+
+    with pytest.raises(RuntimeError):
+        ex.run_exam(None, "hajime-lesson-da", None, lambda shot: True, advisor=given, wrap=wrap)
+    assert len(seen) == 1 and isinstance(seen[0], ex.GuardedAdvisor)

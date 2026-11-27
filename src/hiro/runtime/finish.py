@@ -170,7 +170,10 @@ def finish_produce_end(rt, *, go_home: bool = False, timeout: float = FINISH_TIM
         from hiro.brain import farm
 
         if (xy := farm.regen_step(f.texts)) is not None:
-            rt.device.tap(*xy)  # 刷回忆：回忆不是目标就再生成一次（确认框有钻石一律取消）
+            if xy == farm.WAIT:  # 在等再生成的确认框：这一帧什么都不点（也不走下面的通用按钮）
+                rt.sleep(0.5)
+                return None
+            rt.device.tap(*xy)  # 刷回忆：回忆不是目标就再生成一次（确认框有钻石 / 不是免费一律取消）
             rt.sleep(1.0)
             return None
         if photo_pick.should_wait(texts):

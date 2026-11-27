@@ -91,6 +91,27 @@ func TestExplainFromArgs(t *testing.T) {
 	}
 }
 
+// CodeRabbit #198：刷回忆确认卡上的转写目标写卡名，不露编号；填的就是卡名的照原样。
+func TestExplainFarmTargetShowsName(t *testing.T) {
+	h, p := host(), New()
+	pd := hiroapi.Pending{Command: "run start", Summary: "初", Args: map[string]any{
+		"kind": "hajime", "command": "resume", "idol": "i_card-skin-ttmr-3-0012", "farm": "bad", "farm_target": "p_card-01-act-2_001,輝くキミへ"}}
+	p.Explain(h, pd)
+	e, ok := p.Explain(h, pd)
+	if !ok {
+		t.Fatal("没认出")
+	}
+	got := ""
+	for _, r := range e.Rows {
+		if r[0] == "转写目标" {
+			got = r[1]
+		}
+	}
+	if got != "成长痛、輝くキミへ" {
+		t.Errorf("转写目标 %q（%+v）", got, e.Rows)
+	}
+}
+
 // 不是培育的任务不能写「用掉 1 次培育」（11-25 review）
 func TestExplainNonProduceKinds(t *testing.T) {
 	h, p := host(), New()

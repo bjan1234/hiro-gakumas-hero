@@ -2012,6 +2012,11 @@ class ProduceDeciders:
         finals = (state.produce or {}).get("mode") == FINALS
         counts, size = self._deck_counts(state)
         pool = self._cull(state, cards, "delete", counts=counts, finals=finals, deck_size=size)
+        from hiro.brain import farm
+
+        if farm.mode() == "bad":
+            # 刷回忆：删卡页（相談没带 card_id 或删卡事件）也只删这局拿到的卡，转写目标 / 初始卡 / 固有卡不删（CodeRabbit #198）
+            pool = farm.junk_cards(cards, farm.target_cards())
         lean = self.consult_delete_lean
         if lean and pool and "flow_tier" in pool[0]:
             self.consult_delete_lean = False  # 流派删卡池本来就只有明确该删的几档
@@ -2029,6 +2034,10 @@ class ProduceDeciders:
                 why = "卡格里只剩核心 / 保护卡 / 定制卡（或都没认出）"
             return Decision(cancel, f"{why}：取消", "rule", 0.8 if lean else 0.7, warnings=warn, decider="remove_card")
         best = pool[0]
+        if farm.mode() == "bad":
+            return Decision(Action(ActionKind.REMOVE_CARD, {"card_id": best["card_id"], "index": best.get("index"), "upgrade": best.get("upgrade")}),
+                            f"刷回忆：删这局拿到的 {_card_label(best)}（转写目标 / 初始卡 / 固有卡不删）", "rule", 0.9, warnings=warn,
+                            decider="remove_card")  # fmt: skip
         if "flow_tier" in best:
             return Decision(Action(ActionKind.REMOVE_CARD, {"card_id": best["card_id"], "index": best.get("index"), "upgrade": best.get("upgrade")}),
                             f"删{FLOW_CULL[best['flow_tier']]} {_card_label(best)}（按流派 + 偶像卡攻略）", "rule", 0.85, warnings=warn,
@@ -2440,7 +2449,11 @@ class ProduceDeciders:
         c = pool[0]
         self.consult_used.add("delete")
         kind = FLOW_CULL[c["flow_tier"]] if "flow_tier" in c else CULL_TIERS.get(cull_tier(c["card_id"]), "")
-        return Decision(Action(ActionKind.SHOP_BUY, {"service": "delete", "card_index": c["index"]}),
+        args = {"service": "delete", "card_index": c["index"]}
+        if farm.mode() == "bad":
+            # 刷回忆：带上要删的卡 id，删卡页按它选，不再让 remove_card 重选（那边的删卡顺序不认转写目标，CodeRabbit #198）
+            args["card_id"] = c["card_id"]
+        return Decision(Action(ActionKind.SHOP_BUY, args),
                         f"相談删{kind} {_card_label(c)}（{delete.get('price')}P；{hr.cite(rid)}）", "rule", 0.8,
                         decider="consult")  # fmt: skip
 

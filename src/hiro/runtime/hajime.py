@@ -270,14 +270,13 @@ def hajime_core(scenario_mode: str):
                     gone["since"] = now
                 return now - gone["since"] >= LESSON_END_S
 
-            advisor = self.advisor
+            wrap = None
             if farming:
-                from hiro.exec.exam import _plugin
+                # 包在 run_exam 最后选定的出招外面（strategy.json 换了出牌插件也照样停手，CodeRabbit #198）
+                wrap = lambda a: farm.BadLessonAdvisor(a, live, lambda: info.d.get("clear_target"), farm.margin_ratio())  # noqa: E731
 
-                advisor = farm.BadLessonAdvisor(self.advisor or _plugin("exam_advisor"), live, lambda: info.d.get("clear_target"),
-                                                farm.margin_ratio())  # fmt: skip
                 logger.info("刷回忆 BAD：这节课离通关线还差通关线的 %.0f%% 以内就不再出牌", farm.margin_ratio() * 100)
-            run_exam(self.brain, label, self.rec, ended, session=self.s, advisor=advisor)
+            run_exam(self.brain, label, self.rec, ended, session=self.s, advisor=self.advisor, wrap=wrap)
             if farming and self.s is not None:
                 self.s.note(f"刷回忆 BAD：{label} 结束时离通关还差 {live.get('left')}")
             self.rec.log("exam_end", image=active.device.screenshot(), exam=label, lesson=info.d)

@@ -378,7 +378,17 @@ func (s *state) explain(h plugin.Host, cat *common.Catalog, p hiroapi.Pending) (
 		}
 	}
 	if r.Flags["farm"] == "bad" {
-		target := r.Flags["farm-target"]
+		var names []string // 填的是卡编号时显示卡名（CodeRabbit #198：确认卡上不露编号）
+		for _, t := range strings.Split(r.Flags["farm-target"], ",") {
+			if t = strings.TrimSpace(t); t == "" {
+				continue
+			}
+			if en := cat.Get(h, t); en != nil && en.Name != "" {
+				t = en.Name
+			}
+			names = append(names, t)
+		}
+		target := strings.Join(names, "、")
 		if target == "" {
 			target = "回忆编成里带的卡"
 		}
