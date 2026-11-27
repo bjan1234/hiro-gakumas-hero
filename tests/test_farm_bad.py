@@ -453,10 +453,11 @@ def test_unrelated_cancel_dialog_without_pending_is_left_alone(monkeypatch):
     from hiro.brain import farm
 
     monkeypatch.setenv("HIRO_FARM", "bad")
-    monkeypatch.setattr(farm, "_target_names", lambda: {"リズミカル"})
+    monkeypatch.setattr(farm, "_target_names", lambda: {"輝くキミへ"})  # 结果页的「リズミカル」不是目标
     monkeypatch.setattr(farm, "_regen", {"done": 0, "pending": False, "reported": set()})
     other = _boxes(*RESULT, ("フォトを保存しますか", 360, 640), ("キャンセル", 218, 1000), ("決定", 500, 1000))
-    assert farm.regen_step(other) is None
+    assert farm.regen_step(other) is None  # CodeRabbit #198：别的框开着时不读框后面的结果页、不点被遮住的「再生成」
+    assert farm._regen["done"] == 0 and not farm._regen["pending"] and not farm._regen["reported"]
     # 结果页底下「あと1回再生成可能」这类说明（不在框里）也不算再生成框
     other = _boxes(*RESULT, ("あと1回再生成可能", 360, 1120), ("フォトを保存しますか", 360, 640),
                    ("キャンセル", 218, 1000), ("決定", 500, 1000))  # fmt: skip
@@ -884,3 +885,19 @@ def test_junk_cards_keeps_memory_cards(monkeypatch):
     monkeypatch.setattr(formation_env, "MEMORY_CARDS", ("p_card-mem",))
     cards = [{"index": 0, "card_id": "p_card-mem"}, {"index": 1, "card_id": "p_card-picked"}, {"index": 2, "card_id": "p_card-target"}]
     assert [c["card_id"] for c in farm.junk_cards(cards, {"p_card-target"})] == ["p_card-picked"]
+
+
+def test_cancel_decision_sticks_until_dialog_closes(monkeypatch):
+    """CodeRabbit #198：同一个没关掉的框已经因为有ジュエル点过キャンセル，下一帧漏读了ジュエル（看着像用券的白名单框）：
+    照样点キャンセル，不重判；框关了以后这个记录清掉。"""
+    now = [0.0]
+    farm = _regen_started(monkeypatch, now)
+    paid = _boxes(("ジュエルを50個使用します", 360, 600), ("チケットを1枚使用します", 360, 640), ("キャンセル", 218, 1000),
+                  ("再生成する", 500, 1000))  # fmt: skip
+    looks_free = _boxes(("チケットを1枚使用します", 360, 640), ("キャンセル", 218, 1000), ("再生成する", 500, 1000))
+    assert farm.regen_step(paid) == (218, 1000)
+    now[0] = 1.0
+    assert farm.regen_step(looks_free) == (218, 1000)  # 漏读ジュエル的一帧：不点确认
+    now[0] = 2.0
+    farm.regen_step(_boxes(*RESULT))  # 框关了
+    assert not farm._regen["cancelled"]
