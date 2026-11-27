@@ -492,7 +492,11 @@ def _is_regen_dialog_no_cancel(texts: list[str]) -> bool:
     if _is_jewel(texts) and any("使用" in t or "消費" in t for t in texts):
         return True
     return any(
-        "再生成" in t and t != "再生成" and t not in DIALOG_BUTTONS and "可能" not in t and not re.search(r"あと\d+回", t)
+        "再生成" in t
+        and t != "再生成"
+        and t not in DIALOG_BUTTONS
+        and "可能" not in t
+        and not re.search(r"あと\d+回", t)
         for t in texts
     )
 

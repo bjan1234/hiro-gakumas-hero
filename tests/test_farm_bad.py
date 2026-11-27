@@ -540,7 +540,7 @@ def test_check_targets_rejects_blank_and_unknown_ids(monkeypatch):
     for raw in ("，,", " , ，"):
         with pytest.raises(ResumeBlocked, match="一张卡都没有"):
             farm.check_targets({"HIRO_FARM_TARGET": raw})
-    with pytest.raises(ResumeBlocked, match="p_card-02-act-3_999.*资料库"):
+    with pytest.raises(ResumeBlocked, match=r"p_card-02-act-3_999.*资料库"):
         farm.check_targets({"HIRO_FARM_TARGET": "p_card-02-act-3_999"})
     with pytest.raises(ResumeBlocked, match="p_card-02-act-3_999"):
         farm.check_targets({"HIRO_FARM_TARGET": "輝くキミへ,p_card-02-act-3_999"})
@@ -729,7 +729,9 @@ def test_cancel_not_responding_stops_after_limit(monkeypatch):
 
     now = [0.0]
     farm = _regen_started(monkeypatch, now)
-    dlg = _boxes(("メモリーを再生成しますか", 360, 600), ("50", 400, 650), ("キャンセル", 218, 1000), ("決定", 500, 1000))
+    dlg = _boxes(
+        ("メモリーを再生成しますか", 360, 600), ("50", 400, 650), ("キャンセル", 218, 1000), ("決定", 500, 1000)
+    )
     for t in (1.0, 5.0, 15.0):
         now[0] = t
         assert farm.regen_step(dlg) == (218, 1000)
@@ -764,7 +766,9 @@ def test_bad_lesson_advisor_stays_stopped():
     legal = [Action.play_card(0), Action.skip()]
     live = {"left": 30}
     adv = farm.BadLessonAdvisor(inner, live, 50, 0.4)  # 余量 20
-    assert adv.decide(NS(impression=5, remaining_turns=3), None, None, legal).action.kind is ActionKind.SKIP  # 20+14.4 ≥ 30
+    assert (
+        adv.decide(NS(impression=5, remaining_turns=3), None, None, legal).action.kind is ActionKind.SKIP
+    )  # 20+14.4 ≥ 30
     # 下一回合好印象掉了，余量只剩 20 < 30：仍然跳过，不恢复出牌
     d = adv.decide(NS(impression=None, remaining_turns=2), None, None, legal)
     assert d.action.kind is ActionKind.SKIP and "已经停手" in d.reason
@@ -790,7 +794,9 @@ def test_picked_card_recorded_only_when_acquired(monkeypatch, ok):
     monkeypatch.setattr(cs, "select_card_options", lambda img: [NS(card=card, rect=NS(center=NS(x=222, y=937)))] * 3)
     monkeypatch.setattr(cs, "recommended_index", lambda img, options: None)
     monkeypatch.setattr(ex, "extract", lambda page, img: ({"options": [{"card_id": c} for c in "abc"]}, None))
-    deciders = NS(decide=lambda page, state, **kw: Decision(Action.activate_effect(0), "拿", "rule", 0.9), picked_musts=set())
+    deciders = NS(
+        decide=lambda page, state, **kw: Decision(Action.activate_effect(0), "拿", "rule", 0.9), picked_musts=set()
+    )
     core = hif.HifCore.__new__(hif.HifCore)
     core.deciders, core.rec = deciders, NS(log=lambda *a, **k: None)
     core.s = NS(observe=lambda **k: None, record=lambda *a, **k: None, state=NS(page_fields={"candidates": [1]}))
