@@ -1296,23 +1296,23 @@ class HifCore:
                 self.s.note("EVENT_CHOICE：上一拍对不上、这一拍认不出选中项，交给下一拍重新看")
                 return
             if preview is not None:
-                sel_i = [preview]  # 现在选中的是哪项（提交时更新：画面没变要重提交时，那项已经是选中态，只点一下）
 
                 def commit_index(i):  # noqa: F811
-                    """看过效果以后：要的那项没选中就先点一下选中，再点一下确认（不双击：双击已选中的项会把第二下点到下一页）。"""
+                    """看过效果以后提交：每次（含重试）第一下点之前都截图核对还是这一页（选项字都在）、读当前选中项，
+                    不沿用旧的选中记录（CodeRabbit #198：上一下慢半拍才生效时，重试按旧记录点会直接确认）。
+                    要的那项已经是选中态就直接点一下确认；没选中就先点一下选中，再核对同一页 + 选中了，才点确认。对不上返回 False。"""
                     c = next((c for c in choices if c.get("index") == i and c.get("center")), None)
                     if c is None:
                         return False
                     x, y = c["center"]
-                    if i != sel_i[0]:
+                    img = device.screenshot()
+                    if not self._same_event(ops.ocr_boxes(img), choices):
+                        return False  # 已经不是这一页（上一下其实确认了 / 进了别的事件）：不点旧坐标
+                    if not self._is_selected(img, y):
                         device.click(int(x), int(y))
                         sleep(0.6)
-                        if not self._is_selected(device.screenshot(), y):
+                        if not self._still_here(device.screenshot(), choices, y):
                             return False  # 选中没生效（或页面已经变了）：不点确认，交给重试 / 下一拍重新看
-                        sel_i[0] = i
-                    elif not self._still_here(device.screenshot(), choices, y):
-                        # 重试时（上一下其实已经确认、进了下一个事件选项页）：画面已不是这一页 / 这项不是选中态，不点旧坐标（CodeRabbit #198）
-                        return False
                     device.click(int(x), int(y))
                     sleep(2)
                     return True
@@ -1365,9 +1365,13 @@ class HifCore:
 
     def _still_here(self, img, choices: list, y) -> bool:
         """还是产生 choices 的那一页、y 那项还是选中态：读得到这页的选项字（前 4 个字），且 y 处是选中态。"""
-        if not self._is_selected(img, y):
-            return False
-        texts = [t for t, _, _ in ops.ocr_boxes(img)]
+        return self._is_selected(img, y) and self._same_event(ops.ocr_boxes(img), choices)
+
+    @staticmethod
+    def _same_event(boxes, choices: list) -> bool:
+        """画面还是产生 choices 的那个事件：这页每个选项的字（前 4 个字）都还读得到。只看选项按钮在不在、选中项纵坐标对不对拦不住
+        「点完进了另一个也有选项、同一行也是选中态的事件」（CodeRabbit #198）。一个选项字都没有时认不出，算不是。"""
+        texts = [t for t, _, _ in boxes]
         labels = [str(c.get("text") or "")[:4] for c in choices if c.get("text")]
         return bool(labels) and all(any(lab in t for t in texts) for lab in labels)
 
@@ -1421,8 +1425,13 @@ class HifCore:
             x, y = c["center"]
             lab = labels[c["index"]]
             img = device.screenshot()
+            boxes = ops.ocr_boxes(img)
+            if not self._same_event(boxes, choices):
+                # 预览下一项之前核对事件身份：这页的选项字不全在了 = 页面走了（进了别的事件），不读、不按旧坐标点（CodeRabbit #198）
+                self.s.note("EVENT_CHOICE：看效果途中这页的选项字不全在了，当页面走了")
+                return "left"
             if self._is_selected(img, y):
-                boxes = ops.ocr_boxes(img)  # 已经是选中态：不点（点了就确认），直接读它的说明
+                pass  # 已经是选中态：不点（点了就确认），直接读它的说明
             else:
                 if self._selected_y(img) is None:
                     self.s.note("EVENT_CHOICE：看效果途中认不出选中项，不再点")
@@ -1441,6 +1450,10 @@ class HifCore:
                     self.s.note(f"EVENT_CHOICE：点了第 {c['index'] + 1} 项没变成选中态，不再往下点")
                     return "abort"
                 boxes = ops.ocr_boxes(img)
+                if not self._same_event(boxes, choices):
+                    # 点完进了另一个也有选项、同一行也是选中态的事件：gone / _is_selected 拦不住，别把新事件的效果写进旧选项
+                    self.s.note(f"EVENT_CHOICE：点了第 {c['index'] + 1} 项后这页的选项字不全在了，当页面走了")
+                    return "left"
             # 没读到说明时记 None（未知），不记 ""：选项决策把 effect == "" 当成「确认没有效果」，两项都没读到会直接选第一项（CodeRabbit #196）
             c["effect"] = effect_above(boxes, int(y), labels) or None
             c["effect_unread"] = c["effect"] is None
