@@ -132,3 +132,15 @@ def test_tooltip_row_is_not_an_option():
     assert not event._looks_like_effect("梦想的进展怎么样了?")
     assert not event._looks_like_effect("夢の進捗はどう?")
     assert not event._looks_like_effect(None)
+
+
+def test_unread_effect_is_unknown_not_empty(monkeypatch):
+    """说明框没读到：记 None（未知），不记 ""（决策会当成确认没效果、直接选第一项）。"""
+    screen = _Screen(801)
+    choices = _choices(0)
+    fake = _fake(monkeypatch, screen, choices)
+    monkeypatch.setattr(
+        hif.ops, "ocr_boxes", lambda img: [] if img == "left" else [_box(OPTS[0], 220, 801), _box(OPTS[1], 220, 904)]
+    )
+    hif.HifCore._preview_event_effects(fake, choices)
+    assert choices[0]["effect"] is None and choices[1]["effect"] is None

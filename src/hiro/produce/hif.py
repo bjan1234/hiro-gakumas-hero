@@ -1390,7 +1390,8 @@ class HifCore:
                     self.s.note(f"EVENT_CHOICE：点了第 {c['index'] + 1} 项没变成选中态，不再往下点")
                     return None
                 boxes = ops.ocr_boxes(img)
-            c["effect"] = effect_above(boxes, int(y), labels)
+            # 没读到说明时记 None（未知），不记 ""：选项决策把 effect == "" 当成「确认没有效果」，两项都没读到会直接选第一项（CodeRabbit #196）
+            c["effect"] = effect_above(boxes, int(y), labels) or None
             c["selected"] = True
             for o in choices:
                 if o is not c:
