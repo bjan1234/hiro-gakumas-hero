@@ -810,7 +810,9 @@ def test_picked_card_recorded_only_when_acquired(monkeypatch, ok, fast, slow, wa
     )
     core = hif.HifCore.__new__(hif.HifCore)
     core.deciders, core.rec = deciders, NS(log=lambda *a, **k: None)
-    core.s = NS(observe=lambda **k: None, record=lambda *a, **k: None, state=NS(page_fields={"candidates": [1]}))
+    recorded = []
+    core.s = NS(observe=lambda **k: None, record=lambda *a, **k: recorded.append(k["execution"]),
+                state=NS(page_fields={"candidates": [1]}))  # fmt: skip
     core._rerolls_this_page = 0
     monkeypatch.setattr(core, "_note_fallback", lambda *a: None, raising=False)
     monkeypatch.setattr(core, "_pick_index", lambda *a: 0, raising=False)
@@ -821,13 +823,17 @@ def test_picked_card_recorded_only_when_acquired(monkeypatch, ok, fast, slow, wa
     monkeypatch.setattr(core, "_settings_dialog", lambda where: False, raising=False)
     monkeypatch.setattr(core, "_confirm_acquire", lambda: 0, raising=False)
 
-    def act(fn, *a, **k):
+    from hiro.contracts import ExecutionResult
+
+    def act(fn, action, **k):
         fn()
-        return NS(ok=ok, error=None if ok else "没领成")
+        return ExecutionResult(action=action, ok=ok, error=None if ok else "没领成")
 
     monkeypatch.setattr(core, "_act", act, raising=False)
     core.on_select_card()
     assert deciders.picked_musts == ({"p_card-02-act-1_010"} if want else set())
+    # CodeRabbit #198：没领到时 trace 里这一步也记成没生效（续跑记账不把它当已有）
+    assert recorded[-1].ok is want
 
 
 def test_blank_target_falls_back_to_formation_in_both_entries(monkeypatch):
@@ -976,3 +982,16 @@ def test_whitelist_text_must_be_inside_dialog_box(monkeypatch):
     good = _boxes(("メモリーを再生成しますか", 360, 600), ("チケットを1枚使用します", 360, 700), ("キャンセル", 218, 1000),
                   ("再生成する", 500, 1000))  # fmt: skip
     assert farm.regen_step(good) == (500, 1000)
+
+
+def test_failed_pick_not_counted_on_resume():
+    """CodeRabbit #198：没领到的选卡步骤记成 execution.ok=False，续跑记账（_picked_cards_from_trace → owned_cards）不把它当已有。"""
+    from hiro.loop.ledger import owned_cards
+
+    def step(ok):
+        return {"state": {"page": {"name": "SELECT_CARD"}, "page_fields": {"candidates": [{"card_id": "p_card-x"}]}},
+                "decision": {"action": {"kind": "ActivateEffect", "args": {"pick_indexes": [0]}}},
+                "execution": {"ok": ok}}  # fmt: skip
+
+    assert owned_cards([step(False)]) == {}
+    assert owned_cards([step(True)])["p_card-x"] == 1

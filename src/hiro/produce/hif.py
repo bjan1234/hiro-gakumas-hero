@@ -721,6 +721,10 @@ class HifCore:
 
         result = self._act(commit, Action.activate_effect(i), page_before="SELECT_CARD",
                            taps=[[int(choice.rect.center.x), int(choice.rect.center.y)]])  # fmt: skip
+        if result.ok and not acquired[0]:
+            # 慢速提交「受け取る」一直是灰的：页面校验过了也不算领到。trace 里这一步记成没生效，续跑时 _picked_cards_from_trace /
+            # 记账不再把这张当已有（CodeRabbit #198）
+            result = replace(result, ok=False, error="「受け取る」一直是灰的，没领到卡")
         if result.ok:
             self._last_pick = (ids, time.monotonic())
             if acquired[0] and (cid := getattr(choice.card, "_id", None)) is not None:
