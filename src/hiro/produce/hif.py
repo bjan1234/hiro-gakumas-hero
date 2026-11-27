@@ -706,9 +706,6 @@ class HifCore:
         self.rec.log("select_card", image=img, options=[_card_summary(o.card) for o in options], recommended=_card_summary(recommend.card) if recommend else None,
                      choice=_card_summary(choice.card), source=d.source, reason=d.reason)  # fmt: skip
         logger.info("选卡 %s ← %s：%s", choice.card.name if choice.card else "?", d.source, d.reason)
-        if (cid := getattr(choice.card, "_id", None)) is not None:
-            # 记下这局拿过的卡（牌组读不到时，刷回忆第 7 周靠它判断要不要去相談删卡，11-27）
-            self.deciders.picked_musts.add(str(cid))
 
         def commit():
             # 先走快速提交（点卡 → 等「受け取る」亮 → 点 → 等消失）。亮不起来时先看是不是弹了首次设置框（獲得ガイド表示設定：
@@ -725,6 +722,10 @@ class HifCore:
                            taps=[[int(choice.rect.center.x), int(choice.rect.center.y)]])  # fmt: skip
         if result.ok:
             self._last_pick = (ids, time.monotonic())
+            if (cid := getattr(choice.card, "_id", None)) is not None:
+                # 记下这局拿过的卡（牌组读不到时，刷回忆第 7 周靠它判断要不要去相談删卡，11-27）。
+                # 只在领取成功时记：没领成也记的话，会为一张没拿到的卡去相談（CodeRabbit #198）
+                self.deciders.picked_musts.add(str(cid))
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
     def _stage(self) -> str:

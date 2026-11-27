@@ -771,3 +771,32 @@ def test_bad_lesson_advisor_stays_stopped():
     assert adv.decide(None, None, None, [Action.play_card(0)]) == "inner"  # 不能跳过时照常
     fresh = farm.BadLessonAdvisor(inner, {"left": 30}, 50, 0.4)  # 新一节课
     assert fresh.decide(NS(impression=None, remaining_turns=2), None, None, legal) == "inner"
+
+
+@pytest.mark.parametrize("ok", [True, False])
+def test_picked_card_recorded_only_when_acquired(monkeypatch, ok):
+    """CodeRabbit #198：选卡记账（牌组读不到时刷回忆第 7 周靠它判断去不去相談删卡）只在领取成功时记，没领成不记。"""
+    import hiro.produce.hif as hif
+    import hiro.vision.card_select as cs
+    import hiro.vision.extract as ex
+    from hiro.contracts import Action, Decision
+
+    import numpy as np
+
+    blank = np.zeros((1280, 720, 3), np.uint8)
+    monkeypatch.setattr(hif, "device", NS(screenshot=lambda: blank, click=lambda *a: None))
+    monkeypatch.setattr(hif, "sleep", lambda s: None)
+    card = NS(_id="p_card-02-act-1_010", name="x", upgrade_count=0, effect_display_text="")
+    monkeypatch.setattr(cs, "select_card_options", lambda img: [NS(card=card, rect=NS(center=NS(x=222, y=937)))] * 3)
+    monkeypatch.setattr(cs, "recommended_index", lambda img, options: None)
+    monkeypatch.setattr(ex, "extract", lambda page, img: ({"options": [{"card_id": c} for c in "abc"]}, None))
+    deciders = NS(decide=lambda page, state, **kw: Decision(Action.activate_effect(0), "拿", "rule", 0.9), picked_musts=set())
+    core = hif.HifCore.__new__(hif.HifCore)
+    core.deciders, core.rec = deciders, NS(log=lambda *a, **k: None)
+    core.s = NS(observe=lambda **k: None, record=lambda *a, **k: None, state=NS(page_fields={"candidates": [1]}))
+    core._rerolls_this_page = 0
+    monkeypatch.setattr(core, "_note_fallback", lambda *a: None, raising=False)
+    monkeypatch.setattr(core, "_pick_index", lambda *a: 0, raising=False)
+    monkeypatch.setattr(core, "_act", lambda *a, **k: NS(ok=ok, error=None if ok else "没领成"), raising=False)
+    core.on_select_card()
+    assert deciders.picked_musts == ({"p_card-02-act-1_010"} if ok else set())
