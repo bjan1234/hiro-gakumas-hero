@@ -234,8 +234,8 @@ def _draw_in_dialog(rt, pool: str, times: int, g) -> int:
     ]  # 确认框关掉过（点了「決定」之后进了演出 / 结果页）：没关掉过就是「決定」没生效、没抽（CodeRabbit #138）
 
     def back(f):
-        if text_at(f, "コインガシャ確認") is None and f.texts:
-            left[0] = True
+        if text_at(f, "コインガシャ確認") is None and text_at(f, "キャンセル", y_min=1080) is None and f.texts:
+            left[0] = True  # 标题漏读、框的按钮还在的帧不算离开确认框（CodeRabbit #122）
         if (
             text_at(f, "コインガシャ", y_max=80) is not None
             and text_at(f, "コインガシャ確認") is None

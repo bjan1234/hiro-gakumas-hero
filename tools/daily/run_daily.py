@@ -162,7 +162,7 @@ def run_own(names: list[str], timeout: float | None, out: Path) -> list[dict]:
         rec["seconds"] = round(time.monotonic() - t0, 1)
         rec["after"] = shot(f"{n}-after")
         _finish(rec, summary)  # 弹框截图、耗时、完成截图都先记下，再按 stop_all 停（CodeRabbit #122）
-        if rec.pop("stop_all", False):
+        if rec.get("stop_all", False):  # summary.json 里留着这个标记（CodeRabbit #122）
             break
     return summary
 

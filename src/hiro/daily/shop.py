@@ -399,8 +399,8 @@ def confirm(rt, g) -> str:
     # 点了「決定」到看到框关掉之间：这时被打断（单项超时等），这件可能已经买了，结果里写「没核实」（CodeRabbit #197）
     _open["unsure"] = (read_dialog(g) or {}).get("name") or "?"
     if wait_dialog(rt, gone=True) is None:
+        cancel_dialog(rt, common.frame(rt))  # 取消成了才清「没核实」：取消途中被打断，这件仍可能买了（CodeRabbit #122）
         _open["unsure"] = None
-        cancel_dialog(rt, common.frame(rt))
         return SHORT
     _open["dialog"] = False
     _open["unsure"] = None
