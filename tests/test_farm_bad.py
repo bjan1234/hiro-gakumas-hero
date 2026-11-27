@@ -249,9 +249,13 @@ def test_regen_ignores_unrelated_dialog(monkeypatch):
     monkeypatch.setenv("HIRO_FARM", "bad")
     monkeypatch.setattr(farm, "_target_names", lambda: {"輝くキミへ"})
     monkeypatch.setattr(farm, "_regen", {"done": 0, "pending": False, "reported": set()})
+    now = [0.0]
+    monkeypatch.setattr(farm, "_clock", lambda: now[0])
     assert farm.regen_step(_boxes(*RESULT)) == (130, 1160)
     other = _boxes(("フォトを保存しますか", 360, 640), ("キャンセル", 218, 1000), ("決定", 500, 1000))
     assert farm.regen_step(other) == (218, 1000)  # 不替它点「決定」：点キャンセル
+    assert farm.regen_step(_boxes(*RESULT)) == farm.WAIT  # 刚点了再生成：框可能还会弹，先等
+    now[0] = 5
     assert farm.regen_step(_boxes(*RESULT)) is None  # 回到结果页：不再等确认框，也不再生成第二次
     assert farm._regen["pending"] is False
 
@@ -314,6 +318,8 @@ def test_regen_keeps_watching_after_cancel(monkeypatch):
     )
     assert farm.regen_step(dlg) == (218, 1000)
     assert farm.regen_step(dlg) == (218, 1000)  # 还开着：再点キャンセル，绝不点決定
+    now = farm._clock()
+    monkeypatch.setattr(farm, "_clock", lambda: now + 5)
     assert farm.regen_step(_boxes(*RESULT)) is None and not farm._regen["pending"]
 
 
@@ -333,3 +339,41 @@ def test_bad_wrapper_goes_outside_strategy_plugin(monkeypatch):
     with pytest.raises(RuntimeError):
         ex.run_exam(None, "hajime-lesson-da", None, lambda shot: True, advisor=given, wrap=wrap)
     assert len(seen) == 1 and isinstance(seen[0], ex.GuardedAdvisor)
+
+
+def test_regen_late_dialog_is_still_handled(monkeypatch):
+    """自检：点了再生成后第一帧还是干净的结果页（框还没弹）：先等，框晚弹出来照样按白名单处理，不交给通用分支。"""
+    now = [0.0]
+    farm = _regen_started(monkeypatch, now)
+    now[0] = 1.0
+    assert farm.regen_step(_boxes(*RESULT)) == farm.WAIT
+    dlg = _boxes(
+        *RESULT,
+        ("メモリーを再生成しますか", 360, 600),
+        ("50", 400, 650),
+        ("キャンセル", 218, 1000),
+        ("決定", 500, 1000),
+    )
+    now[0] = 2.0
+    assert farm.regen_step(dlg) == (218, 1000)
+
+
+def test_regen_after_confirm_hands_back_when_no_dialog(monkeypatch):
+    """自检：确认以后重抽的演出画面（不是结果页、也没有框）：不等到超时，交回收尾照常走。"""
+    now = [0.0]
+    farm = _regen_started(monkeypatch, now)
+    dlg = _boxes(
+        ("メモリー再生成チケットを1枚使用します", 360, 640), ("キャンセル", 218, 1000), ("再生成する", 500, 1000)
+    )
+    assert farm.regen_step(dlg) == (500, 1000)
+    assert farm.regen_step(_boxes(("TAP", 360, 1200))) is None and not farm._regen["pending"]
+
+
+def test_free_regen_whitelist():
+    from hiro.brain import farm
+
+    assert farm._free_regen(["メモリー再生成チケットを1枚使用します"])
+    assert farm._free_regen(["本日1回無料"])
+    assert not farm._free_regen(["メモリーを再生成しますか", "所持チケット 0"])
+    assert not farm._free_regen(["チケットが不足しています"])
+    assert not farm._free_regen(["メモリーを再生成しますか", "50"])
