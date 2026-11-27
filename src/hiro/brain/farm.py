@@ -180,6 +180,12 @@ def check_targets(env: dict | None = None) -> set[str]:
     raw = (src.get("HIRO_FARM_TARGET") or "").strip()
     if raw:
         ids, bad = _resolve_targets(raw)
+        # 填的是技能卡编号：也要在资料库里精确查到（写错的编号原来原样当目标，等于没保护真正的目标；CodeRabbit #198）
+        bad = (*bad, *sorted(c for c in ids if c.startswith("p_card-") and not _known_card(c)))
+        if not ids and not bad:  # 只填了「，,」之类：显式填了但一项都没有，同样不开始（CodeRabbit #198）
+            raise ResumeBlocked(
+                f"刷回忆：转写目标「{raw}」里一张卡都没有，没开始（相談删卡会把目标卡一起删掉）。请填技能卡名或编号，逗号分隔"
+            )
         if bad:
             raise ResumeBlocked(
                 f"刷回忆：转写目标「{'、'.join(bad)}」在资料库里找不到，没开始（不停下的话相談删卡会把它当成这局拿到的卡删掉）。"
@@ -192,6 +198,17 @@ def check_targets(env: dict | None = None) -> set[str]:
             "刷回忆：没有转写目标（没填转写目标，回忆编成里也没读到卡），没开始（相談删卡会把目标卡一起删掉）"
         )
     return ids
+
+
+def _known_card(cid: str) -> bool:
+    """技能卡编号在资料库里有没有（精确匹配）。资料库读不到也当没有（开局前停下，提示检查资料库）。"""
+    try:
+        from hiro.cli.catalog import load
+
+        return cid in (load("ja").get("cards") or {})
+    except Exception as e:  # noqa: BLE001  资料库没下载等
+        logger.warning("刷回忆：查技能卡编号失败（%s）：%s", cid, e)
+        return False
 
 
 def card_id(name_or_id: str) -> str | None:

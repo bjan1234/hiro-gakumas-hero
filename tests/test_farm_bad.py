@@ -526,8 +526,40 @@ def _fake_catalog(monkeypatch):
         return [{"id": "p_card-02-act-3_050", "name": "輝くキミへ"}] if q == "輝くキミへ" and lang == "ja" else []
 
     monkeypatch.setattr(catalog, "search", search)
+    known = {"p_card-02-act-3_050": {}, "p_card-02-act-3_186": {}}
+    monkeypatch.setattr(catalog, "load", lambda lang="ja": {"cards": known})
     monkeypatch.setattr(farm, "_TARGET_CACHE", {})
     return farm, calls
+
+
+def test_check_targets_rejects_blank_and_unknown_ids(monkeypatch):
+    """CodeRabbit #198：只填了「，,」（显式但全空）不开始；填的编号要在资料库里精确查到，写错的编号同样停下。"""
+    from hiro.loop.errors import ResumeBlocked
+
+    farm, _ = _fake_catalog(monkeypatch)
+    for raw in ("，,", " , ，"):
+        with pytest.raises(ResumeBlocked, match="一张卡都没有"):
+            farm.check_targets({"HIRO_FARM_TARGET": raw})
+    with pytest.raises(ResumeBlocked, match="p_card-02-act-3_999.*资料库"):
+        farm.check_targets({"HIRO_FARM_TARGET": "p_card-02-act-3_999"})
+    with pytest.raises(ResumeBlocked, match="p_card-02-act-3_999"):
+        farm.check_targets({"HIRO_FARM_TARGET": "輝くキミへ,p_card-02-act-3_999"})
+    assert farm.check_targets({"HIRO_FARM_TARGET": "p_card-02-act-3_186"}) == {"p_card-02-act-3_186"}
+
+
+def test_check_targets_id_when_catalog_missing(monkeypatch):
+    """资料库读不到时编号也查不到：开局前停下（提示检查资料库），不当成有效目标。"""
+    from hiro.cli import catalog
+    from hiro.loop.errors import ResumeBlocked
+
+    farm, _ = _fake_catalog(monkeypatch)
+
+    def missing(lang="ja"):
+        raise RuntimeError("catalog_missing")
+
+    monkeypatch.setattr(catalog, "load", missing)
+    with pytest.raises(ResumeBlocked, match="资料库"):
+        farm.check_targets({"HIRO_FARM_TARGET": "p_card-02-act-3_186"})
 
 
 def test_check_targets_blocks_on_unresolved(monkeypatch):
