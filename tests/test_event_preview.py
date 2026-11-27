@@ -264,3 +264,14 @@ def test_same_event_tolerates_covered_option_but_not_new_event():
     box = lambda t: (t, 0.9, (0, 0, 10, 10))  # noqa: E731
     assert hif.HifCore._same_event([box("梦想的进展怎么样了?"), box("…を選択して獲得")], choices)
     assert not hif.HifCore._same_event([box("休む"), box("レッスンする")], choices)
+
+
+def test_commit_after_preview_selection_unknown_does_not_tap(monkeypatch):
+    """CodeRabbit #198：提交前认不出哪项是选中态（_selected_y 为 None）：一下都不点（点了可能确认掉不知道哪项），返回 False 等重读。"""
+    screen = _Screen(801)
+    choices = _choices(0)
+    core, done, dec = _commit_core(monkeypatch, screen, choices, preview=0)
+    core.deciders = NS(decide=lambda page, st, **k: dec(1))
+    core._selected_y = lambda img: None
+    core._event_page("EVENT_CHOICE", lambda i: None, 2)
+    assert done == [False] and screen.taps == [] and not screen.confirmed

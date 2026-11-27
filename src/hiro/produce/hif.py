@@ -1301,7 +1301,8 @@ class HifCore:
                 def commit_index(i):  # noqa: F811
                     """看过效果以后提交：每次（含重试）第一下点之前都截图核对还是这一页（选项字都在）、读当前选中项，
                     不沿用旧的选中记录（CodeRabbit #198：上一下慢半拍才生效时，重试按旧记录点会直接确认）。
-                    要的那项已经是选中态就直接点一下确认；没选中就先点一下选中，再核对同一页 + 选中了，才点确认。对不上返回 False。"""
+                    要的那项已经是选中态就直接点一下确认；明确是别的项选中时先点一下选中，再核对同一页 + 选中了，才点确认；
+                    认不出哪项选中就一下都不点（点了可能确认掉不知道哪项），返回 False 等重读（CodeRabbit #198）。对不上返回 False。"""
                     c = next((c for c in choices if c.get("index") == i and c.get("center")), None)
                     if c is None:
                         return False
@@ -1309,7 +1310,10 @@ class HifCore:
                     img = device.screenshot()
                     if not self._same_event(ops.ocr_boxes(img), choices):
                         return False  # 已经不是这一页（上一下其实确认了 / 进了别的事件）：不点旧坐标
-                    if not self._is_selected(img, y):
+                    sy = self._selected_y(img)
+                    if sy is None:
+                        return False  # 认不出选中项：不点，等重读
+                    if abs(sy - int(y)) > self.SELECTED_DY:  # 明确是别的项选中：先点目标选中它
                         device.click(int(x), int(y))
                         sleep(0.6)
                         if not self._still_here(device.screenshot(), choices, y):
