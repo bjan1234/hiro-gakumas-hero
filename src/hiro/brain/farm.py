@@ -121,18 +121,30 @@ def pick_action(step: int | None, opts: list[dict], criteria: dict | None, *, ha
 
 
 def junk_cards(cards: list[dict], targets: set[str]) -> list[dict]:
-    """这一局拿到的、该删掉的卡（不让它们进回忆抽选池）：不是初始的「○○の基本」、不是偶像固有卡（-ido-）、不是转写目标。
+    """这一局拿到的、该删掉的卡（不让它们进回忆抽选池）：不是初始的「○○の基本」、不是偶像固有卡（-ido-）、不是转写目标、
+    不是回忆编成带进来的卡。
     定制过的、没认出的格不碰。"""
     from hiro.brain.deciders import _is_basic, _is_trouble_card
 
+    keep = set(targets) | _memory_cards()  # 回忆编成带进来的卡也留着（和目标卡一样，不是这局拿的；CodeRabbit #198）
     out = []
     for c in cards:
         cid = c.get("card_id")
-        if not cid or c.get("customized") or "-ido-" in cid or cid in targets or _is_basic(cid):
+        if not cid or c.get("customized") or "-ido-" in cid or cid in keep or _is_basic(cid):
             continue
         out.append(dict(c, farm_trouble=_is_trouble_card(cid)))
     out.sort(key=lambda c: (not c["farm_trouble"], c.get("index", 0)))  # 眠気等トラブル先删（不删会塞牌组）
     return out
+
+
+def _memory_cards() -> set[str]:
+    """回忆编成带进培育的技能卡（HIRO_MEMORY_CARDS / 开局编成方案，同 hif.py 开局记进 picked_musts 的那份）。"""
+    try:
+        from hiro.formation_env import MEMORY_CARDS
+
+        return {c for c in MEMORY_CARDS if c}
+    except Exception:  # noqa: BLE001
+        return set()
 
 
 def target_cards(env: dict | None = None) -> set[str]:
@@ -141,12 +153,7 @@ def target_cards(env: dict | None = None) -> set[str]:
     src = env if env is not None else os.environ
     raw = (src.get("HIRO_FARM_TARGET") or "").strip()  # 和 check_targets 同一口径：只有空格也回退到编成（CodeRabbit #198）
     if not raw:
-        try:
-            from hiro.formation_env import MEMORY_CARDS
-
-            return {c for c in MEMORY_CARDS if c}
-        except Exception:  # noqa: BLE001
-            return set()
+        return _memory_cards()
     return set(_resolve_targets(raw)[0])
 
 
@@ -217,18 +224,22 @@ def card_id(name_or_id: str) -> str | None:
     if not s or s.startswith("p_card-"):
         return s or None
     base = s.rstrip("+＋")
-    try:
-        from hiro.cli.catalog import search
+    from hiro.cli.catalog import search
 
-        for lang in ("ja", "zh"):
-            hits = [h for h in search(base, kind="cards", lang=lang) if h.get("id")]
-            exact = [h for h in hits if (h.get("name") or "").rstrip("+＋") == base]
-            if exact or len(hits) == 1:
-                return (exact or hits)[0]["id"]
-    except Exception as e:  # noqa: BLE001  资料库没下载等
-        logger.warning("刷回忆：按卡名找技能卡失败（%s）：%s", s, e)
-        return None
-    logger.warning("刷回忆：转写目标「%s」在资料库里没找到（填技能卡 id 也行）", s)
+    # 先看两种语言的完全一致，都没有才接受唯一的模糊结果（原来日文里模糊唯一就返回，中文的完全一致轮不到；CodeRabbit #198）
+    fuzzy: set[str] = set()
+    for lang in ("ja", "zh"):
+        try:
+            hs = [h for h in search(base, kind="cards", lang=lang) if h.get("id")]
+        except Exception as e:  # noqa: BLE001  资料库没下载等：这种语言跳过
+            logger.warning("刷回忆：按卡名找技能卡失败（%s，%s）：%s", s, lang, e)
+            continue
+        if exact := [h for h in hs if (h.get("name") or "").rstrip("+＋") == base]:
+            return exact[0]["id"]
+        fuzzy |= {h["id"] for h in hs}
+    if len(fuzzy) == 1:
+        return next(iter(fuzzy))
+    logger.warning("刷回忆：转写目标「%s」在资料库里没找到（或对上不止一张；填技能卡 id 也行）", s)
     return None
 
 

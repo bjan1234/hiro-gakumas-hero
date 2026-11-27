@@ -843,3 +843,44 @@ def test_target_names_isolate_language_failures(monkeypatch):
     monkeypatch.setattr(farm, "_regen", {"done": 0, "pending": False, "reported": set()})
     page = [b if b[0] != "リズミカル" else ("全然違う名前", 270, 730) for b in RESULT]
     assert farm.regen_step(_boxes(*page)) is None  # 名字不全：不再生成
+
+
+def test_card_id_prefers_exact_in_any_language(monkeypatch):
+    """CodeRabbit #198：先看两种语言的完全一致，都没有才接受唯一的模糊结果。
+    原来日文里模糊唯一（「闪耀」只是名字的一部分）就返回那张，中文里完全一致的另一张轮不到。"""
+    from hiro.brain import farm
+    from hiro.cli import catalog
+
+    def search(q, kind=None, lang="ja"):
+        if lang == "ja":
+            return [{"id": "p_card-ja-fuzzy", "name": "閃耀する日々"}]
+        return [{"id": "p_card-zh-exact", "name": "闪耀"}, {"id": "p_card-zh-other", "name": "闪耀之后"}]
+
+    monkeypatch.setattr(catalog, "search", search)
+    assert farm.card_id("闪耀") == "p_card-zh-exact"
+
+    def search2(q, kind=None, lang="ja"):
+        return [{"id": "p_card-one", "name": "輝くキミへ"}] if lang == "ja" else [{"id": "p_card-one", "name": "闪耀的你"}]
+
+    monkeypatch.setattr(catalog, "search", search2)
+    assert farm.card_id("輝く") == "p_card-one"  # 两种语言模糊都只对上同一张：接受
+
+    def search3(q, kind=None, lang="ja"):
+        if lang == "ja":
+            raise RuntimeError("ja broken")
+        return [{"id": "p_card-a", "name": "闪耀A"}, {"id": "p_card-b", "name": "闪耀B"}]
+
+    monkeypatch.setattr(catalog, "search", search3)
+    assert farm.card_id("闪耀") is None  # 模糊对上不止一张：不猜
+
+
+def test_junk_cards_keeps_memory_cards(monkeypatch):
+    """CodeRabbit #198：回忆编成带进来的卡（MEMORY_CARDS）也不删，和目标卡一样留着。"""
+    import hiro.brain.deciders as d
+    from hiro import formation_env
+
+    monkeypatch.setattr(d, "_is_basic", lambda cid: False)
+    monkeypatch.setattr(d, "_is_trouble_card", lambda cid: False)
+    monkeypatch.setattr(formation_env, "MEMORY_CARDS", ("p_card-mem",))
+    cards = [{"index": 0, "card_id": "p_card-mem"}, {"index": 1, "card_id": "p_card-picked"}, {"index": 2, "card_id": "p_card-target"}]
+    assert [c["card_id"] for c in farm.junk_cards(cards, {"p_card-target"})] == ["p_card-picked"]
