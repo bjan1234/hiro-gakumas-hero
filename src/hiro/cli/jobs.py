@@ -248,21 +248,22 @@ def _daily_summary(p: dict) -> str:
         if o["shop_refresh"] == "on":
             shop += "，用免费刷新再买一轮（不花钻石）"
         spend.append(shop)
-        if ap := [_AP_NAMES.get(k.strip(), k.strip()) for k in o["shop_ap"].split(",") if k.strip()]:
+        # 体力商店：和执行端同一套解析（小写、只认 pt / note / retry / regen；CodeRabbit #138）
+        keys = [k for k in (x.strip().lower() for x in o["shop_ap"].split(",")) if k in _AP_NAMES]
+        if ap := [_AP_NAMES[k] for k in dict.fromkeys(keys)]:
             spend.append("体力商店买" + "、".join(ap) + "（花体力）")
     if run("coin_gacha"):
-        g = o["coin_gacha"]
-        if g in ("", "off"):
-            spend.append("硬币扭蛋不抽")
-        elif g == "auto":
-            spend.append("硬币扭蛋抽 1 次（花硬币）")
-        else:
-            from hiro.daily.coin_gacha import plan
+        from hiro.daily.coin_gacha import plan
 
-            # 和真正抽的时候同一套解析（写错的次数不抽、同一个池合起来不超上限），确认时看到的就是实际要抽的（CodeRabbit #122）
-            got = plan(g)
-            parts = [f"{_GACHA_NAMES.get(k, k)} {n} 次" for k, n in got] if isinstance(got, list) else []
-            spend.append("硬币扭蛋抽" + "、".join(parts) + "（花硬币）" if parts else "硬币扭蛋不抽（次数没写对）")
+        # 和真正抽的时候同一套解析（大小写 / 空格、写错的次数不抽、同一个池合起来不超上限）：确认时看到的就是实际要抽的（CodeRabbit #122 / #138）
+        g = o["coin_gacha"]
+        got = plan(g)
+        if got == "auto":
+            spend.append("硬币扭蛋抽 1 次（花硬币）")
+        elif got:
+            spend.append("硬币扭蛋抽" + "、".join(f"{_GACHA_NAMES.get(k, k)} {n} 次" for k, n in got) + "（花硬币）")
+        else:
+            spend.append("硬币扭蛋不抽" if g.strip().lower() in ("", "off") else "硬币扭蛋不抽（次数没写对）")
     if run("contest"):  # 竞赛选哪个对手，确认时也写出来（CodeRabbit #138）
         pick = o["contest_pick"]
         spend.append("竞赛挑" + ("综合力最低的对手" if pick == "lowest" else f"第 {pick} 个对手"))

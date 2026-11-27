@@ -134,6 +134,9 @@ def refresh_list(rt) -> str | None:
     # 要有刷新成了的正面证据：最后看到的是商品列表（读得到格子）。空帧 / 过场不算（CodeRabbit #138 / #197）
     if not (g.texts and tiles(g)):
         g = common.frame(rt)
+        if _dialog_up(g):  # 补拍这一帧出了框：同样关掉、不刷新（CodeRabbit #198）
+            _close_refresh_dialog(rt, g)
+            return "点免费刷新出了确认框，没刷新（关掉了，没花东西）"
         if free_refresh_label(g) is not None:
             return "点了免费刷新但列表没变"
         if not tiles(g):
@@ -326,7 +329,9 @@ def wait_dialog(rt, gone: bool = False):
     streak = [0]
 
     def closed(f) -> bool:
-        streak[0] = streak[0] + 1 if f.texts and read_dialog(f) is None else 0
+        # 底下还读得到キャンセル / 決定（框的按钮）的帧不算关了：只是标题漏读（CodeRabbit #138）
+        buttons = any(w in t.text for t in f.texts if t.rect.center.y >= 1080 for w in ("キャンセル", "決定"))
+        streak[0] = streak[0] + 1 if f.texts and read_dialog(f) is None and not buttons else 0
         return streak[0] >= 2
 
     ok, f = rt.wait_until(closed, 6.0, every=0.5)
@@ -340,15 +345,31 @@ def tap_word(rt, f, word: str, **kw) -> bool:
     return False
 
 
-_open = {"dialog": False}  # 点了格子到确认框确认关掉之间：这时超时不能接着跑下一项（框可能还开着，CodeRabbit #122）
+_open: dict = {
+    "dialog": False,
+    "unsure": None,
+}  # 点了格子到确认框确认关掉之间：这时超时不能接着跑下一项（框可能还开着，CodeRabbit #122）
 
 
 def _late_dialog(rt) -> None:
-    """点了格子 6 秒没见到框：框可能弹得晚。再看一眼，有就取消（别让下一格读到它、买错东西，CodeRabbit #122）。"""
+    """点了格子 6 秒没见到框：框可能弹得晚。再看一眼，有框（或框的按钮）就取消；都没有还要认得出商品列表，
+    认不出就停下（框可能开着、只是字没读到，别去点下一格买错东西，CodeRabbit #122 / #138）。"""
     f = common.frame(rt)
-    if read_dialog(f) is not None:
+    if read_dialog(f) is not None or text_at(f, "キャンセル", y_min=1080) is not None:
         cancel_dialog(rt, f)
+    elif not _on_list(rt):
+        raise common.DialogStuck("商店：点了商品以后认不出画面（不像商品列表），日常停下，请看一下游戏")
     _open["dialog"] = False
+
+
+def _on_list(rt) -> bool:
+    """现在是不是能点的商品列表：没有框、读得到格子。一帧不行再看一帧。"""
+    for _ in range(2):
+        f = common.frame(rt)
+        if read_dialog(f) is None and text_at(f, "キャンセル", y_min=1080) is None and tiles(f):
+            return True
+        rt.sleep(0.5)
+    return False
 
 
 def cancel_dialog(rt, g) -> None:
@@ -359,6 +380,8 @@ def cancel_dialog(rt, g) -> None:
         tap_word(rt, common.frame(rt), "キャンセル", y_min=1080)  # 再点一次（第一次可能落在过场里）
         if wait_dialog(rt, gone=True) is None:
             raise common.DialogStuck("商店：兑换确认框关不掉，日常停下（没确认，没花东西），请手动关掉")
+    if not _on_list(rt):  # 框的字没了还不够：要回到能点的商品列表（CodeRabbit #138）
+        raise common.DialogStuck("商店：取消后没回到商品列表，日常停下（没确认，没花东西），请看一下游戏")
     _open["dialog"] = False
 
 
@@ -373,10 +396,14 @@ def confirm(rt, g) -> str:
         logger.warning("兑换确认框没读到「決定」，不买")
         cancel_dialog(rt, g)
         return MISSED
+    # 点了「決定」到看到框关掉之间：这时被打断（单项超时等），这件可能已经买了，结果里写「没核实」（CodeRabbit #197）
+    _open["unsure"] = (read_dialog(g) or {}).get("name") or "?"
     if wait_dialog(rt, gone=True) is None:
+        _open["unsure"] = None
         cancel_dialog(rt, common.frame(rt))
         return SHORT
     _open["dialog"] = False
+    _open["unsure"] = None
     return BOUGHT
 
 
@@ -388,6 +415,8 @@ def dismiss_bought(rt) -> None:
         if not (tap_word(rt, h, "閉じる", y_min=900) or tap_word(rt, h, "OK", y_min=900)):
             break
         rt.sleep(0.8)
+    if not _on_list(rt):  # 提示没关掉：后面的点击会被挡住，停下（已买的调用方已经记了，CodeRabbit #138）
+        raise common.DialogStuck("商店：买完的提示关不掉，日常停下（已买的照样报），请看一下游戏")
     _open["dialog"] = False
 
 
@@ -409,7 +438,10 @@ def buy_ap(rt, keys: list[str], got: list[str] | None = None) -> list[str]:
     got = [] if got is None else got
     f = common.frame(rt)
     if not tap_word(rt, f, "AP", y_min=1050, y_max=1120, x_min=400):
-        return got
+        from hiro.loop.errors import ResumeBlocked
+
+        # 没认出页签不是「体力不够 / 今天买过了」：说清楚停在哪（CodeRabbit #198）
+        raise ResumeBlocked("没认出体力商店（AP）页签，体力商店没买，可以再试一次")
     rt.sleep(1.5)
     for tile in tiles(common.frame(rt)):
         if tile["left"] <= 0:
@@ -577,12 +609,21 @@ def run(rt) -> str:
     missed = False
     in_refresh = False  # 点免费刷新到确认没框之间
     tiles_seen = True
-    _open["dialog"] = False
+    _open.update(dialog=False, unsure=None)
     try:
         if not goto_daily_exchange(rt):
             return "商店：没进到每日兑换所"
         rec_seen = False
         cands: dict[tuple, dict] = {}
+
+        def fallback() -> None:
+            nonlocal note
+            if m == "recommended" and not bought and not rec_seen and cands and not money_short:
+                got, note = _fallback(rt, list(cands.values()))
+                if got:
+                    bought.append(got)
+                    dismiss_bought(rt)  # 和普通购买一样先记账再关提示（不然挡住后面的 AP 页签，CodeRabbit #122）
+
         if m != "off":
             r = _buy_round(rt, m, names, prices, seen_prices, bought)
             rec_seen, cands, money_short, tiles_seen = r["rec_seen"], r["cands"], r["money_short"], r["tiles_seen"]
@@ -590,6 +631,8 @@ def run(rt) -> str:
             if not tiles_seen:
                 raise ResumeBlocked("一个商品都没读到（商店页没加载出来，或读不到画面上的字）")
             if refresh_on():
+                fallback()  # 这一轮的兜底先做（刷新会换掉候选，CodeRabbit #138）
+                cands = {} if bought else cands
                 in_refresh = True
                 why = None if money_short else refresh_list(rt)
                 in_refresh = False
@@ -605,13 +648,9 @@ def run(rt) -> str:
                     missed = missed or r.get("missed", False)
                     if not r["tiles_seen"]:  # 刷新后一个格子都没读到：第二轮没做成（CodeRabbit #197）
                         raise ResumeBlocked("免费刷新后一个商品都没读到（第二轮没买）")
-        if missed and not bought:
-            raise ResumeBlocked("要买的商品确认框里没读到「決定」，没买，可以再试一次")
-        if m == "recommended" and not bought and not rec_seen and cands and not money_short:
-            got, note = _fallback(rt, list(cands.values()))
-            if got:
-                bought.append(got)
-                dismiss_bought(rt)  # 和普通购买一样先记账再关提示（不然挡住后面的 AP 页签，CodeRabbit #122）
+        if missed:  # 有一件要买的没读到「決定」：已买的照样报，这一项算没做完（CodeRabbit #122 / #138）
+            raise ResumeBlocked("有要买的商品确认框里没读到「決定」，没买，可以再试一次")
+        fallback()
         if ap_keys:
             buy_ap(rt, ap_keys, ap_got)
         nav.goto_home(rt)
@@ -644,6 +683,8 @@ def run(rt) -> str:
             else ("体力商店：没买到（体力不够或今天买过了）" if stopped is None else "体力商店：没买")
         )
     if stopped is not None:
+        if _open.get("unsure"):
+            parts.append(f"点了「決定」后被打断、没核实买没买：{item_name(_open['unsure'])}（到游戏里看一下）")
         parts.append(f"商店中途停下：{stopped}")
         raise common.PartialStop(
             "；".join(parts), stopped, stop_all=stop_all

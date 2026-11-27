@@ -124,8 +124,13 @@ def run_own(names: list[str], timeout: float | None, out: Path) -> list[dict]:
     rt.interrupts = (*rt.interrupts, deadline)
 
     def shot(tag: str) -> str:
+        """诊断截图；截不到（设备断开等）不影响记录：已做的项照样进 summary、照样打结果行（CodeRabbit #138）。"""
         p = out / f"{tag}.png"
-        cv2.imwrite(str(p), rt.screen.shot().img)
+        try:
+            cv2.imwrite(str(p), rt.screen.shot().img)
+        except Exception as e:  # noqa: BLE001
+            print(f"截图 {tag} 失败：{type(e).__name__}: {e}", flush=True)
+            return ""
         return str(p)
 
     summary = []

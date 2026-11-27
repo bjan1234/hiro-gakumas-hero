@@ -150,11 +150,11 @@ def _cancel(rt, f) -> None:
 
 
 class DrawStopped(Exception):
-    """抽完以后关结果画面超时：已经抽了 n 次。"""
+    """抽完以后关结果画面超时：已经抽了 n 次。unsure：点了「決定」但还没看到框关掉 / 结果，抽没抽没核实。"""
 
-    def __init__(self, pool: str, n: int, why: str) -> None:
+    def __init__(self, pool: str, n: int, why: str, unsure: bool = False) -> None:
         super().__init__(why)
-        self.pool, self.n = pool, n
+        self.pool, self.n, self.unsure = pool, n, unsure
 
 
 _state = {
@@ -176,8 +176,10 @@ def draw(rt, pool: str, times: int) -> int:
     if not ok:
         _state["missed"].append(pool)
         f = common.frame(rt)
-        if text_at(f, "コインガシャ確認") is not None:  # 晚弹出来了：关掉，别留给下一个池（CodeRabbit #122）
-            _cancel(rt, f)
+        if text_at(f, "コインガシャ確認") is not None or text_at(f, "キャンセル", y_min=1080) is not None:
+            _cancel(rt, f)  # 晚弹出来了（或标题漏读、按钮还在）：关掉，别留给下一个池（CodeRabbit #122 / #138）
+        elif text_at(f, "コインガシャ", y_max=80) is None:  # 也认不出扭蛋列表：可能框开着只是字没读到，停下
+            raise common.DialogStuck("硬币扭蛋：点了「引く」以后认不出画面，日常停下，请看一下游戏")
         _state["dialog"] = False
         return 0
     n = _draw_in_dialog(rt, pool, times, g)
@@ -193,6 +195,7 @@ def _draw_in_dialog(rt, pool: str, times: int, g) -> int:
         return 0
     line = text_at(g, "回数")
     if line is None:
+        _state["missed"].append(pool)  # 读不到次数：不是币不够（CodeRabbit #122 / #138）
         _cancel(rt, g)
         return 0
     y = line.rect.center.y + 80
@@ -207,6 +210,7 @@ def _draw_in_dialog(rt, pool: str, times: int, g) -> int:
         rt.sleep(0.3)
         n = count(common.frame(rt))
     if n != 0:
+        _state["missed"].append(pool)  # 次数减不到 0（读不准）：不是币不够
         _cancel(rt, common.frame(rt))
         return 0
     for _ in range(times):
@@ -217,9 +221,11 @@ def _draw_in_dialog(rt, pool: str, times: int, g) -> int:
     if n <= 0 or n > times:  # 币不够一次；或者读数比要的多（OCR 漏读了「回数」后的数字，没减到 0）：不抽，宁可少不可多
         if n > times:
             logger.warning("扭蛋次数读到 %d 次，比要的 %d 次多，不抽", n, times)
+            _state["missed"].append(pool)
         _cancel(rt, h)
         return 0
     if not tap_word(rt, h, "決定", y_min=1080):  # 没点上「決定」= 没抽：关掉框，不报次数（CodeRabbit #197）
+        _state["missed"].append(pool)
         _cancel(rt, common.frame(rt))
         return 0
 
@@ -234,6 +240,7 @@ def _draw_in_dialog(rt, pool: str, times: int, g) -> int:
             text_at(f, "コインガシャ", y_max=80) is not None
             and text_at(f, "コインガシャ確認") is None
             and text_at(f, "Result") is None
+            and text_at(f, "キャンセル", y_min=1080) is None  # 标题漏读、框还在的帧不算回到列表（CodeRabbit #197）
         ):
             return True
         if not tap_word(rt, f, "閉じる", y_min=900):
@@ -248,7 +255,8 @@ def _draw_in_dialog(rt, pool: str, times: int, g) -> int:
         ResumeBlocked,
         common.TaskTimeout,
     ) as e:  # 已经抽了：带着次数往外报，结果里要看得到（#122 review；单项超时同样）
-        raise DrawStopped(pool, n if left[0] else 0, str(e)) from e
+        # 框一直没关过：多半「決定」没生效，但也可能是还没来得及看到结果——不记 0 次也不记 n 次，让玩家去游戏里核实（CodeRabbit #138）
+        raise DrawStopped(pool, n, str(e), unsure=not left[0]) from e
     logger.info("%s扭蛋 抽了 %d 次", NAMES[pool], n)
     return n
 
@@ -277,7 +285,11 @@ def run(rt) -> str:
         nav.goto_home(rt)
     except (ResumeBlocked, DrawStopped, common.TaskTimeout, common.DialogStuck) as e:
         if isinstance(e, DrawStopped) and e.n > 0:
-            done.append(f"{NAMES[e.pool]} {e.n} 次")
+            done.append(
+                f"{NAMES[e.pool]}点了抽 {e.n} 次但没看到结果（先到游戏里看看抽没抽、硬币少没少）"
+                if e.unsure
+                else f"{NAMES[e.pool]} {e.n} 次"
+            )
         logger.warning("硬币扭蛋中途停下：%s", e)
         why = str(e) or "超时"
         # 关结果页没关成（DrawStopped）/ 确认框关不掉：画面还停在扭蛋结果或框上，后面的项都不跑（CodeRabbit #197 / #198）
@@ -286,12 +298,17 @@ def run(rt) -> str:
         raise common.PartialStop(
             "硬币扭蛋：" + ("、".join(done) + "；" if done else "") + f"中途停下：{why}", why, stop_all=stop_all
         ) from e  # 已抽的照样报，这一项算没做完（CodeRabbit #197）
+    if done and _state["missed"] and not isinstance(p, str):
+        # 指定了几个池、有的没认出来：抽了的照样报，这一项算没做完（CodeRabbit #197 / #198）
+        miss = "、".join(NAMES[x] for x in dict.fromkeys(_state["missed"]))
+        why = f"{miss}扭蛋的池 / 确认框没认出来"
+        raise common.PartialStop("硬币扭蛋：" + "、".join(done) + f"；{why}，可以再试一次", why)
     if done:
         return "硬币扭蛋：" + "、".join(done)
     if _state["missed"]:  # 没认出池 / 确认框没弹：不是币不够（CodeRabbit #122）
         return (
             "硬币扭蛋：没抽（"
             + "、".join(NAMES[x] for x in dict.fromkeys(_state["missed"]))
-            + "扭蛋没认出来，可以再试一次）"
+            + "扭蛋的池 / 确认框没认出来，可以再试一次）"
         )
     return "硬币扭蛋：币不够，没抽"

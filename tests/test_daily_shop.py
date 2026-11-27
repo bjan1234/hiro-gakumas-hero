@@ -232,6 +232,7 @@ def test_shop_ap_bought_kept_when_stopped(monkeypatch):
     monkeypatch.setattr(shop, "wait_dialog", dialog)
     monkeypatch.setattr(shop, "read_dialog", lambda g: {"name": "再挑戦チケット", "ap": True, "jewel": False})
     monkeypatch.setattr(shop, "confirm", lambda rt, g: shop.BOUGHT)
+    monkeypatch.setattr(shop, "_on_list", lambda rt: True)  # 关完提示回到了列表
     got: list[str] = []
     import pytest
 
@@ -403,7 +404,7 @@ def test_refresh_late_dialog_is_caught(monkeypatch):
     dlg = frame(("リストを更新しますか", 360, 600), ("閉じる", 168, 1143), ("更新する", 490, 1140))
     rt = _seq_rt(monkeypatch, [label, label, blank, blank, blank, dlg, blank])
     assert "确认框" in shop.refresh_list(rt)
-    assert (490, 1140) not in rt.device.taps
+    assert rt.device.taps == [(561, 163), shop.DISMISS_TAP]  # 完整点击序列：没点「更新する」（CodeRabbit #138）
 
 
 def test_refresh_success_after_watch_window(monkeypatch):
@@ -653,9 +654,27 @@ def test_late_dialog_is_cancelled_before_next_tile(monkeypatch):
     taps = _word_taps(monkeypatch)
     monkeypatch.setattr(shop.common, "frame", lambda rt: DIALOG)
     monkeypatch.setattr(shop, "wait_dialog", lambda rt, gone=False: LIST if gone else None)
+    monkeypatch.setattr(shop, "_on_list", lambda rt: True)  # 取消后回到了列表
     shop._open["dialog"] = True
     shop._late_dialog(_Rt())
     assert taps == ["キャンセル"] and shop._open["dialog"] is False
+
+
+def test_late_dialog_unknown_screen_stops(monkeypatch):
+    """点了格子没见框、也认不出商品列表（框可能开着只是字没读到）：停下，不去点下一格（CodeRabbit #138）。"""
+    import pytest
+
+    monkeypatch.setattr(shop.common, "frame", lambda rt: frame(("…", 360, 600)))
+    with pytest.raises(shop.common.DialogStuck):
+        shop._late_dialog(_Rt())
+    monkeypatch.setattr(shop.common, "frame", lambda rt: LIST)
+    shop._late_dialog(_Rt())  # 认得出列表：照常接着点下一格
+
+
+def test_dialog_not_closed_while_buttons_visible():
+    """标题漏读、底下キャンセル / 決定还在：不算关了（CodeRabbit #138）。"""
+    no_title = frame(*[(t.text, t.rect.center.x, t.rect.center.y) for t in DIALOG.texts if t.text != "交換確認"])
+    assert shop.wait_dialog(_WaitRt([no_title]), gone=True) is None
 
 
 def test_shop_timeout_while_dialog_open_stops_all(monkeypatch):
@@ -755,6 +774,46 @@ def test_daily_summary_uses_real_gacha_plan_and_contest_pick():
     from hiro.cli.jobs import KINDS
 
     s = KINDS["daily"].summary({"items": "contest,coin_gacha", "coin_gacha": "friend:8,friend:8", "contest_pick": "3"})
-    assert f"友情 {coin_gacha.MAX_TIMES} 次" in s or "10 次" in s
+    assert f"友情 {coin_gacha.MAX_TIMES} 次" in s and "感性" not in s
     assert "第 3 个对手" in s
     assert "不抽" in KINDS["daily"].summary({"items": "coin_gacha", "coin_gacha": "friend:abc"})
+
+
+def test_coin_gacha_explicit_pool_missing_is_partial(monkeypatch):
+    """friend:1,sense:1：友情抽到、感性没认出来：抽了的照样报，这一项算没做完（CodeRabbit #197 / #198）。"""
+    import pytest
+
+    monkeypatch.setenv("HIRO_COIN_GACHA", "friend:1,sense:1")
+    monkeypatch.setattr(coin_gacha, "goto_coin_gacha", lambda rt: True)
+    monkeypatch.setattr(coin_gacha.nav, "goto_home", lambda rt: None)
+
+    def draw(rt, pool, times):
+        if pool == "sense":
+            coin_gacha._state["missed"].append(pool)
+            return 0
+        return 1
+
+    monkeypatch.setattr(coin_gacha, "draw", draw)
+    with pytest.raises(coin_gacha.common.PartialStop) as e:
+        coin_gacha.run(_Rt())
+    assert "友情 1 次" in e.value.result and "感性" in e.value.reason and not e.value.stop_all
+
+
+def test_shop_unconfirmed_purchase_is_reported(monkeypatch):
+    """点了「決定」后、看到框关掉前被单项超时打断：结果里写这件「没核实」，不悄悄丢掉（CodeRabbit #197）。"""
+    import pytest
+
+    monkeypatch.setenv("HIRO_SHOP", "all")
+    monkeypatch.delenv("HIRO_SHOP_AP", raising=False)
+    monkeypatch.delenv("HIRO_SHOP_ITEMS", raising=False)
+    monkeypatch.delenv("HIRO_SHOP_REFRESH", raising=False)
+    monkeypatch.setattr(shop, "goto_daily_exchange", lambda rt: True)
+
+    def interrupted(rt, m, names, prices, seen, bought):
+        shop._open.update(dialog=True, unsure="ロジックノート(ボーカル)")
+        raise shop.common.TaskTimeout()
+
+    monkeypatch.setattr(shop, "_buy_round", interrupted)
+    with pytest.raises(shop.common.PartialStop) as e:
+        shop.run(_Rt())
+    assert "没核实" in e.value.result and e.value.stop_all
