@@ -230,3 +230,16 @@ func TestNextCardBecomesToastAction(t *testing.T) {
 		t.Error("点了应该去问 AI")
 	}
 }
+
+// CodeRabbit #138：页面上合并确认的批次记在页面记录里，任务结束时也要看得到后面还有排队。
+func TestQueuedAfterSeesPagesRecord(t *testing.T) {
+	a, _ := newPagesApp(&fakeCall{}, nil)
+	a.pages.Messages = append(a.pages.Messages, &Message{ID: "m1", Role: "agent",
+		Cards: []plugin.Card{{"type": "confirm", "queueJob": "j1", "queue": []any{"scan-idols"}}}})
+	if !a.queuedAfter("j1") {
+		t.Error("页面记录里的排队没看到")
+	}
+	if a.queuedAfter("j2") {
+		t.Error("别的任务不算")
+	}
+}
