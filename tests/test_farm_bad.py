@@ -778,8 +778,16 @@ def test_bad_lesson_advisor_stays_stopped():
     assert fresh.decide(NS(impression=None, remaining_turns=2), None, None, legal) == "inner"
 
 
-@pytest.mark.parametrize("ok", [True, False])
-def test_picked_card_recorded_only_when_acquired(monkeypatch, ok):
+@pytest.mark.parametrize(
+    ("ok", "fast", "slow", "want"),
+    [
+        (True, True, None, True),  # 快速提交成功
+        (False, True, None, False),  # 页面校验没过
+        (True, False, True, True),  # 慢速路径「受け取る」按下了
+        (True, False, False, False),  # 慢速路径一直是灰的：没领成（_act 照样按已生效返回 ok）
+    ],
+)
+def test_picked_card_recorded_only_when_acquired(monkeypatch, ok, fast, slow, want):
     """CodeRabbit #198：选卡记账（牌组读不到时刷回忆第 7 周靠它判断去不去相談删卡）只在领取成功时记，没领成不记。"""
     import hiro.produce.hif as hif
     import hiro.vision.card_select as cs
@@ -804,9 +812,20 @@ def test_picked_card_recorded_only_when_acquired(monkeypatch, ok):
     core._rerolls_this_page = 0
     monkeypatch.setattr(core, "_note_fallback", lambda *a: None, raising=False)
     monkeypatch.setattr(core, "_pick_index", lambda *a: 0, raising=False)
-    monkeypatch.setattr(core, "_act", lambda *a, **k: NS(ok=ok, error=None if ok else "没领成"), raising=False)
+    import hiro.produce.card_ops as card_ops
+
+    monkeypatch.setattr(hif.ops, "fast_acquire", lambda center: fast)
+    monkeypatch.setattr(card_ops, "card_select_commit", lambda rect: slow)
+    monkeypatch.setattr(core, "_settings_dialog", lambda where: False, raising=False)
+    monkeypatch.setattr(core, "_confirm_acquire", lambda: 0, raising=False)
+
+    def act(fn, *a, **k):
+        fn()
+        return NS(ok=ok, error=None if ok else "没领成")
+
+    monkeypatch.setattr(core, "_act", act, raising=False)
     core.on_select_card()
-    assert deciders.picked_musts == ({"p_card-02-act-1_010"} if ok else set())
+    assert deciders.picked_musts == ({"p_card-02-act-1_010"} if want else set())
 
 
 def test_blank_target_falls_back_to_formation_in_both_entries(monkeypatch):

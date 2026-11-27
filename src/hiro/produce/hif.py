@@ -707,24 +707,25 @@ class HifCore:
                      choice=_card_summary(choice.card), source=d.source, reason=d.reason)  # fmt: skip
         logger.info("选卡 %s ← %s：%s", choice.card.name if choice.card else "?", d.source, d.reason)
 
+        acquired = [False]  # 领取确认真的生效了没有（_act 对会返回的 commit 一律按已生效处理，记账不能只看 result.ok）
+
         def commit():
             # 先走快速提交（点卡 → 等「受け取る」亮 → 点 → 等消失）。亮不起来时先看是不是弹了首次设置框（獲得ガイド表示設定：
             # 新账号第一次拿卡，框挡住按钮，原来在逐步提交和重试里空等约 2.5 分钟，协调 11-14），处理完再快速提交一次；还不行才逐步提交 + 补点
             center = (int(choice.rect.center.x), int(choice.rect.center.y))
-            if ops.fast_acquire(center):
+            if ops.fast_acquire(center) or (self._settings_dialog("SELECT_CARD") and ops.fast_acquire(center)):
+                acquired[0] = True
                 return
-            if self._settings_dialog("SELECT_CARD") and ops.fast_acquire(center):
-                return
-            card_select_commit(choice.rect)
+            acquired[0] = card_select_commit(choice.rect)  # 慢速路径：「受け取る」一直是灰的就没领成（CodeRabbit #198）
             self._confirm_acquire()
 
         result = self._act(commit, Action.activate_effect(i), page_before="SELECT_CARD",
                            taps=[[int(choice.rect.center.x), int(choice.rect.center.y)]])  # fmt: skip
         if result.ok:
             self._last_pick = (ids, time.monotonic())
-            if (cid := getattr(choice.card, "_id", None)) is not None:
+            if acquired[0] and (cid := getattr(choice.card, "_id", None)) is not None:
                 # 记下这局拿过的卡（牌组读不到时，刷回忆第 7 周靠它判断要不要去相談删卡，11-27）。
-                # 只在领取成功时记：没领成也记的话，会为一张没拿到的卡去相談（CodeRabbit #198）
+                # 只在领取确认真的生效时记：没领成也记的话，会为一张没拿到的卡去相談（CodeRabbit #198）
                 self.deciders.picked_musts.add(str(cid))
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
