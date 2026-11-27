@@ -139,6 +139,36 @@ def test_final_rank_only_for_hajime():
     assert "--final-rank" not in argv("hajime", {"command": "new", "idol": "i_card-jsna-3-006", "difficulty": "pro"})
 
 
+def test_play_prefs_from_settings_override_env(hiro_home, monkeypatch):
+    """设置页「培育」：settings.json 里有的项盖过启动环境；没设的项不动（11-27）。"""
+    import json
+
+    monkeypatch.setenv("HIRO_LIVE", "pick")
+    monkeypatch.setenv("HIRO_UNREAD_STORY", "stop")
+    monkeypatch.setenv("HIRO_EXAM_SEARCH_HIF", "final")
+    hiro_home.mkdir(parents=True, exist_ok=True)
+    (hiro_home / "settings.json").write_text(
+        json.dumps({"live": "play_pick", "retry_max": "1", "retry_handoff": True}),
+        encoding="utf-8",
+    )
+    env = Job(hiro_home, KINDS["hajime"], {"command": "resume"}).child_env()
+    assert env["HIRO_LIVE"] == "play" and env["HIRO_PHOTO_PICK"] == "stop"
+    assert env["HIRO_RETRY_MAX"] == "1" and env["HIRO_RETRY_HANDOFF"] == "1"
+    assert env["HIRO_UNREAD_STORY"] == "stop"  # 设置里没有：照启动环境
+
+
+def test_dmm_settle_default(hiro_home, monkeypatch):
+    """DMM 上助手开的局也要 HIRO_SETTLE_MIN_S=1.5（原来只有 play.ps1 设）；自己设了就用自己的。"""
+    monkeypatch.setenv("HIRO_DEVICE", "dmm")
+    monkeypatch.delenv("HIRO_SETTLE_MIN_S", raising=False)
+    assert Job(hiro_home, KINDS["hajime"], {}).child_env()["HIRO_SETTLE_MIN_S"] == "1.5"
+    monkeypatch.setenv("HIRO_SETTLE_MIN_S", "2")
+    assert Job(hiro_home, KINDS["hajime"], {}).child_env()["HIRO_SETTLE_MIN_S"] == "2"
+    monkeypatch.setenv("HIRO_DEVICE", "mumu")
+    monkeypatch.delenv("HIRO_SETTLE_MIN_S")
+    assert "HIRO_SETTLE_MIN_S" not in Job(hiro_home, KINDS["hajime"], {}).child_env()
+
+
 def test_daily_shop_refresh_only_with_shop_on(hiro_home):
     """免费刷新只在买东西时传 on（不买时刷新没意义）；确认摘要写出来。"""
     a = argv("daily", {"shop": "off", "shop_refresh": "on"})

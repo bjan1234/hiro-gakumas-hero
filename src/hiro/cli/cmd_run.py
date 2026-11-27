@@ -31,6 +31,7 @@ PARAMS = (
     "support_set",
     "memory_set",
     "difficulty",
+    "exam_search",
     "items",
     "contest_pick",
     "shop",
@@ -667,6 +668,11 @@ def _first_reason(out: str) -> str:
         Arg("--support-set", "hif / hajime / nia：用游戏里第几号支援卡编成（不给按编成方案）", type="int"),
         Arg("--memory-set", "hif / hajime / nia：用第几号回忆编成", type="int"),
         Arg("--difficulty", "hajime：regular / pro / master；nia：pro / master", choices=("regular", "pro", "master")),
+        Arg(
+            "--exam-search",
+            "hajime / nia / hif：哪几场考试用搜索出牌（更准、每步约 5 秒，H.I.F 本战约 15 秒），其余用快速出牌；逗号分隔，none = 都快速。"
+            "hajime：mid1 final lesson（缺省全搜）；nia：mid1 mid2 final（缺省都不搜）；hif：q1 q2 q3（选拔，缺省不搜）r1 r2（本战，缺省都搜）",
+        ),
         Arg(
             "--final-rank",
             "hajime：期末要到第几名（如 1），没到就用再挑戦（免费 / チケット，不花ジュエル）",

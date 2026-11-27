@@ -60,6 +60,7 @@ type state struct {
 	hifMain int // 0 选拔 1 本战
 	diff    int
 	pick    common.IdolPicker // 偶像卡（和编成方案页共用的选择器）
+	search  searchState       // 考试出牌：按场次选快速 / 搜索（examsearch.go）
 
 	// 日常的选项（11-26）：竞赛挑哪个对手、商店买什么、硬币扭蛋抽哪个
 	contestPick int     // 0 综合力最低 1/2/3 第几个
@@ -370,6 +371,9 @@ func (s *state) explain(h plugin.Host, cat *common.Catalog, p hiroapi.Pending) (
 			e.Rows = append(e.Rows, [2]string{"主属性", labels.Attr(a)})
 		}
 	}
+	if row, ok := examSearchRow(r.Kind, r.Flags); ok {
+		e.Rows = append(e.Rows, row)
+	}
 	return e, true
 }
 
@@ -487,6 +491,7 @@ func (s *state) panel(c *ui.Context, h plugin.Host) {
 	if m.id == "daily" {
 		s.dailyOptions(c)
 	}
+	s.search.draw(c, h, examGroup(m.id, s.hifMain))
 	needIdol := (produce && !s.resume) || m.id == "tower"
 	if needIdol {
 		s.pick.Draw(c, h, "start")
@@ -670,6 +675,7 @@ func (s *state) args() ([]string, string) {
 	if m.id == "hif" {
 		a = append(a, "--mode", []string{"qualify", "main"}[s.hifMain])
 	}
+	a = append(a, s.search.args(examGroup(m.id, s.hifMain))...)
 	if s.resume {
 		return a, "接着打 " + m.name
 	}

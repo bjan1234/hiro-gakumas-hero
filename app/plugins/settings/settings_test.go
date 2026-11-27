@@ -741,3 +741,28 @@ func TestCloseSelfAfterRechecksBeforeQuit(t *testing.T) {
 		t.Errorf("没有新动静应关助手：quits=%d", quits)
 	}
 }
+
+// 11-27：设置页「培育」一节（LIVE / 照片、未读剧情、没过线重打、H.I.F）：看得到、点了存进设置。
+func TestProduceSectionSaves(t *testing.T) {
+	f := &fake{s: Settings{Provider: "deepseek", WizardDone: true}, secrets: map[string]string{}, ready: true}
+	p := New(f.deps()).Plugin()
+	h := plugintest.New(map[string]string{})
+	tt := ui.NewTester(func(c *ui.Context) { p.Panel(c, h, "") }, 760, 3600)
+	tt.Frame()
+	for _, s := range []string{"培育结束后的 LIVE", "照常播放，回忆照片我自己选", "没读过的剧情", "最多再挑战"} {
+		if !tt.HasText(s) {
+			t.Errorf("没有 %q", s)
+		}
+	}
+	if err := tt.Click("跳过 LIVE，回忆照片我自己选"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("停下等我看"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if f.s.Live != "pick" || f.s.UnreadStory != "stop" {
+		t.Errorf("存的是 live=%q unread=%q", f.s.Live, f.s.UnreadStory)
+	}
+}

@@ -94,6 +94,15 @@ type Settings struct {
 	CloseSelfAfter bool `json:"close_self_after,omitempty"`
 	// OpenIn：打开时进哪种界面："chat" = 问 AI，其余 = 页面（首页，缺省；11-26 用户定）
 	OpenIn string `json:"open_in,omitempty"`
+	// 培育（11-27 设置页「培育」一节；hiro.cli.play_prefs 在任务启动时变成环境变量）：
+	// Live：play（缺省）/ play_pick / watch / pick / auto；UnreadStory：skip / stop；RetryMax："0"–"3"（空 = 3）。
+	// 每场考试快速 / 搜索在开局页按场次选（start-prefs.json），不在这里
+	Live              string `json:"live,omitempty"`
+	UnreadStory       string `json:"unread_story,omitempty"`
+	RetryMax          string `json:"retry_max,omitempty"`
+	RetryHandoff      bool   `json:"retry_handoff,omitempty"`
+	HifGuides         bool   `json:"hif_guides,omitempty"`
+	ExamScheduleProbe bool   `json:"exam_schedule_probe,omitempty"`
 }
 
 // DefaultDeepSeek 是 DeepSeek 的缺省地址和模型。
