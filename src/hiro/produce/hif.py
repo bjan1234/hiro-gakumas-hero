@@ -1277,6 +1277,11 @@ class HifCore:
             if preview == "left":
                 self.s.note("EVENT_CHOICE：看效果时页面变了（点到已选中的那项 = 确认了），交给下一拍")
                 return
+            if preview == "abort":
+                # 点过以后中途对不上（选中没生效 / 认不出选中项）：选中态可能已经变了，原来的双击提交会把已选中的那项确认掉，
+                # 交给下一拍重新看画面（CodeRabbit #196 / #198）
+                self.s.note("EVENT_CHOICE：看效果中途对不上，交给下一拍重新看")
+                return
             if preview is not None:
                 sel_i = [preview]  # 现在选中的是哪项（提交时更新：画面没变要重提交时，那项已经是选中态，只点一下）
 
@@ -1347,7 +1352,9 @@ class HifCore:
         没开 LLM 就停）。像玩家一样把每项单击一下（单击只选中、不确认），读它上方新出的说明写进 choices[i]["effect"]。
         单击已选中的项会确认它，所以：认不出哪项选中就不看；每次点之前重新截图核对这项不是选中态（是就不点、直接读）；
         点完看两帧确认页面没走（选项按钮和这项的字都不见了 = 误确认，返回 "left"）；点了没选中就不再往下点。
-        返回看完后选中的是第几项；不看（纯台词 / 少于 2 项 / 都已有效果 / 认不出选中项 / 中途对不上）返回 None。"""
+        返回看完后选中的是第几项；没点过就不看（纯台词 / 少于 2 项 / 都已有效果 / 认不出选中项）返回 None；
+        点过以后中途对不上返回 "abort"（选中态可能已经变了，调用方不能再用原来的双击提交）。
+        说明框没读到的项记 effect=None、effect_unread=True（效果未知，决策不当成没效果）。"""
         from hiro.vision.classify import option_regions
         from hiro.vision.event import effect_above
 
@@ -1367,6 +1374,7 @@ class HifCore:
             boxes = ops.ocr_boxes(img)
             return not option_regions(img) and not (lab and any(lab[:4] in t for t, _, _ in boxes))
 
+        clicked = False
         for c in order:
             x, y = c["center"]
             lab = labels[c["index"]]
@@ -1376,8 +1384,9 @@ class HifCore:
             else:
                 if self._selected_y(img) is None:
                     self.s.note("EVENT_CHOICE：看效果途中认不出选中项，不再点")
-                    return None
+                    return "abort" if clicked else None
                 device.click(int(x), int(y))
+                clicked = True
                 sleep(self.PREVIEW_WAIT_S)
                 img = device.screenshot()
                 if gone(img, lab):
@@ -1388,10 +1397,11 @@ class HifCore:
                     return "left"  # 转场慢：第二帧选项没了，页面已经往下走了
                 if not self._is_selected(img, y):
                     self.s.note(f"EVENT_CHOICE：点了第 {c['index'] + 1} 项没变成选中态，不再往下点")
-                    return None
+                    return "abort"
                 boxes = ops.ocr_boxes(img)
             # 没读到说明时记 None（未知），不记 ""：选项决策把 effect == "" 当成「确认没有效果」，两项都没读到会直接选第一项（CodeRabbit #196）
             c["effect"] = effect_above(boxes, int(y), labels) or None
+            c["effect_unread"] = c["effect"] is None
             c["selected"] = True
             for o in choices:
                 if o is not c:

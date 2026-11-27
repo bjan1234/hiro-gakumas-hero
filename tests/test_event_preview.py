@@ -115,8 +115,9 @@ def test_preview_skipped_when_selected_unknown(monkeypatch):
 def test_preview_stops_when_tap_did_not_select(monkeypatch):
     screen = _Screen(801, ignore_taps=1)
     choices = _choices(0)
-    assert hif.HifCore._preview_event_effects(_fake(monkeypatch, screen, choices), choices) is None
+    assert hif.HifCore._preview_event_effects(_fake(monkeypatch, screen, choices), choices) == "abort"
     assert screen.taps == [904] and not screen.confirmed
+    # 点过以后对不上：返回 abort，调用方不再走原来的双击提交（CodeRabbit #196 / #198）
 
 
 def test_preview_skips_dialogue_only():
@@ -144,3 +145,7 @@ def test_unread_effect_is_unknown_not_empty(monkeypatch):
     )
     hif.HifCore._preview_event_effects(fake, choices)
     assert choices[0]["effect"] is None and choices[1]["effect"] is None
+    from hiro.brain import event_choice as ev
+
+    assert not any(ok for _, ok in (ev.parse(c) for c in choices))  # 效果未知：不完整，不当成没效果去选第一项
+    assert ev.parse({"text": "", "effect": ""})[1]  # 确认没有效果（纯台词）照旧算完整
