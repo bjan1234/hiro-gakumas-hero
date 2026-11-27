@@ -167,7 +167,9 @@ def _plain_dialogue(hsv: np.ndarray, b) -> bool:
     return dark >= DIALOGUE_DARK_MIN and color <= DIALOGUE_COLOR_MAX
 
 
-_EFFECT_WORDS = re.compile(r"獲得|上昇|回復|削除|強化|選択して|アップ|消費|[+＋]\s*\d")
+_EFFECT_WORDS = re.compile(
+    r"を選択して|獲得|上昇|[+＋]\s*\d"
+)  # 只收效果框才有的写法（台词里的「アップ」「回復」不算，免得删掉真选项）
 
 
 def _looks_like_effect(text: str | None) -> bool:

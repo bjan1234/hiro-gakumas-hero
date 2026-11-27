@@ -27,48 +27,96 @@ def test_effect_above_reads_tooltip_not_buttons():
     assert event.effect_above([_box(OPTS[0], 220, 801)], 904, OPTS) == ""
 
 
-def test_preview_taps_each_option_once_and_reads_effects(monkeypatch):
-    taps = []
-    shown = {801: "特定のPドリンクを選択して獲得", 904: "スキルカードを選択して獲得"}
-    monkeypatch.setattr(hif, "device", NS(click=lambda x, y: taps.append(y), screenshot=lambda: taps[-1]))
+class _Screen:
+    """假的事件页：单击没选中的项 = 选中它；单击已选中的项 = 确认（页面走了）。截图就是「当前选中项的 y」。"""
+
+    def __init__(self, sel_y, *, ignore_taps=0, slow_leave=False):
+        self.sel, self.taps, self.confirmed = sel_y, [], False
+        self.ignore, self.slow_leave, self.shots = ignore_taps, slow_leave, 0
+
+    def click(self, x, y):
+        self.taps.append(y)
+        if self.ignore:
+            self.ignore -= 1
+        elif y == self.sel:
+            self.confirmed = True
+        else:
+            self.sel = y
+
+    def screenshot(self):
+        self.shots += 1
+        return "left" if self.confirmed else self.sel
+
+
+SHOWN = {801: "特定のPドリンクを選択して獲得", 904: "スキルカードを選択して獲得"}
+
+
+def _fake(monkeypatch, screen, choices, notes=None):
+    monkeypatch.setattr(hif, "device", screen)
     monkeypatch.setattr(hif, "sleep", lambda s: None)
     monkeypatch.setattr(
         hif.ops,
         "ocr_boxes",
-        lambda y: [_box(shown[y], 440, y - 100, 420), _box(OPTS[0], 220, 801), _box(OPTS[1], 220, 904)],
+        lambda img: (
+            []
+            if img == "left"
+            else [_box(SHOWN[img], 440, img - 100, 420), _box(OPTS[0], 220, 801), _box(OPTS[1], 220, 904)]
+        ),
     )
     import hiro.vision.classify as classify
 
-    monkeypatch.setattr(classify, "option_regions", lambda img: [1, 2])
-    choices = [
-        {"index": 0, "text": OPTS[0], "center": [360, 801], "selected": False},
-        {"index": 1, "text": OPTS[1], "center": [360, 904], "selected": False},
+    monkeypatch.setattr(classify, "option_regions", lambda img: [] if img == "left" else [1, 2])
+    fake = NS(
+        s=NS(state=NS(page_fields={"choices": choices}), note=(notes if notes is not None else []).append),
+        PREVIEW_WAIT_S=0,
+        PREVIEW_RECHECK_S=0,
+        SELECTED_DY=hif.HifCore.SELECTED_DY,
+        _selected_y=lambda img: None if img in ("left", None) else img,
+    )
+    fake._is_selected = lambda img, y: hif.HifCore._is_selected(fake, img, y)
+    return fake
+
+
+def _choices(sel):
+    return [
+        {"index": 0, "text": OPTS[0], "center": [360, 801], "selected": sel == 0},
+        {"index": 1, "text": OPTS[1], "center": [360, 904], "selected": sel == 1},
     ]
-    notes = []
-    fake = NS(s=NS(state=NS(page_fields={"choices": choices}), note=notes.append), PREVIEW_WAIT_S=0)
-    sel = hif.HifCore._preview_event_effects(fake, choices)
-    assert taps == [801, 904] and sel == 1  # 每项单击一次，不双击
-    assert choices[0]["effect"] == shown[801] and choices[1]["effect"] == shown[904]
+
+
+def test_preview_taps_each_unselected_option_once_and_reads_effects(monkeypatch):
+    screen = _Screen(801)
+    choices = _choices(0)
+    sel = hif.HifCore._preview_event_effects(_fake(monkeypatch, screen, choices), choices)
+    assert screen.taps == [904, 801] and sel == 0 and not screen.confirmed  # 选中项放最后，那时它已不是选中态
+    assert choices[0]["effect"] == SHOWN[801] and choices[1]["effect"] == SHOWN[904]
     from hiro.brain import event_choice as ev
 
     assert all(ok for _, ok in (ev.parse(c) for c in choices))  # 规则能解析：不用 LLM
 
 
-def test_preview_puts_preselected_option_last(monkeypatch):
-    taps = []
-    monkeypatch.setattr(hif, "device", NS(click=lambda x, y: taps.append(y), screenshot=lambda: taps[-1]))
-    monkeypatch.setattr(hif, "sleep", lambda s: None)
-    monkeypatch.setattr(hif.ops, "ocr_boxes", lambda y: [_box(OPTS[0], 220, 801), _box(OPTS[1], 220, 904)])
-    import hiro.vision.classify as classify
+def test_preview_never_taps_selected_option(monkeypatch):
+    """识别层记的选中项和画面不一致（实际选中的是第 2 项）：点之前重新核对，已选中的不点、直接读。"""
+    screen = _Screen(904)
+    choices = _choices(0)  # 识别层以为是第 1 项
+    hif.HifCore._preview_event_effects(_fake(monkeypatch, screen, choices), choices)
+    assert not screen.confirmed and screen.taps == [801]
+    assert choices[1]["effect"] == SHOWN[904] and choices[0]["effect"] == SHOWN[801]
 
-    monkeypatch.setattr(classify, "option_regions", lambda img: [1])
-    choices = [
-        {"index": 0, "text": OPTS[0], "center": [360, 801], "selected": True},  # 已选中：单击会确认，放最后点
-        {"index": 1, "text": OPTS[1], "center": [360, 904], "selected": False},
-    ]
-    fake = NS(s=NS(state=NS(page_fields={"choices": choices}), note=lambda t: None), PREVIEW_WAIT_S=0)
-    hif.HifCore._preview_event_effects(fake, choices)
-    assert taps == [904, 801]
+
+def test_preview_skipped_when_selected_unknown(monkeypatch):
+    screen = _Screen(801)
+    choices = _choices(None)
+    notes = []
+    assert hif.HifCore._preview_event_effects(_fake(monkeypatch, screen, choices, notes), choices) is None
+    assert screen.taps == [] and "认不出" in notes[0]
+
+
+def test_preview_stops_when_tap_did_not_select(monkeypatch):
+    screen = _Screen(801, ignore_taps=1)
+    choices = _choices(0)
+    assert hif.HifCore._preview_event_effects(_fake(monkeypatch, screen, choices), choices) is None
+    assert screen.taps == [904] and not screen.confirmed
 
 
 def test_preview_skips_dialogue_only():

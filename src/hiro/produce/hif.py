@@ -1288,6 +1288,8 @@ class HifCore:
                     if i != sel_i[0]:
                         device.click(int(x), int(y))
                         sleep(0.6)
+                        if not self._is_selected(device.screenshot(), y):
+                            return False  # 选中没生效（或页面已经变了）：不点确认，交给重试 / 下一拍重新看
                         sel_i[0] = i
                     device.click(int(x), int(y))
                     sleep(2)
@@ -1321,12 +1323,30 @@ class HifCore:
         self.s.record(obs, decision=d, execution=result, timings_ms={"total": (time.monotonic() - t0) * 1000})
 
     PREVIEW_WAIT_S = 0.8  # 点一下选项后等效果说明框出来
+    PREVIEW_RECHECK_S = 0.5  # 再隔这么久看第二帧（确认后转场慢，第一帧选项可能还在）
+    SELECTED_DY = 40  # 选中项的按钮中心和这项差多少 px 以内算同一项
+
+    @staticmethod
+    def _selected_y(img) -> int | None:
+        """画面上选中态那项的按钮中心 y；认不出选中项（或不在选项页）返回 None。"""
+        from hiro.vision.event import read_event_choice_page
+
+        r = read_event_choice_page(img)
+        s = r.get("selected")
+        return next(
+            (int(c["center"][1]) for c in r.get("choices") or [] if c.get("index") == s and c.get("center")), None
+        )
+
+    def _is_selected(self, img, y) -> bool:
+        sy = self._selected_y(img)
+        return sy is not None and abs(sy - int(y)) <= self.SELECTED_DY
 
     def _preview_event_effects(self, choices: list) -> int | str | None:
         """事件选项页：效果说明只在选中时出现（11-27 实机：二选一事件只看得到选中那项的效果，另一项读不到 → 规则选不了，
         没开 LLM 就停）。像玩家一样把每项单击一下（单击只选中、不确认），读它上方新出的说明写进 choices[i]["effect"]。
-        原来选中的那项放最后点（那时它已经不是选中态，单击不会确认）。返回看完后选中的是第几项；
-        纯台词 / 少于 2 项 / 都已有效果时不看，返回 None；点完发现页面变了（误确认）返回 "left"。"""
+        单击已选中的项会确认它，所以：认不出哪项选中就不看；每次点之前重新截图核对这项不是选中态（是就不点、直接读）；
+        点完看两帧确认页面没走（选项按钮和这项的字都不见了 = 误确认，返回 "left"）；点了没选中就不再往下点。
+        返回看完后选中的是第几项；不看（纯台词 / 少于 2 项 / 都已有效果 / 认不出选中项 / 中途对不上）返回 None。"""
         from hiro.vision.classify import option_regions
         from hiro.vision.event import effect_above
 
@@ -1336,16 +1356,38 @@ class HifCore:
             return None
         labels = [c.get("text") or "" for c in choices]
         sel = next((c["index"] for c in live if c.get("selected")), None)
+        if sel is None:
+            self.s.note("EVENT_CHOICE：认不出哪项是选中态，不逐个看效果（单击选中项会直接确认）")
+            return None
         order = [c for c in live if c["index"] != sel] + [c for c in live if c["index"] == sel]
+
+        def gone(img, lab) -> bool:
+            boxes = ops.ocr_boxes(img)
+            return not option_regions(img) and not (lab and any(lab[:4] in t for t, _, _ in boxes))
+
         for c in order:
             x, y = c["center"]
-            device.click(int(x), int(y))
-            sleep(self.PREVIEW_WAIT_S)
-            img = device.screenshot()
-            boxes = ops.ocr_boxes(img)
             lab = labels[c["index"]]
-            if not option_regions(img) and not (lab and any(lab[:4] in t for t, _, _ in boxes)):
-                return "left"  # 选项按钮和这项的字都不见了：页面已经往下走了
+            img = device.screenshot()
+            if self._is_selected(img, y):
+                boxes = ops.ocr_boxes(img)  # 已经是选中态：不点（点了就确认），直接读它的说明
+            else:
+                if self._selected_y(img) is None:
+                    self.s.note("EVENT_CHOICE：看效果途中认不出选中项，不再点")
+                    return None
+                device.click(int(x), int(y))
+                sleep(self.PREVIEW_WAIT_S)
+                img = device.screenshot()
+                if gone(img, lab):
+                    return "left"
+                sleep(self.PREVIEW_RECHECK_S)
+                img = device.screenshot()
+                if gone(img, lab):
+                    return "left"  # 转场慢：第二帧选项没了，页面已经往下走了
+                if not self._is_selected(img, y):
+                    self.s.note(f"EVENT_CHOICE：点了第 {c['index'] + 1} 项没变成选中态，不再往下点")
+                    return None
+                boxes = ops.ocr_boxes(img)
             c["effect"] = effect_above(boxes, int(y), labels)
             c["selected"] = True
             for o in choices:
