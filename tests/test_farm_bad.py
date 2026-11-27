@@ -470,3 +470,31 @@ def test_regen_jewel_variants_anywhere_cancel(monkeypatch):
         assert farm.regen_step(dlg) == (218, 1000), jewel
     assert not f._free_regen(["チケットを使用して再生成", "50個消費します"])
     assert f._free_regen(["メモリー再生成チケットを1枚使用します", "所持数 3個"])  # 持有数不算付费
+
+
+def test_target_match_is_conservative():
+    """审查 #198 第 5 条：卡名比较有容错，读得不确定时不再生成（宁可留下非目标）。"""
+    from hiro.brain import farm
+
+    t = {"輝くキミへ"}
+    assert farm.target_match("輝くキミへ", t) == "hit"
+    assert farm.target_match("輝くキミヘ", t) == "hit"  # 平假名「へ」读成片假名「ヘ」
+    assert farm.target_match("輝くキミへ+", t) == "hit"
+    assert farm.target_match("輝くキミ", t) == "hit"  # 只读出前几个字
+    assert farm.target_match("耀くキミへ", t) == "unsure"  # 错一个字：像目标，不再生成
+    assert farm.target_match("輝", t) == "unsure"  # 太短：读不准
+    assert farm.target_match("リズミカル", t) == "miss"
+    assert farm.target_match("リズミカル", set()) == "unsure"
+
+
+def test_regen_skipped_when_name_looks_like_target(monkeypatch):
+    """审查 #198 第 5 条：结果页卡名 OCR 错了一个字（其实是目标）：不点再生成，照常点次へ。"""
+    from hiro.brain import farm
+
+    monkeypatch.setenv("HIRO_FARM", "bad")
+    monkeypatch.setattr(farm, "_target_names", lambda: {"輝くキミへ"})
+    monkeypatch.setattr(farm, "_regen", {"done": 0, "pending": False, "reported": set()})
+    page = [b if b[0] != "リズミカル" else ("耀くキミへ", 270, 730) for b in RESULT]
+    assert farm.regen_step(_boxes(*page)) is None
+    page = [b if b[0] != "リズミカル" else ("輝くキミヘ", 270, 730) for b in RESULT]
+    assert farm.regen_step(_boxes(*page)) is None

@@ -267,6 +267,33 @@ def _target_names() -> set[str]:
     return names
 
 
+NAME_MIN_LEN = 3  # 结果页读到的卡名比这短：读不准，不拿它判「不是目标」
+NAME_SIMILAR = 0.6  # 和某个目标的相似度到这个数：可能是 OCR 读错一两个字的目标，不再生成
+
+
+def _norm_name(s: str) -> str:
+    """比卡名前归一：全半角、空格、末尾「+」，片假名转平假名、小写假名转大写（OCR 常把「へ / ヘ」「ュ / ユ」读混）。"""
+    import unicodedata
+
+    s = unicodedata.normalize("NFKC", s or "").replace(" ", "").rstrip("+＋")
+    s = "".join(chr(ord(c) - 0x60) if "ァ" <= c <= "ヶ" else c for c in s)
+    return s.translate(str.maketrans("ぁぃぅぇぉっゃゅょゎ", "あいうえおつやゆよわ"))
+
+
+def target_match(name: str | None, targets: set[str]) -> str:
+    """结果页卡名和转写目标比：hit = 是目标；miss = 读得清楚、确定不是；unsure = 名字太短或和目标很像（可能读错了字）。
+    只有 miss 才再生成：读得不确定时宁可留下非目标，也不把已经刷到的目标再生成掉（审查 #198 第 5 条）。"""
+    from difflib import SequenceMatcher
+
+    n = _norm_name(name or "")
+    tn = [t for t in (_norm_name(x) for x in targets) if t]
+    if any(t in n or (len(n) >= NAME_MIN_LEN and n in t) for t in tn):
+        return "hit"
+    if len(n) < NAME_MIN_LEN or not tn:
+        return "unsure"
+    return "unsure" if max(SequenceMatcher(None, n, t).ratio() for t in tn) >= NAME_SIMILAR else "miss"
+
+
 def regen_step(boxes) -> tuple[int, int] | str | None:
     """刷回忆收尾：回忆结果页 / 再生成确认框要点哪里；不归这里管返回 None（照常点「次へ」）；WAIT = 这一帧什么都别点。
     只在：刷回忆开着、读到了卡名、不是目标、还有再生成次数、这局还没再生成过 REGEN_MAX 次。
@@ -304,7 +331,7 @@ def regen_step(boxes) -> tuple[int, int] | str | None:
     if r is None or not r["name"]:
         return None
     targets = _target_names()
-    hit = any(t and (t in r["name"] or r["name"] in t) for t in targets)
+    match = target_match(r["name"], targets)
     key = (r["name"], _regen["done"])
     if key not in _regen["reported"]:
         _regen["reported"].add(key)
@@ -312,9 +339,9 @@ def regen_step(boxes) -> tuple[int, int] | str | None:
             "刷回忆：生成的回忆带「%s」（目标 %s）%s",
             r["name"],
             "、".join(sorted(targets)) or "?",
-            "，刷到了" if hit else "",
+            {"hit": "，刷到了", "unsure": "，卡名读得不确定（像目标 / 太短），不再生成"}.get(match, ""),
         )
-    if hit or not targets or _regen["done"] >= REGEN_MAX or not r["left"]:
+    if match != "miss" or not targets or _regen["done"] >= REGEN_MAX or not r["left"]:
         return None
     _regen["done"] += 1
     _regen.update(pending=True, since=_clock(), confirmed=False, cancelled=False)
