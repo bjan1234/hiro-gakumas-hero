@@ -819,3 +819,27 @@ def test_blank_target_falls_back_to_formation_in_both_entries(monkeypatch):
         assert farm.check_targets(env) == farm.target_cards(env) == {"p_card-02-act-3_186"}, repr(raw)
     env = {"HIRO_FARM_TARGET": " 輝くキミへ "}
     assert farm.check_targets(env) == farm.target_cards(env) == {"p_card-02-act-3_050"}
+
+
+def test_target_names_isolate_language_failures(monkeypatch):
+    """CodeRabbit #198：中文资料库报错不影响日文名；有哪张目标卡一个名字都没取到就返回空（regen_step 不再生成）。"""
+    from hiro.brain import farm
+    from hiro.cli import catalog
+
+    monkeypatch.setenv("HIRO_FARM_TARGET", "p_card-a,p_card-b")
+    monkeypatch.setattr(farm, "_TARGET_CACHE", {})
+    ja = {"p_card-a": {"name": "輝くキミへ"}, "p_card-b": {"name": "リズミカル+"}}
+
+    def load(lang="ja"):
+        if lang == "zh":
+            raise RuntimeError("zh broken")
+        return {"cards": ja}
+
+    monkeypatch.setattr(catalog, "load", load)
+    assert farm._target_names() == {"輝くキミへ", "リズミカル"}
+    del ja["p_card-b"]  # 第二张目标卡一个名字都没有：不判 miss
+    assert farm._target_names() == set()
+    monkeypatch.setenv("HIRO_FARM", "bad")
+    monkeypatch.setattr(farm, "_regen", {"done": 0, "pending": False, "reported": set()})
+    page = [b if b[0] != "リズミカル" else ("全然違う名前", 270, 730) for b in RESULT]
+    assert farm.regen_step(_boxes(*page)) is None  # 名字不全：不再生成

@@ -336,18 +336,29 @@ def memory_result(boxes) -> dict | None:
 
 
 def _target_names() -> set[str]:
-    """转写目标的卡名（日文、中文都收），和结果页读到的卡名比。"""
-    names: set[str] = set()
-    try:
-        from hiro.cli.catalog import search
+    """转写目标的卡名（日文、中文都收），和结果页读到的卡名比。按编号在资料库里精确取名字；每种语言单独查，
+    一种语言读不到 / 出错不影响别的语言、别的卡（CodeRabbit #198）。有哪张目标卡一个名字都没取到时返回空集合：
+    regen_step 见到空集合就不再生成（名字不全时没法判「确定不是目标」，可能把已经刷到的那张换掉）。"""
+    from hiro.cli.catalog import load
 
-        for cid in target_cards():
-            for lang in ("ja", "zh"):
-                for h in search(cid, kind="cards", lang=lang):
-                    if h.get("id") == cid and h.get("name"):
-                        names.add(str(h["name"]).replace(" ", "").rstrip("+＋"))
-    except Exception as e:  # noqa: BLE001
-        logger.warning("刷回忆：查转写目标的卡名失败：%s", e)
+    names: set[str] = set()
+    targets = target_cards()
+    got: dict[str, set[str]] = {cid: set() for cid in targets}
+    for lang in ("ja", "zh"):
+        try:
+            cards = load(lang).get("cards") or {}
+        except Exception as e:  # noqa: BLE001  这种语言的资料库读不到：换下一种
+            logger.warning("刷回忆：查转写目标的卡名失败（%s）：%s", lang, e)
+            continue
+        for cid in targets:
+            name = (cards.get(cid) or {}).get("name")
+            if name:
+                got[cid].add(str(name).replace(" ", "").rstrip("+＋"))
+    if missing := sorted(cid for cid, n in got.items() if not n):
+        logger.warning("刷回忆：转写目标 %s 一个名字都没取到，不判「不是目标」（不再生成）", "、".join(missing))
+        return set()
+    for n in got.values():
+        names |= n
     return names
 
 
