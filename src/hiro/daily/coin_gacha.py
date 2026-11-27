@@ -186,7 +186,10 @@ def draw(rt, pool: str, times: int) -> int:
 
     try:
         rt.drive(back, 60, "关抽卡结果", every=1.0)
-    except ResumeBlocked as e:  # 已经抽了：带着次数往外报，结果里要看得到（#122 review）
+    except (
+        ResumeBlocked,
+        common.TaskTimeout,
+    ) as e:  # 已经抽了：带着次数往外报，结果里要看得到（#122 review；单项超时同样）
         raise DrawStopped(pool, n, str(e)) from e
     logger.info("%s扭蛋 抽了 %d 次", NAMES[pool], n)
     return n
@@ -213,7 +216,7 @@ def run(rt) -> str:
                 if (n := draw(rt, pool, times)) > 0:
                     done.append(f"{NAMES[pool]} {n} 次")
         nav.goto_home(rt)
-    except (ResumeBlocked, DrawStopped) as e:
+    except (ResumeBlocked, DrawStopped, common.TaskTimeout) as e:
         if isinstance(e, DrawStopped) and e.n > 0:
             done.append(f"{NAMES[e.pool]} {e.n} 次")
         logger.warning("硬币扭蛋中途停下：%s", e)

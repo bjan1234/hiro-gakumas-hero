@@ -504,7 +504,7 @@ def run(rt) -> str:
         if ap_keys:
             buy_ap(rt, ap_keys, ap_got)
         nav.goto_home(rt)
-    except ResumeBlocked as e:
+    except (ResumeBlocked, common.TaskTimeout) as e:  # 单项超时（Deadline）也照样报已买的（自检）
         stopped = str(e) or "超时"
         logger.warning("商店中途停下：%s", stopped)
     if names and seen_prices != prices:

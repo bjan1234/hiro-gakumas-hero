@@ -148,6 +148,8 @@ def _shop(monkeypatch, screen, goods, money, *, home_raises=False):
         return True
 
     def home(rt):
+        if home_raises == "timeout":
+            raise shop.common.TaskTimeout()
         if home_raises:
             raise ResumeBlocked("回首页超时")
 
@@ -440,3 +442,17 @@ def test_coin_gacha_stop_reports_drawn_but_fails(monkeypatch):
     with pytest.raises(coin_gacha.common.PartialStop) as e:
         coin_gacha.run(_Rt())
     assert "2 次" in e.value.result and "关结果超时" in e.value.reason
+
+
+def test_shop_task_timeout_still_reports_bought(monkeypatch):
+    """自检：单项超时（Deadline 的 TaskTimeout）也照样报已买的，这一项算没做完。"""
+    import pytest
+
+    monkeypatch.setenv("HIRO_SHOP", "all")
+    monkeypatch.delenv("HIRO_SHOP_AP", raising=False)
+    monkeypatch.delenv("HIRO_SHOP_ITEMS", raising=False)
+    screen = frame(("3,000", 120, 480), ("あと1回", 104, 509))
+    rt = _shop(monkeypatch, screen, {104: ("ロジックノート", 3000, 1)}, 5000, home_raises="timeout")
+    with pytest.raises(shop.common.PartialStop) as e:
+        shop.run(rt)
+    assert "商店买了" in e.value.result and e.value.reason == "超时"
