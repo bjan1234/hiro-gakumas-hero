@@ -710,6 +710,10 @@ func (s *state) args() ([]string, string) {
 	}
 	a = append(a, s.search.args(examGroups(m.id, s.hifMain, s.resume))...)
 	farm := m.id == "hajime" && s.farm
+	if farm && !s.resume {
+		// 程序不会选租借回忆：新开一局会按游戏当前的回忆开，花了 AP 却几乎不是目标回忆（审查 #198 第 8 条）
+		return nil, "刷回忆要先在游戏里选好租借回忆、点「開始する」，再勾「接着打」发起"
+	}
 	if farm {
 		// 转写目标必填：不填时没有可靠的来源（租借回忆不在编成方案里），相談删卡会连目标一起删
 		t := strings.TrimSpace(strings.ReplaceAll(s.farmTarget, "，", ","))
@@ -887,6 +891,9 @@ func replay(j plugin.Job, name, mode string) func(h plugin.Host) {
 	params := map[string]any{}
 	for k, v := range j.Params {
 		params[k] = v
+	}
+	if f, _ := params["farm"].(string); f != "" {
+		return nil // 刷回忆只能接着打（程序不选租借回忆），不能按上次参数新开一局（审查 #198 第 8 条）
 	}
 	if params["command"] == "resume" {
 		params["command"] = "new" // 上次是接着打的：再打一把是开新的

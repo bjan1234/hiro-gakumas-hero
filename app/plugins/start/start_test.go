@@ -456,9 +456,27 @@ func TestFarmArgs(t *testing.T) {
 	if a, _ := s.args(); a != nil {
 		t.Errorf("转写目标必填：%q", a)
 	}
+	// 审查 #198 第 8 条：程序不选租借回忆，刷回忆不能新开一局（按钮灰掉，提示先在游戏里开局再接着打）
+	s.farmTarget, s.resume = "p_card-02-act-3_186", false
+	if a, label := s.args(); a != nil || !strings.Contains(label, "接着打") {
+		t.Errorf("刷回忆新开一局不能发起：%q %q", a, label)
+	}
+	s.resume = true
 	s.farm = false
 	if a, _ := s.args(); strings.Contains(strings.Join(a, " "), "farm") {
 		t.Errorf("不勾不传：%q", a)
+	}
+}
+
+// 审查 #198 第 8 条：上次是刷回忆（接着打）的局，首页不出「再打一把」（会变成刷回忆新开一局）；普通局照常。
+func TestReplaySkipsFarm(t *testing.T) {
+	j := plugin.Job{Kind: "hajime", Params: map[string]any{"command": "resume", "idol": "i_card-skin-hski-3-001", "farm": "bad", "farm_target": "輝くキミへ"}}
+	if replay(j, "广", "初") != nil {
+		t.Error("刷回忆的局不能按上次参数新开")
+	}
+	delete(j.Params, "farm")
+	if replay(j, "广", "初") == nil {
+		t.Error("普通局照常再打一把")
 	}
 }
 
