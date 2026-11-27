@@ -149,14 +149,14 @@ type deferHost struct {
 
 func (d *deferHost) Go(work func() func()) { *d.q = append(*d.q, work) }
 
-// 11-25 review：操作权限挪进对话框左下角，设置页只写现在是哪一档、去哪换。
+// 11-25 review：操作权限挪进对话框左下角（11-26 页面模式在侧栏底部），设置页只写现在是哪一档、去哪换。
 func TestPermissionPointsToComposer(t *testing.T) {
 	f := &fake{s: Settings{Provider: "deepseek", WizardDone: true}, secrets: map[string]string{}, ready: true}
 	p := New(f.deps()).Plugin()
 	h := plugintest.New(map[string]string{})
 	tt := ui.NewTester(func(c *ui.Context) { p.Panel(c, h, "") }, 760, 2400)
 	tt.Frame()
-	if !tt.HasText("现在是「允许读操作」。在对话框左下角点它就能换，哪些事不用确认就直接做都写在那里。") || tt.HasText("总是询问") {
+	if !tt.HasText("现在是「允许读操作」。在侧栏底部（页面）或对话框左下角（问 AI）点它就能换，哪些事不用确认就直接做都写在那里。") || tt.HasText("总是询问") {
 		t.Errorf("设置页应只写档位和去哪换：%q", tt.Texts())
 	}
 }
@@ -663,5 +663,81 @@ func TestCloseGameAfterUpdatesConnection(t *testing.T) {
 	tt.Frame()
 	if tt.HasText("跑完关游戏") {
 		t.Error("不支持的平台不显示「跑完关游戏」")
+	}
+}
+
+// CodeRabbit #197 / #138 review：任务结束时助手还在回复 / 有确认卡在等，不直接放弃关游戏：过一会儿再看；
+// 一直忙就发一句没执行（不悄悄不关）；下一项已经开始了就不关。
+func TestCloseGameAfterWaitsWhileBusy(t *testing.T) {
+	closeWait = 0
+	defer func() { closeWait = 5 * time.Second }()
+	old := CloseGameSupported
+	defer func() { CloseGameSupported = old }()
+	CloseGameSupported = true
+	f := &fake{s: Settings{Provider: "deepseek", WizardDone: true, CloseGameAfter: true}, secrets: map[string]string{}, ready: true}
+	s := New(f.deps())
+	done := &plugin.JobView{State: "done", Job: &plugin.Job{ID: "j1", Kind: "daily"}}
+
+	// 一直有确认卡在等：重试用完后发一句没执行，不关
+	h := plugintest.New(map[string]string{"game close": `{"closed":true}`})
+	h.Pending_ = true
+	s.closeGameAfter(h, done)
+	if h.Called("game close") || len(h.Posted) != 1 {
+		t.Fatalf("有确认卡在等不该关游戏，应说一句：called=%v posted=%d", h.Called("game close"), len(h.Posted))
+	}
+
+	// 助手忙了几下后空下来：照样关
+	h2 := plugintest.New(map[string]string{"game close": `{"closed":true}`})
+	h2.Busy_ = true
+	n := 0
+	h2.OnGo = func() {
+		if n++; n == 3 {
+			h2.Busy_ = false
+		}
+	}
+	s.closeGameAfter(h2, done)
+	if !h2.Called("game close") {
+		t.Fatal("助手空下来后应该关游戏")
+	}
+
+	// 下一项已经开始：不关
+	h3 := plugintest.New(map[string]string{"game close": `{"closed":true}`})
+	h3.Busy_, h3.Live = true, "j2"
+	s.closeGameAfter(h3, done)
+	if h3.Called("game close") || len(h3.Posted) != 0 {
+		t.Error("下一项已经开始不该关、也不用说")
+	}
+}
+
+// CodeRabbit #138：关游戏那段时间里又弹了确认卡，关游戏成功后不关助手（说一句原因）；没有新动静时照常关。
+func TestCloseSelfAfterRechecksBeforeQuit(t *testing.T) {
+	closeWait = 0
+	defer func() { closeWait = 5 * time.Second }()
+	old := CloseGameSupported
+	defer func() { CloseGameSupported = old }()
+	CloseGameSupported = true
+	f := &fake{s: Settings{Provider: "deepseek", WizardDone: true, CloseGameAfter: true, CloseSelfAfter: true}, secrets: map[string]string{}, ready: true}
+	quits := 0
+	d := f.deps()
+	d.Quit = func() { quits++ }
+	s := New(d)
+	done := &plugin.JobView{State: "done", Job: &plugin.Job{ID: "j1", Kind: "daily"}}
+
+	h := plugintest.New(map[string]string{"game close": `{"closed":true}`})
+	n := 0
+	h.OnGo = func() {
+		if n++; n == 2 { // 第 2 次 Go 是关游戏：这时用户又发起了一项、弹了确认卡
+			h.Pending_ = true
+		}
+	}
+	s.closeGameAfter(h, done)
+	if !h.Called("game close") || quits != 0 {
+		t.Fatalf("关了游戏，但有新的确认卡不该关助手：called=%v quits=%d", h.Called("game close"), quits)
+	}
+
+	h2 := plugintest.New(map[string]string{"game close": `{"closed":true}`})
+	s.closeGameAfter(h2, done)
+	if quits != 1 {
+		t.Errorf("没有新动静应关助手：quits=%d", quits)
 	}
 }

@@ -424,3 +424,21 @@ func TestDailyArgsShopRefresh(t *testing.T) {
 		t.Errorf("勾了 %q", s.dailyArgs())
 	}
 }
+
+// CodeRabbit #138 / #197：续打过的局（params 里有 resume_chain 并进来的 trace）再打一把：开新局，不带 --trace（run start 没这个参数）。
+func TestReplayDropsTrace(t *testing.T) {
+	j := plugin.Job{ID: "j1", Kind: "hif", Params: map[string]any{"command": "resume", "trace": "x-r1"}}
+	run := replay(j, "篠澤広", "H.I.F")
+	if run == nil {
+		t.Fatal("应该能再打一把")
+	}
+	h := host()
+	run(h)
+	got := strings.Join(h.RunArgs_[len(h.RunArgs_)-1], " ")
+	if strings.Contains(got, "--trace") || !strings.Contains(got, "--command new") {
+		t.Errorf("参数 %q", got)
+	}
+	if j.Params["trace"] != "x-r1" {
+		t.Error("不该改掉原局的参数")
+	}
+}

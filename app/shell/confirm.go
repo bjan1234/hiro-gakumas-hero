@@ -2,6 +2,7 @@ package shell
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -65,7 +66,7 @@ func (a *App) resolve(m *Message, card plugin.Card, action string) {
 		return
 	}
 	a.ui.resolving[p.ID] = true
-	t, call := a.cur, a.d.Call
+	t, call := a.threadOf(m), a.d.Call
 	a.d.Run.Go(func() func() {
 		r := call(a.ctx, []string{action, p.ID})
 		return func() {
@@ -75,6 +76,16 @@ func (a *App) resolve(m *Message, card plugin.Card, action string) {
 				card["status"] = "failed"
 				if r.Error != nil {
 					card["message"] = r.Error.Message
+				}
+				if t == a.pages && action == "confirm" && len(batchOf(card)) < 2 {
+					// 页面上没有对话可看：确认框关了，用提示条说没开始成、为什么（CodeRabbit #138；合并卡的第 1 项失败下面会说）
+					why := "出错了"
+					if r.Error != nil && r.Error.Message != "" {
+						why = r.Error.Message
+					}
+					summary, _ := pendingMap(card["pending"])["summary"].(string)
+					a.toasts = append(a.toasts, ui.Toast{Title: "没能开始「" + summary + "」", Description: why + "。可以改一下再点「发起」。",
+						Type: "error", Timeout: 15 * time.Second})
 				}
 				if action == "confirm" {
 					a.batchFirstFailed(t, card) // 合并卡第 1 项就没开起来：退掉其余、告诉用户（CodeRabbit #79）
@@ -197,7 +208,9 @@ func (a *App) confirmCard(c *ui.Context, m *Message, card plugin.Card) {
 				if kit.Primary(c, start).Key("confirm-" + p.ID).Disabled(busy).Clicked() {
 					a.resolve(m, card, "confirm")
 				}
-				ui.Text(c, "↵").FontSize(12).TextColor(kit.Ink3)
+				if !a.ui.inModal {
+					ui.Text(c, "↵").FontSize(12).TextColor(kit.Ink3)
+				}
 			})
 		})
 	})
