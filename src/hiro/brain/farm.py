@@ -219,6 +219,7 @@ class BadLessonAdvisor:
 REGEN_MAX = 1  # 一局最多再生成几次（用户：刷新一次）
 _regen = {"done": 0, "pending": False, "reported": set()}
 REGEN_CONFIRM_WORDS = ("再生成する", "再生成", "決定", "OK", "はい")
+REGEN_FREE_WORDS = ("チケット", "無料")  # 确认框里要读到这些之一才确认（用再生成券 / 免费）；否则一律キャンセル
 
 
 def _txt(b) -> str:
@@ -268,19 +269,22 @@ def regen_step(boxes) -> tuple[int, int] | None:
     if mode() != "bad":
         return None
     texts = [_txt(b) for b in boxes]
-    if (
-        _regen["pending"]
-        and any("キャンセル" in t for t in texts)
-        and not any("獲得可能スキルカード" in t for t in texts)
-    ):
-        _regen["pending"] = False
-        cancel = next(b for b in boxes if "キャンセル" in _txt(b))
+    cancel = next((b for b in boxes if "キャンセル" in _txt(b)), None)
+    if _regen["pending"] and cancel is not None:
+        # 等再生成确认框时，带キャンセル的框一律这里管、不交回收尾的通用分支（那边会点「決定」「OK」，不看费用）。
+        # 框是半透明的，底下结果页的字可能还读得到，所以不靠「獲得可能スキルカード」在不在来分。
         if not any("再生成" in t for t in texts):
-            # 不是再生成的确认框（点了再生成没弹框、直接重抽了；后面别的弹窗不归这里管，绝不替它点确认）
-            logger.info("刷回忆：等再生成确认框时来了别的弹窗，不管：%s", " ".join(texts)[:120])
-            return None
-        if any("ジュエル" in t for t in texts):
-            logger.warning("刷回忆：再生成要花钻石，点キャンセル（不再生成）")
+            # 不是再生成的确认框（点了再生成没弹框、直接重抽了）：不替它点确认，点キャンセル（キャンセル不会花东西）
+            logger.info("刷回忆：等再生成确认框时来了别的框，点キャンセル：%s", " ".join(texts)[:120])
+            _regen["pending"] = False
+            return int(cancel.rect.center.x), int(cancel.rect.center.y)
+        _regen["pending"] = False
+        free = any(w in t for t in texts for w in REGEN_FREE_WORDS)
+        if any("ジュエル" in t or "ジユエル" in t for t in texts) or not free:
+            # 白名单：要读到「チケット」「無料」才确认（钻石可能只显示成图标 + 数字，或「ジュエル」读错）
+            logger.warning(
+                "刷回忆：再生成确认框里没读到免费 / 再生成券（或有钻石），点キャンセル：%s", " ".join(texts)[:160]
+            )
             return int(cancel.rect.center.x), int(cancel.rect.center.y)
         ok = next((b for b in boxes if _txt(b) in REGEN_CONFIRM_WORDS and b.rect.center.y > 700), None)
         if ok is None:

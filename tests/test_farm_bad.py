@@ -208,6 +208,25 @@ def test_regen_ignores_unrelated_dialog(monkeypatch):
     monkeypatch.setattr(farm, "_regen", {"done": 0, "pending": False, "reported": set()})
     assert farm.regen_step(_boxes(*RESULT)) == (130, 1160)
     other = _boxes(("フォトを保存しますか", 360, 640), ("キャンセル", 218, 1000), ("決定", 500, 1000))
-    assert farm.regen_step(other) is None
+    assert farm.regen_step(other) == (218, 1000)  # 不替它点「決定」：点キャンセル
     assert farm.regen_step(_boxes(*RESULT)) is None  # 回到结果页：不再等确认框，也不再生成第二次
     assert farm._regen["pending"] is False
+
+
+def test_regen_dialog_needs_ticket_or_free(monkeypatch):
+    """白名单：确认框里没读到「チケット」「無料」（钻石只显示成图标 + 数字）就キャンセル；
+    框是半透明的、底下结果页的字还读得到时也由这里管，不交回通用分支去点「決定」。"""
+    from hiro.brain import farm
+
+    monkeypatch.setenv("HIRO_FARM", "bad")
+    monkeypatch.setattr(farm, "_target_names", lambda: {"輝くキミへ"})
+    monkeypatch.setattr(farm, "_regen", {"done": 0, "pending": False, "reported": set()})
+    farm.regen_step(_boxes(*RESULT))
+    dlg = _boxes(
+        *RESULT,
+        ("メモリーを再生成しますか", 360, 600),
+        ("50", 400, 650),
+        ("キャンセル", 218, 1000),
+        ("決定", 500, 1000),
+    )
+    assert farm.regen_step(dlg) == (218, 1000)
