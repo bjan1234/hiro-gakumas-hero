@@ -331,13 +331,14 @@ def cost(f) -> int | None:
     return nums[0][1] - nums[-1][1]
 
 
-def buy_ap(rt, keys: list[str]) -> list[str]:
-    """在デイリー交換所切到 AP 页签，买 keys 对应的几样（按确认框里的名字认），返回买到的名字。"""
+def buy_ap(rt, keys: list[str], got: list[str] | None = None) -> list[str]:
+    """在デイリー交換所切到 AP 页签，买 keys 对应的几样（按确认框里的名字认），买到的名字追加进 got 并返回。
+    got 由调用方传入：中途停下（ResumeBlocked）时已经买到的照样在里面（CodeRabbit #197）。"""
+    got = [] if got is None else got
     f = common.frame(rt)
     if not tap_word(rt, f, "AP", y_min=1050, y_max=1120, x_min=400):
-        return []
+        return got
     rt.sleep(1.5)
-    got: list[str] = []
     for tile in tiles(common.frame(rt)):
         if tile["left"] <= 0:
             continue
@@ -405,7 +406,8 @@ def _buy_round(
     money_short = False  # 有一件金币不够（跳过它接着看别的，CodeRabbit #122）
     screens = 0
     last_sig = None
-    while screens < MAX_SCREENS and len(bought) < MAX_BUYS:
+    start = len(bought)  # 上限按这一轮新买的算：免费刷新后的第二轮不被第一轮的件数挤掉（CodeRabbit #197）
+    while screens < MAX_SCREENS and len(bought) - start < MAX_BUYS:
         f = common.frame(rt)
         sig = tuple((t.text, t.rect.center.y // 20) for t in f.texts if t.rect.center.y < 1060)
         if sig == last_sig:
@@ -500,7 +502,7 @@ def run(rt) -> str:
             if got:
                 bought.append(got)
         if ap_keys:
-            ap_got = buy_ap(rt, ap_keys)
+            buy_ap(rt, ap_keys, ap_got)
         nav.goto_home(rt)
     except ResumeBlocked as e:
         stopped = str(e) or "超时"
@@ -530,4 +532,5 @@ def run(rt) -> str:
         )
     if stopped is not None:
         parts.append(f"商店中途停下：{stopped}")
+        raise common.PartialStop("；".join(parts), stopped)  # 已买的照样报，这一项算没做完（CodeRabbit #197）
     return "；".join(parts)

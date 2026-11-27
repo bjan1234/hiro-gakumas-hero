@@ -83,7 +83,13 @@ def count(f) -> int | None:
         if m := re.search(r"(\d+)\s*回\s*$", t.text):
             return int(m.group(1))
         if re.fullmatch(r".*回数\s*[:：]?\s*", t.text):
-            return 0
+            # 标签和「N回」可能分成两个框：同一行右边找（CodeRabbit #198）；那一行右边什么都没有才算 0
+            right = [o for o in f.texts if o is not t and abs(o.rect.center.y - t.rect.center.y) < 20
+                     and o.rect.center.x > t.rect.center.x]  # fmt: skip
+            for o in sorted(right, key=lambda o: o.rect.center.x):
+                if m := re.fullmatch(r"\s*(\d+)\s*回\s*", o.text):
+                    return int(m.group(1))
+            return 0 if not right else None
     return None
 
 
@@ -161,7 +167,9 @@ def draw(rt, pool: str, times: int) -> int:
             logger.warning("扭蛋次数读到 %d 次，比要的 %d 次多，不抽", n, times)
         tap_word(rt, h, "キャンセル", y_min=1080)
         return 0
-    tap_word(rt, h, "決定", y_min=1080)
+    if not tap_word(rt, h, "決定", y_min=1080):  # 没点上「決定」= 没抽：关掉框，不报次数（CodeRabbit #197）
+        tap_word(rt, common.frame(rt), "キャンセル", y_min=1080)
+        return 0
 
     def back(f):
         if (
@@ -209,5 +217,8 @@ def run(rt) -> str:
         if isinstance(e, DrawStopped) and e.n > 0:
             done.append(f"{NAMES[e.pool]} {e.n} 次")
         logger.warning("硬币扭蛋中途停下：%s", e)
-        return "硬币扭蛋：" + ("、".join(done) + "；" if done else "") + f"中途停下：{e or '超时'}"
+        why = str(e) or "超时"
+        raise common.PartialStop(
+            "硬币扭蛋：" + ("、".join(done) + "；" if done else "") + f"中途停下：{why}", why
+        ) from e  # 已抽的照样报，这一项算没做完（CodeRabbit #197）
     return "硬币扭蛋：" + ("、".join(done) if done else "币不够，没抽")

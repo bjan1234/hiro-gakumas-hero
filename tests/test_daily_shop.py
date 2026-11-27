@@ -60,6 +60,7 @@ def test_coin_gacha_count_and_plan(monkeypatch):
     assert coin_gacha.count(frame(("ガシャ回数:4回", 300, 816))) == 4
     assert coin_gacha.count(frame(("ガシャ回数:", 300, 816))) == 0  # SIMD 把「0回」漏读
     assert coin_gacha.count(frame(("フレンドガシャ", 300, 545))) is None
+    assert coin_gacha.count(frame(("ガシャ回数:", 300, 816), ("5回", 420, 816))) == 5  # 分成两框（CodeRabbit #198）
     monkeypatch.delenv("HIRO_COIN_GACHA", raising=False)
     assert coin_gacha.plan() == []  # 缺省不抽（花币的事默认关，开局页的日常选项会显式传）
     monkeypatch.setenv("HIRO_COIN_GACHA", "auto")
@@ -198,8 +199,49 @@ def test_shop_timeout_still_reports_bought(monkeypatch):
     monkeypatch.delenv("HIRO_SHOP_AP", raising=False)
     screen = frame(("3,000", 120, 480), ("あと1回", 104, 509))
     rt = _shop(monkeypatch, screen, {104: ("ロジックノート", 3000, 1)}, 5000, home_raises=True)
-    r = shop.run(rt)
-    assert "商店买了" in r and "中途停下" in r
+    import pytest
+
+    with pytest.raises(shop.common.PartialStop) as e:  # 这一项算没做完（CodeRabbit #197），已买的照样报
+        shop.run(rt)
+    assert "商店买了" in e.value.result and "中途停下" in e.value.result and "回首页超时" in e.value.reason
+
+
+def test_shop_ap_bought_kept_when_stopped(monkeypatch):
+    """体力商店买了一件后停下：结果里照样有这一件（CodeRabbit #197）。"""
+    from hiro.loop.errors import ResumeBlocked
+
+    rt = _Rt()
+    monkeypatch.setattr(shop, "tap_word", lambda *a, **k: True)
+    monkeypatch.setattr(shop.common, "frame", lambda rt: frame(("x", 1, 1)))
+    monkeypatch.setattr(shop, "tiles", lambda f: [{"x": 100, "y": 500, "left": 2}, {"x": 300, "y": 500, "left": 2}])
+    calls = {"n": 0}
+
+    def dialog(rt, gone=False):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise ResumeBlocked("弹窗")
+        return frame(("APを使用して", 300, 512))
+
+    monkeypatch.setattr(shop, "wait_dialog", dialog)
+    monkeypatch.setattr(shop, "read_dialog", lambda g: {"name": "再挑戦チケット", "ap": True, "jewel": False})
+    monkeypatch.setattr(shop, "confirm", lambda rt, g: True)
+    got: list[str] = []
+    import pytest
+
+    with pytest.raises(ResumeBlocked):
+        shop.buy_ap(rt, ["retry"], got)
+    assert got == ["再挑戦チケット"]
+
+
+def test_shop_max_buys_counts_this_round_only(monkeypatch):
+    """免费刷新后的第二轮：上限按这一轮新买的算，不被第一轮已买的件数挤掉（CodeRabbit #197）。"""
+    monkeypatch.setenv("HIRO_SHOP", "all")
+    monkeypatch.delenv("HIRO_SHOP_ITEMS", raising=False)
+    screen = frame(("3,000", 120, 480), ("あと1回", 104, 509))
+    rt = _shop(monkeypatch, screen, {104: ("ロジックノート", 3000, 1)}, 10**9)
+    bought = ["x"] * shop.MAX_BUYS
+    shop._buy_round(rt, "all", [], {}, {}, bought)
+    assert len(bought) > shop.MAX_BUYS
 
 
 def test_shop_items_ignored_when_off(monkeypatch):
@@ -382,3 +424,19 @@ def test_refresh_then_buy_another_round(monkeypatch):
     rounds.clear()
     shop.run(_Rt())
     assert len(rounds) == 1
+
+
+def test_coin_gacha_stop_reports_drawn_but_fails(monkeypatch):
+    """抽完关结果时超时：已抽的照样报，这一项算失败（原来记成成功，CodeRabbit #197）。"""
+    import pytest
+
+    monkeypatch.setenv("HIRO_COIN_GACHA", "friend:2")
+    monkeypatch.setattr(coin_gacha, "goto_coin_gacha", lambda rt: True)
+
+    def draw(rt, pool, times):
+        raise coin_gacha.DrawStopped(pool, 2, "关结果超时")
+
+    monkeypatch.setattr(coin_gacha, "draw", draw)
+    with pytest.raises(coin_gacha.common.PartialStop) as e:
+        coin_gacha.run(_Rt())
+    assert "2 次" in e.value.result and "关结果超时" in e.value.reason

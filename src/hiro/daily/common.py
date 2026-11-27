@@ -123,6 +123,14 @@ class Popup:
         return "要花钻石的确认框 → 取消" if kind == "cancel" else "说明框 → 关闭"
 
 
+class PartialStop(Exception):
+    """一项做到一半停下（超时、弹窗…）：result 是已经做了的（照样报给人看），这一项算失败（CodeRabbit #197）。"""
+
+    def __init__(self, result: str, reason: str):
+        super().__init__(reason)
+        self.result, self.reason = result, reason
+
+
 class TaskTimeout(Exception):
     """日常单项超过时限（Deadline 抛）。"""
 

@@ -489,6 +489,40 @@ def test_run_own_stops_all_when_dialog_stuck(monkeypatch, tmp_path):
     assert [r["task"] for r in summary] == ["shop"] and not summary[0]["ok"] and ran == []
 
 
+def test_run_own_partial_stop_keeps_result_and_continues(monkeypatch, tmp_path):
+    """做到一半停下（PartialStop）：结果照样记下，这一项算失败，后面的项照跑（CodeRabbit #197）。"""
+    import importlib.util
+    from pathlib import Path
+
+    import hiro.daily
+    import hiro.devices
+    from hiro.daily.common import PartialStop
+
+    spec = importlib.util.spec_from_file_location(
+        "run_daily", Path(__file__).resolve().parents[1] / "tools/daily/run_daily.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    class Dev(FakeDevice):
+        def connect(self):
+            pass
+
+    monkeypatch.setattr(hiro.devices, "open_device", lambda name=None: Dev())
+
+    def half(rt):
+        raise PartialStop("硬币扭蛋：友情 2 次；中途停下：超时", "超时")
+
+    monkeypatch.setitem(hiro.daily.TASKS, "coin_gacha", half)
+    monkeypatch.setitem(hiro.daily.TASKS, "club_reward", lambda rt: "领了")
+    summary = mod.run_own(["coin_gacha", "club_reward"], 0.5, tmp_path)
+    by = {r["task"]: r for r in summary}
+    assert (
+        not by["coin_gacha"]["ok"] and "友情 2 次" in by["coin_gacha"]["result"] and by["coin_gacha"]["error"] == "超时"
+    )
+    assert by["club_reward"]["ok"]
+
+
 # ---------------------------------------------------------------- 匹配小工具（移植 kotonebot 的 colored / WhiteFilter / raw find）
 
 

@@ -100,6 +100,7 @@ def run_own(names: list[str], timeout: float, out: Path) -> list[dict]:
     """hiro.daily：设备 hiro.devices（HIRO_DEVICE），Runtime 的中断层带 Popup（说明框 / ジュエル框）和 Deadline（单项超时）。"""
     from hiro.daily import TASKS as OWN
     from hiro.daily import Deadline, Popup, TaskTimeout, make_runtime
+    from hiro.daily.common import PartialStop
     from hiro.devices import open_device
 
     import cv2
@@ -133,6 +134,9 @@ def run_own(names: list[str], timeout: float, out: Path) -> list[dict]:
         try:
             rec["result"] = OWN[n](rt)
             rec["ok"] = True
+        except PartialStop as e:  # 做到一半停下：已经做了的照样报（结果行），这一项算失败
+            rec["ok"] = False
+            rec["result"], rec["error"] = e.result, e.reason
         except TaskTimeout:
             rec["ok"] = False
             rec["error"] = f"超时 {timeout:.0f}s，已打断"
