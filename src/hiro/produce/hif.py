@@ -1279,9 +1279,13 @@ class HifCore:
                 return
             if preview == "abort":
                 # 点过以后中途对不上（选中没生效 / 认不出选中项）：选中态可能已经变了，原来的双击提交会把已选中的那项确认掉，
-                # 交给下一拍重新看画面（CodeRabbit #196 / #198）
+                # 交给下一拍重新看画面（CodeRabbit #196 / #198）。连着两次对不上 = 选中态读不准，再点下去可能把没选的那项确认掉：停下交给人（自检）
+                self._event_aborts = getattr(self, "_event_aborts", 0) + 1
+                if self._event_aborts >= 2:
+                    raise ResumeBlocked("事件选项：连着两次读不准哪项是选中态，停下交给人（再点可能确认到没选的那项）")
                 self.s.note("EVENT_CHOICE：看效果中途对不上，交给下一拍重新看")
                 return
+            self._event_aborts = 0
             if preview is not None:
                 sel_i = [preview]  # 现在选中的是哪项（提交时更新：画面没变要重提交时，那项已经是选中态，只点一下）
 
