@@ -177,6 +177,13 @@ class LessonInfo:
                 or (d["turns_total"] is None and not self._turns_bad))  # fmt: skip
 
 
+def lesson_clear_left(shot, hv) -> int | None:
+    """练习课画面「CLEARまで N」的 N：目标不是通关线（PERFECT 段等）或读不到时 None。刷回忆 BAD 在出牌决策时现读（审查 #198 第 4 条）。"""
+    if hv.lesson_goal(shot) != "clear":
+        return None
+    return (hv.read_lesson_hud(shot) or {}).get("left")
+
+
 def hajime_core(scenario_mode: str):
     """HifCore 的初版：练习课按考试打、考试标签 hajime-mid1 / hajime-final、按名次判过线和再挑戦。"""
     from hiro.devices import active  # 用时再取 active.device / active.sleep（测试可替换）
@@ -273,7 +280,8 @@ def hajime_core(scenario_mode: str):
             wrap = None
             if farming:
                 # 包在 run_exam 最后选定的出招外面（strategy.json 换了出牌插件也照样停手，CodeRabbit #198）
-                wrap = lambda a: farm.BadLessonAdvisor(a, live, lambda: info.d.get("clear_target"), farm.margin_ratio())  # noqa: E731
+                wrap = lambda a: farm.BadLessonAdvisor(a, live, lambda: info.d.get("clear_target"), farm.margin_ratio(),  # noqa: E731
+                                                       read_left=lambda: lesson_clear_left(active.device.screenshot(), hv))  # fmt: skip
 
                 logger.info("刷回忆 BAD：这节课离通关线还差通关线的 %.0f%% 以内就不再出牌", farm.margin_ratio() * 100)
             run_exam(self.brain, label, self.rec, ended, session=self.s, advisor=self.advisor, wrap=wrap)

@@ -226,10 +226,25 @@ def impression_gain(impression: int | None, turns: int | None) -> int:
 
 class BadLessonAdvisor:
     """练习课的出牌顾问外面包一层：离通关线只差 margin 以内（画面「CLEARまで N」的 N）就跳过回合，不再出牌，
-    让这节课以「刚好没过」结束（不掉技能卡）。读不到 N 时照常交给原来的顾问。live 由练习课的结束判断每帧更新。"""
+    让这节课以「刚好没过」结束（不掉技能卡）。读不到 N 时照常交给原来的顾问。live 由练习课的结束判断每帧更新。
+    read_left：决策时现读一次 N（给了就优先用它）。live 是循环开头那张截图读的，出牌后多半还在分数动画里、N 偏大，
+    读不到时还留着上一次的旧值（审查 #198 第 4 条 / CodeRabbit hajime.py:276）；现读读不到再退回 live。"""
 
-    def __init__(self, inner, live: dict, clear_target, ratio: float):
+    def __init__(self, inner, live: dict, clear_target, ratio: float, read_left=None):
         self.inner, self.live, self.clear_target, self.ratio = inner, live, clear_target, ratio
+        self.read_left = read_left
+
+    def _left(self):
+        if self.read_left is not None:
+            try:
+                fresh = self.read_left()
+            except Exception as e:  # noqa: BLE001  截图 / OCR 出错：退回 live
+                logger.warning("刷回忆 BAD：决策时读「CLEARまで」失败，用上一帧的读数：%s", e)
+                fresh = None
+            if fresh is not None:
+                self.live["left"] = fresh
+                return fresh
+        return self.live.get("left")
 
     def margin(self) -> float | None:
         t = self.clear_target() if callable(self.clear_target) else self.clear_target
@@ -238,8 +253,9 @@ class BadLessonAdvisor:
     def decide(self, state, memory, previews, legal):
         from hiro.contracts import Action, ActionKind, Decision
 
-        left, m = self.live.get("left"), self.margin()
+        m = self.margin()
         can_skip = any(getattr(a, "kind", None) is ActionKind.SKIP for a in legal)
+        left = self._left() if m is not None and can_skip else None  # 只在停得了手时才多截一次图
         if left is not None and m is not None and can_skip:
             # 11-27 实机（藤田ことね 好印象流）：停手后好印象每回合结束还自动加参数，差 5 停手照样过线、拿了卡。
             # 余量 = 通关线 × 比例 + 之后几回合好印象自动加的分 × PASSIVE_SAFETY

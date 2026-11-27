@@ -597,3 +597,41 @@ def test_consult_deck_unread_normal_mode_unchanged(monkeypatch):
 
     _, d = _consult(monkeypatch, False, [])
     assert d.action.kind is ActionKind.SHOP_END and "牌组没识别" in d.reason, d
+
+
+def test_bad_lesson_advisor_reads_left_at_decision_time():
+    """审查 #198 第 4 条 / CodeRabbit hajime.py:276：live 是循环开头那张截图读的（出牌后还在分数动画里、偏大），
+    决策时现读一次；现读读不到 / 出错再退回 live 的值。"""
+    from hiro.contracts import Action, ActionKind
+
+    inner = NS(decide=lambda *a: "inner")
+    legal = [Action.play_card(0), Action.skip()]
+    live = {"left": 60}  # 动画帧：还差 60，按它会继续出牌
+    fresh = [20]
+    adv = farm.BadLessonAdvisor(inner, live, lambda: 100, 0.3, read_left=lambda: fresh[0])
+    d = adv.decide(None, None, None, legal)
+    assert d.action.kind is ActionKind.SKIP and "20" in d.reason and live["left"] == 20
+    fresh[0] = None  # 现读读不到：退回 live
+    live["left"] = 45
+    assert adv.decide(None, None, None, legal) == "inner"
+    live["left"] = 25
+    assert adv.decide(None, None, None, legal).action.kind is ActionKind.SKIP
+
+    def boom():
+        raise RuntimeError("ocr")
+
+    adv = farm.BadLessonAdvisor(inner, {"left": 25}, lambda: 100, 0.3, read_left=boom)
+    assert adv.decide(None, None, None, legal).action.kind is ActionKind.SKIP
+    calls = []
+    adv = farm.BadLessonAdvisor(inner, {}, lambda: 100, 0.3, read_left=lambda: calls.append(1))
+    assert adv.decide(None, None, None, [Action.play_card(0)]) == "inner" and not calls  # 不能跳过时不多截图
+
+
+def test_lesson_clear_left_only_on_clear_goal():
+    from hiro.runtime.hajime import lesson_clear_left
+
+    hv = NS(lesson_goal=lambda shot: shot["goal"], read_lesson_hud=lambda shot: {"left": shot.get("left")})
+    assert lesson_clear_left({"goal": "clear", "left": 12}, hv) == 12
+    assert lesson_clear_left({"goal": "perfect", "left": 12}, hv) is None
+    assert lesson_clear_left({"goal": "clear"}, hv) is None
+    assert lesson_clear_left({"goal": None, "left": 3}, hv) is None
