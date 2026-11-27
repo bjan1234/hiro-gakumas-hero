@@ -548,7 +548,9 @@ def _is_regen_dialog_no_cancel(texts: list[str]) -> bool:
     )
 
 
-DIALOG_X_PAD = 160  # 确认框左右边界：キャンセル与确认按钮的 x 范围往外扩这么多（720 宽：按钮约 x 218 / 500，框约 x 60–660）
+DIALOG_X_PAD = (
+    160  # 确认框左右边界：キャンセル与确认按钮的 x 范围往外扩这么多（720 宽：按钮约 x 218 / 500，框约 x 60–660）
+)
 
 
 def _dialog_box_texts(boxes, cancel, ok) -> list[str] | None:

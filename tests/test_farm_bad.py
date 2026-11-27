@@ -205,7 +205,11 @@ def test_unrecorded_cards_are_never_deleted(monkeypatch):
     dec = ProduceDeciders(profile_for("i_card-hski-3-000"), None)
     d = dec.decide("CONSULT", GameState(produce=prod, page_fields=pf))
     assert d.action.kind is ActionKind.SHOP_END, d
-    cards = [{"index": 0, "card_id": "p_card-x"}, {"index": 1, "card_id": "p_card-x"}, {"index": 2, "card_id": "p_card-y"}]
+    cards = [
+        {"index": 0, "card_id": "p_card-x"},
+        {"index": 1, "card_id": "p_card-x"},
+        {"index": 2, "card_id": "p_card-y"},
+    ]
     assert [c["index"] for c in farm.junk_cards(cards, set(), {"p_card-x": 1})] == [0]  # 记了一张 x：只删一张
 
 
@@ -988,7 +992,9 @@ def test_cancel_decision_survives_blank_frames(monkeypatch):
     now = [0.0]
     farm = _regen_started(monkeypatch, now)
     paid = _boxes(("ジュエルを50個使用します", 360, 600), ("キャンセル", 218, 1000), ("再生成する", 500, 1000))
-    looks_free = _boxes(("メモリー再生成チケットを1枚使用します", 360, 640), ("キャンセル", 218, 1000), ("再生成する", 500, 1000))
+    looks_free = _boxes(
+        ("メモリー再生成チケットを1枚使用します", 360, 640), ("キャンセル", 218, 1000), ("再生成する", 500, 1000)
+    )
     assert farm.regen_step(paid) == (218, 1000)
     now[0] = 1.0
     assert farm.regen_step([]) == farm.WAIT and farm._regen["cancelled"]  # 空帧：不清

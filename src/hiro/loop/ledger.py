@@ -84,9 +84,11 @@ def picked_cards(steps: Iterable[dict]) -> Counter:
             for i in args.get("pick_indexes") or []:
                 if 0 <= int(i) < len(cands) and cands[int(i)].get("card_id"):
                     got[cands[int(i)]["card_id"]] += 1
-        elif (page == "CONSULT" and kind == "ShopBuy" and args.get("service") == "delete") or page == "SKILL_CARD_REMOVAL":
-            if args.get("card_id"):
-                got[args["card_id"]] -= 1
+        elif args.get("card_id") and (
+            (page == "CONSULT" and kind == "ShopBuy" and args.get("service") == "delete")
+            or page == "SKILL_CARD_REMOVAL"
+        ):
+            got[args["card_id"]] -= 1
     return +got
 
 
