@@ -164,6 +164,11 @@ func (a *App) confirmCard(c *ui.Context, m *Message, card plugin.Card) {
 			for _, r := range e.Rows {
 				kit.KV(c, r[0], r[1])
 			}
+			if a.d.AfterRun != nil {
+				if after := a.d.AfterRun(); after != "" {
+					kit.KV(c, "做完后", after)
+				}
+			}
 			if len(e.Thumbs) > 0 {
 				ui.Row(c).Gap(6).Padding(2, 0, 2, 56).Children(func() {
 					for _, th := range e.Thumbs {

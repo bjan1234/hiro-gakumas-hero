@@ -52,6 +52,19 @@ _EXC_SUFFIX = re.compile(r"(?:Error|Exception|Gone|Unavailable|Blocked|Page)$")
 _RECOVERED = re.compile(r"改用 RapidOCR|改到子进程里跑")
 
 
+def center_dmm_window() -> None:
+    """任务结束后把 DMM 游戏窗口放回屏幕正中（11-25 用户：后台点击会把窗口挪到最后一次点击的位置，
+    标题栏有时跑到屏幕外，手动都拖不回来）。只在 Windows + HIRO_DEVICE=dmm；没有窗口 / 没权限就算了。"""
+    if sys.platform != "win32" or (os.environ.get("HIRO_DEVICE") or "").strip().lower() != "dmm":
+        return
+    try:
+        from hiro.devices import win_window
+
+        win_window.center()
+    except Exception:  # noqa: BLE001, S110  居中失败不影响任务结果
+        pass
+
+
 def failure_reason(lines: list[str]) -> str | None:
     """任务出错时给人看的一句原因：最后一条「停下：…」，没有就最后一条 ERROR 日志（去掉时间 / 级别 / 模块前缀和本机截图路径）。
     11-25 review：failed 事件只写「看上面的日志」，对话和对局卡里看不到原因。"""
@@ -876,6 +889,7 @@ class Job:
                 if line.startswith("停下：") or "[ERROR]" in line or "[CRITICAL]" in line:
                     tail = [*tail[-19:], line]
         code = self.proc.wait()
+        center_dmm_window()
         self._read_steps()  # 最后几步
         self.flag.unlink(missing_ok=True)
         self.exit_code, self.ended_at = code, time.time()

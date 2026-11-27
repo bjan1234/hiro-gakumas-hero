@@ -98,6 +98,12 @@ func buildApp(d appDeps) *shell.App {
 			return cache.Save(s, "")
 		},
 		AllowAllConfirmed: func() bool { return cache.Get().AllowAllConfirmed },
+		AfterRun: func() string {
+			if cache.Get().CloseGameAfter && settings.CloseGameSupported {
+				return "关游戏（「跑完关游戏」开着）；之后要先自己把游戏打开"
+			}
+			return ""
+		},
 	}, reg)
 	return app
 }

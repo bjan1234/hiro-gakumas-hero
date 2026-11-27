@@ -10,6 +10,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/matto49/hiro-gakumas-hero/app/hiroapi"
+	"github.com/matto49/hiro-gakumas-hero/app/plugin"
 	"github.com/matto49/hiro-gakumas-hero/app/plugins/plugintest"
 )
 
@@ -632,5 +633,35 @@ func TestWizardHasNoAccountStep(t *testing.T) {
 	tt2.Frame()
 	if s2.step != len(steps)-1 {
 		t.Errorf("旧步数应落到最后一步：%d", s2.step)
+	}
+}
+
+// #123 review / CodeRabbit：关游戏成功后侧栏不再显示「已连上」、告诉玩家下次先开游戏；不支持的平台不关也不显示开关。
+func TestCloseGameAfterUpdatesConnection(t *testing.T) {
+	closeWait = 0
+	defer func() { closeWait = 5 * time.Second }()
+	old := CloseGameSupported
+	defer func() { CloseGameSupported = old }()
+	CloseGameSupported = true
+	f := &fake{s: Settings{Provider: "deepseek", WizardDone: true, CloseGameAfter: true}, secrets: map[string]string{}, ready: true}
+	s := New(f.deps())
+	on := true
+	s.deviceOK, s.device = &on, "DMM 已连上"
+	h := plugintest.New(map[string]string{"game close": `{"closed":true}`})
+	done := &plugin.JobView{State: "done", Job: &plugin.Job{ID: "j1", Kind: "daily"}}
+	s.closeGameAfter(h, done)
+	if !h.Called("game close") || s.deviceOK == nil || *s.deviceOK || !strings.Contains(s.device, "游戏已关") || len(h.Posted) != 1 {
+		t.Fatalf("关游戏后：called=%v device=%q ok=%v posted=%d", h.Called("game close"), s.device, s.deviceOK, len(h.Posted))
+	}
+	CloseGameSupported = false
+	h2 := plugintest.New(map[string]string{"game close": `{"closed":true}`})
+	s.closeGameAfter(h2, done)
+	if h2.Called("game close") {
+		t.Error("不支持的平台不该关游戏")
+	}
+	tt := ui.NewTester(func(c *ui.Context) { s.footer(c, h2) }, 260, 400)
+	tt.Frame()
+	if tt.HasText("跑完关游戏") {
+		t.Error("不支持的平台不显示「跑完关游戏」")
 	}
 }

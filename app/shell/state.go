@@ -53,6 +53,8 @@ type Deps struct {
 	SetPermission func(level string) error
 	// AllowAllConfirmed 是第一次切到「允许所有行为」时的二次确认做过没有（只弹一次）。
 	AllowAllConfirmed func() bool
+	// AfterRun 是确认卡上「做完后」那一行（「跑完关游戏」开着时写会关游戏、之后要手动开，#123 review）；nil 或 "" 不写。
+	AfterRun func() string
 }
 
 // App 是主界面的全部状态。只在界面线程里改。
