@@ -256,3 +256,11 @@ def test_commit_after_preview_select_did_not_take(monkeypatch):
     core.deciders = NS(decide=lambda page, st, **k: dec(1))
     core._event_page("EVENT_CHOICE", lambda i: None, 2)
     assert done == [False] and screen.taps == [904] and not screen.confirmed
+
+
+def test_same_event_tolerates_covered_option_but_not_new_event():
+    """说明框盖住了另一个选项的字：还算同一个事件；换成选项字全不一样的事件：不算。"""
+    choices = [{"text": "梦想的进展怎么样了?"}, {"text": "有个新的课程建议"}]
+    box = lambda t: (t, 0.9, (0, 0, 10, 10))  # noqa: E731
+    assert hif.HifCore._same_event([box("梦想的进展怎么样了?"), box("…を選択して獲得")], choices)
+    assert not hif.HifCore._same_event([box("休む"), box("レッスンする")], choices)

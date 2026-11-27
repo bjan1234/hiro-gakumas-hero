@@ -1374,7 +1374,10 @@ class HifCore:
         「点完进了另一个也有选项、同一行也是选中态的事件」（CodeRabbit #198）。一个选项字都没有时认不出，算不是。"""
         texts = [t for t, _, _ in boxes]
         labels = [str(c.get("text") or "")[:4] for c in choices if c.get("text")]
-        return bool(labels) and all(any(lab in t for t in texts) for lab in labels)
+        # 至少一半选项的字还在（向上取整、至少 1 项）：选中项上方的说明框可能盖住别的选项按钮，要求全在会一直判成「页面走了」；
+        # 换成别的事件时选项字一个都对不上，照样拦得住
+        hit = sum(any(lab in t for t in texts) for lab in labels)
+        return bool(labels) and hit >= max(1, (len(labels) + 1) // 2)
 
     def _event_strikes(self, choices: list, preview) -> int:
         """事件选项看效果「对不上」（abort）连着几次：只算同一个事件（按选项文字认），换了事件 / 页面走了（left）/ 看成了就重新数
