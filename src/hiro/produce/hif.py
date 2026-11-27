@@ -1256,7 +1256,7 @@ class HifCore:
             btn_commit = commit_index
             grey = any(c.get("disabled") for c in choices)
 
-            def commit_index(i):  # noqa: F811
+            def commit_index(i):  # pyright: ignore[reportRedeclaration]  # noqa: F811
                 if i < btn_n and not grey:
                     return btn_commit(i)
                 c = next((c for c in choices if c.get("index") == i and c.get("center")), None)
@@ -1272,6 +1272,7 @@ class HifCore:
 
             self.s.note(f"{page}：按钮识别认出 {btn_n} 项，识别层 {len(choices)} 项（有选项被挡住），按识别层")
         if page == "EVENT_CHOICE":
+            assert self.s is not None  # 上面的嵌套函数让类型收窄丢了
             preview = self._preview_event_effects(choices)
             if preview == "left":
                 self.s.note("EVENT_CHOICE：看效果时页面变了（点到已选中的那项 = 确认了），交给下一拍")
@@ -1350,6 +1351,7 @@ class HifCore:
         from hiro.vision.classify import option_regions
         from hiro.vision.event import effect_above
 
+        assert self.s is not None
         pf = self.s.state.page_fields or {}
         live = [c for c in choices if c.get("center") and not c.get("disabled")]
         if pf.get("dialogue_only") or len(live) < 2 or all(c.get("effect") for c in live):
