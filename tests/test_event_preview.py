@@ -110,6 +110,7 @@ def test_preview_skipped_when_selected_unknown(monkeypatch):
     notes = []
     assert hif.HifCore._preview_event_effects(_fake(monkeypatch, screen, choices, notes), choices) is None
     assert screen.taps == [] and "认不出" in notes[0]
+    assert all(c.get("effect_unread") for c in choices if not c.get("effect"))  # 效果未知：标成未读（CodeRabbit #198）
 
 
 def test_preview_stops_when_tap_did_not_select(monkeypatch):

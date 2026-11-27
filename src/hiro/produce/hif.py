@@ -1306,6 +1306,9 @@ class HifCore:
                         if not self._is_selected(device.screenshot(), y):
                             return False  # 选中没生效（或页面已经变了）：不点确认，交给重试 / 下一拍重新看
                         sel_i[0] = i
+                    elif not self._still_here(device.screenshot(), choices, y):
+                        # 重试时（上一下其实已经确认、进了下一个事件选项页）：画面已不是这一页 / 这项不是选中态，不点旧坐标（CodeRabbit #198）
+                        return False
                     device.click(int(x), int(y))
                     sleep(2)
                     return True
@@ -1356,6 +1359,14 @@ class HifCore:
         sy = self._selected_y(img)
         return sy is not None and abs(sy - int(y)) <= self.SELECTED_DY
 
+    def _still_here(self, img, choices: list, y) -> bool:
+        """还是产生 choices 的那一页、y 那项还是选中态：读得到这页的选项字（前 4 个字），且 y 处是选中态。"""
+        if not self._is_selected(img, y):
+            return False
+        texts = [t for t, _, _ in ops.ocr_boxes(img)]
+        labels = [str(c.get("text") or "")[:4] for c in choices if c.get("text")]
+        return bool(labels) and all(any(lab in t for t in texts) for lab in labels)
+
     def _event_strikes(self, choices: list, preview) -> int:
         """事件选项看效果「对不上」（abort）连着几次：只算同一个事件（按选项文字认），换了事件 / 页面走了（left）/ 看成了就重新数
         （#196 review：上一个事件的一次 abort 加下一个事件第一次读不准，原来会凑成两次、整局停下）。"""
@@ -1389,6 +1400,10 @@ class HifCore:
         labels = [c.get("text") or "" for c in choices]
         sel = next((c["index"] for c in live if c.get("selected")), None)
         if sel is None:
+            # 没读到效果的项标成未读：效果未知，解析层判不完整，决策不按代价直接选（CodeRabbit #198）
+            for c in live:
+                if not c.get("effect"):
+                    c["effect_unread"] = True
             self.s.note("EVENT_CHOICE：认不出哪项是选中态，不逐个看效果（单击选中项会直接确认）")
             return None
         order = [c for c in live if c["index"] != sel] + [c for c in live if c["index"] == sel]
