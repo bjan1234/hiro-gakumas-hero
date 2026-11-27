@@ -148,7 +148,7 @@ func (a *App) pagesView(c *ui.Context) {
 			a.pageBody(c)
 		})
 	})
-	a.pageConfirm(c)
+	a.pageConfirm(c, true)
 }
 
 func (a *App) pagesSidebar(c *ui.Context) {
@@ -413,7 +413,8 @@ func (a *App) pageWaiting() (*Message, plugin.Card) {
 }
 
 // pageConfirm 弹出确认框：同一张确认卡（对话里那张），点「开始」才动游戏；点外面 / Esc = 先不。
-func (a *App) pageConfirm(c *ui.Context) {
+// enter：回车直接「开始」。对话界面里不接回车（输入框空着时回车也会确认对话里的确认卡，一下确认两张；自检）。
+func (a *App) pageConfirm(c *ui.Context, enter bool) {
 	m, card := a.pageWaiting()
 	if card == nil {
 		return
@@ -424,7 +425,7 @@ func (a *App) pageConfirm(c *ui.Context) {
 		ui.Column(c).Width(600).MaxHeight(720).Children(func() {
 			ui.Scroll(c).Children(func() { a.confirmCard(c, m, card) })
 		})
-		if !a.ui.resolving[p.ID] && c.Shortcut(0, ui.KeyEnter) {
+		if enter && !a.ui.resolving[p.ID] && c.Shortcut(0, ui.KeyEnter) {
 			a.resolve(m, card, "confirm")
 		}
 	})
