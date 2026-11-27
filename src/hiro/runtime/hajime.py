@@ -463,6 +463,16 @@ def run(args) -> int:
 
     guides.refresh_if_stale()  # 偶像卡攻略包：没有或超过 24 小时就下载，失败不阻塞（协调 11-20）
     formation_env.apply_formation_plan(args.idol)
+    from hiro.brain import farm
+
+    if farm.mode() == "bad":
+        try:
+            targets = farm.check_targets()  # 转写目标解析不出就开局前停下，不让相談删卡删掉它（审查 #198 第 2 条）
+        except ResumeBlocked as e:
+            logger.error("%s", e)
+            print(str(e))
+            return 3
+        logger.info("刷回忆：转写目标 %s", "、".join(sorted(targets)))
     support_set = args.support_set or formation_env.SUPPORT_SET
     memory_set = args.memory_set or formation_env.MEMORY_SET
     if args.command == "new" and (support_set is None or memory_set is None):

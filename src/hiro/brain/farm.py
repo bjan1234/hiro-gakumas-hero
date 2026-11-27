@@ -147,7 +147,49 @@ def target_cards(env: dict | None = None) -> set[str]:
             return {c for c in MEMORY_CARDS if c}
         except Exception:  # noqa: BLE001
             return set()
-    return {cid for c in raw.replace("，", ",").split(",") if (cid := card_id(c.strip()))}
+    return set(_resolve_targets(raw)[0])
+
+
+_TARGET_CACHE: dict[str, tuple[frozenset[str], tuple[str, ...]]] = {}
+
+
+def _resolve_targets(raw: str) -> tuple[frozenset[str], tuple[str, ...]]:
+    """HIRO_FARM_TARGET 原文 → (解析出的技能卡 id, 解析不出的那几项)。按原文缓存：选行动、删卡每次决策都要用，
+    不再每次重查资料库、重复打警告（审查 #198 第 2 条）。"""
+    if (got := _TARGET_CACHE.get(raw)) is not None:
+        return got
+    ids: set[str] = set()
+    bad: list[str] = []
+    for tok in raw.replace("，", ",").split(","):
+        if not (tok := tok.strip()):
+            continue
+        if cid := card_id(tok):
+            ids.add(cid)
+        else:
+            bad.append(tok)
+    got = _TARGET_CACHE[raw] = (frozenset(ids), tuple(bad))
+    return got
+
+
+def check_targets(env: dict | None = None) -> set[str]:
+    """开局前核对转写目标（审查 #198 第 2 条）：填了的每一项都要在资料库里找得到，一个都没有也不行；否则 ResumeBlocked 停下。
+    原来解析不出的名字直接丢掉，目标卡没被保护，相談删卡会把它当成这局拿到的卡删掉。"""
+    from hiro.loop.errors import ResumeBlocked
+
+    src = env if env is not None else os.environ
+    raw = (src.get("HIRO_FARM_TARGET") or "").strip()
+    if raw:
+        ids, bad = _resolve_targets(raw)
+        if bad:
+            raise ResumeBlocked(
+                f"刷回忆：转写目标「{'、'.join(bad)}」在资料库里找不到，没开始（不停下的话相談删卡会把它当成这局拿到的卡删掉）。"
+                "请检查卡名和游戏里写的是否完全一致（也可以填技能卡编号 p_card-…），以及资料库有没有下载好"
+            )
+        return set(ids)
+    ids = target_cards(src)
+    if not ids:
+        raise ResumeBlocked("刷回忆：没有转写目标（没填转写目标，回忆编成里也没读到卡），没开始（相談删卡会把目标卡一起删掉）")
+    return ids
 
 
 def card_id(name_or_id: str) -> str | None:

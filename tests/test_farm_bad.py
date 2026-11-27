@@ -498,3 +498,70 @@ def test_regen_skipped_when_name_looks_like_target(monkeypatch):
     assert farm.regen_step(_boxes(*page)) is None
     page = [b if b[0] != "リズミカル" else ("輝くキミヘ", 270, 730) for b in RESULT]
     assert farm.regen_step(_boxes(*page)) is None
+
+
+def _fake_catalog(monkeypatch):
+    from hiro.brain import farm
+    from hiro.cli import catalog
+
+    calls = []
+
+    def search(q, kind=None, lang="ja"):
+        calls.append(q)
+        return [{"id": "p_card-02-act-3_050", "name": "輝くキミへ"}] if q == "輝くキミへ" and lang == "ja" else []
+
+    monkeypatch.setattr(catalog, "search", search)
+    monkeypatch.setattr(farm, "_TARGET_CACHE", {})
+    return farm, calls
+
+
+def test_check_targets_blocks_on_unresolved(monkeypatch):
+    """审查 #198 第 2 条：填了的转写目标有一项解析不出（片假名写错 / 资料库没下载）：开局前 ResumeBlocked，不静默丢掉。"""
+    from hiro.loop.errors import ResumeBlocked
+
+    farm, _ = _fake_catalog(monkeypatch)
+    with pytest.raises(ResumeBlocked, match="輝くキミヘ.*卡名"):
+        farm.check_targets({"HIRO_FARM_TARGET": "輝くキミヘ"})
+    with pytest.raises(ResumeBlocked, match="没有这张"):
+        farm.check_targets({"HIRO_FARM_TARGET": "輝くキミへ,没有这张"})  # 多个目标只有一个解析不出也停
+    assert farm.check_targets({"HIRO_FARM_TARGET": "輝くキミへ，p_card-02-act-3_186"}) == {
+        "p_card-02-act-3_050",
+        "p_card-02-act-3_186",
+    }
+
+
+def test_check_targets_blocks_when_no_target(monkeypatch):
+    from hiro import formation_env
+    from hiro.loop.errors import ResumeBlocked
+
+    farm, _ = _fake_catalog(monkeypatch)
+    monkeypatch.setattr(formation_env, "MEMORY_CARDS", [])
+    with pytest.raises(ResumeBlocked, match="没有转写目标"):
+        farm.check_targets({})
+
+
+def test_target_resolution_is_cached(monkeypatch):
+    """审查 #198 第 2 条：每次决策都调 target_cards，解析结果按原文缓存，不再每次查资料库。"""
+    farm, calls = _fake_catalog(monkeypatch)
+    env = {"HIRO_FARM_TARGET": "輝くキミへ"}
+    assert farm.target_cards(env) == farm.target_cards(env) == {"p_card-02-act-3_050"}
+    assert calls == ["輝くキミへ"]
+
+
+def test_hajime_run_stops_before_device_on_bad_target(monkeypatch, capsys):
+    """审查 #198 第 2 条：初开局（new / resume 都一样）在连设备之前核对转写目标，解析不出退出码 3。"""
+    from types import SimpleNamespace as NS
+
+    from hiro import formation_env
+    from hiro.brain import guides
+    from hiro.runtime import hajime
+
+    _fake_catalog(monkeypatch)
+    monkeypatch.setenv("HIRO_FARM", "bad")
+    monkeypatch.setenv("HIRO_FARM_TARGET", "輝くキミヘ")
+    monkeypatch.setattr(guides, "refresh_if_stale", lambda: None)
+    monkeypatch.setattr(formation_env, "apply_formation_plan", lambda idol: None)
+    opened = []
+    monkeypatch.setattr("hiro.devices.open_device", lambda: opened.append(1))
+    assert hajime.run(NS(idol="i_card-hski-3-000", command="resume")) == 3
+    assert not opened and "輝くキミヘ" in capsys.readouterr().out
