@@ -1154,7 +1154,12 @@ class BenchAdvisor:
             self._seen_pm.update({k: v for k, v in (getattr(state, "attr_permils", None) or {}).items() if v})
             if not getattr(self, "_round_checked", True):
                 self._round_checked = True
+                before = self.label
                 self._check_round(obs, state, memory)
+                if self.label != before and not self.began:
+                    # 场次按画面改了：这一场的算法按新场次重选（#197 review：开局页按场次选的快速 / 搜索会选反）
+                    self._pick_algo()
+                    algo = self.round_algo if self.round_algo is not None else algo
             if str(self.label or "").lower().startswith(("hajime", "nia")):
                 self._fix_obs(obs)
             # 每步给算法的 UIObs 记进运行日志（复盘用：实机局能直接看出 UINet 看到的局面和画面差在哪）

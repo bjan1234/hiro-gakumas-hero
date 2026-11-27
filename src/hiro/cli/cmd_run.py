@@ -91,6 +91,17 @@ def _precheck(a: dict) -> None:
             raise CliError(
                 "bad_args", f"日常里没有这些项：{'、'.join(bad)}", "可选：" + "、".join(jobs.DAILY_ITEMS), exit_code=2
             )
+    if a.get("exam_search") is not None and a["kind"] in jobs.EXAM_SEARCH_KEYS:
+        # 写错的场次（如 hajime 写了 r1）原来静默变成「全部快速」（#197 review）：直接报出来
+        keys = jobs.EXAM_SEARCH_KEYS[a["kind"]]
+        given = [x.strip().lower() for x in str(a["exam_search"]).split(",") if x.strip()]
+        if bad := [x for x in given if x not in keys and x != "none"]:
+            raise CliError(
+                "bad_args",
+                f"{a['kind']} 没有这些场次：{'、'.join(bad)}",
+                "可选：" + "、".join(keys) + "；都快速写 none",
+                exit_code=2,
+            )
     if a["kind"] == "nia" and a.get("difficulty") == "regular":
         raise CliError("bad_args", "N.I.A 没有 REGULAR，只有 pro / master", "改成 --difficulty pro", exit_code=2)
     _check_formation_plan(a)

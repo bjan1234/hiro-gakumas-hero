@@ -60,3 +60,11 @@ def test_job_env_and_summary(hiro_home):
     assert "搜索出牌：最終" in KINDS["hajime"].summary({"exam_search": "final"})
     assert "全部快速出牌" in KINDS["nia"].summary({"exam_search": "none"})
     assert "搜索出牌：选拔 3、R2" in KINDS["hif"].summary({"command": "resume", "exam_search": "q3,r2"})
+
+
+def test_run_start_rejects_unknown_rounds(run_cli):
+    """#197 review：写错的场次（hajime 写了 r1）原来静默变成全部快速，现在直接报参数错误。"""
+    _code, env = run_cli("run", "start", "hajime", "--command", "resume", "--exam-search", "r1")
+    assert env["ok"] is False and env["error"]["code"] == "bad_args" and "r1" in env["error"]["message"]
+    _code, env = run_cli("run", "start", "hajime", "--command", "resume", "--exam-search", "none")
+    assert env["ok"] is True or env["error"]["code"] != "bad_args"
