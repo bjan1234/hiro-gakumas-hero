@@ -31,6 +31,7 @@ PARAMS = (
     "support_set",
     "memory_set",
     "difficulty",
+    "exam_search",
     "items",
     "contest_pick",
     "shop",
@@ -89,6 +90,17 @@ def _precheck(a: dict) -> None:
         if bad:
             raise CliError(
                 "bad_args", f"日常里没有这些项：{'、'.join(bad)}", "可选：" + "、".join(jobs.DAILY_ITEMS), exit_code=2
+            )
+    if a.get("exam_search") is not None and a["kind"] in jobs.EXAM_SEARCH_KEYS:
+        # 写错的场次（如 hajime 写了 r1）原来静默变成「全部快速」（#197 review）：直接报出来
+        keys = jobs.EXAM_SEARCH_KEYS[a["kind"]]
+        given = [x.strip().lower() for x in str(a["exam_search"]).split(",") if x.strip()]
+        if bad := [x for x in given if x not in keys and x != "none"]:
+            raise CliError(
+                "bad_args",
+                f"{a['kind']} 没有这些场次：{'、'.join(bad)}",
+                "可选：" + "、".join(keys) + "；都快速写 none",
+                exit_code=2,
             )
     if a["kind"] == "nia" and a.get("difficulty") == "regular":
         raise CliError("bad_args", "N.I.A 没有 REGULAR，只有 pro / master", "改成 --difficulty pro", exit_code=2)
@@ -667,6 +679,11 @@ def _first_reason(out: str) -> str:
         Arg("--support-set", "hif / hajime / nia：用游戏里第几号支援卡编成（不给按编成方案）", type="int"),
         Arg("--memory-set", "hif / hajime / nia：用第几号回忆编成", type="int"),
         Arg("--difficulty", "hajime：regular / pro / master；nia：pro / master", choices=("regular", "pro", "master")),
+        Arg(
+            "--exam-search",
+            "hajime / nia / hif：哪几场考试用搜索出牌（更准、每步约 5 秒，H.I.F 本战约 15 秒），其余用快速出牌；逗号分隔，none = 都快速。"
+            "hajime：mid1 final lesson（缺省全搜）；nia：mid1 mid2 final（缺省都不搜）；hif：q1 q2 q3（选拔，缺省不搜）r1 r2（本战，缺省都搜）",
+        ),
         Arg(
             "--final-rank",
             "hajime：期末要到第几名（如 1），没到就用再挑戦（免费 / チケット，不花ジュエル）",

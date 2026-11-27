@@ -348,12 +348,29 @@ def _prepare_suffix(p: dict) -> str:
     return f"\n开局前：{p['prepare_note']}" if p.get("prepare") and p.get("prepare_note") else ""
 
 
+_ROUND_NAMES = {"mid1": "中間", "mid2": "中間 2", "final": "最終", "lesson": "练习课",
+                "q1": "选拔 1", "q2": "选拔 2", "q3": "选拔 3", "r1": "R1", "r2": "R2"}  # fmt: skip
+
+
+def _search_suffix(p: dict) -> str:
+    """开局时按场次选了出牌方式（--exam-search）：确认摘要写出哪几场用搜索。"""
+    if p.get("exam_search") is None:
+        return ""
+    keys = [k.strip().lower() for k in str(p["exam_search"]).split(",") if k.strip().lower() in _ROUND_NAMES]
+    return f"（搜索出牌：{'、'.join(_ROUND_NAMES[k] for k in keys)}）" if keys else "（全部快速出牌）"
+
+
 def _produce_summary(name: str, default_level: str):
     def summary(p: dict) -> str:
         level = (p.get("difficulty") or default_level).upper()
         if (p.get("command") or "new") == "resume":
-            return f"接着打进行中的{name}培育"
-        return f"开一局{name} {level}" + (f"（{idol_name(p['idol'])}）" if p.get("idol") else "") + _prepare_suffix(p)
+            return f"接着打进行中的{name}培育" + _search_suffix(p)
+        return (
+            f"开一局{name} {level}"
+            + (f"（{idol_name(p['idol'])}）" if p.get("idol") else "")
+            + _search_suffix(p)
+            + _prepare_suffix(p)
+        )
 
     return summary
 
@@ -376,10 +393,15 @@ def _write_formation_summary(p: dict) -> str:
 
 def _hif_summary(p: dict) -> str:
     if (p.get("command") or "new") == "resume":
-        return "接着打进行中的 H.I.F 培育"
+        return "接着打进行中的 H.I.F 培育" + _search_suffix(p)
     if (p.get("mode") or "qualify") == "main":
-        return "开一局 H.I.F 本战（会用掉一份选拔回忆）"
-    return "开一局 H.I.F 选拔" + (f"（{idol_name(p['idol'])}）" if p.get("idol") else "") + _prepare_suffix(p)
+        return "开一局 H.I.F 本战（会用掉一份选拔回忆）" + _search_suffix(p)
+    return (
+        "开一局 H.I.F 选拔"
+        + (f"（{idol_name(p['idol'])}）" if p.get("idol") else "")
+        + _search_suffix(p)
+        + _prepare_suffix(p)
+    )
 
 
 def _slices_on() -> bool:
@@ -783,6 +805,22 @@ class Job:
 
         paths.apply_defaults(env, self.work.parent)  # self.work = HIRO_HOME/work
         env.update(self.kind.env)
+        if not env.get("HIRO_SETTLE_MIN_S"):
+            # DMM 截图约 0.19 秒一张，考试里判「画面稳了」要一致读数持续 1.5 秒（同 scripts/play.ps1 -Device dmm；
+            # 原来只有脚本开局才设，初星助手开的局没有，回合没切完就决策）
+            from hiro.runtime.close_game import device_kind
+
+            if device_kind(env) == "dmm":
+                env["HIRO_SETTLE_MIN_S"] = "1.5"
+        from hiro.cli import play_prefs
+
+        # 设置页「培育」那一节（LIVE / 照片 / 未读剧情 / 没过线重打 / H.I.F 攻略包和审查日程）：盖过启动环境（11-27）
+        for var, val in play_prefs.env_from_settings(self.work.parent).items():
+            if val:
+                env[var] = val
+            else:
+                env.pop(var, None)
+        env.update(exam_search_env(self.kind.name, self.params.get("exam_search"), env))
         if self.kind.name == "hif":  # run_hif 的编成号走环境变量
             for key, var in (("support_set", "HIRO_SUPPORT_SET"), ("memory_set", "HIRO_MEMORY_SET")):
                 if self.params.get(key):
@@ -951,3 +989,35 @@ def _collect_all_summary(only: str | None) -> str:
     want = {w.strip() for w in (only or "").split(",") if w.strip()}
     names = [("回忆（12 片全读）" if k == "memories" else label) for k, _, label in STEPS if not want or k in want]
     return "一键全收集：" + " → ".join(names or ["（没有要做的）"]) + "（只读，不改编成）"
+
+
+# 开局页按场次选「快速 / 搜索」（11-27 用户）：--exam-search 的场次 → 各家族的搜索开关
+EXAM_SEARCH_KEYS = {
+    "hajime": ("mid1", "final", "lesson"),
+    "nia": ("mid1", "mid2", "final"),
+    "hif": ("q1", "q2", "q3", "r1", "r2"),
+}
+SIM_STATE_SOURCE = "hiro.sim.screen_source:SimScreenExamStateSource"
+
+
+def exam_search_env(kind: str, value, base: dict | None = None) -> dict[str, str]:
+    """--exam-search（mid1,final / none）→ 环境变量。没给这个参数时不动（各家族的缺省）。
+    H.I.F 本战要搜索得有模拟器跟踪的局面来源：没设 HIRO_EXAM_STATE_SOURCE、也没 HIRO_SIM=0 时补上 play.ps1 的那套（模拟器 1 个进程、预演只在 R2）。"""
+    if value is None or kind not in EXAM_SEARCH_KEYS:
+        return {}
+    keys = EXAM_SEARCH_KEYS[kind]
+    picked = [k for k in (x.strip().lower() for x in str(value).split(",")) if k in keys]
+    if kind == "hajime":
+        return {"HIRO_EXAM_SEARCH_HAJIME": ",".join(picked) or "off"}
+    if kind == "nia":
+        return {"HIRO_EXAM_SEARCH_NIA": ",".join(picked) or "off"}
+    qual = [k[1] for k in picked if k.startswith("q")]
+    main = [k for k in picked if k.startswith("r")]
+    env = {"HIRO_EXAM_SEARCH_HIF": ",".join(qual) or "off", "HIRO_EXAM_SEARCH_MAIN": ",".join(main) or "off"}
+    if main and not (base or {}).get("HIRO_EXAM_STATE_SOURCE") and (base or {}).get("HIRO_SIM") != "0":
+        env["HIRO_EXAM_STATE_SOURCE"] = SIM_STATE_SOURCE
+        if not (base or {}).get("HIRO_SIM_WORKERS"):
+            env["HIRO_SIM_WORKERS"] = "1"  # 模拟器每个 worker 约 600 MB
+        if not (base or {}).get("HIRO_EXAM_SIM_ROUNDS"):
+            env["HIRO_EXAM_SIM_ROUNDS"] = "r2"
+    return env

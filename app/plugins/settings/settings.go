@@ -5,6 +5,7 @@ package settings
 import (
 	"context"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,16 @@ type Settings struct {
 	CloseSelfAfter bool `json:"close_self_after,omitempty"`
 	// OpenIn：打开时进哪种界面："chat" = 问 AI，其余 = 页面（首页，缺省；11-26 用户定）
 	OpenIn string `json:"open_in,omitempty"`
+	// 培育（11-27 设置页「培育」一节；hiro.cli.play_prefs 在任务启动时变成环境变量）：
+	// Live：play（缺省）/ play_pick / watch / pick / auto；UnreadStory：skip / stop；RetryMax："0"–"3"（空 = 3）。
+	// 每场考试快速 / 搜索在开局页按场次选（start-prefs.json），不在这里
+	// 三个开关不带 omitempty：不勾也写 false，盖过启动环境里的同名变量（界面上看到的就是实际生效的）
+	Live              string `json:"live,omitempty"`
+	UnreadStory       string `json:"unread_story,omitempty"`
+	RetryMax          string `json:"retry_max,omitempty"`
+	RetryHandoff      bool   `json:"retry_handoff"`
+	HifGuides         bool   `json:"hif_guides"`
+	ExamScheduleProbe bool   `json:"exam_schedule_probe"`
 }
 
 // permLevels 是「操作权限」的四档（11-25 review，参考 dsh）。
@@ -965,6 +976,8 @@ func (s *S) panel(c *ui.Context, h plugin.Host, route string) {
 	s.permNote(c)
 	ui.Text(c, "扫描").FontSize(15).FontWeight(650).TextColor(kit.Ink).Padding(10, 0, 0, 0)
 	s.scanSection(c)
+	ui.Text(c, "培育").FontSize(15).FontWeight(650).TextColor(kit.Ink).Padding(10, 0, 0, 0)
+	s.produceSection(c)
 	ui.Text(c, "游戏连接").FontSize(15).FontWeight(650).TextColor(kit.Ink).Padding(10, 0, 0, 0)
 	s.deviceLine(c, h)
 	if kit.Secondary(c, "试连").Key("probe").Disabled(s.probing || h.LiveJob() != "").Clicked() {
@@ -1013,6 +1026,84 @@ func (s *S) openInSection(c *ui.Context) {
 	}
 	if want != st.OpenIn {
 		st.OpenIn = want
+		_ = s.d.Save(st, "")
+	}
+}
+
+// liveChoices 是「培育结束后的 LIVE」几种（值存 settings.json 的 live，hiro.cli.play_prefs 变成 HIRO_LIVE / HIRO_PHOTO_PICK）。
+var liveChoices = [][2]string{
+	{"play", "照常播放，回忆照片用默认的"},
+	{"play_pick", "照常播放，回忆照片我自己选"},
+	{"watch", "我亲自看（开始前停下等我）"},
+	{"pick", "跳过 LIVE，回忆照片我自己选"},
+	{"auto", "跳过 LIVE，回忆照片用默认的"},
+}
+
+// produceSection 是「培育」：LIVE 和回忆照片、未读剧情、没过线重打、H.I.F 的攻略包和选拔搜索（11-27：原来只写在启动脚本的环境变量里，界面上找不到）。
+// 改了只影响之后开的局。
+func (s *S) produceSection(c *ui.Context) {
+	st := s.d.Settings()
+	changed := false
+
+	kit.Section(c, "培育结束后的 LIVE")
+	live := st.Live
+	if live == "" {
+		live = "play"
+	}
+	ui.RadioGroup(c, func() {
+		for _, ch := range liveChoices {
+			ui.Row(c).Key("live-" + ch[0]).Children(func() { ui.Radio(c, &live, ch[0], ch[1]) })
+		}
+	}).Label("培育结束后的 LIVE")
+	kit.Note(c, "要等你的时候会发通知、DMM 窗口放到屏幕中间；亲自看时 60 秒没人点开始就关游戏，选照片 10 分钟没人管就用默认的。")
+	if live != st.Live && !(st.Live == "" && live == "play") {
+		st.Live, changed = live, true
+	}
+
+	kit.Section(c, "没读过的剧情")
+	unread := 0
+	if st.UnreadStory == "stop" {
+		unread = 1
+	}
+	ui.Row(c).Key("unread-story").Children(func() { ui.Segmented(c, &unread, "跳过", "停下等我看") })
+	kit.Note(c, "停下时发通知，看完自动接着打；60 秒剧情没动就当没人在看，关游戏退出（之后点「接着打」）。")
+	if want := []string{"skip", "stop"}[unread]; want != st.UnreadStory && !(st.UnreadStory == "" && want == "skip") {
+		st.UnreadStory, changed = want, true
+	}
+
+	kit.Section(c, "考试没过线")
+	retry := 3
+	if n, err := strconv.Atoi(st.RetryMax); err == nil && n >= 0 && n <= 3 {
+		retry = n
+	}
+	ui.Row(c).Gap(10).AlignItems(ui.Center).Key("retry-max").Children(func() {
+		ui.Text(c, "最多再挑战").FontSize(kit.FSmall).TextColor(kit.Ink2)
+		ui.Segmented(c, &retry, "0 次", "1 次", "2 次", "3 次")
+	})
+	if want := strconv.Itoa(retry); want != st.RetryMax && !(st.RetryMax == "" && retry == 3) {
+		st.RetryMax, changed = want, true
+	}
+	handoff := st.RetryHandoff
+	ui.Row(c).Key("retry-handoff").Children(func() {
+		ui.Checkbox(c, &handoff, "再挑战之前先交给我 60 秒（我点了再挑战就自己打）")
+	})
+	if handoff != st.RetryHandoff {
+		st.RetryHandoff, changed = handoff, true
+	}
+	kit.Note(c, "只用免费次数和再挑战券，不花钻石。")
+
+	kit.Section(c, "H.I.F")
+	guides := st.HifGuides
+	ui.Row(c).Key("hif-guides").Children(func() {
+		ui.Checkbox(c, &guides, "广以外的偶像按自己的流派和攻略选卡（偶像卡攻略包）")
+	})
+	probe := st.ExamScheduleProbe
+	ui.Row(c).Key("exam-probe").Children(func() { ui.Checkbox(c, &probe, "每场考试第 1 回合点开审查日程，读全三项倍率") })
+	kit.Note(c, "每场考试用快速还是搜索出牌，在开局页的「考试出牌」里按场次选（搜索要读全三项倍率，建议开着审查日程）。")
+	if guides != st.HifGuides || probe != st.ExamScheduleProbe {
+		st.HifGuides, st.ExamScheduleProbe, changed = guides, probe, true
+	}
+	if changed {
 		_ = s.d.Save(st, "")
 	}
 }

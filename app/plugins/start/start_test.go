@@ -148,7 +148,7 @@ func TestPanelStartsWithChosenIdol(t *testing.T) {
 		t.Fatalf("没发起：%v", h.RunArgs_)
 	}
 	got := strings.Join(h.RunArgs_[0], " ")
-	if !strings.Contains(got, "run start hajime --command new --idol i_card-skin-hski-3-0001 --difficulty pro") {
+	if !strings.Contains(got, "run start hajime --command new --exam-search mid1,final,lesson --idol i_card-skin-hski-3-0001 --difficulty pro") {
 		t.Errorf("参数 %q", got)
 	}
 }
@@ -440,5 +440,15 @@ func TestReplayDropsTrace(t *testing.T) {
 	}
 	if j.Params["trace"] != "x-r1" {
 		t.Error("不该改掉原局的参数")
+	}
+}
+
+// CodeRabbit #197：旧的偶像之路记录 idol 是偶像卡编号（列表页按偶像名找）：不给「再打一把」。
+func TestReplaySkipsOldTowerCardID(t *testing.T) {
+	if replay(plugin.Job{ID: "j1", Kind: "tower", Params: map[string]any{"idol": "i_card-skin-hski-3-0001"}}, "x", "偶像之路") != nil {
+		t.Error("旧记录不该给再打一把")
+	}
+	if replay(plugin.Job{ID: "j2", Kind: "tower", Params: map[string]any{"idol": "篠澤広"}}, "篠澤広", "偶像之路") == nil {
+		t.Error("按偶像名记的应能再打一把")
 	}
 }

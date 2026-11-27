@@ -60,6 +60,7 @@ type state struct {
 	hifMain int // 0 选拔 1 本战
 	diff    int
 	pick    common.IdolPicker // 偶像卡（和编成方案页共用的选择器）
+	search  searchState       // 考试出牌：按场次选快速 / 搜索（examsearch.go）
 
 	// 日常的选项（11-26）：竞赛挑哪个对手、商店买什么、硬币扭蛋抽哪个
 	contestPick int     // 0 综合力最低 1/2/3 第几个
@@ -180,7 +181,10 @@ func New() *plugin.Plugin {
 		Chips: []plugin.Chip{
 			{Label: "/开局", Say: "/开局"},
 			{Label: "接着打进行中的培育", Run: func(h plugin.Host) {
-				h.RunArgs("接着打进行中的培育", []string{"run", "start", "hif", "--command", "resume"})
+				// 带上开局页存的「考试出牌」（选拔、本战两组都带；CodeRabbit #197：原来不带，按启动环境搜索）
+				s.search.load(h)
+				argv := append([]string{"run", "start", "hif", "--command", "resume"}, s.search.args(examGroups("hif", 0, true))...)
+				h.RunArgs("接着打进行中的培育", argv)
 			}},
 			{Label: "领日常奖励", Run: func(h plugin.Host) {
 				h.RunArgs("帮我领日常奖励", s.dailyArgv())
@@ -370,6 +374,9 @@ func (s *state) explain(h plugin.Host, cat *common.Catalog, p hiroapi.Pending) (
 			e.Rows = append(e.Rows, [2]string{"主属性", labels.Attr(a)})
 		}
 	}
+	if row, ok := examSearchRow(r.Kind, r.Flags); ok {
+		e.Rows = append(e.Rows, row)
+	}
 	return e, true
 }
 
@@ -487,6 +494,7 @@ func (s *state) panel(c *ui.Context, h plugin.Host) {
 	if m.id == "daily" {
 		s.dailyOptions(c)
 	}
+	s.search.draw(c, h, examGroups(m.id, s.hifMain, s.resume))
 	needIdol := (produce && !s.resume) || m.id == "tower"
 	if needIdol {
 		s.pick.Draw(c, h, "start")
@@ -670,6 +678,7 @@ func (s *state) args() ([]string, string) {
 	if m.id == "hif" {
 		a = append(a, "--mode", []string{"qualify", "main"}[s.hifMain])
 	}
+	a = append(a, s.search.args(examGroups(m.id, s.hifMain, s.resume))...)
 	if s.resume {
 		return a, "接着打 " + m.name
 	}
@@ -842,6 +851,9 @@ func replay(j plugin.Job, name, mode string) func(h plugin.Host) {
 	}
 	// 续打时并进来的记录目录（resume_chain 的 trace）不带：run start 没有 --trace，新局自己建（CodeRabbit #138 / #197）
 	delete(params, "trace")
+	if idol, _ := params["idol"].(string); j.Kind == "tower" && strings.HasPrefix(idol, "i_card") {
+		return nil // 旧的偶像之路记录存的是偶像卡编号：列表页按偶像名找，重放会停在列表页（CodeRabbit #197），首页不出这一项
+	}
 	argv := common.StartArgv(j.Kind, params)
 	if len(argv) == 0 {
 		return nil
