@@ -956,3 +956,23 @@ def test_cancel_decision_survives_blank_frames(monkeypatch):
     now[0] = 25.0
     with pytest.raises(ResumeBlocked):
         farm.regen_step([])  # 一直空帧：20 秒停下
+
+
+def test_whitelist_text_must_be_inside_dialog_box(monkeypatch):
+    """CodeRabbit #198：白名单文字要在确认框边界内：框标题（含再生成的那行）和キャンセル那一行之间，x 在按钮范围外扩以内。
+    框标题上方 / 框外左右的「チケットを使用」不算；找不到框标题就不确认。"""
+    farm = _regen_started(monkeypatch, [0.0])
+    above = _boxes(("チケットを1枚使用します", 360, 450), ("メモリーを再生成しますか", 360, 600), ("キャンセル", 218, 1000),
+                   ("再生成する", 500, 1000))  # fmt: skip
+    assert farm.regen_step(above) == (218, 1000)  # 券的字在框标题上面：框外
+    farm = _regen_started(monkeypatch, [0.0])
+    side = _boxes(("メモリーを再生成しますか", 360, 600), ("チケットを1枚使用", 20, 700), ("キャンセル", 218, 1000),
+                  ("再生成する", 500, 1000))  # fmt: skip
+    assert farm.regen_step(side) == (218, 1000)  # 券的字在框左边外面
+    farm = _regen_started(monkeypatch, [0.0])
+    no_title = _boxes(("チケットを1枚使用します", 360, 640), ("キャンセル", 218, 1000), ("再生成する", 500, 1000))
+    assert farm.regen_step(no_title) == (218, 1000)  # 认不出框标题：不确认
+    farm = _regen_started(monkeypatch, [0.0])
+    good = _boxes(("メモリーを再生成しますか", 360, 600), ("チケットを1枚使用します", 360, 700), ("キャンセル", 218, 1000),
+                  ("再生成する", 500, 1000))  # fmt: skip
+    assert farm.regen_step(good) == (500, 1000)

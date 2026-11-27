@@ -500,12 +500,6 @@ def _is_jewel(texts: list[str]) -> bool:
     return any(_JEWEL.search(t) for t in texts)
 
 
-def _dialog_texts(boxes, cancel) -> list[str]:
-    """确认框区域的字：キャンセル那一行往上 DIALOG_SPAN 以内（框后面压暗的结果页上方、底下按钮行不算；审查 #198 第 7 条）。"""
-    cy = cancel.rect.center.y
-    return [_txt(b) for b in boxes if cy - DIALOG_SPAN <= b.rect.center.y <= cy + 40]
-
-
 def _is_regen_dialog(boxes, texts: list[str], cancel) -> bool:
     """带キャンセル的框是不是再生成 / 花钻石的确认框：有ジュエル，或除了结果页那颗「再生成」按钮以外还有含「再生成」的字
     （框标题「メモリー再生成」「〜再生成しますか」、和キャンセル同一行的「再生成する」）。结果页底下那颗「再生成」（y≈1160，
@@ -543,16 +537,38 @@ def _is_regen_dialog_no_cancel(texts: list[str]) -> bool:
     )
 
 
+DIALOG_X_PAD = 160  # 确认框左右边界：キャンセル与确认按钮的 x 范围往外扩这么多（720 宽：按钮约 x 218 / 500，框约 x 60–660）
+
+
+def _dialog_box_texts(boxes, cancel, ok) -> list[str] | None:
+    """确认框边界内的字（CodeRabbit #198）：y 在框标题（キャンセル上方 DIALOG_SPAN 以内、最靠上的含「再生成」的那行，
+    结果页的「再生成」按钮和「あと N 回 / 再生成可能」说明不算）和キャンセル那一行之间，x 在キャンセル与确认按钮的范围往外扩
+    DIALOG_X_PAD 以内。找不到框标题返回 None（认不出框在哪：不确认）。"""
+    cy = cancel.rect.center.y
+    x0 = min(cancel.rect.center.x, ok.rect.center.x) - DIALOG_X_PAD
+    x1 = max(cancel.rect.center.x, ok.rect.center.x) + DIALOG_X_PAD
+    titles = [b for b in boxes if cy - DIALOG_SPAN <= b.rect.center.y < cy - 20 and x0 <= b.rect.center.x <= x1
+              and "再生成" in _txt(b) and _txt(b) != "再生成" and "可能" not in _txt(b)
+              and not re.search(r"あと\d+回", _txt(b))]  # fmt: skip
+    if not titles:
+        return None
+    ty = min(b.rect.center.y for b in titles)
+    return [_txt(b) for b in boxes if ty <= b.rect.center.y < cy - 20 and x0 <= b.rect.center.x <= x1]
+
+
 def _answer_dialog(boxes, texts: list[str], cancel) -> tuple[int, int]:
-    """再生成确认框：白名单（免费 / 用券、没有ジュエル、和キャンセル同一行认得出确认按钮）才确认，否则点キャンセル。"""
-    free = _free_regen(_dialog_texts(boxes, cancel))  # 白名单只看框里的字；ジュエル看整屏
-    jewel = _is_jewel(texts)
+    """再生成确认框：白名单（框边界内读到免费 / 用券、整屏没有ジュエル、和キャンセル同一行认得出确认按钮、认得出框标题）才确认，
+    否则点キャンセル。"""
+    jewel = _is_jewel(texts)  # ジュエル看整屏
     cy = cancel.rect.center.y
     # 确认按钮要和キャンセル在同一行（框里的按钮）：底下结果页的「再生成」（约 y 1160）不算
     ok = next((b for b in boxes if _txt(b) in REGEN_CONFIRM_WORDS and abs(b.rect.center.y - cy) < 40
                and abs(b.rect.center.x - cancel.rect.center.x) > 100), None)  # fmt: skip
-    if jewel or not free or ok is None:
-        why = "有钻石" if jewel else ("没读到免费 / 再生成券" if not free else "认不出确认按钮")
+    inside = _dialog_box_texts(boxes, cancel, ok) if ok is not None else None
+    free = inside is not None and _free_regen(inside)  # 白名单只看框边界内的字
+    if jewel or ok is None or inside is None or not free:
+        why = ("有钻石" if jewel else "认不出确认按钮" if ok is None else "认不出框标题（框边界不明）" if inside is None
+               else "没读到免费 / 再生成券")  # fmt: skip
         logger.warning("刷回忆：再生成确认框%s，点キャンセル：%s", why, " ".join(texts)[:160])
         _regen["cancelled"] = True  # 记住这个框已决定取消，框关掉之前不再重判
         return int(cancel.rect.center.x), int(cancel.rect.center.y)
