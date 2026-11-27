@@ -6,6 +6,7 @@ from hiro.search import advisor as S
 
 
 def test_hajime_rounds(monkeypatch):
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_ALGO", raising=False)  # 开发机设了它会盖掉场次（CodeRabbit #198）
     monkeypatch.delenv("HIRO_EXAM_SEARCH_HAJIME", raising=False)
     assert A.hajime_search_rounds() == {"mid1", "final", "lesson"}  # 缺省全搜（原来的行为）
     assert A.exam_search_algo_spec("hajime-lesson-vo-sp") == A.EXAM_DEFAULT_ALGO
@@ -20,6 +21,7 @@ def test_hajime_rounds(monkeypatch):
 
 
 def test_nia_rounds(monkeypatch):
+    monkeypatch.delenv("HIRO_EXAM_SEARCH_ALGO", raising=False)  # 开发机设了它会盖掉场次（CodeRabbit #198）
     monkeypatch.delenv("HIRO_EXAM_SEARCH_NIA", raising=False)
     assert A.nia_search_rounds() == set()  # 缺省不搜
     monkeypatch.setenv("HIRO_EXAM_SEARCH_NIA", "1")
