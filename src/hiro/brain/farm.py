@@ -151,7 +151,9 @@ def target_cards(env: dict | None = None) -> set[str]:
     """转写目标：HIRO_FARM_TARGET（逗号分隔，技能卡 id 或卡名，中日文都行）；没设时用回忆编成带进来的卡（HIRO_MEMORY_CARDS / 开局编成方案）。
     11-27 实机：界面里填的是卡名「輝くキミへ」，原来只认 id；没设时的来源还指向已删的 kaa_env，结果目标是空的。"""
     src = env if env is not None else os.environ
-    raw = (src.get("HIRO_FARM_TARGET") or "").strip()  # 和 check_targets 同一口径：只有空格也回退到编成（CodeRabbit #198）
+    raw = (
+        src.get("HIRO_FARM_TARGET") or ""
+    ).strip()  # 和 check_targets 同一口径：只有空格也回退到编成（CodeRabbit #198）
     if not raw:
         return _memory_cards()
     return set(_resolve_targets(raw)[0])

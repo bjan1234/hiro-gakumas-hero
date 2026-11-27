@@ -880,7 +880,9 @@ def test_card_id_prefers_exact_in_any_language(monkeypatch):
     assert farm.card_id("闪耀") == "p_card-zh-exact"
 
     def search2(q, kind=None, lang="ja"):
-        return [{"id": "p_card-one", "name": "輝くキミへ"}] if lang == "ja" else [{"id": "p_card-one", "name": "闪耀的你"}]
+        return (
+            [{"id": "p_card-one", "name": "輝くキミへ"}] if lang == "ja" else [{"id": "p_card-one", "name": "闪耀的你"}]
+        )
 
     monkeypatch.setattr(catalog, "search", search2)
     assert farm.card_id("輝く") == "p_card-one"  # 两种语言模糊都只对上同一张：接受
@@ -902,7 +904,11 @@ def test_junk_cards_keeps_memory_cards(monkeypatch):
     monkeypatch.setattr(d, "_is_basic", lambda cid: False)
     monkeypatch.setattr(d, "_is_trouble_card", lambda cid: False)
     monkeypatch.setattr(formation_env, "MEMORY_CARDS", ("p_card-mem",))
-    cards = [{"index": 0, "card_id": "p_card-mem"}, {"index": 1, "card_id": "p_card-picked"}, {"index": 2, "card_id": "p_card-target"}]
+    cards = [
+        {"index": 0, "card_id": "p_card-mem"},
+        {"index": 1, "card_id": "p_card-picked"},
+        {"index": 2, "card_id": "p_card-target"},
+    ]
     assert [c["card_id"] for c in farm.junk_cards(cards, {"p_card-target"})] == ["p_card-picked"]
 
 
