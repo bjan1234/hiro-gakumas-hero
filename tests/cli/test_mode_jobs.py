@@ -140,7 +140,7 @@ def test_final_rank_only_for_hajime():
 
 
 def test_play_prefs_from_settings_override_env(hiro_home, monkeypatch):
-    """设置页「培育」：settings.json 里有的项盖过启动环境；没设的项不动（11-27）。"""
+    """设置页「培育」：每一项都盖过启动环境；没设过的按程序缺省（11-27，CodeRabbit #197 / #198）。"""
     import json
 
     monkeypatch.setenv("HIRO_LIVE", "pick")
@@ -154,7 +154,11 @@ def test_play_prefs_from_settings_override_env(hiro_home, monkeypatch):
     env = Job(hiro_home, KINDS["hajime"], {"command": "resume"}).child_env()
     assert env["HIRO_LIVE"] == "play" and env["HIRO_PHOTO_PICK"] == "stop"
     assert env["HIRO_RETRY_MAX"] == "1" and env["HIRO_RETRY_HANDOFF"] == "1"
-    assert env["HIRO_UNREAD_STORY"] == "stop"  # 设置里没有：照启动环境
+    assert env["HIRO_UNREAD_STORY"] == "skip"  # 设置里没有：按缺省，不沿用启动环境（页面上显示的就是实际用的）
+    assert env["HIRO_HIF_GUIDES"] == "0" and env["HIRO_EXAM_SCHEDULE_PROBE"] == "0"
+    (hiro_home / "settings.json").unlink()
+    env = Job(hiro_home, KINDS["hajime"], {"command": "resume"}).child_env()
+    assert env["HIRO_LIVE"] == "play" and env["HIRO_PHOTO_PICK"] == "auto" and env["HIRO_RETRY_MAX"] == "3"
 
 
 def test_dmm_settle_default(hiro_home, monkeypatch):

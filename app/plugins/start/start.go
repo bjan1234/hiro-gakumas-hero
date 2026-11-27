@@ -181,7 +181,10 @@ func New() *plugin.Plugin {
 		Chips: []plugin.Chip{
 			{Label: "/开局", Say: "/开局"},
 			{Label: "接着打进行中的培育", Run: func(h plugin.Host) {
-				h.RunArgs("接着打进行中的培育", []string{"run", "start", "hif", "--command", "resume"})
+				// 带上开局页存的「考试出牌」（选拔、本战两组都带；CodeRabbit #197：原来不带，按启动环境搜索）
+				s.search.load(h)
+				argv := append([]string{"run", "start", "hif", "--command", "resume"}, s.search.args(examGroups("hif", 0, true))...)
+				h.RunArgs("接着打进行中的培育", argv)
 			}},
 			{Label: "领日常奖励", Run: func(h plugin.Host) {
 				h.RunArgs("帮我领日常奖励", s.dailyArgv())

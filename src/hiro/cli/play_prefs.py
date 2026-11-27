@@ -1,6 +1,7 @@
 """初星助手设置页「培育」那一节 → 任务的环境变量（11-27 用户：LIVE / 选照片等开关原来只写在启动脚本里，界面上找不到）。
 
-settings.json 里有这项就按它设（盖过启动环境里的同名变量）；没有就不动（用启动环境或程序缺省）。
+设置页是准的：每一项都按 settings.json 设，没设过的项按程序缺省（下表括号里的），一律盖过启动环境里的同名变量。
+设置页上看到的就是任务实际用的（CodeRabbit #197 / #198：原来没设过的项沿用启动环境，页面显示「跳过」、任务却可能停下等人）。
 
 | settings.json | 环境变量 |
 |---|---|
@@ -31,25 +32,21 @@ def _flag(v) -> str:
 
 
 def env_from_settings(home: Path) -> dict[str, str]:
-    """settings.json 里「培育」那几项对应的环境变量；没有 settings.json 或某项没设时那项不给。"""
+    """settings.json 里「培育」那几项对应的环境变量；没有 settings.json、某项没设或写了认不出的值时按缺省。"""
     try:
         s = json.loads((Path(home) / "settings.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return {}
+        s = {}
     if not isinstance(s, dict):
-        return {}
+        s = {}
     env: dict[str, str] = {}
-    if (live := s.get("live")) in LIVE:
-        env.update(LIVE[live])
-    if (u := s.get("unread_story")) in ("skip", "stop"):
-        env["HIRO_UNREAD_STORY"] = u
-    if (r := str(s.get("retry_max", ""))) in ("0", "1", "2", "3"):
-        env["HIRO_RETRY_MAX"] = r
+    env.update(LIVE.get(s.get("live"), LIVE["play"]))
+    env["HIRO_UNREAD_STORY"] = u if (u := s.get("unread_story")) in ("skip", "stop") else "skip"
+    env["HIRO_RETRY_MAX"] = r if (r := str(s.get("retry_max", ""))) in ("0", "1", "2", "3") else "3"
     for key, var in (
         ("retry_handoff", "HIRO_RETRY_HANDOFF"),
         ("hif_guides", "HIRO_HIF_GUIDES"),
         ("exam_schedule_probe", "HIRO_EXAM_SCHEDULE_PROBE"),
     ):
-        if key in s:
-            env[var] = _flag(s[key])
+        env[var] = _flag(s.get(key, False))
     return env

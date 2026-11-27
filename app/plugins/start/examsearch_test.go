@@ -97,3 +97,21 @@ func TestExamSearchRemembered(t *testing.T) {
 		t.Errorf("读回来 %q", a)
 	}
 }
+
+// CodeRabbit #197：输入框上面的「接着打进行中的培育」也带开局页存的考试出牌（两组都带）。
+func TestResumeChipCarriesExamSearch(t *testing.T) {
+	h := plugintest.New(map[string]string{})
+	h.HomeDir = t.TempDir()
+	p := New()
+	for _, ch := range p.Chips {
+		if ch.Label == "接着打进行中的培育" {
+			ch.Run(h)
+		}
+	}
+	if len(h.RunArgs_) != 1 {
+		t.Fatalf("没发起：%v", h.RunArgs_)
+	}
+	if got := strings.Join(h.RunArgs_[0], " "); !strings.Contains(got, "--command resume --exam-search r1,r2") {
+		t.Errorf("参数 %q", got)
+	}
+}
